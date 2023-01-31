@@ -1,0 +1,31 @@
+[package]
+name = "talos_core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+#
+strum = { version = "0.24", features = ["derive"] }
+
+# Logging
+log = { workspace = true }
+env_logger = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Json Serialize / Deserialize
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Error
+thiserror = "1.0.31"
+
+# dyn clone for Box clone
+dyn-clone = "1.0.9"
+
+# internal crates
+certifier = { path = "../certifier" }
+suffix = { path = "../suffix" }
+logger = { path = "../logger" }

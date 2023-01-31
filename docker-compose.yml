@@ -1,0 +1,80 @@
+version: '3.1'
+services:
+
+  postgres:
+    image: postgres:13.3
+    ports:
+      - 5432:5432
+    volumes:
+      - postgres:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    networks:
+      - talos
+
+  zookeeper:
+    image: bitnami/zookeeper:3.7.0
+    ports:
+      - 2181:2181
+    volumes:
+      - zookeeper:/bitnami/zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+    networks:
+      - talos
+
+  kafka:
+    image: bitnami/kafka:2.8.0
+    ports:
+      - 9092:9092
+      - 9093:9093
+      - 9094:9094
+    volumes:
+      - kafka:/bitnami/kafka
+      - ./infra:/opt/infra
+    environment:
+      KAFKA_BROKER_ID: "1"
+      KAFKA_CFG_LISTENERS: "INTERNAL://:9092, EXTERNAL://:9093, K8S://:9094"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "INTERNAL://kafka:9092, EXTERNAL://localhost:9093"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "INTERNAL:PLAINTEXT, EXTERNAL:PLAINTEXT, K8S:PLAINTEXT"
+      KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "INTERNAL"
+      KAFKA_INTER_BROKER_USER: "admin"
+      KAFKA_INTER_BROKER_PASSWORD: "admin-secret"
+      KAFKA_CFG_NUM_PARTITIONS: "1"
+      KAFKA_LOG_RETENTION_BYTES: -1
+      KAFKA_LOG_RETENTION_MS: -1
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_CFG_SUPER_USERS: "User:admin"
+      KAFKA_CLIENT_USERS: "admin,kafdrop"
+      KAFKA_CLIENT_PASSWORDS: "admin-secret,admin-secret"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+    networks:
+      - talos
+    depends_on:
+      - zookeeper
+
+  kowl:
+    image: quay.io/cloudhut/kowl:master
+    ports:
+      - 9091:8080
+    environment:
+      KAFKA_BROKERS: "kafka:9092"
+    networks:
+      - talos
+    depends_on:
+      - kafka
+      - zookeeper
+
+networks:
+  talos:
+    name: talos
+
+volumes:
+  postgres:
+    driver: local
+  zookeeper:
+    driver: local
+  kafka:
+    driver: local

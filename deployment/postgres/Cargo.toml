@@ -1,0 +1,20 @@
+[package]
+# [package]
+name = "postgres"
+version = "0.0.1"
+edition = "2021"
+keywords = ["talos"]
+repository = "https://github.com/kindredgroup/talos.git"
+description = "Postgres table creation for Talos"
+
+[dependencies]
+
+# tokio and async
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# postgres
+tokio-postgres = "0.7.7"
+
+# Migration
+refinery = { version = "0.8.7", features = ["tokio-postgres"] }
