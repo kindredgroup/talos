@@ -11,7 +11,7 @@ jobs:
             - uses: dtolnay/rust-toolchain@stable
               with:
                   toolchain: stable
-
+            - run: bin/ubuntu-setup.sh
             - name: cargo build
               run: cargo build
             - run: bin/pre-commit-checks.sh
