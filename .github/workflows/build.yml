@@ -5,14 +5,13 @@ on: push
 jobs:
     build:
         runs-on: ubuntu-latest
-        environment: publish
         steps:
             - uses: actions/checkout@v3
             - uses: dtolnay/rust-toolchain@stable
               with:
                   toolchain: stable
             - run: bin/ubuntu-setup.sh
-            - run: rustup component add rustfmt
+            - run: rustup component add rustfmt clippy
             - name: cargo build
               run: cargo build
             - run: bin/pre-commit-checks.sh
