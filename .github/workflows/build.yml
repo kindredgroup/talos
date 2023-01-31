@@ -12,6 +12,7 @@ jobs:
               with:
                   toolchain: stable
             - run: bin/ubuntu-setup.sh
+            - run: rustup component add rustfmt
             - name: cargo build
               run: cargo build
             - run: bin/pre-commit-checks.sh
