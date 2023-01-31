@@ -41,10 +41,6 @@ fn var<T: EnvVarFromStr>(name: &str) -> T {
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Config {
-    // Service
-    pub env: String,
-    pub service_name: String,
-    pub build_version: String,
     // Kafka
     pub kafka_brokers: Vec<String>,
     pub kafka_topic_prefix: String,
@@ -66,9 +62,6 @@ impl Config {
         debug!("Loading config from environment variables");
 
         let config = Self {
-            env: var("ENVIRONMENT"),
-            service_name: var("SERVICE_NAME"),
-            build_version: var("BUILD_VERSION"),
             kafka_brokers: var("KAFKA_BROKERS"),
             kafka_topic_prefix: var("KAFKA_TOPIC_PREFIX"),
             kafka_topic: var("KAFKA_TOPIC"),
@@ -92,9 +85,6 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            env: "".to_owned(),
-            service_name: "".to_owned(),
-            build_version: "".to_owned(),
             // Kafka
             kafka_brokers: vec!["".to_owned()],
             kafka_topic_prefix: "".to_owned(),
@@ -141,9 +131,6 @@ mod tests {
         assert_eq!(
             config,
             Config {
-                env: "dev".to_owned(),
-                service_name: "serv".to_owned(),
-                build_version: "0.0.1".to_owned(),
                 kafka_brokers: vec!["localhost:9093".to_owned(), "foo:9094".to_owned()],
                 kafka_topic_prefix: "dev.topic".to_owned(),
                 kafka_topic: "consumer.topic".to_owned(),
