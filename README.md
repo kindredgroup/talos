@@ -1,4 +1,9 @@
+[![Build Status](https://img.shields.io/github/actions/workflow/status/kindredgroup/talos/build.yml?branch=master)](https://github.com/kindredgroup/talos/actions/workflows/build.yml?branch=master)
+[![codecov](https://img.shields.io/codecov/c/github/kindredgroup/talos/master?style=flat-square&logo=codecov)](https://app.codecov.io/gh/kindredgroup/talos)
+
+
 # Talos
+
 
 [comment]: <> (TOC_START)
 
