@@ -1,0 +1,17 @@
+[package]
+name = "talos_agent"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+rdkafka = { version = "0.29.0", features = ["sasl"] }
+
+futures = "0.3.25"
+
+# Json Serialize / Deserialize
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+uuid={version="1.2.2", features = ["v4"]}
+
