@@ -1,0 +1,14 @@
+name: build
+
+on:
+    pull_request:
+    push:
+        branches:
+            - '!master'
+
+
+jobs:
+    build:
+        uses: ./.github/workflows/build.yml
+    coverage:
+        uses: ./.github/workflows/coverage.yml
