@@ -93,14 +93,9 @@ test.unit:
 	cargo test
 
 ## test.unit.coverage.rust: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
-test.unit.coverage.rust:
+test.unit.coverage:
 	$(call pp,rust unit tests...)
-	mkdir -p build/.report
-	mkdir -p build/.coverage
-	RUSTFLAGS="-Zinstrument-coverage" LLVM_PROFILE_FILE="coverage-%p-%m.profraw" cargo +nightly test -- -Z unstable-options --format json --report-time > build/.report/rust-test-report.json
-	cat build/.report/rust-test-report.json | cargo2junit > build/.report/rust-junit-report.xml
-	grcov . --binary-path ./target/debug/ -s . -t cobertura --branch --ignore-not-existing  --ignore "*cargo*" --keep-only "**/**.rs" -o ./build/.coverage/rust-cobertura-coverage.xml
-
+	sh bin/coverage-report.sh
 # PHONY ###########################################################################################
 
 # To force rebuild of not-file-related targets, make the targets "phony".
