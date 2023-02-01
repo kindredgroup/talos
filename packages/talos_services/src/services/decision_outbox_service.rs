@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use dyn_clone::clone_box;
 use log::{debug, error, info};
 use talos_core::{
     core::MessageVariant,
@@ -18,7 +17,7 @@ pub struct DecisionOutboxService {
     pub system: System,
     pub decision_outbox_channel_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub decision_outbox_channel_rx: mpsc::Receiver<DecisionOutboxChannelMessage>,
-    pub decision_store: Box<dyn DecisionStore<Decision = DecisionMessage> + Sync + Send>,
+    pub decision_store: Arc<Box<dyn DecisionStore<Decision = DecisionMessage> + Sync + Send>>,
     pub decision_publisher: Arc<Box<dyn MessagePublisher + Sync + Send>>,
 }
 
@@ -26,151 +25,64 @@ impl DecisionOutboxService {
     pub fn new(
         decision_outbox_channel_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
         decision_outbox_channel_rx: mpsc::Receiver<DecisionOutboxChannelMessage>,
-        decision_store: Box<dyn DecisionStore<Decision = DecisionMessage> + Sync + Send>,
-        decision_publisher: Box<dyn MessagePublisher + Sync + Send>,
+        decision_store: Arc<Box<dyn DecisionStore<Decision = DecisionMessage> + Sync + Send>>,
+        decision_publisher: Arc<Box<dyn MessagePublisher + Sync + Send>>,
         system: System,
     ) -> Self {
         Self {
             system,
             decision_store,
-            decision_publisher: Arc::new(decision_publisher),
+            decision_publisher,
             decision_outbox_channel_tx,
             decision_outbox_channel_rx,
         }
     }
 
-    pub async fn save_and_publish(&self, decision_message: DecisionMessage) -> Result<(), SystemServiceError> {
-        let publisher = Arc::clone(&self.decision_publisher);
-        let mut datastore = clone_box(&*self.decision_store);
-        let outbox_tx = self.decision_outbox_channel_tx.clone();
-        let mut system_channel_rx = self.system.system_notifier.subscribe();
-
-        let handle = tokio::spawn(async move {
-            // Insert into XDB
-
-            // |||||||||||||||| TODO |||||||||||||||
-            // Insert Decision into XDB
-            // |||||||||||||||||||||||||||||||||||||
-            let xid = decision_message.xid.clone();
-
-            if let Err(insert_decision_error) = datastore.insert_decision(xid.clone(), decision_message.clone()).await {
-                error!("Error while inserting decisiong to database ... {:#?}", insert_decision_error);
-
-                // Todo - GK - Handle error instead of unwrap
-                let result = outbox_tx
-                    .send(DecisionOutboxChannelMessage::OutboundServiceError(SystemServiceError {
-                        kind: talos_core::errors::SystemServiceErrorKind::DBError,
-                        reason: insert_decision_error.reason,
-                        data: insert_decision_error.data,
-                        service: "Decision Outbox Service".to_string(),
-                    }))
-                    .await;
-
-                if let Err(e) = result {
-                    panic!("Error {e}")
-                }
-            } else {
-                // Publish message to Kafka
-                let decision_str = serde_json::to_string(&decision_message).unwrap();
-                let mut decision_publish_header = HashMap::new();
-                decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
-
-                debug!("Publishing message {}", decision_message.version);
-                if let Err(publish_error) = publisher
-                    .publish_message(xid.as_str(), &decision_str, Some(decision_publish_header.clone()))
-                    .await
-                {
-                    // Todo - GK - Handle error instead of unwrap
-                    let result = outbox_tx
-                        .send(DecisionOutboxChannelMessage::OutboundServiceError(SystemServiceError {
-                            kind: talos_core::errors::SystemServiceErrorKind::MessagePublishError,
-                            reason: publish_error.reason,
-                            data: publish_error.data, //Some(format!("{:?}", decision_message)),
-                            service: "Decision Outbox Service".to_string(),
-                        }))
-                        .await;
-
-                    if let Err(e) = result {
-                        panic!("Error {e}")
-                    }
-                }
-            }
-        });
-
-        tokio::select! {
-            res = handle => {
-                res.unwrap()
-            },
-            msg = system_channel_rx.recv() => {
-                let message = msg.unwrap();
-
-                if message == SystemMessage::Shutdown {
-                    return Ok(())
-                }
-            }
-
-        }
-
-        Ok(())
-    }
-
     pub async fn save_and_publish_task(
         publisher: Arc<Box<dyn MessagePublisher + Send + Sync>>,
-        mut datastore: Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync>,
+        datastore: Arc<Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync>>,
         outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
         decision_message: DecisionMessage,
-    ) -> Result<(), SystemServiceError> {
-        // Insert into XDB
-
-        // |||||||||||||||| TODO |||||||||||||||
-        // Insert Decision into XDB
-        // |||||||||||||||||||||||||||||||||||||
+    ) {
         let xid = decision_message.xid.clone();
 
-        if let Err(insert_decision_error) = datastore.insert_decision(xid.clone(), decision_message.clone()).await {
-            error!("Error while inserting decisiong to database ... {:#?}", insert_decision_error);
-
-            // Todo - GK - Handle error instead of unwrap
-            let result = outbox_tx
-                .send(DecisionOutboxChannelMessage::OutboundServiceError(SystemServiceError {
+        // Insert into XDB
+        let decision = match datastore.insert_decision(xid.clone(), decision_message.clone()).await {
+            Ok(decision) => Ok(decision),
+            Err(insert_error) => {
+                let error = SystemServiceError {
                     kind: talos_core::errors::SystemServiceErrorKind::DBError,
-                    reason: insert_decision_error.reason,
-                    data: insert_decision_error.data,
+                    reason: insert_error.reason,
+                    data: insert_error.data,
                     service: "Decision Outbox Service".to_string(),
-                }))
-                .await;
-
-            if let Err(e) = result {
-                panic!("Error {e}")
+                };
+                outbox_tx.send(DecisionOutboxChannelMessage::OutboundServiceError(error.clone())).await.unwrap();
+                Err(error)
             }
-        } else {
+        };
+
+        if let Ok(decision) = decision {
             // Publish message to Kafka
-            let decision_str = serde_json::to_string(&decision_message).unwrap();
+            let decision_str = serde_json::to_string(&decision).unwrap();
             let mut decision_publish_header = HashMap::new();
             decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
 
-            debug!("Publishing message {}", decision_message.version);
+            debug!("Publishing message {}", decision.version);
             if let Err(publish_error) = publisher
                 .publish_message(xid.as_str(), &decision_str, Some(decision_publish_header.clone()))
                 .await
             {
-                // Todo - GK - Handle error instead of unwrap
-                let result = outbox_tx
+                outbox_tx
                     .send(DecisionOutboxChannelMessage::OutboundServiceError(SystemServiceError {
                         kind: talos_core::errors::SystemServiceErrorKind::MessagePublishError,
                         reason: publish_error.reason,
                         data: publish_error.data, //Some(format!("{:?}", decision_message)),
                         service: "Decision Outbox Service".to_string(),
                     }))
-                    .await;
-
-                if let Err(e) = result {
-                    panic!("Error {e}")
-                }
+                    .await
+                    .unwrap();
             }
-        };
-
-        Ok(())
+        }
     }
 }
 
@@ -205,7 +117,7 @@ impl SystemService for DecisionOutboxService {
                     Some(DecisionOutboxChannelMessage::Decision(decision_message)) => {
                         tokio::spawn({
                             let publisher = Arc::clone(&self.decision_publisher);
-                            let datastore = clone_box(&*self.decision_store);
+                            let datastore = Arc::clone(&self.decision_store);
                             let outbox_tx = self.decision_outbox_channel_tx.clone();
                             // let mut system_channel_rx = self.system.system_notifier.subscribe();
                             async move {

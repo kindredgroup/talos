@@ -56,14 +56,14 @@ pub enum HealthCheckServiceError {
     SystemError(SystemError),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SystemErrorType {
     Channel,
     HealthCheck,
     Generic,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum SystemServiceErrorKind {
     ParseError,
     DBError,
@@ -73,7 +73,7 @@ pub enum SystemServiceErrorKind {
     MessagePublishError,
 }
 
-#[derive(Debug, ThisError)]
+#[derive(Debug, ThisError, Clone)]
 #[error("error on service={service} kind={kind:?} \n reason={reason} \n data={data:?}")]
 pub struct SystemServiceError {
     pub kind: SystemServiceErrorKind,

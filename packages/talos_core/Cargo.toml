@@ -22,9 +22,6 @@ serde_json = { workspace = true }
 # Error
 thiserror = "1.0.31"
 
-# dyn clone for Box clone
-dyn-clone = "1.0.9"
-
 # internal crates
 certifier = { path = "../certifier" }
 suffix = { path = "../suffix" }

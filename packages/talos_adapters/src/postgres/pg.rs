@@ -9,7 +9,7 @@ use talos_core::{
         errors::{DecisionStoreError, DecisionStoreErrorKind},
     },
 };
-use tokio_postgres::{error::SqlState, NoTls};
+use tokio_postgres::NoTls;
 use uuid::Uuid;
 
 use crate::{PgConfig, PgError};
@@ -32,6 +32,9 @@ impl Pg {
         });
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
+
+        //test connection
+        let _ = pool.get().await.map_err(PgError::GetClientFromPool)?;
 
         Ok(Pg { pool })
     }
@@ -84,7 +87,7 @@ impl DecisionStore for Pg {
         Ok(None)
     }
 
-    async fn insert_decision(&mut self, key: String, decision: Self::Decision) -> Result<Option<Self::Decision>, DecisionStoreError> {
+    async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         let client = self.get_client().await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::ClientError,
             reason: e.to_string(),
@@ -97,7 +100,17 @@ impl DecisionStore for Pg {
         })?;
 
         let stmt = client
-            .prepare_cached("INSERT INTO xdb (xid, decision) VALUES ($1, $2)")
+            .prepare_cached(
+                "WITH ins AS (
+                    INSERT INTO xdb(xid, decision) 
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING 
+                    RETURNING xid, decision
+                )
+                SELECT * from ins
+                UNION 
+                SELECT xid, decision from xdb where xid = $1",
+            )
             .await
             .map_err(|e| DecisionStoreError {
                 kind: DecisionStoreErrorKind::InsertDecision,
@@ -105,19 +118,33 @@ impl DecisionStore for Pg {
                 data: Some(key.clone()),
             })?;
 
-        let result = client.execute(&stmt, &[&key_uuid, &json!(decision)]).await;
+        let result = client.query_one(&stmt, &[&key_uuid, &json!(decision)]).await;
         match result {
-            Ok(_) => Ok(None),
-            Err(e) => {
-                if let Some(&SqlState::UNIQUE_VIOLATION) = e.code() {
-                    return self.get_decision(key).await;
-                } else {
-                    return Err(DecisionStoreError {
-                        kind: DecisionStoreErrorKind::InsertDecision,
-                        reason: e.to_string(),
+            Ok(row) => {
+                let decision = match row.get::<&str, Option<Value>>("decision") {
+                    Some(Value::Object(x)) => {
+                        let decision = serde_json::from_value::<Self::Decision>(Value::Object(x)).map_err(|e| DecisionStoreError {
+                            kind: DecisionStoreErrorKind::ParseError,
+                            reason: e.to_string(),
+                            data: Some(key),
+                        })?;
+                        return Ok(decision);
+                    }
+                    _ => Err(DecisionStoreError {
+                        kind: DecisionStoreErrorKind::NoRowReturned,
+                        reason: "Insert did not return rows".to_owned(),
                         data: Some(key.clone()),
-                    });
-                }
+                    }),
+                };
+
+                return decision;
+            }
+            Err(e) => {
+                return Err(DecisionStoreError {
+                    kind: DecisionStoreErrorKind::InsertDecision,
+                    reason: e.to_string(),
+                    data: Some(key.clone()),
+                });
             }
         }
 

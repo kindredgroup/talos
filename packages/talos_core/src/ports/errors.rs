@@ -6,6 +6,7 @@ pub enum DecisionStoreErrorKind {
     GetDecision,
     // #[error("Error in inserting decision payload={0}")]
     InsertDecision,
+    NoRowReturned,
     // #[error("Error creating key key={0}")]
     CreateKey,
     // #[error("Error parsing ")]
