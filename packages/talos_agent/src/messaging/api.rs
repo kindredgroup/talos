@@ -2,7 +2,7 @@ use crate::api::CandidateData;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-/// Kafka message which will be published to talos queue
+/// Kafka message which will be published to Talos queue
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CandidateMessage {
     pub xid: String,
@@ -29,7 +29,7 @@ impl CandidateMessage {
 }
 
 /// The response of message publishing action, essentially this is
-/// the result of communication wil broker (not with Talos)
+/// the result of communication with broker (not with Talos)
 pub struct PublishResponse {
     pub partition: i32,
     pub offset: i64,
@@ -40,3 +40,5 @@ pub struct PublishResponse {
 pub trait Publisher {
     async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, String>;
 }
+
+pub type PublisherType = dyn Publisher + Sync + Send;

@@ -49,7 +49,7 @@ pub struct KafkaConfig {
     // The maximum time librdkafka may use to deliver a message (including retries)
     pub message_timeout_ms: u64,
     // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    pub enqueue_timout_ms: u64,
+    pub enqueue_timeout_ms: u64,
 }
 
 /// The agent interface exposed to the client

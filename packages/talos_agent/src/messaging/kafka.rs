@@ -47,7 +47,7 @@ impl Publisher for KafkaPublisher {
             .payload(&payload)
             .headers(OwnedHeaders::new().insert(h_type));
 
-        let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timout_ms));
+        let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timeout_ms));
         return match self.producer.send(data, timeout).await {
             Ok((partition, offset)) => {
                 println!("Published into partition {}, offset: {}", partition, offset);

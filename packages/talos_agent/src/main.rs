@@ -13,7 +13,7 @@ fn main() {
 
     let cfg_kafka = KafkaConfig {
         brokers: "localhost:9093".to_string(),
-        enqueue_timout_ms: 10,
+        enqueue_timeout_ms: 10,
         message_timeout_ms: 5000,
         certification_topic: "dev.ksp.certification".to_string(),
     };

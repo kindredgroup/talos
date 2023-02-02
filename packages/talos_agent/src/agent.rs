@@ -1,11 +1,11 @@
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, TalosAgent};
-use crate::messaging::api::{CandidateMessage, Publisher};
+use crate::messaging::api::{CandidateMessage, PublisherType};
 use async_trait::async_trait;
 
 /// The implementation of agent.
 pub struct TalosAgentImpl {
     pub config: AgentConfig,
-    pub publisher: Box<dyn Publisher + Sync + Send>,
+    pub publisher: Box<PublisherType>,
 }
 
 #[async_trait]
