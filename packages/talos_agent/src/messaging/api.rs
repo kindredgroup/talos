@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use crate::api::CandidateData;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 
 /// Kafka message which will be published to talos queue
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -35,6 +36,7 @@ pub struct PublishResponse {
 }
 
 /// The publishing contract
+#[async_trait]
 pub trait Publisher {
-    fn send_message(&self, key: String, msg: CandidateMessage) -> Result<PublishResponse, String>;
+    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, String>;
 }

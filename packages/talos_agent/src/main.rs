@@ -1,3 +1,4 @@
+use futures::executor;
 ///
 /// The sample usage of talos agent library
 ///
@@ -12,22 +13,17 @@ fn main() {
 
     let cfg_kafka = KafkaConfig {
         brokers: "localhost:9093".to_string(),
+        enqueue_timout_ms: 10,
         message_timeout_ms: 5000,
         certification_topic: "dev.ksp.certification".to_string(),
     };
 
-    let agent = TalosAgentBuilder::new(cfg_agent)
-    .with_kafka(cfg_kafka)
-    .build();
+    let agent = TalosAgentBuilder::new(cfg_agent).with_kafka(cfg_kafka).build();
 
     let xid = uuid::Uuid::new_v4();
     let tx_data = CandidateData {
         xid: xid.to_string(),
-        readset: Vec::from([
-            "bet:1".to_owned(),
-            "bet:2".to_owned(),
-            "bet:3".to_owned()
-        ]),
+        readset: Vec::from(["bet-a:1".to_owned(), "bet-a:2".to_owned(), "bet-a:3".to_owned()]),
         readvers: Vec::from([1, 2, 3]),
         snapshot: 5,
         writeset: Vec::from([3]),
@@ -38,13 +34,7 @@ fn main() {
         candidate: tx_data,
     };
 
-    let rsp = agent.certify(request);
-    match rsp {
-        Ok(response) => {
-            println!("Transaction has been certified. Details: {:?}", response)
-        },
-        Err(e) => {
-            println!("Unable to certify transaction {}. Reason: {}", xid, e)
-        }
-    }
+    let error = format!("Unable to certify transaction {xid}");
+    let rsp = executor::block_on(agent.certify(request)).unwrap_or_else(|_| panic!("{}", error));
+    println!("Transaction has been certified. Details: {:?}", rsp)
 }

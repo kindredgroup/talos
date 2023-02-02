@@ -1,3 +1,3 @@
-pub mod api;
 mod agent;
+pub mod api;
 mod messaging;

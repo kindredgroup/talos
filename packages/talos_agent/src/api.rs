@@ -1,11 +1,13 @@
-///
-/// Data structures and interfaces exposed to agent client
-///
-use crate::agent::{TalosAgentImpl};
+use crate::agent::TalosAgentImpl;
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
 use crate::messaging::api::Publisher;
 use crate::messaging::kafka::KafkaPublisher;
 use crate::messaging::mock::MockPublisher;
+use async_trait::async_trait;
+
+///
+/// Data structures and interfaces exposed to agent client
+///
 
 /// The main candidate payload
 #[derive(Clone, Debug)]
@@ -43,20 +45,24 @@ pub struct AgentConfig {
 #[derive(Clone)]
 pub struct KafkaConfig {
     pub brokers: String,
-    pub message_timeout_ms: u64,
     pub certification_topic: String,
+    // The maximum time librdkafka may use to deliver a message (including retries)
+    pub message_timeout_ms: u64,
+    // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
+    pub enqueue_timout_ms: u64,
 }
 
 /// The agent interface exposed to the client
+#[async_trait]
 pub trait TalosAgent {
-    fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
 }
 
 pub enum TalosIntegrationType {
     /// The agent will publish certification requests to kafka
     Kafka,
     /// The agent will work in offline mode, simulating decisions
-    InMemory
+    InMemory,
 }
 
 /// Builds the agent instance, my default agent will be build using in-memory integration type.
@@ -78,28 +84,25 @@ impl TalosAgentBuilder {
 
     /// When agent is built it will be connected to external kafka broker.
     pub fn with_kafka(&mut self, config: KafkaConfig) -> &mut Self {
-        self.kafka_config = Some(config.clone());
+        self.kafka_config = Some(config);
         self.integration_type = Kafka;
         self
     }
 
     /// Build an instance of agent.
     pub fn build(&self) -> Box<dyn TalosAgent> {
-        let publisher: Box<dyn Publisher> = match self.integration_type {
+        let publisher: Box<dyn Publisher + Sync + Send> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
                 let kafka_publisher = KafkaPublisher::new(config);
                 Box::new(kafka_publisher)
-            },
-            _ => {
-                Box::new(MockPublisher)
-            },
+            }
+            _ => Box::new(MockPublisher),
         };
 
         Box::new(TalosAgentImpl {
             config: self.config.clone(),
-            publisher
+            publisher,
         })
     }
 }
-
