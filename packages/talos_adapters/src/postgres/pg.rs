@@ -9,10 +9,11 @@ use talos_core::{
         errors::{DecisionStoreError, DecisionStoreErrorKind},
     },
 };
-use tokio_postgres::{error::SqlState, NoTls};
-use uuid::Uuid;
+use tokio_postgres::NoTls;
 
 use crate::{PgConfig, PgError};
+
+use super::utils::{get_uuid_key, parse_json_column};
 
 #[derive(Clone)]
 pub struct Pg {
@@ -32,6 +33,9 @@ impl Pg {
         });
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
+
+        //test connection
+        let _ = pool.get().await.map_err(PgError::GetClientFromPool)?;
 
         Ok(Pg { pool })
     }
@@ -55,49 +59,45 @@ impl DecisionStore for Pg {
         })?;
         let stmt = client.prepare_cached("SELECT xid, decision from xdb where xid = $1").await.unwrap();
 
-        let key_uuid = Uuid::parse_str(&key).map_err(|e| DecisionStoreError {
-            kind: DecisionStoreErrorKind::CreateKey,
-            reason: e.to_string(),
-            data: Some(key.clone()),
-        })?;
+        let key_uuid = get_uuid_key(&key)?;
         let rows = client.query_opt(&stmt, &[&key_uuid]).await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::GetDecision,
             reason: e.to_string(),
             data: Some(key.clone()),
         })?;
 
-        if let Some(row) = rows {
-            let val = row.get::<&str, Option<Value>>("decision");
-
-            return match val {
-                Some(Value::Object(x)) => {
-                    let decision = serde_json::from_value::<Self::Decision>(Value::Object(x)).map_err(|e| DecisionStoreError {
-                        kind: DecisionStoreErrorKind::ParseError,
-                        reason: e.to_string(),
-                        data: Some(key),
-                    })?;
-                    return Ok(Some(decision));
-                }
-                _ => Ok(None),
-            };
+        let Some(row) = rows else {
+            return Ok(None);
         };
-        Ok(None)
+
+        let val = row.get::<&str, Option<Value>>("decision");
+        let Some(value) = val else {
+            return Ok(None);
+        };
+
+        Ok(Some(parse_json_column(&key, value)?))
     }
 
-    async fn insert_decision(&mut self, key: String, decision: Self::Decision) -> Result<Option<Self::Decision>, DecisionStoreError> {
+    async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         let client = self.get_client().await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::ClientError,
             reason: e.to_string(),
             data: None,
         })?;
-        let key_uuid = Uuid::parse_str(&key).map_err(|e| DecisionStoreError {
-            kind: DecisionStoreErrorKind::CreateKey,
-            reason: e.to_string(),
-            data: Some(key.clone()),
-        })?;
+        let key_uuid = get_uuid_key(&key)?;
 
         let stmt = client
-            .prepare_cached("INSERT INTO xdb (xid, decision) VALUES ($1, $2)")
+            .prepare_cached(
+                "WITH ins AS (
+                    INSERT INTO xdb(xid, decision) 
+                    VALUES ($1, $2)
+                    ON CONFLICT DO NOTHING 
+                    RETURNING xid, decision
+                )
+                SELECT * from ins
+                UNION 
+                SELECT xid, decision from xdb where xid = $1",
+            )
             .await
             .map_err(|e| DecisionStoreError {
                 kind: DecisionStoreErrorKind::InsertDecision,
@@ -105,19 +105,27 @@ impl DecisionStore for Pg {
                 data: Some(key.clone()),
             })?;
 
-        let result = client.execute(&stmt, &[&key_uuid, &json!(decision)]).await;
+        // Execute insert returning the row. If duplicate is found, return the existing row in table.
+        let result = client.query_one(&stmt, &[&key_uuid, &json!(decision)]).await;
         match result {
-            Ok(_) => Ok(None),
-            Err(e) => {
-                if let Some(&SqlState::UNIQUE_VIOLATION) = e.code() {
-                    return self.get_decision(key).await;
-                } else {
-                    return Err(DecisionStoreError {
-                        kind: DecisionStoreErrorKind::InsertDecision,
-                        reason: e.to_string(),
+            Ok(row) => {
+                let decision = match row.get::<&str, Option<Value>>("decision") {
+                    Some(value) => Ok(parse_json_column(&key, value)?),
+                    _ => Err(DecisionStoreError {
+                        kind: DecisionStoreErrorKind::NoRowReturned,
+                        reason: "Insert did not return rows".to_owned(),
                         data: Some(key.clone()),
-                    });
-                }
+                    }),
+                };
+
+                return decision;
+            }
+            Err(e) => {
+                return Err(DecisionStoreError {
+                    kind: DecisionStoreErrorKind::InsertDecision,
+                    reason: e.to_string(),
+                    data: Some(key.clone()),
+                });
             }
         }
 

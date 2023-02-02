@@ -34,12 +34,12 @@ impl DecisionStore for MockDecisionStore {
         Ok(Some(decision))
     }
 
-    async fn insert_decision(&mut self, _key: String, decision: Self::Decision) -> Result<Option<Self::Decision>, DecisionStoreError> {
+    async fn insert_decision(&self, _key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         let mut k = self.decision_message.lock().unwrap();
-        *k = Some(decision);
+        *k = Some(decision.clone());
 
         // = Some(decision);
-        Ok(None)
+        Ok(decision)
     }
 }
 
@@ -98,8 +98,8 @@ async fn test_candidate_message_create_decision_message() {
     let mut dob_svc = DecisionOutboxService::new(
         do_channel_tx,
         do_channel_rx,
-        Box::new(mock_decision_store),
-        Box::new(mock_decision_publisher),
+        Arc::new(Box::new(mock_decision_store)),
+        Arc::new(Box::new(mock_decision_publisher)),
         system,
     );
 
@@ -155,8 +155,8 @@ async fn test_save_and_publish_multiple_decisions() {
     let mut dob_svc = DecisionOutboxService::new(
         do_channel_tx,
         do_channel_rx,
-        Box::new(mock_decision_store),
-        Box::new(mock_decision_publisher),
+        Arc::new(Box::new(mock_decision_store)),
+        Arc::new(Box::new(mock_decision_publisher)),
         system,
     );
 
@@ -222,7 +222,7 @@ impl DecisionStore for MockDecisionStoreWithError {
         Ok(Some(decision))
     }
 
-    async fn insert_decision(&mut self, _key: String, _decision: Self::Decision) -> Result<Option<Self::Decision>, DecisionStoreError> {
+    async fn insert_decision(&self, _key: String, _decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         Err(DecisionStoreError {
             kind: talos_core::ports::errors::DecisionStoreErrorKind::ParseError,
             data: None,
@@ -265,8 +265,8 @@ async fn test_capture_child_thread_dberror() {
     let mut dob_svc = DecisionOutboxService::new(
         do_channel_tx,
         do_channel_rx,
-        Box::new(mock_decision_store),
-        Box::new(mock_decision_publisher),
+        Arc::new(Box::new(mock_decision_store)),
+        Arc::new(Box::new(mock_decision_publisher)),
         system,
     );
 
@@ -346,8 +346,8 @@ async fn test_capture_child_thread_publish_error() {
     let mut dob_svc = DecisionOutboxService::new(
         do_channel_tx,
         do_channel_rx,
-        Box::new(mock_decision_store),
-        Box::new(mock_decision_publisher),
+        Arc::new(Box::new(mock_decision_store)),
+        Arc::new(Box::new(mock_decision_publisher)),
         system,
     );
 

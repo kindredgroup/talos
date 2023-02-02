@@ -72,7 +72,13 @@ async fn main() -> Result<(), SystemServiceError> {
     let pg = Adapters::Pg::new(pg_config.clone()).await.unwrap();
     let kafka_producer = Adapters::KafkaProducer::new(&kafka_config);
 
-    let decision_outbox_service = DecisionOutboxService::new(outbound_tx.clone(), outbound_rx, Box::new(pg), Box::new(kafka_producer), system.clone());
+    let decision_outbox_service = DecisionOutboxService::new(
+        outbound_tx.clone(),
+        outbound_rx,
+        Arc::new(Box::new(pg)),
+        Arc::new(Box::new(kafka_producer)),
+        system.clone(),
+    );
     /* END - Decision Outbox service  */
 
     let talos_certifier = TalosCertifierBuilder::new(system)
