@@ -10,9 +10,10 @@ use talos_core::{
     },
 };
 use tokio_postgres::NoTls;
-use uuid::Uuid;
 
 use crate::{PgConfig, PgError};
+
+use super::utils::{get_uuid_key, parse_json_column};
 
 #[derive(Clone)]
 pub struct Pg {
@@ -58,33 +59,23 @@ impl DecisionStore for Pg {
         })?;
         let stmt = client.prepare_cached("SELECT xid, decision from xdb where xid = $1").await.unwrap();
 
-        let key_uuid = Uuid::parse_str(&key).map_err(|e| DecisionStoreError {
-            kind: DecisionStoreErrorKind::CreateKey,
-            reason: e.to_string(),
-            data: Some(key.clone()),
-        })?;
+        let key_uuid = get_uuid_key(&key)?;
         let rows = client.query_opt(&stmt, &[&key_uuid]).await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::GetDecision,
             reason: e.to_string(),
             data: Some(key.clone()),
         })?;
 
-        if let Some(row) = rows {
-            let val = row.get::<&str, Option<Value>>("decision");
-
-            return match val {
-                Some(Value::Object(x)) => {
-                    let decision = serde_json::from_value::<Self::Decision>(Value::Object(x)).map_err(|e| DecisionStoreError {
-                        kind: DecisionStoreErrorKind::ParseError,
-                        reason: e.to_string(),
-                        data: Some(key),
-                    })?;
-                    return Ok(Some(decision));
-                }
-                _ => Ok(None),
-            };
+        let Some(row) = rows else {
+            return Ok(None);
         };
-        Ok(None)
+
+        let val = row.get::<&str, Option<Value>>("decision");
+        let Some(value) = val else {
+            return Ok(None);
+        };
+
+        Ok(Some(parse_json_column(&key, value)?))
     }
 
     async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
@@ -93,11 +84,7 @@ impl DecisionStore for Pg {
             reason: e.to_string(),
             data: None,
         })?;
-        let key_uuid = Uuid::parse_str(&key).map_err(|e| DecisionStoreError {
-            kind: DecisionStoreErrorKind::CreateKey,
-            reason: e.to_string(),
-            data: Some(key.clone()),
-        })?;
+        let key_uuid = get_uuid_key(&key)?;
 
         let stmt = client
             .prepare_cached(
@@ -118,18 +105,12 @@ impl DecisionStore for Pg {
                 data: Some(key.clone()),
             })?;
 
+        // Execute insert returning the row. If duplicate is found, return the existing row in table.
         let result = client.query_one(&stmt, &[&key_uuid, &json!(decision)]).await;
         match result {
             Ok(row) => {
                 let decision = match row.get::<&str, Option<Value>>("decision") {
-                    Some(Value::Object(x)) => {
-                        let decision = serde_json::from_value::<Self::Decision>(Value::Object(x)).map_err(|e| DecisionStoreError {
-                            kind: DecisionStoreErrorKind::ParseError,
-                            reason: e.to_string(),
-                            data: Some(key),
-                        })?;
-                        return Ok(decision);
-                    }
+                    Some(value) => Ok(parse_json_column(&key, value)?),
                     _ => Err(DecisionStoreError {
                         kind: DecisionStoreErrorKind::NoRowReturned,
                         reason: "Insert did not return rows".to_owned(),
