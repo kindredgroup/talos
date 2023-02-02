@@ -79,7 +79,7 @@ impl CertifierService {
         Ok(DecisionMessage::new(message, conflict_candidate, outcome, suffix_head))
     }
 
-    pub(crate) async fn process_candidate(&mut self, _version: u64, message: &CandidateMessage) -> ServiceResult {
+    pub(crate) async fn process_candidate(&mut self, message: &CandidateMessage) -> ServiceResult {
         let decision_message = self.process_candidate_message_outcome(message)?;
 
         self.decision_outbox_tx
@@ -153,8 +153,8 @@ impl SystemService for CertifierService {
         tokio::select! {
            channel_msg =  self.message_channel_rx.recv() =>  {
                 match channel_msg {
-                    Some(ChannelMessage::Candidate(version, message)) => {
-                         self.process_candidate(version, &message).await?
+                    Some(ChannelMessage::Candidate( message)) => {
+                         self.process_candidate(&message).await?
 
                     },
 

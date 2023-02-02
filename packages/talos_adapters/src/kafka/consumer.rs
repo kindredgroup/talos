@@ -127,7 +127,7 @@ impl MessageReciever for KafkaConsumer {
                 })?;
                 msg.version = offset;
 
-                ChannelMessage::Candidate(offset, msg)
+                ChannelMessage::Candidate(msg)
             }
             MessageVariant::Decision => {
                 let msg: DecisionMessage = serde_json::from_slice(raw_payload).map_err(|err| MessageReceiverError {
