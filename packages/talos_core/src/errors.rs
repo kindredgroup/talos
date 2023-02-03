@@ -50,6 +50,12 @@ pub enum DecisionOutBoxServiceError {
 }
 
 #[derive(Debug, ThisError)]
+pub enum CommonError {
+    #[error("Error deserializing \ndata={data} \nreason={reason}")]
+    ParseError { data: String, reason: String },
+}
+
+#[derive(Debug, ThisError)]
 
 pub enum HealthCheckServiceError {
     #[error(transparent)]
@@ -80,6 +86,19 @@ pub struct SystemServiceError {
     pub reason: String,
     pub data: Option<String>,
     pub service: String,
+}
+
+impl From<CommonError> for SystemServiceError {
+    fn from(inner: CommonError) -> Self {
+        match inner {
+            CommonError::ParseError { data, reason } => SystemServiceError {
+                kind: SystemServiceErrorKind::ParseError,
+                reason,
+                data: Some(data),
+                service: "Service Info to be mapped".to_string(),
+            },
+        }
+    }
 }
 
 impl From<DecisionOutBoxServiceError> for SystemServiceError {

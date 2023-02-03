@@ -1,7 +1,7 @@
-use std::{num::TryFromIntError, str::FromStr, time::Duration};
+use std::{num::TryFromIntError, time::Duration};
 
 use async_trait::async_trait;
-use log::{debug, info, trace};
+use log::{debug, info};
 use rdkafka::{
     consumer::{Consumer, StreamConsumer},
     Message, TopicPartitionList,
@@ -90,12 +90,6 @@ impl MessageReciever for KafkaConsumer {
         if offset == 0 {
             info!("Version zero message will be skipped");
             return Ok(None);
-
-            // Err(MessageReceiverError {
-            //     kind: MessageReceiverErrorKind::VersionZero,
-            //     reason: "Version zero message will be skipped".to_owned(),
-            //     data: None,
-            // })?;
         }
 
         let message_type = headers.get("messageType").ok_or_else(|| MessageReceiverError {
@@ -109,37 +103,21 @@ impl MessageReciever for KafkaConsumer {
             reason: "Empty payload".to_owned(),
             data: None,
         })?;
-        let msg = String::from_utf8_lossy(raw_payload).into_owned();
 
-        let kafka_msg_type = MessageVariant::from_str(message_type).map_err(|e| MessageReceiverError {
-            kind: MessageReceiverErrorKind::ParseError,
-            reason: format!("Error parsing message type error={}", e),
-            data: Some(message_type.to_string()),
-        })?;
-
-        trace!("Message Received and Deserialized... {} for message type  {:#?} ", msg, kafka_msg_type);
-        let channel_msg = match kafka_msg_type {
+        let channel_msg = match utils::parse_message_variant(message_type)? {
             MessageVariant::Candidate => {
-                let mut msg: CandidateMessage = serde_json::from_slice(raw_payload).map_err(|err| MessageReceiverError {
-                    kind: MessageReceiverErrorKind::ParseError,
-                    reason: format!("Error parsing Candidate message error={}", err),
-                    data: Some(msg.to_string()),
-                })?;
+                let mut msg: CandidateMessage = utils::parse_kafka_payload(raw_payload)?;
                 msg.version = offset;
 
                 ChannelMessage::Candidate(msg)
             }
             MessageVariant::Decision => {
-                let msg: DecisionMessage = serde_json::from_slice(raw_payload).map_err(|err| MessageReceiverError {
-                    kind: MessageReceiverErrorKind::ParseError,
-                    reason: format!("Error parsing Decision message error={}", err),
-                    data: Some(msg.to_string()),
-                })?;
+                let msg: DecisionMessage = utils::parse_kafka_payload(raw_payload)?;
 
                 debug!("Decision received and the offset is {} !!!! ", offset);
 
                 ChannelMessage::Decision(offset, msg)
-            } // _ => Err(KafkaAdapterError::UnknownMessageType(message_type.to_string())),
+            }
         };
         self.store_offsets(partition, offset_i64).map_err(|err| MessageReceiverError {
             kind: MessageReceiverErrorKind::SaveVersion,
