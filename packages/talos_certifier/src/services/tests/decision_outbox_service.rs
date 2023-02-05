@@ -5,7 +5,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use talos_core::{
+use talos_certifier::{
     errors::{SystemServiceError, SystemServiceErrorKind},
     model::decision_message::{Decision, DecisionMessage},
     ports::{common::SharedPortTraits, decision_store::DecisionStore, errors::DecisionStoreError, message::MessagePublisher},

@@ -2,8 +2,8 @@ use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::client::DefaultClientContext;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use std::time::Duration;
-use talos_adapters::KakfaConfig as KafkaConfig;
-use talos_core::config::Config;
+use talos_certifier::config::Config;
+use talos_certifier_adapters::KakfaConfig as KafkaConfig;
 
 #[tokio::main]
 async fn main() {

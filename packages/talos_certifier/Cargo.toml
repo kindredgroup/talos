@@ -1,43 +1,38 @@
 [package]
-# [package]
 name = "talos_certifier"
 version = "0.0.1"
 edition = "2021"
 keywords = ["talos"]
-repository = "https://github.com/kindredgroup/talos.git"
 description = "Talos is based on the STRIDE algorithm for strict serializable certification of distributed transactions"
 
 [dependencies]
-# Json Serialize / Deserialize
-serde = { workspace = true }
-serde_json = { workspace = true }
+#
+strum = { version = "0.24", features = ["derive"] }
+
+#  Ahash hashmap
+ahash = "0.8.3"
 
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
+
 # Async
 tokio = { workspace = true }
+futures-util = "0.3.26"
 async-trait = { workspace = true }
-futures-util = "0.3.21"
-# Kafka
-rdkafka = { version = "0.29.0", features = ["sasl"] }
+
+# Json Serialize / Deserialize
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Error
 thiserror = "1.0.31"
 
-# Test
-mockall = "0.11.0"
-
-# # Mutex
-# parking_lot = "0.12.1"
-
 # internal crates
+suffix = { path = "../suffix" }
 logger = { path = "../logger" }
-talos_core = { path = "../talos_core" }
-talos_adapters = { path = "../talos_adapters" }
 
 
-[dev-dependencies.cargo-husky]
-version = "1"
-default-features = false  # Disable features which are enabled by default
-features = ["user-hooks"]
+[dev-dependencies]
+tokio-test = "0.4"
+criterion = "0.4"

@@ -6,7 +6,7 @@ use rdkafka::{
     consumer::{Consumer, StreamConsumer},
     Message, TopicPartitionList,
 };
-use talos_core::{
+use talos_certifier::{
     core::MessageVariant,
     errors::SystemServiceError,
     model::{CandidateMessage, DecisionMessage},

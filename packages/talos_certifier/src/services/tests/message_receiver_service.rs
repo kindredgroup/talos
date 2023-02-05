@@ -1,7 +1,7 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
-use talos_core::{
+use talos_certifier::{
     model::candidate_message::CandidateMessage,
     ports::{common::SharedPortTraits, message::MessageReciever},
     ChannelMessage,

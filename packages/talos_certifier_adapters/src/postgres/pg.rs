@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use deadpool_postgres::{Config, ManagerConfig, Object, Pool, Runtime};
 use serde_json::{json, Value};
-use talos_core::{
+use talos_certifier::{
     model::DecisionMessage,
     ports::{
         common::SharedPortTraits,

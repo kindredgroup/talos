@@ -1,14 +1,14 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use log::{error, info};
-use talos_adapters as Adapters;
-use talos_core::{
+use talos_certifier::{
     config::Config,
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
     services::{CertifierService, DecisionOutboxService, HealthCheckService, MessageReceiverService},
     talos_certifier_service::TalosCertifierServiceBuilder,
 };
+use talos_certifier_adapters as Adapters;
 
 use tokio::{
     signal,

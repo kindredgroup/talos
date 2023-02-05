@@ -5,7 +5,7 @@ use rdkafka::{
     Message,
 };
 use serde::de::DeserializeOwned;
-use talos_core::{core::MessageVariant, errors::CommonError};
+use talos_certifier::{core::MessageVariant, errors::CommonError};
 
 /// Builds a map of headers for the received Kafka message
 pub fn get_message_headers(message: &BorrowedMessage) -> Option<HashMap<String, String>> {
@@ -70,7 +70,7 @@ mod tests {
 
     use rdkafka::message::Headers;
     use serde::Deserialize;
-    use talos_core::{core::MessageVariant, errors::CommonError};
+    use talos_certifier::{core::MessageVariant, errors::CommonError};
 
     use crate::kafka::utils::parse_kafka_payload;
 

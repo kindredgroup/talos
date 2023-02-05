@@ -1,6 +1,6 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
-use talos_core::{
+use talos_certifier::{
     errors::SystemServiceErrorKind,
     model::{
         candidate_message::CandidateMessage,
