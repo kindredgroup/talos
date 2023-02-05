@@ -1,6 +1,7 @@
-use certifier::certifier::Outcome;
 // use super::CandidateMessage;
 use serde::{Deserialize, Serialize};
+
+use crate::certifier::Outcome;
 
 use super::candidate_message::CandidateMessage;
 

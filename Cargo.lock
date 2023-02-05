@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "ahash"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf6ccdb167abbf410dcb915cabd428929d7f6a04980b54a11f26a39f1c7f7107"
+checksum = "2c99f64d1e06488f620f932677e24bc6e2897582980441ae90a671415bd7ec2f"
 dependencies = [
  "cfg-if",
  "getrandom",
@@ -143,23 +143,6 @@ name = "cc"
 version = "1.0.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f73505338f7d905b19d18738976aae232eb46b8efc15554ffc56deb5d9ebe4"
-
-[[package]]
-name = "certifier"
-version = "0.1.0"
-dependencies = [
- "ahash",
- "async-trait",
- "criterion",
- "env_logger",
- "log",
- "mockall",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-test",
-]
 
 [[package]]
 name = "cfg-if"
@@ -1596,7 +1579,6 @@ name = "talos_adapters"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "certifier",
  "deadpool-postgres",
  "env_logger",
  "futures-util",
@@ -1653,8 +1635,9 @@ dependencies = [
 name = "talos_core"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "async-trait",
- "certifier",
+ "criterion",
  "env_logger",
  "log",
  "logger",
@@ -1664,6 +1647,7 @@ dependencies = [
  "suffix",
  "thiserror",
  "tokio",
+ "tokio-test",
 ]
 
 [[package]]
@@ -1671,7 +1655,6 @@ name = "talos_services"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "certifier",
  "env_logger",
  "futures-util",
  "log",
