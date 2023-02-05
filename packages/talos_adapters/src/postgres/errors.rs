@@ -1,6 +1,6 @@
 use deadpool_postgres::{CreatePoolError, PoolError};
 use serde_json::Value;
-use talos_core::model::decision_message::DecisionMessage;
+use talos_core::model::DecisionMessage;
 use thiserror::Error as ThisError;
 use tokio_postgres::Error as TokioPostgresError;
 

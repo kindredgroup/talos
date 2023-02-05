@@ -34,7 +34,6 @@ mockall = "0.11.0"
 # internal crates
 logger = { path = "../logger" }
 talos_core = { path = "../talos_core" }
-talos_services = { path = "../talos_services" }
 talos_adapters = { path = "../talos_adapters" }
 
 

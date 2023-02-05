@@ -2,11 +2,11 @@ use async_trait::async_trait;
 use deadpool_postgres::{Config, ManagerConfig, Object, Pool, Runtime};
 use serde_json::{json, Value};
 use talos_core::{
-    model::decision_message::DecisionMessage,
+    model::DecisionMessage,
     ports::{
         common::SharedPortTraits,
-        decision_store::DecisionStore,
         errors::{DecisionStoreError, DecisionStoreErrorKind},
+        DecisionStore,
     },
 };
 use tokio_postgres::NoTls;

@@ -9,11 +9,11 @@ use rdkafka::{
 use talos_core::{
     core::MessageVariant,
     errors::SystemServiceError,
-    model::{candidate_message::CandidateMessage, decision_message::DecisionMessage},
+    model::{CandidateMessage, DecisionMessage},
     ports::{
         common::SharedPortTraits,
         errors::{MessageReceiverError, MessageReceiverErrorKind},
-        message::MessageReciever,
+        MessageReciever,
     },
     ChannelMessage,
 };

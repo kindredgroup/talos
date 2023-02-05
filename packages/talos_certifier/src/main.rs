@@ -2,11 +2,14 @@ use std::sync::{atomic::AtomicI64, Arc};
 
 use log::{error, info};
 use talos_adapters as Adapters;
-use talos_core::{config::Config, errors::SystemServiceError};
-use talos_services::{
+use talos_core::{
+    config::Config,
     core::{DecisionOutboxChannelMessage, System},
-    services::{CertifierService, DecisionOutboxService, HealthCheckService, MessageReceiverService, TalosCertifierBuilder},
+    errors::SystemServiceError,
+    services::{CertifierService, DecisionOutboxService, HealthCheckService, MessageReceiverService},
+    talos_certifier_service::TalosCertifierServiceBuilder,
 };
+
 use tokio::{
     signal,
     sync::{broadcast, mpsc},
@@ -81,7 +84,7 @@ async fn main() -> Result<(), SystemServiceError> {
     );
     /* END - Decision Outbox service  */
 
-    let talos_certifier = TalosCertifierBuilder::new(system)
+    let talos_certifier = TalosCertifierServiceBuilder::new(system)
         .add_certifier_service(Box::new(certifier_service))
         // .add_health_check_service(Box::new(healthcheck_service))
         .add_adapter_service(Box::new(message_receiver_service))
