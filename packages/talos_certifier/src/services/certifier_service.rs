@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::{debug, info};
-use suffix::{Suffix, SuffixTrait};
+use talos_suffix::{Suffix, SuffixTrait};
 use tokio::sync::mpsc;
 
 use crate::{
