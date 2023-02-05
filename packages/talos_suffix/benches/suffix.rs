@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use suffix::core::SuffixTrait;
-use suffix::Suffix;
+use talos_suffix::core::SuffixTrait;
+use talos_suffix::Suffix;
 
 #[derive(Clone, Debug)]
 #[allow(dead_code)]

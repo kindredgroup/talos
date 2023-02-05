@@ -29,7 +29,7 @@ serde_json = { workspace = true }
 thiserror = "1.0.31"
 
 # internal crates
-suffix = { path = "../suffix" }
+talos_suffix = { path = "../talos_suffix" }
 logger = { path = "../logger" }
 
 

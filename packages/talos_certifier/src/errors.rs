@@ -1,4 +1,4 @@
-use suffix::errors::SuffixError;
+use talos_suffix::errors::SuffixError;
 use thiserror::Error as ThisError;
 use tokio::sync::{broadcast, mpsc};
 
