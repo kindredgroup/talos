@@ -1,6 +1,7 @@
-use certifier::certifier_candidate::CertifierCandidate;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use crate::certifier::CertifierCandidate;
 
 use super::delivery_order::DeliveryOrder;
 

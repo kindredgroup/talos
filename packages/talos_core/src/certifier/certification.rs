@@ -1,6 +1,6 @@
 use ahash::AHashMap;
 
-use crate::certifier_candidate::CertifierCandidate;
+use super::CertifierCandidate;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Discord {

@@ -24,7 +24,6 @@ rdkafka = { version = "0.29.0", features = ["sasl"] }
 thiserror = "1.0.31"
 
 # internal crates
-certifier = { path = "../certifier" }
 suffix = { path = "../suffix" }
 logger = { path = "../logger" }
 talos_core = { path = "../talos_core" }

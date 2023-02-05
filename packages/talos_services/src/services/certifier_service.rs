@@ -2,13 +2,13 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use certifier::certifier::{Certifier, Outcome};
 use log::{debug, info};
 use suffix::{Suffix, SuffixTrait};
+use talos_core::certifier::Outcome;
 use talos_core::errors::SystemServiceError;
 use talos_core::model::decision_message::DecisionMessage;
 use talos_core::{errors::CertificationError, model::candidate_message::CandidateMessage};
-use talos_core::{ChannelMessage, SystemMessage};
+use talos_core::{Certifier, ChannelMessage, SystemMessage};
 use tokio::sync::mpsc;
 
 use crate::core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService};
@@ -44,7 +44,7 @@ impl CertifierService {
 
     fn get_conflict_candidates(&mut self, outcome: &Outcome) -> Option<CandidateMessage> {
         match outcome {
-            certifier::certifier::Outcome::Aborted { version, discord: _ } => {
+            Outcome::Aborted { version, discord: _ } => {
                 if version.is_some() {
                     if let Ok(Some(msg)) = self.suffix.get(version.unwrap()) {
                         return Some(msg.item);
