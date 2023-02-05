@@ -3,19 +3,19 @@ use std::sync::{
     Arc,
 };
 
+use crate::{errors::SystemServiceError, SystemMessage};
 use futures_util::future::join_all;
 use log::error;
-use talos_core::{errors::SystemServiceError, SystemMessage};
 
 use crate::core::{System, SystemService};
 
-pub struct TalosCertifierBuilder {
+pub struct TalosCertifierServiceBuilder {
     system: System,
     certifier_service: Option<Box<dyn SystemService + Send + Sync>>,
     services: Vec<Box<dyn SystemService + Send + Sync>>,
 }
 
-impl TalosCertifierBuilder {
+impl TalosCertifierServiceBuilder {
     pub fn new(system: System) -> Self {
         Self {
             system,
@@ -39,11 +39,11 @@ impl TalosCertifierBuilder {
         self
     }
 
-    pub fn build(self) -> TalosCertifier {
+    pub fn build(self) -> TalosCertifierService {
         let mut services = self.services;
         services.push(self.certifier_service.expect("Certifier Service is mandatory"));
 
-        TalosCertifier {
+        TalosCertifierService {
             system: self.system,
             services,
             shutdown_flag: Arc::new(AtomicBool::new(false)),
@@ -51,13 +51,13 @@ impl TalosCertifierBuilder {
     }
 }
 
-pub struct TalosCertifier {
+pub struct TalosCertifierService {
     pub system: System,
     pub services: Vec<Box<dyn SystemService + Send + Sync>>,
     pub shutdown_flag: Arc<AtomicBool>,
 }
 
-impl TalosCertifier {
+impl TalosCertifierService {
     pub async fn run(self) -> Result<(), SystemServiceError> {
         let service_handle = self.services.into_iter().map(|mut service| {
             let shutdown_notifier_cloned = self.system.system_notifier.clone();

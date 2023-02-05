@@ -5,7 +5,7 @@ use log::{debug, info};
 use rdkafka::producer::{BaseRecord, DefaultProducerContext, ThreadedProducer};
 use talos_core::{
     errors::SystemServiceError,
-    ports::{common::SharedPortTraits, errors::MessagePublishError, message::MessagePublisher},
+    ports::{common::SharedPortTraits, errors::MessagePublishError, MessagePublisher},
 };
 
 use crate::kafka::utils::build_kafka_headers;

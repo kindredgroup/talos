@@ -4,14 +4,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use log::{debug, info};
 use suffix::{Suffix, SuffixTrait};
-use talos_core::certifier::Outcome;
-use talos_core::errors::SystemServiceError;
-use talos_core::model::decision_message::DecisionMessage;
-use talos_core::{errors::CertificationError, model::candidate_message::CandidateMessage};
-use talos_core::{Certifier, ChannelMessage, SystemMessage};
 use tokio::sync::mpsc;
 
-use crate::core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService};
+use crate::{
+    certifier::Outcome,
+    core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
+    errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
+    model::{CandidateMessage, DecisionMessage},
+    Certifier, ChannelMessage, SystemMessage,
+};
 
 pub struct CertifierService {
     pub suffix: Suffix<CandidateMessage>,
@@ -86,7 +87,7 @@ impl CertifierService {
             .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
             .await
             .map_err(|e| SystemServiceError {
-                kind: talos_core::errors::SystemServiceErrorKind::SystemError(talos_core::errors::SystemErrorType::Channel),
+                kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
                 data: Some(format!("{:?}", decision_message)),
                 reason: e.to_string(),
                 service: "Certifier Service".to_string(),

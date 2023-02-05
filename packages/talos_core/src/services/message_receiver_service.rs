@@ -7,9 +7,12 @@ use async_trait::async_trait;
 use log::{debug, error, info};
 use tokio::sync::mpsc;
 
-use talos_core::{errors::SystemServiceError, ports::message::MessageReciever, ChannelMessage, SystemMessage};
-
-use crate::core::{System, SystemService};
+use crate::{
+    core::{System, SystemService},
+    errors::{SystemErrorType, SystemServiceError, SystemServiceErrorKind},
+    ports::MessageReciever,
+    ChannelMessage, SystemMessage,
+};
 
 type PreviousCommitVers = u64;
 type LatestCommitVers = u64;
@@ -77,7 +80,7 @@ impl SystemService for MessageReceiverService {
 
                     if let Err(error) = self.message_channel_tx.send(msg.clone()).await {
                         return Err(SystemServiceError{
-                             kind: talos_core::errors::SystemServiceErrorKind::SystemError(talos_core::errors::SystemErrorType::Channel),
+                             kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
                              reason: error.to_string(),
                              data: Some(format!("{:?}", msg)),
                              service: "Message Receiver Service".to_string()
@@ -89,7 +92,7 @@ impl SystemService for MessageReceiverService {
                 }
                 Err(consumer_error) => {
                     match &consumer_error.kind {
-                        talos_core::errors::SystemServiceErrorKind::ParseError => {
+                        SystemServiceErrorKind::ParseError => {
                             error!("Parse error {:?} ",  consumer_error);
                             // self.shutdown_service().await;
                             // return Err(consumer_error)

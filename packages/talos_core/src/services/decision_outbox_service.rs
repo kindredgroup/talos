@@ -2,16 +2,16 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use log::{debug, error, info};
-use talos_core::{
-    core::MessageVariant,
-    errors::SystemServiceError,
-    model::decision_message::DecisionMessage,
-    ports::{decision_store::DecisionStore, message::MessagePublisher},
-    SystemMessage,
-};
+
 use tokio::sync::mpsc;
 
-use crate::core::{DecisionOutboxChannelMessage, System, SystemService};
+use crate::{
+    core::{DecisionOutboxChannelMessage, MessageVariant, System, SystemService},
+    errors::{SystemServiceError, SystemServiceErrorKind},
+    model::DecisionMessage,
+    ports::{DecisionStore, MessagePublisher},
+    SystemMessage,
+};
 
 pub struct DecisionOutboxService {
     pub system: System,
@@ -51,7 +51,7 @@ impl DecisionOutboxService {
             Ok(decision) => Ok(decision),
             Err(insert_error) => {
                 let error = SystemServiceError {
-                    kind: talos_core::errors::SystemServiceErrorKind::DBError,
+                    kind: SystemServiceErrorKind::DBError,
                     reason: insert_error.reason,
                     data: insert_error.data,
                     service: "Decision Outbox Service".to_string(),
@@ -74,7 +74,7 @@ impl DecisionOutboxService {
             {
                 outbox_tx
                     .send(DecisionOutboxChannelMessage::OutboundServiceError(SystemServiceError {
-                        kind: talos_core::errors::SystemServiceErrorKind::MessagePublishError,
+                        kind: SystemServiceErrorKind::MessagePublishError,
                         reason: publish_error.reason,
                         data: publish_error.data, //Some(format!("{:?}", decision_message)),
                         service: "Decision Outbox Service".to_string(),
