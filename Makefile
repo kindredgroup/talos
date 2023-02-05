@@ -69,16 +69,16 @@ build:
 ## dev.run: 🧪 Runs rust app in watch mode
 dev.run:
 	$(call pp,run app...)
-	cargo  watch -q -c -x 'run --bin talos_certifier'
+	cargo  watch -q -c -x 'run --bin talos_certifier_kafka_pg'
 ## run: 🧪 Runs rust app
 run:
 	$(call pp,run app...)
-	cargo run --bin talos_certifier
+	cargo run --bin talos_certifier_kafka_pg
 
 ## run: 🧪 Runs rust app in release mode
 run.release:
 	$(call pp,run app...)
-	cargo run -r --bin talos_certifier
+	cargo run -r --bin talos_certifier_kafka_pg
 
 ## lint: 🧹 Checks for lint failures on rust
 lint:

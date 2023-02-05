@@ -1575,49 +1575,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "talos_adapters"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "deadpool-postgres",
- "env_logger",
- "futures-util",
- "log",
- "logger",
- "mockall",
- "rdkafka",
- "serde",
- "serde_json",
- "talos_core",
- "thiserror",
- "tokio",
- "tokio-postgres",
- "uuid",
-]
-
-[[package]]
 name = "talos_certifier"
 version = "0.0.1"
-dependencies = [
- "async-trait",
- "cargo-husky",
- "env_logger",
- "futures-util",
- "log",
- "logger",
- "mockall",
- "rdkafka",
- "serde",
- "serde_json",
- "talos_adapters",
- "talos_core",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "talos_core"
-version = "0.1.0"
 dependencies = [
  "ahash",
  "async-trait",
@@ -1633,6 +1592,47 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
+]
+
+[[package]]
+name = "talos_certifier_adapters"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "deadpool-postgres",
+ "env_logger",
+ "futures-util",
+ "log",
+ "logger",
+ "mockall",
+ "rdkafka",
+ "serde",
+ "serde_json",
+ "talos_certifier",
+ "thiserror",
+ "tokio",
+ "tokio-postgres",
+ "uuid",
+]
+
+[[package]]
+name = "talos_certifier_kafka_pg"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "cargo-husky",
+ "env_logger",
+ "futures-util",
+ "log",
+ "logger",
+ "mockall",
+ "rdkafka",
+ "serde",
+ "serde_json",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

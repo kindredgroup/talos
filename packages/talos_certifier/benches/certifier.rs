@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use talos_core::{certifier::utils::convert_vec_to_hashmap, Certifier, CertifierCandidate};
+use talos_certifier::{certifier::utils::convert_vec_to_hashmap, Certifier, CertifierCandidate};
 
 fn bench_certifier_rule_1(c: &mut Criterion) {
     c.bench_function("[CERTIFIER - Rule 1] Unconditional Commit", |b| {

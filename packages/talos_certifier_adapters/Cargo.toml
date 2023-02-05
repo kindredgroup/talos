@@ -1,11 +1,10 @@
 [package]
 # [package]
-name = "talos_adapters"
+name = "talos_certifier_adapters"
 version = "0.0.1"
 edition = "2021"
 keywords = ["talos", "adapters"]
 description = "Adapters used in Talos Certifier"
-
 
 [dependencies]
 
@@ -41,4 +40,4 @@ mockall = "0.11.0"
 
 # internal crates
 logger = { path = "../logger" }
-talos_core = { path = "../talos_core" }
+talos_certifier = { path = "../talos_certifier" }

@@ -1,6 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde_json::Value;
-use talos_core::ports::errors::{DecisionStoreError, DecisionStoreErrorKind};
+use talos_certifier::ports::errors::{DecisionStoreError, DecisionStoreErrorKind};
 use uuid::Uuid;
 
 pub fn get_uuid_key(key: &str) -> Result<Uuid, DecisionStoreError> {
@@ -23,7 +23,7 @@ pub fn parse_json_column<T: DeserializeOwned>(key: &str, value: Value) -> Result
 mod util_test {
     use serde::Deserialize;
     use serde_json::Value;
-    use talos_core::ports::errors::{DecisionStoreError, DecisionStoreErrorKind};
+    use talos_certifier::ports::errors::{DecisionStoreError, DecisionStoreErrorKind};
     use uuid::Uuid;
 
     use super::{get_uuid_key, parse_json_column};

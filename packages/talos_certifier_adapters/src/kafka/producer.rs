@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use log::{debug, info};
 use rdkafka::producer::{BaseRecord, DefaultProducerContext, ThreadedProducer};
-use talos_core::{
+use talos_certifier::{
     errors::SystemServiceError,
     ports::{common::SharedPortTraits, errors::MessagePublishError, MessagePublisher},
 };
