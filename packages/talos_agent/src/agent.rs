@@ -1,19 +1,17 @@
-use crate::api::{AgentConfig, CertificationRequest, CertificationResponse};
+use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, TalosAgent};
 use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, PublisherType};
-//use async_trait::async_trait;
+use async_trait::async_trait;
 
 /// The implementation of agent.
-//pub struct TalosAgentImpl {
-pub struct TalosAgent {
+pub struct TalosAgentImpl {
     pub config: AgentConfig,
     pub publisher: Box<PublisherType>,
     pub consumer: Box<ConsumerType>,
 }
 
-//#[async_trait]
-//impl TalosAgent for TalosAgentImpl {
-impl TalosAgent {
-    pub async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String> {
+#[async_trait]
+impl TalosAgent for TalosAgentImpl {
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String> {
         // Converts high level request to candidate message and sends it to the publisher
         let xid = request.candidate.xid.clone();
         let msg = CandidateMessage::new(self.config.agent_name.clone(), self.config.cohort_name.clone(), request.candidate);
@@ -52,32 +50,5 @@ impl TalosAgent {
                 }
             }
         }
-
-        // tokio::select! {
-        //     res = self.consumer.receive_message() => {
-        //         match res {
-        //             Ok(data) => {
-        //                 println!("certify(): received: {}", data);
-        //                 Ok(CertificationResponse {
-        //                     is_accepted: true,
-        //                     xid,
-        //                     partition: 0,
-        //                     offset: 0,
-        //                 })
-        //             }
-        //             Err(e) => {
-        //                 println!("certify(): error receiving: {}", e);
-        //                 Err(e)
-        //             }
-        //         }
-        //     }
-        // }
-
-        // Ok(CertificationResponse {
-        //     is_accepted: false,
-        //     xid,
-        //     partition: publish_response.partition,
-        //     offset: publish_response.offset,
-        // })
     }
 }

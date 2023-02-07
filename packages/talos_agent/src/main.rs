@@ -1,6 +1,5 @@
 use rdkafka::config::RDKafkaLogLevel;
-use talos_agent::agent::TalosAgent;
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
@@ -41,7 +40,7 @@ fn make_candidate(xid: String) -> CertificationRequest {
     }
 }
 
-fn make_agent() -> TalosAgent {
+fn make_agent() -> Box<TalosAgentType> {
     let (cfg_agent, cfg_kafka) = make_configs();
 
     TalosAgentBuilder::new(cfg_agent)
@@ -51,7 +50,7 @@ fn make_agent() -> TalosAgent {
 }
 
 const BATCH_SIZE: i32 = 10;
-const IS_ASYNC: bool = false;
+const IS_ASYNC: bool = true;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {

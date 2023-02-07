@@ -1,9 +1,9 @@
+use crate::agent::TalosAgentImpl;
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
 use crate::messaging::api::{ConsumerType, PublisherType};
 use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
 use crate::messaging::mock::{MockConsumer, MockPublisher};
-//use async_trait::async_trait;
-use crate::agent::TalosAgent;
+use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
 
 ///
@@ -57,11 +57,13 @@ pub struct KafkaConfig {
     pub log_level: RDKafkaLogLevel,
 }
 
-// /// The agent interface exposed to the client
-// #[async_trait]
-// pub trait TalosAgent {
-//     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
-// }
+/// The agent interface exposed to the client
+#[async_trait]
+pub trait TalosAgent {
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
+}
+
+pub type TalosAgentType = dyn TalosAgent + Send + Sync;
 
 pub enum TalosIntegrationType {
     /// The agent will publish certification requests to kafka
@@ -95,7 +97,7 @@ impl TalosAgentBuilder {
     }
 
     /// Build an instance of agent.
-    pub fn build(&self) -> Result<TalosAgent, String> {
+    pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
         let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
@@ -120,13 +122,13 @@ impl TalosAgentBuilder {
 
         match subscribed_consumer {
             Ok(consumer) => {
-                let agent = TalosAgent {
+                let agent = TalosAgentImpl {
                     config: self.config.clone(),
                     publisher,
                     consumer,
                 };
-                // Ok(Box::new(agent))
-                Ok(agent)
+                Ok(Box::new(agent))
+                // Ok(agent)
             }
             Err(e) => Err(e),
         }
