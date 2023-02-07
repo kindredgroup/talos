@@ -17,10 +17,7 @@ use crate::{
 
 async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>, candidate_message: CandidateMessage) {
     tokio::spawn(async move {
-        message_channel_tx
-            .send(talos_core::ChannelMessage::Candidate(candidate_message.version, candidate_message))
-            .await
-            .unwrap();
+        message_channel_tx.send(talos_core::ChannelMessage::Candidate(candidate_message)).await.unwrap();
     });
 }
 

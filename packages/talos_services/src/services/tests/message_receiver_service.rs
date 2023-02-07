@@ -25,9 +25,9 @@ impl MessageReciever for MockReciever {
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, talos_core::errors::SystemServiceError> {
         let msg = self.consumer.recv().await.unwrap();
 
-        let vers = match msg {
-            ChannelMessage::Candidate(vers, _) => Some(vers),
-            ChannelMessage::Decision(vers, _) => Some(vers),
+        let vers = match &msg {
+            ChannelMessage::Candidate(msg) => Some(msg.version),
+            ChannelMessage::Decision(vers, _) => Some(vers).copied(),
         };
 
         self.offset = vers;
@@ -78,21 +78,18 @@ async fn test_consume_message() {
     let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, commit_offset, system);
 
     mock_channel_tx
-        .send(ChannelMessage::Candidate(
-            4,
-            CandidateMessage {
-                xid: "xid-1".to_string(),
-                version: 8,
-                agent: "agent-1".to_string(),
-                cohort: "cohort-1".to_string(),
-                snapshot: 5,
-                readvers: vec![],
-                readset: vec![],
-                writeset: vec!["ksp:w1".to_owned()],
-                metadata: None,
-                on_commit: None,
-            },
-        ))
+        .send(ChannelMessage::Candidate(CandidateMessage {
+            xid: "xid-1".to_string(),
+            version: 8,
+            agent: "agent-1".to_string(),
+            cohort: "cohort-1".to_string(),
+            snapshot: 5,
+            readvers: vec![],
+            readset: vec![],
+            writeset: vec!["ksp:w1".to_owned()],
+            metadata: None,
+            on_commit: None,
+        }))
         .await
         .unwrap();
 
@@ -100,8 +97,8 @@ async fn test_consume_message() {
 
     assert!(result.is_ok());
 
-    if let Some(ChannelMessage::Candidate(vers, msg)) = msg_channel_rx.recv().await {
-        assert_eq!(vers, 4);
+    if let Some(ChannelMessage::Candidate(msg)) = msg_channel_rx.recv().await {
+        assert_eq!(msg.version, 8);
         assert_eq!(msg.xid, "xid-1".to_string());
     }
 }
@@ -127,21 +124,18 @@ async fn test_consume_message_error() {
     let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, commit_offset, system);
 
     mock_channel_tx
-        .send(ChannelMessage::Candidate(
-            4,
-            CandidateMessage {
-                xid: "xid-1".to_string(),
-                version: 8,
-                agent: "agent-1".to_string(),
-                cohort: "cohort-1".to_string(),
-                snapshot: 5,
-                readvers: vec![],
-                readset: vec![],
-                writeset: vec!["ksp:w1".to_owned()],
-                metadata: None,
-                on_commit: None,
-            },
-        ))
+        .send(ChannelMessage::Candidate(CandidateMessage {
+            xid: "xid-1".to_string(),
+            version: 8,
+            agent: "agent-1".to_string(),
+            cohort: "cohort-1".to_string(),
+            snapshot: 5,
+            readvers: vec![],
+            readset: vec![],
+            writeset: vec!["ksp:w1".to_owned()],
+            metadata: None,
+            on_commit: None,
+        }))
         .await
         .unwrap();
 

@@ -5,7 +5,7 @@ use crate::model::{candidate_message::CandidateMessage, decision_message::Decisi
 type Version = u64;
 #[derive(Debug, Clone)]
 pub enum ChannelMessage {
-    Candidate(Version, CandidateMessage),
+    Candidate(CandidateMessage),
     Decision(Version, DecisionMessage),
 }
 
