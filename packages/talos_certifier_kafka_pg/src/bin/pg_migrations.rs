@@ -1,4 +1,4 @@
-use postgres::config::PgConfig;
+use talos_certifier_adapters::PgConfig;
 
 mod embedded {
     use refinery::embed_migrations;
@@ -7,7 +7,7 @@ mod embedded {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    let pg_config = PgConfig::new();
+    let pg_config = PgConfig::from_env();
 
     println!("Running DB migrations...");
     let (mut client, con) = tokio_postgres::connect(pg_config.get_database_connection_string().as_str(), tokio_postgres::NoTls).await?;

@@ -1072,16 +1072,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "postgres"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "refinery",
- "tokio",
- "tokio-postgres",
-]
-
-[[package]]
 name = "postgres-protocol"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1611,12 +1601,14 @@ dependencies = [
  "logger",
  "mockall",
  "rdkafka",
+ "refinery",
  "serde",
  "serde_json",
  "talos_certifier",
  "talos_certifier_adapters",
  "thiserror",
  "tokio",
+ "tokio-postgres",
 ]
 
 [[package]]

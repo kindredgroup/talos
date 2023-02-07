@@ -36,17 +36,17 @@ dev.init: install
 ## dev.kafka_init: 🥁 Init kafka topic
 dev.kafka_init:
 	$(call pp,creating kafka topic...)
-	cargo run --package talos_certifier_kafka_pg --bin deploy_kafka
+	cargo run --package talos_certifier_kafka_pg --bin kafka_create_topic
 
 ## pg.create: 🥁 Create database
 pg.create:
 	$(call pp,creating database...)
-	cargo run --package postgres --bin create_database
+	cargo run --package talos_certifier_kafka_pg --bin pg_create_database
 
 ## pg.migrate: 🥁 Run migrations on database
 pg.migrate:
 	$(call pp,running migrations on database...)
-	cargo run --package postgres --bin migrations
+	cargo run --package talos_certifier_kafka_pg --bin pg_migrations
 
 # TEST / DEPLOY ###################################################################################
 

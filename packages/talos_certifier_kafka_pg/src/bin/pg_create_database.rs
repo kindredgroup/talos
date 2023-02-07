@@ -1,6 +1,5 @@
+use talos_certifier_adapters::PgConfig;
 use tokio_postgres::{error::SqlState, tls::NoTlsStream, Client, Connection, Socket};
-
-use postgres::config::PgConfig;
 
 /// Connect to postgres using the connection string provided
 async fn pg_connect(connection_string: String) -> Result<(Client, Connection<Socket, NoTlsStream>), tokio_postgres::Error> {
@@ -18,7 +17,7 @@ async fn create_db(client: &Client, database: &str) -> Result<(), tokio_postgres
 
 #[tokio::main]
 async fn main() -> Result<(), tokio_postgres::Error> {
-    let pg_config = PgConfig::new();
+    let pg_config = PgConfig::from_env();
     // client
     println!("Establishing connection to postgres server");
     if let Err(error) = pg_connect(pg_config.get_database_connection_string()).await {

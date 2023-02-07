@@ -1,3 +1,5 @@
+use talos_certifier::env_var;
+
 #[derive(Debug, Clone)]
 pub struct PgConfig {
     pub user: String,
@@ -8,6 +10,15 @@ pub struct PgConfig {
 }
 
 impl PgConfig {
+    pub fn from_env() -> PgConfig {
+        PgConfig {
+            user: env_var!("PG_USER"),
+            password: env_var!("PG_PASSWORD"),
+            host: env_var!("PG_HOST"),
+            port: env_var!("PG_PORT"),
+            database: env_var!("PG_DATABASE"),
+        }
+    }
     pub fn get_base_connection_string(&self) -> String {
         let PgConfig {
             user, password, host, port, ..

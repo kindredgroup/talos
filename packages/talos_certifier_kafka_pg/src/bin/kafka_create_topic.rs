@@ -17,7 +17,7 @@ async fn main() {
     let kafka_config = KafkaConfig::from_env();
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create().expect("Consumer creation failed");
 
-    let kafka_certification_topic = format!("{}ksp.certification", config.kafka_topic_prefix);
+    let kafka_certification_topic = format!("{}{}", config.kafka_topic_prefix, config.kafka_topic);
     let timeout = Duration::from_secs(1);
     let metadata = consumer
         .fetch_metadata(Some(&kafka_certification_topic), timeout)
