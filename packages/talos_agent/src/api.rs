@@ -1,9 +1,10 @@
-use crate::agent::TalosAgentImpl;
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
-use crate::messaging::api::Publisher;
-use crate::messaging::kafka::KafkaPublisher;
-use crate::messaging::mock::MockPublisher;
-use async_trait::async_trait;
+use crate::messaging::api::{ConsumerType, PublisherType};
+use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
+use crate::messaging::mock::{MockConsumer, MockPublisher};
+//use async_trait::async_trait;
+use crate::agent::TalosAgent;
+use rdkafka::config::RDKafkaLogLevel;
 
 ///
 /// Data structures and interfaces exposed to agent client
@@ -16,7 +17,7 @@ pub struct CandidateData {
     pub readset: Vec<String>,
     pub readvers: Vec<u64>,
     pub snapshot: u64,
-    pub writeset: Vec<u64>,
+    pub writeset: Vec<String>,
 }
 
 /// The data input from client to agent
@@ -30,9 +31,10 @@ pub struct CertificationRequest {
 #[derive(Clone, Debug)]
 pub struct CertificationResponse {
     pub xid: String,
-    pub partition: i32,
-    pub offset: i64,
     pub is_accepted: bool,
+    pub polled_total: i32,
+    pub polled_empty: i32,
+    pub polled_others: i32,
 }
 
 #[derive(Clone)]
@@ -50,13 +52,16 @@ pub struct KafkaConfig {
     pub message_timeout_ms: u64,
     // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
     pub enqueue_timeout_ms: u64,
+    // Group session keepalive heartbeat interval
+    // pub heartbeat_interval_ms: u64,
+    pub log_level: RDKafkaLogLevel,
 }
 
-/// The agent interface exposed to the client
-#[async_trait]
-pub trait TalosAgent {
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
-}
+// /// The agent interface exposed to the client
+// #[async_trait]
+// pub trait TalosAgent {
+//     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
+// }
 
 pub enum TalosIntegrationType {
     /// The agent will publish certification requests to kafka
@@ -90,8 +95,8 @@ impl TalosAgentBuilder {
     }
 
     /// Build an instance of agent.
-    pub fn build(&self) -> Box<dyn TalosAgent> {
-        let publisher: Box<dyn Publisher + Sync + Send> = match self.integration_type {
+    pub fn build(&self) -> Result<TalosAgent, String> {
+        let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
                 let kafka_publisher = KafkaPublisher::new(config);
@@ -100,9 +105,30 @@ impl TalosAgentBuilder {
             _ => Box::new(MockPublisher),
         };
 
-        Box::new(TalosAgentImpl {
-            config: self.config.clone(),
-            publisher,
-        })
+        let subscribed_consumer: Result<Box<ConsumerType>, String> = match self.integration_type {
+            Kafka => {
+                let config = &self.kafka_config.clone().expect("Kafka configuration is required");
+                let kafka_consumer = KafkaConsumer::new(config);
+
+                match kafka_consumer.subscribe() {
+                    Ok(_) => Ok(Box::new(kafka_consumer)),
+                    Err(e) => Err(e),
+                }
+            }
+            _ => Ok(Box::new(MockConsumer)),
+        };
+
+        match subscribed_consumer {
+            Ok(consumer) => {
+                let agent = TalosAgent {
+                    config: self.config.clone(),
+                    publisher,
+                    consumer,
+                };
+                // Ok(Box::new(agent))
+                Ok(agent)
+            }
+            Err(e) => Err(e),
+        }
     }
 }

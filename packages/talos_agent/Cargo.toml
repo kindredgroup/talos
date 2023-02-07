@@ -6,10 +6,12 @@ edition = "2021"
 [dependencies]
 
 rdkafka = { version = "0.29.0", features = ["sasl"] }
+strum = { version = "0.24", features = ["derive"] }
 
 # Async
-futures = "0.3.25"
 async-trait = { workspace = true }
+#futures = "0.3.25"
+tokio = { workspace = true, features = ["full"] }
 
 # Json Serialize / Deserialize
 serde = { workspace = true }

@@ -1,11 +1,16 @@
 use crate::api::KafkaConfig;
-use crate::messaging::api::{CandidateMessage, PublishResponse, Publisher};
+use crate::messaging::api::{CandidateMessage, DecisionMessage, PublishResponse, Publisher, TalosMessageType};
 use async_trait::async_trait;
-use rdkafka::message::{Header, OwnedHeaders};
+use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::ClientConfig;
+use rdkafka::{ClientConfig, Message};
+use std::collections::HashMap;
+use std::str;
+use std::str::Utf8Error;
 use std::time::Duration;
+use uuid::Uuid;
 
 /// The implementation of publisher which communicates with kafka brokers.
 
@@ -25,7 +30,8 @@ impl KafkaPublisher {
     fn create_producer(kafka: &KafkaConfig) -> FutureProducer {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
-            .set("message.timeout.ms", &kafka.message_timeout_ms.to_string());
+            .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
+            .set_log_level(kafka.log_level);
 
         cfg.create().expect("Unable to create kafka producer")
     }
@@ -36,9 +42,10 @@ impl Publisher for KafkaPublisher {
     async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, String> {
         println!("Kafka: async publishing message {:?} with key: {}", message, key);
 
+        let type_value = TalosMessageType::Candidate.to_string();
         let h_type = Header {
             key: "messageType",
-            value: Some("Candidate"),
+            value: Some(type_value.as_str()),
         };
         let payload = serde_json::to_string(&message).unwrap();
 
@@ -58,5 +65,126 @@ impl Publisher for KafkaPublisher {
                 Err(e.to_string())
             }
         };
+    }
+}
+
+/// The implementation of consumer which receives from kafka.
+pub struct KafkaConsumer {
+    config: KafkaConfig,
+    consumer: StreamConsumer,
+}
+
+impl KafkaConsumer {
+    pub fn new(config: &KafkaConfig) -> Self {
+        KafkaConsumer {
+            config: config.clone(),
+            consumer: Self::create_consumer(config),
+        }
+    }
+
+    fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer {
+        let mut cfg = ClientConfig::new();
+        let id = Uuid::new_v4().to_string();
+        cfg.set("bootstrap.servers", &kafka.brokers)
+            .set("group.id", format!("agent-gr-1-{id}"))
+            .set("enable.auto.commit", "true")
+            .set("auto.offset.reset", "earliest")
+            .set("socket.keepalive.enable", "true")
+            // .set("fetch.wait.max.ms", "500")
+            // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
+            .set_log_level(kafka.log_level);
+
+        // cfg.create().expect("Unable to create kafka consumer")
+        match cfg.create() {
+            Ok(v) => v,
+            Err(e) => {
+                panic!("Cannot create consumer instance. {}", e)
+            }
+        }
+    }
+
+    pub fn subscribe(&self) -> Result<(), String> {
+        match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
+            Ok(_) => Ok(()),
+            Err(kafka_error) => {
+                println!("Error when subscribing to topics. {:?}", kafka_error);
+                Err(kafka_error.to_string())
+            }
+        }
+    }
+
+    fn deserialize_decision(message_type: &TalosMessageType, payload_view: &Option<Result<&str, Utf8Error>>) -> Option<Result<DecisionMessage, String>> {
+        let decision: Option<Result<DecisionMessage, String>> = match message_type {
+            TalosMessageType::Candidate => None,
+
+            // Take only decisions...
+            TalosMessageType::Decision => payload_view.and_then(|raw_payload| Some(KafkaConsumer::parse_payload_as_decision(&raw_payload))),
+        };
+
+        decision
+    }
+
+    fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, String> {
+        return match raw_payload {
+            Err(payload_read_error) => {
+                println!("Unable to read kafka message payload: {}", payload_read_error);
+                Err(payload_read_error.to_string())
+            }
+
+            Ok(json) => {
+                // convert JSON text into DecisionMessage
+                serde_json::from_str::<DecisionMessage>(json).map_err(|json_error| {
+                    println!("Unable to parse JSON into DecisionMessage: {}", json_error);
+                    json_error.to_string()
+                })
+            }
+        };
+    }
+}
+
+#[async_trait]
+impl crate::messaging::api::Consumer for KafkaConsumer {
+    async fn receive_message(&self) -> Option<Result<DecisionMessage, String>> {
+        let received = match self.consumer.recv().await {
+            Err(kafka_error) => {
+                println!("receive_message(): error: {:?}", kafka_error);
+                Some(Err(kafka_error.to_string()))
+            }
+
+            Ok(received) => {
+                // Extract headers
+                let headers = match received.headers() {
+                    Some(bh) => {
+                        let mut headers = HashMap::<String, String>::new();
+                        for header in bh.iter() {
+                            if let Some(v) = header.value {
+                                headers.insert(header.key.to_string(), String::from_utf8_lossy(v).to_string());
+                            }
+                        }
+
+                        headers
+                    }
+                    _ => HashMap::<String, String>::new(),
+                };
+
+                // Extract message type from headers
+                let parsed_type = headers.get("messageType").and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
+                    Ok(parsed_type) => Some(parsed_type),
+                    Err(parse_error) => {
+                        println!(
+                            "Unknown value of messageType in the header ({}), skipping this message: {}. Error: {}",
+                            raw,
+                            received.offset(),
+                            parse_error
+                        );
+                        None
+                    }
+                });
+
+                parsed_type.and_then(|message_type| KafkaConsumer::deserialize_decision(&message_type, &received.payload_view::<str>()))
+            }
+        };
+
+        received
     }
 }
