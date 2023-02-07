@@ -1,4 +1,5 @@
 use rdkafka::ClientConfig;
+use talos_certifier::env_var;
 
 pub struct Config {
     pub brokers: Vec<String>,
@@ -12,6 +13,19 @@ pub struct Config {
 }
 
 impl Config {
+    pub fn from_env() -> Config {
+        Config {
+            brokers: env_var!("KAFKA_BROKERS", Vec<String>),
+            topic_prefix: env_var!("KAFKA_TOPIC_PREFIX"),
+            consumer_topic: env_var!("KAFKA_TOPIC"),
+            producer_topic: env_var!("KAFKA_TOPIC"),
+            client_id: env_var!("KAFKA_CLIENT_ID"),
+            group_id: env_var!("KAFKA_GROUP_ID"),
+            username: env_var!("KAFKA_USERNAME"),
+            password: env_var!("KAFKA_PASSWORD"),
+        }
+    }
+
     pub fn build_consumer_config(&self) -> ClientConfig {
         let mut client_config = ClientConfig::new();
 

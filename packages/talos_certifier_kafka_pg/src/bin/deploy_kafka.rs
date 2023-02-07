@@ -14,16 +14,7 @@ async fn main() {
 
     println!("config received from env... {:#?}", config);
 
-    let kafka_config = KafkaConfig {
-        brokers: config.kafka_brokers,
-        topic_prefix: config.kafka_topic_prefix.clone(),
-        consumer_topic: config.kafka_topic.clone(),
-        producer_topic: config.kafka_topic,
-        client_id: config.kafka_client_id,
-        group_id: config.kafka_group_id,
-        username: config.kafka_username,
-        password: config.kafka_password,
-    }; //  config.to_kafka_client_config();
+    let kafka_config = KafkaConfig::from_env();
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create().expect("Consumer creation failed");
 
     let kafka_certification_topic = format!("{}ksp.certification", config.kafka_topic_prefix);

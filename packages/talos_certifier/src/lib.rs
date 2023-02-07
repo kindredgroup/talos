@@ -7,6 +7,7 @@ pub mod model;
 pub mod ports;
 pub mod services;
 pub mod talos_certifier_service;
+pub mod utils;
 
 pub use crate::core::{ChannelMessage, SystemMessage};
 pub use certifier::Certifier;
