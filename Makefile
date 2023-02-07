@@ -36,7 +36,7 @@ dev.init: install
 ## dev.kafka_init: 🥁 Init kafka topic
 dev.kafka_init:
 	$(call pp,creating kafka topic...)
-	cargo run --package talos_certifier --bin deploy_kafka
+	cargo run --package talos_certifier_kafka_pg --bin deploy_kafka
 
 ## pg.create: 🥁 Create database
 pg.create:
@@ -80,6 +80,10 @@ run.release:
 	$(call pp,run app...)
 	cargo run -r --bin talos_certifier_kafka_pg
 
+## run: 🧪 Runs test app
+run.test.app:
+	$(call pp,run app...)
+	cargo run --bin test_config
 ## lint: 🧹 Checks for lint failures on rust
 lint:
 	$(call pp,lint rust...)
