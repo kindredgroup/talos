@@ -1,4 +1,5 @@
 use rdkafka::config::RDKafkaLogLevel;
+use std::sync::Arc;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType};
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -45,11 +46,11 @@ fn make_agent() -> Box<TalosAgentType> {
 
     TalosAgentBuilder::new(cfg_agent)
         .with_kafka(cfg_kafka)
-        .build()
+        .build_sc()
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 }
 
-const BATCH_SIZE: i32 = 10;
+const BATCH_SIZE: i32 = 1000;
 const IS_ASYNC: bool = true;
 
 #[tokio::main]
@@ -74,12 +75,14 @@ async fn certify() -> Result<(), String> {
 
 async fn certify_async() -> Result<(), String> {
     let mut tasks = Vec::<JoinHandle<CertificationResponse>>::new();
+    let agent = Arc::new(make_agent());
 
     for _ in 1..(BATCH_SIZE + 1) {
-        let request = make_candidate(Uuid::new_v4().to_string());
-        let agent = make_agent();
-        let task = tokio::spawn(async move { agent.certify(request).await.unwrap() });
-
+        let ac = Arc::clone(&agent);
+        let task = tokio::spawn(async move {
+            let request = make_candidate(Uuid::new_v4().to_string());
+            ac.certify(request).await.unwrap()
+        });
         tasks.push(task);
     }
 

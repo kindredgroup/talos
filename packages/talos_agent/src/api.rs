@@ -1,4 +1,5 @@
 use crate::agent::TalosAgentImpl;
+use crate::agent_sc::TalosAgentSingleConsumerImpl;
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
 use crate::messaging::api::{ConsumerType, PublisherType};
 use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
@@ -65,6 +66,7 @@ pub trait TalosAgent {
 
 pub type TalosAgentType = dyn TalosAgent + Send + Sync;
 
+#[derive(Clone)]
 pub enum TalosIntegrationType {
     /// The agent will publish certification requests to kafka
     Kafka,
@@ -128,9 +130,22 @@ impl TalosAgentBuilder {
                     consumer,
                 };
                 Ok(Box::new(agent))
-                // Ok(agent)
             }
             Err(e) => Err(e),
         }
+    }
+
+    pub fn build_sc(&self) -> Result<Box<TalosAgentType>, String> {
+        let publisher: Box<PublisherType> = match self.integration_type {
+            Kafka => {
+                let config = &self.kafka_config.clone().expect("Kafka configuration is required");
+                let kafka_publisher = KafkaPublisher::new(config);
+                Box::new(kafka_publisher)
+            }
+            _ => Box::new(MockPublisher),
+        };
+
+        let agent = TalosAgentSingleConsumerImpl::new(self.config.clone(), self.kafka_config.clone(), publisher);
+        Ok(Box::new(agent))
     }
 }

@@ -90,7 +90,8 @@ impl KafkaConsumer {
             .set("enable.auto.commit", "true")
             .set("auto.offset.reset", "earliest")
             .set("socket.keepalive.enable", "true")
-            // .set("fetch.wait.max.ms", "500")
+            .set("auto.commit.interval.ms", "500")
+            .set("fetch.wait.max.ms", "3000")
             // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
 
@@ -152,6 +153,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
 
             Ok(received) => {
+                println!("receive_message() got something...");
                 // Extract headers
                 let headers = match received.headers() {
                     Some(bh) => {
