@@ -1611,6 +1611,7 @@ dependencies = [
  "logger",
  "mockall",
  "rdkafka",
+ "refinery",
  "serde",
  "serde_json",
  "talos_certifier",
