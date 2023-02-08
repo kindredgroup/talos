@@ -50,21 +50,21 @@ fn make_agent() -> Box<TalosAgentType> {
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 }
 
-const BATCH_SIZE: i32 = 1000;
+const BATCH_SIZE: i32 = 10;
 const IS_ASYNC: bool = true;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
     if IS_ASYNC {
-        certify_async().await
+        certify_async(BATCH_SIZE + 1).await
     } else {
-        certify().await
+        certify(BATCH_SIZE + 1).await
     }
 }
 
-async fn certify() -> Result<(), String> {
+async fn certify(batch_size: i32) -> Result<(), String> {
     let agent = make_agent();
-    for _ in 1..(BATCH_SIZE + 1) {
+    for _ in 1..batch_size {
         let request = make_candidate(Uuid::new_v4().to_string());
         let rsp = agent.certify(request).await.unwrap();
         println!("Transaction has been certified. Details: {:?}", rsp);
@@ -73,11 +73,11 @@ async fn certify() -> Result<(), String> {
     Ok(())
 }
 
-async fn certify_async() -> Result<(), String> {
+async fn certify_async(batch_size: i32) -> Result<(), String> {
     let mut tasks = Vec::<JoinHandle<CertificationResponse>>::new();
     let agent = Arc::new(make_agent());
 
-    for _ in 1..(BATCH_SIZE + 1) {
+    for _ in 1..batch_size {
         let ac = Arc::clone(&agent);
         let task = tokio::spawn(async move {
             let request = make_candidate(Uuid::new_v4().to_string());

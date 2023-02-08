@@ -153,7 +153,6 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
 
             Ok(received) => {
-                println!("receive_message() got something...");
                 // Extract headers
                 let headers = match received.headers() {
                     Some(bh) => {

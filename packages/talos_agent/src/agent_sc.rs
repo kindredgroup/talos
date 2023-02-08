@@ -7,22 +7,32 @@ use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, Kafka
 use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMessage, PublisherType};
 use crate::messaging::kafka::KafkaConsumer;
 
+///
+/// Agent implementation which uses single consumer task. Once decision is received, it will lookup for
+/// pending in-flight transaction request by xid and notify it.
+///
 pub struct TalosAgentSingleConsumerImpl {
     pub config: AgentConfig,
     pub kafka_config: Option<KafkaConfig>,
     pub publisher: Box<PublisherType>,
+    // Key is xid, value is "shelf" where we keep notifier handle and exchanged value.
     pub in_flight: Arc<Mutex<HashMap<String, Arc<InFlight>>>>,
 }
 
-// #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct InFlight {
     pub xid: String,
-    pub decision: Mutex<Option<Arc<DecisionMessage>>>,
+    // the exchanged value
+    pub decision: Mutex<Option<DecisionMessage>>,
     pub monitor: Notify,
 }
 
 impl TalosAgentSingleConsumerImpl {
+    /// Makes an instance of agent which is connected to kafka broker and already listening for incoming messages
     pub fn new(config: AgentConfig, kafka_config: Option<KafkaConfig>, publisher: Box<PublisherType>) -> Self {
+        // todo:
+        //      The 'kafka_config' is needed to create a consumer from within task. Given that consumer is trait,
+        //      the outside builder should be creating Kafka or Mock consumer. Maybe it is better if task itself is
+        //      passed created by builder, as I am not yet sure how to move consumer into the task.
         let agent = TalosAgentSingleConsumerImpl {
             config,
             kafka_config,
@@ -34,6 +44,7 @@ impl TalosAgentSingleConsumerImpl {
         agent
     }
 
+    /// Starts listener task which reads Talos decisions from the topic
     fn start(&self) -> Result<(), String> {
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let in_flight = Arc::clone(&self.in_flight);
@@ -48,33 +59,22 @@ impl TalosAgentSingleConsumerImpl {
             let consumer: Box<ConsumerType> = rc.unwrap();
 
             loop {
-                println!("\nentering the receiver loop...");
                 match consumer.receive_message().await {
                     Some(Ok(received_message)) => {
-                        println!("received message {}", received_message.xid);
-
                         let state = in_flight.lock().unwrap();
 
-                        // check if message pending decision by this agent
+                        // check if candidate was posted by this agent
                         match state.get(received_message.xid.as_str()) {
-                            None => {
-                                println!("-- we received someone else decision message {}", received_message.xid);
-                            }
+                            None => continue,
                             Some(pending) => {
-                                println!("we received decision message to candidate posted earlier {}", received_message.xid);
                                 let mut decision = pending.decision.lock().unwrap();
-                                *decision = Some(Arc::new(received_message));
+                                *decision = Some(received_message);
                                 pending.monitor.notify_one();
                             }
                         }
                     }
-                    _ => {
-                        println!("receiver loop is getting nothing");
-                        continue;
-                    }
+                    _ => continue,
                 }
-
-                println!("continuing the receiver loop...");
             }
         });
 
@@ -84,6 +84,8 @@ impl TalosAgentSingleConsumerImpl {
 
 #[async_trait]
 impl TalosAgent for TalosAgentSingleConsumerImpl {
+    /// Certifies transaction represented by given request object. Caller of this method should '.await' for
+    /// the response.
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String> {
         let in_flight = Arc::new(InFlight {
             xid: request.candidate.xid.clone(),
@@ -91,6 +93,7 @@ impl TalosAgent for TalosAgentSingleConsumerImpl {
             monitor: Notify::new(),
         });
 
+        // todo: Introduce the limit of in-flight transactions.
         {
             let mut state = self.in_flight.lock().unwrap();
             state.insert(request.candidate.xid.clone(), Arc::clone(&in_flight));
