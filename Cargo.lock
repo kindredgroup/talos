@@ -1594,22 +1594,14 @@ dependencies = [
 name = "talos_certifier_kafka_pg"
 version = "0.0.1"
 dependencies = [
- "async-trait",
  "cargo-husky",
  "env_logger",
- "futures-util",
  "log",
  "logger",
- "mockall",
- "rdkafka",
  "refinery",
- "serde",
- "serde_json",
  "talos_certifier",
  "talos_certifier_adapters",
- "thiserror",
  "tokio",
- "tokio-postgres",
 ]
 
 [[package]]
