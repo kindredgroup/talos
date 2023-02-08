@@ -1,6 +1,7 @@
 use rdkafka::ClientConfig;
 use talos_certifier::env_var;
 
+#[derive(Debug)]
 pub struct Config {
     pub brokers: Vec<String>,
     pub topic_prefix: String,
