@@ -7,34 +7,14 @@ keywords = ["talos"]
 description = "Talos Certifier using Kafka and Pg adapters"
 
 [dependencies]
-# Json Serialize / Deserialize
-serde = { workspace = true }
-serde_json = { workspace = true }
-
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
 # Async
 tokio = { workspace = true }
-async-trait = { workspace = true }
-futures-util = "0.3.21"
-# Kafka
-rdkafka = { version = "0.29.0", features = ["sasl"] }
-
-# postgres
-tokio-postgres = "0.7.7"
 
 # Migration
 refinery = { version = "0.8.7", features = ["tokio-postgres"] }
-
-# Error
-thiserror = "1.0.31"
-
-# Test
-mockall = "0.11.0"
-
-# # Mutex
-# parking_lot = "0.12.1"
 
 # internal crates
 logger = { path = "../logger" }
