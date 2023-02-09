@@ -44,6 +44,7 @@ pub async fn create_topic() -> Result<KafkaDeployStatus, KafkaDeployError> {
             replication: TopicReplication::Fixed(1),
             config: vec![],
         };
+
         let opts = AdminOptions::new().operation_timeout(Some(timeout));
 
         let admin: AdminClient<DefaultClientContext> = kafka_config.build_consumer_config().create()?;

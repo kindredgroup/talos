@@ -42,3 +42,7 @@ mockall = "0.11.0"
 # internal crates
 logger = { path = "../logger" }
 talos_certifier = { path = "../talos_certifier" }
+
+
+[dev-dependencies]
+serial_test = "1.0.0"

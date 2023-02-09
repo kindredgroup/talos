@@ -80,7 +80,32 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashMap, env};
+
+    use serial_test::serial;
+
     use super::*;
+
+    fn set_env_var(key: &str, value: &str) {
+        env::set_var(key, value)
+    }
+
+    fn unset_env_var(key: &str) {
+        env::remove_var(key)
+    }
+
+    fn get_kafka_env_variables() -> HashMap<&'static str, &'static str> {
+        let env_hashmap = [
+            ("KAFKA_BROKERS", "broker1, broker2 "),
+            ("KAFKA_TOPIC_PREFIX", "prefix-"),
+            ("KAFKA_TOPIC", "some-topic"),
+            ("KAFKA_CLIENT_ID", "some-client-id"),
+            ("KAFKA_GROUP_ID", "some-group-id"),
+            ("KAFKA_USERNAME", ""),
+            ("KAFKA_PASSWORD", ""),
+        ];
+        HashMap::from(env_hashmap)
+    }
 
     fn build_test_kafka_config() -> Config {
         Config {
@@ -94,6 +119,40 @@ mod tests {
             password: "".to_owned(),
         }
     }
+
+    #[test]
+    #[serial]
+    fn test_from_env_gets_values_successully() {
+        get_kafka_env_variables().iter().for_each(|(k, v)| {
+            set_env_var(k, v);
+        });
+
+        let config = Config::from_env();
+
+        assert_eq!(config.client_id, "some-client-id");
+        assert_eq!(config.brokers.len(), 2);
+
+        get_kafka_env_variables().iter().for_each(|(k, _)| {
+            unset_env_var(k);
+        });
+    }
+    #[test]
+    #[serial]
+    #[should_panic(expected = "KAFKA_TOPIC_PREFIX environment variable is not defined")]
+    fn test_from_env_when_env_variable_not_found() {
+        get_kafka_env_variables().iter().for_each(|(k, v)| {
+            set_env_var(k, v);
+        });
+
+        unset_env_var("KAFKA_TOPIC_PREFIX");
+
+        let _config = Config::from_env();
+
+        get_kafka_env_variables().iter().for_each(|(k, _)| {
+            unset_env_var(k);
+        });
+    }
+
     #[test]
     fn test_build_consumer_config_obj() {
         let config = build_test_kafka_config().build_consumer_config();
