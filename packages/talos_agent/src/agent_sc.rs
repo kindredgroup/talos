@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
@@ -104,7 +105,7 @@ impl TalosAgent for TalosAgentSingleConsumerImpl {
 
         loop {
             if let Some(answer) = in_flight.decision.lock().unwrap().as_ref() {
-                println!("received decision on {}, {:?}", request.candidate.xid, answer);
+                debug!("certify(): received decision for xid: {}, {:?}", request.candidate.xid, answer);
                 return Ok(CertificationResponse {
                     xid: answer.xid.clone(),
                     is_accepted: answer.decision == Decision::Committed,
@@ -113,7 +114,7 @@ impl TalosAgent for TalosAgentSingleConsumerImpl {
                     polled_others: 0,
                 });
             }
-            println!("waiting for decision on {}", request.candidate.xid);
+            debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);
             in_flight.monitor.notified().await;
         }
     }

@@ -1,6 +1,8 @@
 use crate::api::KafkaConfig;
 use crate::messaging::api::{CandidateMessage, DecisionMessage, PublishResponse, Publisher, TalosMessageType};
 use async_trait::async_trait;
+use log::debug;
+use log::error;
 use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
@@ -40,7 +42,7 @@ impl KafkaPublisher {
 #[async_trait]
 impl Publisher for KafkaPublisher {
     async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, String> {
-        println!("Kafka: async publishing message {:?} with key: {}", message, key);
+        debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
 
         let type_value = TalosMessageType::Candidate.to_string();
         let h_type = Header {
@@ -57,11 +59,11 @@ impl Publisher for KafkaPublisher {
         let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timeout_ms));
         return match self.producer.send(data, timeout).await {
             Ok((partition, offset)) => {
-                println!("Published into partition {}, offset: {}", partition, offset);
+                debug!("KafkaPublisher.send_message(): Published into partition {}, offset: {}", partition, offset);
                 Ok(PublishResponse { partition, offset })
             }
             Err((e, _)) => {
-                println!("Publishing error: {}", e);
+                error!("KafkaPublisher.send_message(): Error publishing xid: {}, error: {}", message.xid, e);
                 Err(e.to_string())
             }
         };
@@ -95,7 +97,6 @@ impl KafkaConsumer {
             // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
 
-        // cfg.create().expect("Unable to create kafka consumer")
         match cfg.create() {
             Ok(v) => v,
             Err(e) => {
@@ -108,7 +109,7 @@ impl KafkaConsumer {
         match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
             Ok(_) => Ok(()),
             Err(kafka_error) => {
-                println!("Error when subscribing to topics. {:?}", kafka_error);
+                error!("Error when subscribing to topics. {:?}", kafka_error);
                 Err(kafka_error.to_string())
             }
         }
@@ -128,14 +129,14 @@ impl KafkaConsumer {
     fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, String> {
         return match raw_payload {
             Err(payload_read_error) => {
-                println!("Unable to read kafka message payload: {}", payload_read_error);
+                error!("Unable to read kafka message payload: {}", payload_read_error);
                 Err(payload_read_error.to_string())
             }
 
             Ok(json) => {
                 // convert JSON text into DecisionMessage
                 serde_json::from_str::<DecisionMessage>(json).map_err(|json_error| {
-                    println!("Unable to parse JSON into DecisionMessage: {}", json_error);
+                    error!("Unable to parse JSON into DecisionMessage: {}", json_error);
                     json_error.to_string()
                 })
             }
@@ -148,7 +149,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
     async fn receive_message(&self) -> Option<Result<DecisionMessage, String>> {
         let received = match self.consumer.recv().await {
             Err(kafka_error) => {
-                println!("receive_message(): error: {:?}", kafka_error);
+                error!("KafkaConsumer.receive_message(): error: {:?}", kafka_error);
                 Some(Err(kafka_error.to_string()))
             }
 
@@ -172,8 +173,8 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                 let parsed_type = headers.get("messageType").and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
                     Ok(parsed_type) => Some(parsed_type),
                     Err(parse_error) => {
-                        println!(
-                            "Unknown value of messageType in the header ({}), skipping this message: {}. Error: {}",
+                        error!(
+                            "KafkaConsumer.receive_message(): Unknown header value messageType='{}', skipping this message: {}. Error: {}",
                             raw,
                             received.offset(),
                             parse_error

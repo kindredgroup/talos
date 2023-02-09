@@ -1,3 +1,4 @@
+use log::info;
 use rdkafka::config::RDKafkaLogLevel;
 use std::sync::Arc;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType};
@@ -7,6 +8,9 @@ use uuid::Uuid;
 ///
 /// The sample usage of talos agent library
 ///
+
+const BATCH_SIZE: i32 = 10;
+const IS_ASYNC: bool = true;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
@@ -50,11 +54,10 @@ fn make_agent() -> Box<TalosAgentType> {
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 }
 
-const BATCH_SIZE: i32 = 10;
-const IS_ASYNC: bool = true;
-
 #[tokio::main]
 async fn main() -> Result<(), String> {
+    env_logger::init();
+
     if IS_ASYNC {
         certify_async(BATCH_SIZE + 1).await
     } else {
@@ -67,7 +70,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     for _ in 1..batch_size {
         let request = make_candidate(Uuid::new_v4().to_string());
         let rsp = agent.certify(request).await.unwrap();
-        println!("Transaction has been certified. Details: {:?}", rsp);
+        info!("Transaction has been certified. Details: {:?}", rsp);
     }
 
     Ok(())
@@ -88,7 +91,7 @@ async fn certify_async(batch_size: i32) -> Result<(), String> {
 
     for task in tasks {
         let rsp: CertificationResponse = task.await.unwrap();
-        println!("Transaction has been certified. Details: {:?}", rsp);
+        info!("Transaction has been certified. Details: {:?}", rsp);
     }
 
     Ok(())

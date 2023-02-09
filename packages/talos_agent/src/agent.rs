@@ -1,6 +1,7 @@
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, TalosAgent};
 use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, PublisherType};
 use async_trait::async_trait;
+use log::error;
 
 /// The implementation of agent.
 pub struct TalosAgentImpl {
@@ -30,13 +31,12 @@ impl TalosAgent for TalosAgentImpl {
                     continue;
                 }
                 Some(Err(e)) => {
-                    println!("certify(): error receiving: {}", e);
+                    error!("certify(): error receiving: {}", e);
                     return Err(e);
                 }
                 Some(Ok(message_received)) => {
                     if xid != message_received.xid {
                         polled_others += 1;
-                        //println!("certify(): skipping message: {}, waiting for: {}", message_received.xid, xid);
                         continue;
                     }
 
