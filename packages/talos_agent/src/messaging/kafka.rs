@@ -12,7 +12,6 @@ use std::collections::HashMap;
 use std::str;
 use std::str::Utf8Error;
 use std::time::Duration;
-use uuid::Uuid;
 
 /// The implementation of publisher which communicates with kafka brokers.
 
@@ -86,14 +85,13 @@ impl KafkaConsumer {
 
     fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer {
         let mut cfg = ClientConfig::new();
-        let id = Uuid::new_v4().to_string();
         cfg.set("bootstrap.servers", &kafka.brokers)
-            .set("group.id", format!("agent-gr-1-{id}"))
+            .set("group.id", &kafka.group_id)
             .set("enable.auto.commit", "true")
             .set("auto.offset.reset", "earliest")
             .set("socket.keepalive.enable", "true")
             .set("auto.commit.interval.ms", "500")
-            .set("fetch.wait.max.ms", "3000")
+            .set("fetch.wait.max.ms", format!("{}", kafka.fetch_wait_max_ms))
             // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
 

@@ -47,7 +47,9 @@ pub struct AgentConfig {
 #[derive(Clone)]
 pub struct KafkaConfig {
     pub brokers: String,
+    pub group_id: String,
     pub certification_topic: String,
+    pub fetch_wait_max_ms: u64,
     // The maximum time librdkafka may use to deliver a message (including retries)
     pub message_timeout_ms: u64,
     // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).

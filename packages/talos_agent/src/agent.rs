@@ -66,7 +66,10 @@ impl TalosAgentImpl {
 
                         // check if candidate was posted by this agent
                         match state.get(received_message.xid.as_str()) {
-                            None => continue,
+                            None => {
+                                debug!("receive_message(): skip xid: {}", received_message.xid);
+                                continue;
+                            }
                             Some(pending) => {
                                 let mut decision = pending.decision.lock().unwrap();
                                 *decision = Some(received_message);
@@ -116,6 +119,9 @@ impl TalosAgent for TalosAgentImpl {
             }
             debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);
             in_flight.monitor.notified().await;
+
+            let mut state = self.in_flight.lock().unwrap();
+            state.remove(request.candidate.xid.as_str());
         }
     }
 }

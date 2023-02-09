@@ -1,8 +1,9 @@
-use log::info;
+use log::{debug, info};
 use rdkafka::config::RDKafkaLogLevel;
 use std::sync::Arc;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType};
 use tokio::task::JoinHandle;
+use tokio::time;
 use uuid::Uuid;
 
 ///
@@ -21,8 +22,10 @@ fn make_configs() -> (AgentConfig, KafkaConfig) {
 
     let cfg_kafka = KafkaConfig {
         brokers: "localhost:9093".to_string(),
+        group_id: "agent-test".to_string(),
         enqueue_timeout_ms: 10,
         message_timeout_ms: 5000,
+        fetch_wait_max_ms: 1000,
         certification_topic: "dev.ksp.certification".to_string(),
         log_level: RDKafkaLogLevel::Info,
     };
@@ -54,33 +57,47 @@ fn make_agent() -> Box<TalosAgentType> {
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 }
 
+fn get_rate(count: i32, duration_ms: u128) -> i32 {
+    ((count as f32) / (duration_ms as f32 / 1000.0)) as i32
+}
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
     env_logger::init();
 
     if IS_ASYNC {
-        certify_async(BATCH_SIZE + 1).await
+        certify_async(BATCH_SIZE).await
     } else {
-        certify(BATCH_SIZE + 1).await
+        certify(BATCH_SIZE).await
     }
 }
 
 async fn certify(batch_size: i32) -> Result<(), String> {
+    let started_at = time::Instant::now();
+    info!("Certifying {} transactions", batch_size);
+
     let agent = make_agent();
-    for _ in 1..batch_size {
+    for _ in 0..batch_size {
         let request = make_candidate(Uuid::new_v4().to_string());
         let rsp = agent.certify(request).await.unwrap();
-        info!("Transaction has been certified. Details: {:?}", rsp);
+        debug!("Transaction has been certified. Details: {:?}", rsp);
     }
+
+    let finished_at = time::Instant::now();
+    let duration_ms = finished_at.duration_since(started_at).as_millis();
+    info!("Finished in {}ms / {}tps", duration_ms, get_rate(batch_size, duration_ms));
 
     Ok(())
 }
 
 async fn certify_async(batch_size: i32) -> Result<(), String> {
+    let started_at = time::Instant::now();
+    info!("Certifying {} transactions", batch_size);
+
     let mut tasks = Vec::<JoinHandle<CertificationResponse>>::new();
     let agent = Arc::new(make_agent());
 
-    for _ in 1..batch_size {
+    for _ in 0..batch_size {
         let ac = Arc::clone(&agent);
         let task = tokio::spawn(async move {
             let request = make_candidate(Uuid::new_v4().to_string());
@@ -91,8 +108,12 @@ async fn certify_async(batch_size: i32) -> Result<(), String> {
 
     for task in tasks {
         let rsp: CertificationResponse = task.await.unwrap();
-        info!("Transaction has been certified. Details: {:?}", rsp);
+        debug!("Transaction has been certified. Details: {:?}", rsp);
     }
+
+    let finished_at = time::Instant::now();
+    let duration_ms = finished_at.duration_since(started_at).as_millis();
+    info!("Finished in {}ms / {}tps", duration_ms, get_rate(batch_size, duration_ms));
 
     Ok(())
 }
