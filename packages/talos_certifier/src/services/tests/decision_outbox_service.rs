@@ -4,12 +4,16 @@ use std::{
     time::Duration,
 };
 
-use async_trait::async_trait;
-use talos_certifier::{
+use crate::{
     errors::{SystemServiceError, SystemServiceErrorKind},
-    model::decision_message::{Decision, DecisionMessage},
-    ports::{common::SharedPortTraits, decision_store::DecisionStore, errors::DecisionStoreError, message::MessagePublisher},
+    model::{Decision, DecisionMessage},
+    ports::{
+        common::SharedPortTraits,
+        errors::{DecisionStoreError, DecisionStoreErrorKind},
+        DecisionStore, MessagePublisher,
+    },
 };
+use async_trait::async_trait;
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep_until, Instant},
@@ -224,7 +228,7 @@ impl DecisionStore for MockDecisionStoreWithError {
 
     async fn insert_decision(&self, _key: String, _decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         Err(DecisionStoreError {
-            kind: talos_core::ports::errors::DecisionStoreErrorKind::ParseError,
+            kind: DecisionStoreErrorKind::ParseError,
             data: None,
             reason: "Unhandle parse error".to_string(),
         })

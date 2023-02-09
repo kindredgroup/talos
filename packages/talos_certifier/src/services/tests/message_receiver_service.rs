@@ -1,16 +1,15 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
-use talos_certifier::{
-    model::candidate_message::CandidateMessage,
-    ports::{common::SharedPortTraits, message::MessageReciever},
-    ChannelMessage,
-};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
     core::{System, SystemService},
+    errors::SystemServiceError,
+    model::CandidateMessage,
+    ports::{common::SharedPortTraits, MessageReciever},
     services::MessageReceiverService,
+    ChannelMessage,
 };
 
 struct MockReciever {
@@ -22,7 +21,7 @@ struct MockReciever {
 impl MessageReciever for MockReciever {
     type Message = ChannelMessage;
 
-    async fn consume_message(&mut self) -> Result<Option<Self::Message>, talos_core::errors::SystemServiceError> {
+    async fn consume_message(&mut self) -> Result<Option<Self::Message>, SystemServiceError> {
         let msg = self.consumer.recv().await.unwrap();
 
         let vers = match &msg {
@@ -35,11 +34,11 @@ impl MessageReciever for MockReciever {
         Ok(Some(msg))
     }
 
-    async fn subscribe(&self) -> Result<(), talos_core::errors::SystemServiceError> {
+    async fn subscribe(&self) -> Result<(), SystemServiceError> {
         Ok(())
     }
 
-    async fn commit(&self, _vers: u64) -> Result<(), talos_core::errors::SystemServiceError> {
+    async fn commit(&self, _vers: u64) -> Result<(), SystemServiceError> {
         Ok(())
     }
 
