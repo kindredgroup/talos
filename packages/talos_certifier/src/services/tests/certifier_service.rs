@@ -1,10 +1,9 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
-use talos_certifier::{
-    errors::SystemServiceErrorKind,
+use crate::{
+    errors::{SystemErrorType, SystemServiceErrorKind},
     model::{
-        candidate_message::CandidateMessage,
-        decision_message::{Decision, DecisionMessage},
+        CandidateMessage, {Decision, DecisionMessage},
     },
     ChannelMessage, SystemMessage,
 };
@@ -17,7 +16,7 @@ use crate::{
 
 async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>, candidate_message: CandidateMessage) {
     tokio::spawn(async move {
-        message_channel_tx.send(talos_core::ChannelMessage::Candidate(candidate_message)).await.unwrap();
+        message_channel_tx.send(ChannelMessage::Candidate(candidate_message)).await.unwrap();
     });
 }
 
@@ -145,7 +144,7 @@ async fn test_error_in_processing_candidate_message_certifying() {
     assert!(result.is_err());
 
     if let Err(error) = result {
-        assert_eq!(error.kind, SystemServiceErrorKind::SystemError(talos_core::errors::SystemErrorType::Channel));
+        assert_eq!(error.kind, SystemServiceErrorKind::SystemError(SystemErrorType::Channel));
     }
 }
 
@@ -193,10 +192,7 @@ async fn test_certification_process_decision() {
 
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn(async move {
-            message_channel_tx
-                .send(talos_core::ChannelMessage::Decision(decision.version, decision))
-                .await
-                .unwrap();
+            message_channel_tx.send(ChannelMessage::Decision(decision.version, decision)).await.unwrap();
         });
     };
 
@@ -250,7 +246,7 @@ async fn test_certification_process_decision_incorrect_version() {
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn(async move {
             message_channel_tx
-                .send(talos_core::ChannelMessage::Decision(12, DecisionMessage { version: 10, ..decision }))
+                .send(ChannelMessage::Decision(12, DecisionMessage { version: 10, ..decision }))
                 .await
                 .unwrap();
         });
