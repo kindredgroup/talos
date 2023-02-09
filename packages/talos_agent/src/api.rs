@@ -99,17 +99,21 @@ impl TalosAgentBuilder {
         self
     }
 
-    pub fn build_sc(&self) -> Result<Box<TalosAgentType>, String> {
+    pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
         let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
                 let kafka_publisher = KafkaPublisher::new(config);
                 Box::new(kafka_publisher)
             }
-            _ => Box::new(MockPublisher),
+            _ => Box::new(MockPublisher {}),
         };
 
         let agent = TalosAgentImpl::new(self.config.clone(), self.kafka_config.clone(), publisher);
+        agent
+            .start(&self.integration_type)
+            .unwrap_or_else(|e| panic!("{}", format!("Unable to start agent {}", e)));
+
         Ok(Box::new(agent))
     }
 }

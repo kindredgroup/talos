@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::Notify;
 
-use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
+use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
 use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMessage, PublisherType};
 use crate::messaging::kafka::KafkaConsumer;
+use crate::messaging::mock::MockConsumer;
 
 ///
 /// Agent implementation which uses single consumer task. Once decision is received, it will lookup for
@@ -34,30 +35,38 @@ impl TalosAgentImpl {
         //      The 'kafka_config' is needed to create a consumer from within task. Given that consumer is trait,
         //      the outside builder should be creating Kafka or Mock consumer. Maybe it is better if task itself is
         //      passed created by builder, as I am not yet sure how to move consumer into the task.
-        let agent = TalosAgentImpl {
+        TalosAgentImpl {
             config,
             kafka_config,
             publisher,
             in_flight: Arc::new(Mutex::new(HashMap::new())),
-        };
+        }
+    }
 
-        agent.start().unwrap();
-        agent
+    fn create_kafka_consumer(config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
+        let kc = KafkaConsumer::new(config);
+        match kc.subscribe() {
+            Ok(()) => Ok(Box::new(kc)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
+        Ok(Box::new(MockConsumer {}))
     }
 
     /// Starts listener task which reads Talos decisions from the topic
-    fn start(&self) -> Result<(), String> {
+    pub fn start(&self, int_type: &TalosIntegrationType) -> Result<(), String> {
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let in_flight = Arc::clone(&self.in_flight);
 
+        let it = int_type.clone();
         tokio::spawn(async move {
-            let kc = KafkaConsumer::new(&config);
-            let rc: Result<Box<ConsumerType>, String> = match kc.subscribe() {
-                Ok(()) => Ok(Box::new(kc)),
-                Err(e) => Err(e),
-            };
-
-            let consumer: Box<ConsumerType> = rc.unwrap();
+            let consumer: Box<ConsumerType> = match it {
+                TalosIntegrationType::Kafka => Self::create_kafka_consumer(&config),
+                TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
+            }
+            .unwrap();
 
             loop {
                 match consumer.receive_message().await {

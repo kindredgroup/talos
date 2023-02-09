@@ -53,12 +53,12 @@ fn make_agent() -> Box<TalosAgentType> {
 
     TalosAgentBuilder::new(cfg_agent)
         .with_kafka(cfg_kafka)
-        .build_sc()
+        .build()
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 }
 
-fn get_rate(count: i32, duration_ms: u128) -> i32 {
-    ((count as f32) / (duration_ms as f32 / 1000.0)) as i32
+fn get_rate(count: i32, duration_ms: u128) -> u32 {
+    ((count as f32) / (duration_ms as f32) * 1000.0) as u32
 }
 
 #[tokio::main]
