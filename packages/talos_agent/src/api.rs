@@ -1,9 +1,8 @@
-use crate::agent::TalosAgentImpl;
 use crate::agent_sc::TalosAgentSingleConsumerImpl;
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
-use crate::messaging::api::{ConsumerType, PublisherType};
-use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
-use crate::messaging::mock::{MockConsumer, MockPublisher};
+use crate::messaging::api::PublisherType;
+use crate::messaging::kafka::KafkaPublisher;
+use crate::messaging::mock::MockPublisher;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
 
@@ -96,43 +95,6 @@ impl TalosAgentBuilder {
         self.kafka_config = Some(config);
         self.integration_type = Kafka;
         self
-    }
-
-    /// Build an instance of agent.
-    pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
-        let publisher: Box<PublisherType> = match self.integration_type {
-            Kafka => {
-                let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-                let kafka_publisher = KafkaPublisher::new(config);
-                Box::new(kafka_publisher)
-            }
-            _ => Box::new(MockPublisher),
-        };
-
-        let subscribed_consumer: Result<Box<ConsumerType>, String> = match self.integration_type {
-            Kafka => {
-                let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-                let kafka_consumer = KafkaConsumer::new(config);
-
-                match kafka_consumer.subscribe() {
-                    Ok(_) => Ok(Box::new(kafka_consumer)),
-                    Err(e) => Err(e),
-                }
-            }
-            _ => Ok(Box::new(MockConsumer)),
-        };
-
-        match subscribed_consumer {
-            Ok(consumer) => {
-                let agent = TalosAgentImpl {
-                    config: self.config.clone(),
-                    publisher,
-                    consumer,
-                };
-                Ok(Box::new(agent))
-            }
-            Err(e) => Err(e),
-        }
     }
 
     pub fn build_sc(&self) -> Result<Box<TalosAgentType>, String> {
