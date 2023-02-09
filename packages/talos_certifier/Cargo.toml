@@ -36,3 +36,8 @@ logger = { path = "../logger" }
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = "0.4"
+
+[dev-dependencies.cargo-husky]
+version = "1"
+default-features = false  # Disable features which are enabled by default
+features = ["user-hooks"]
