@@ -1,3 +1,3 @@
-pub mod agent_sc;
+pub mod agent;
 pub mod api;
 mod messaging;

@@ -1,4 +1,4 @@
-use crate::agent_sc::TalosAgentSingleConsumerImpl;
+use crate::agent::TalosAgentImpl;
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
 use crate::messaging::api::PublisherType;
 use crate::messaging::kafka::KafkaPublisher;
@@ -107,7 +107,7 @@ impl TalosAgentBuilder {
             _ => Box::new(MockPublisher),
         };
 
-        let agent = TalosAgentSingleConsumerImpl::new(self.config.clone(), self.kafka_config.clone(), publisher);
+        let agent = TalosAgentImpl::new(self.config.clone(), self.kafka_config.clone(), publisher);
         Ok(Box::new(agent))
     }
 }

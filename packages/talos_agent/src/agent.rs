@@ -12,7 +12,7 @@ use crate::messaging::kafka::KafkaConsumer;
 /// Agent implementation which uses single consumer task. Once decision is received, it will lookup for
 /// pending in-flight transaction request by xid and notify it.
 ///
-pub struct TalosAgentSingleConsumerImpl {
+pub struct TalosAgentImpl {
     pub config: AgentConfig,
     pub kafka_config: Option<KafkaConfig>,
     pub publisher: Box<PublisherType>,
@@ -27,14 +27,14 @@ pub struct InFlight {
     pub monitor: Notify,
 }
 
-impl TalosAgentSingleConsumerImpl {
+impl TalosAgentImpl {
     /// Makes an instance of agent which is connected to kafka broker and already listening for incoming messages
     pub fn new(config: AgentConfig, kafka_config: Option<KafkaConfig>, publisher: Box<PublisherType>) -> Self {
         // todo:
         //      The 'kafka_config' is needed to create a consumer from within task. Given that consumer is trait,
         //      the outside builder should be creating Kafka or Mock consumer. Maybe it is better if task itself is
         //      passed created by builder, as I am not yet sure how to move consumer into the task.
-        let agent = TalosAgentSingleConsumerImpl {
+        let agent = TalosAgentImpl {
             config,
             kafka_config,
             publisher,
@@ -84,7 +84,7 @@ impl TalosAgentSingleConsumerImpl {
 }
 
 #[async_trait]
-impl TalosAgent for TalosAgentSingleConsumerImpl {
+impl TalosAgent for TalosAgentImpl {
     /// Certifies transaction represented by given request object. Caller of this method should '.await' for
     /// the response.
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String> {
