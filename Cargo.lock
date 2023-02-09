@@ -1658,6 +1658,7 @@ version = "0.0.1"
 dependencies = [
  "ahash",
  "async-trait",
+ "cargo-husky",
  "criterion",
  "env_logger",
  "futures-util",

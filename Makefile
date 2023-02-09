@@ -103,7 +103,7 @@ test.unit:
 ## test.unit.coverage: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
 test.unit.coverage:
 	$(call pp,rust unit tests...)
-	sh bin/coverage-report.sh
+	sh scripts/coverage-report.sh
 # PHONY ###########################################################################################
 
 # To force rebuild of not-file-related targets, make the targets "phony".
