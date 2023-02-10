@@ -36,17 +36,17 @@ dev.init: install
 ## dev.kafka_init: 🥁 Init kafka topic
 dev.kafka_init:
 	$(call pp,creating kafka topic...)
-	cargo run --package talos_certifier_kafka_pg --bin kafka_create_topic
+	cargo run --example kafka_create_topic
 
 ## pg.create: 🥁 Create database
 pg.create:
 	$(call pp,creating database...)
-	cargo run --package talos_certifier_kafka_pg --bin pg_create_database
+	cargo run --example pg_create_database
 
 ## pg.migrate: 🥁 Run migrations on database
 pg.migrate:
 	$(call pp,running migrations on database...)
-	cargo run --package talos_certifier_kafka_pg --bin pg_migrations
+	cargo run --example pg_migrations
 
 # TEST / DEPLOY ###################################################################################
 
@@ -69,21 +69,17 @@ build:
 ## dev.run: 🧪 Runs rust app in watch mode
 dev.run:
 	$(call pp,run app...)
-	cargo  watch -q -c -x 'run --bin talos_certifier_kafka_pg'
+	cargo  watch -q -c -x 'run --example certifier_kafka_pg'
 ## run: 🧪 Runs rust app
 run:
 	$(call pp,run app...)
-	cargo run --bin talos_certifier_kafka_pg
+	cargo run --example certifier_kafka_pg
 
 ## run: 🧪 Runs rust app in release mode
 run.release:
 	$(call pp,run app...)
-	cargo run -r --bin talos_certifier_kafka_pg
+	cargo run -r --example certifier_kafka_pg
 
-## run: 🧪 Runs test app
-run.test.app:
-	$(call pp,run app...)
-	cargo run --bin test_config
 ## lint: 🧹 Checks for lint failures on rust
 lint:
 	$(call pp,lint rust...)

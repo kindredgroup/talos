@@ -1,5 +1,4 @@
 use log::{error, info};
-use talos_certifier::errors::SystemServiceError;
 
 use talos_certifier_adapters::{certifier_with_kafka_pg, TalosCertifierChannelBuffers};
 use tokio::signal;
@@ -7,7 +6,7 @@ use tokio::signal;
 use logger::logs;
 
 #[tokio::main]
-async fn main() -> Result<(), SystemServiceError> {
+async fn main() -> Result<(), impl std::error::Error> {
     logs::init();
 
     info!("Talos certifier starting...");

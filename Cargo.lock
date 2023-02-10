@@ -145,6 +145,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f73505338f7d905b19d18738976aae232eb46b8efc15554ffc56deb5d9ebe4"
 
 [[package]]
+name = "certifier_kafka_pg"
+version = "0.0.1"
+dependencies = [
+ "cargo-husky",
+ "env_logger",
+ "log",
+ "logger",
+ "refinery",
+ "talos_certifier_adapters",
+ "tokio",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1663,20 +1676,6 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "uuid",
-]
-
-[[package]]
-name = "talos_certifier_kafka_pg"
-version = "0.0.1"
-dependencies = [
- "cargo-husky",
- "env_logger",
- "log",
- "logger",
- "refinery",
- "talos_certifier",
- "talos_certifier_adapters",
- "tokio",
 ]
 
 [[package]]
