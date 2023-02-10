@@ -32,13 +32,12 @@ pub struct CertificationRequest {
 pub struct CertificationResponse {
     pub xid: String,
     pub is_accepted: bool,
-    pub polled_total: i32,
-    pub polled_empty: i32,
-    pub polled_others: i32,
 }
 
 #[derive(Clone)]
 pub struct AgentConfig {
+    // must be unique for each instance
+    pub agent_id: String,
     pub agent_name: String,
     pub cohort_name: String,
 }
@@ -47,6 +46,7 @@ pub struct AgentConfig {
 #[derive(Clone)]
 pub struct KafkaConfig {
     pub brokers: String,
+    // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
     pub group_id: String,
     pub certification_topic: String,
     pub fetch_wait_max_ms: u64,
@@ -103,7 +103,7 @@ impl TalosAgentBuilder {
         let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-                let kafka_publisher = KafkaPublisher::new(config);
+                let kafka_publisher = KafkaPublisher::new(self.config.agent_id.clone(), config);
                 Box::new(kafka_publisher)
             }
             _ => Box::new(MockPublisher {}),

@@ -1,5 +1,5 @@
 use crate::api::KafkaConfig;
-use crate::messaging::api::{CandidateMessage, DecisionMessage, PublishResponse, Publisher, TalosMessageType};
+use crate::messaging::api::{CandidateMessage, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE};
 use async_trait::async_trait;
 use log::debug;
 use log::error;
@@ -16,13 +16,15 @@ use std::time::Duration;
 /// The implementation of publisher which communicates with kafka brokers.
 
 pub struct KafkaPublisher {
+    agent_id: String,
     config: KafkaConfig,
     producer: FutureProducer,
 }
 
 impl KafkaPublisher {
-    pub fn new(config: &KafkaConfig) -> KafkaPublisher {
+    pub fn new(agent_id: String, config: &KafkaConfig) -> KafkaPublisher {
         Self {
+            agent_id,
             config: config.clone(),
             producer: Self::create_producer(config),
         }
@@ -45,15 +47,19 @@ impl Publisher for KafkaPublisher {
 
         let type_value = TalosMessageType::Candidate.to_string();
         let h_type = Header {
-            key: "messageType",
+            key: HEADER_MESSAGE_TYPE,
             value: Some(type_value.as_str()),
+        };
+        let h_agent_id = Header {
+            key: HEADER_AGENT_ID,
+            value: Some(self.agent_id.as_str()),
         };
         let payload = serde_json::to_string(&message).unwrap();
 
         let data = FutureRecord::to(self.config.certification_topic.as_str())
             .key(&key)
             .payload(&payload)
-            .headers(OwnedHeaders::new().insert(h_type));
+            .headers(OwnedHeaders::new().insert(h_type).insert(h_agent_id));
 
         let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timeout_ms));
         return match self.producer.send(data, timeout).await {
@@ -71,13 +77,15 @@ impl Publisher for KafkaPublisher {
 
 /// The implementation of consumer which receives from kafka.
 pub struct KafkaConsumer {
+    agent_id: String,
     config: KafkaConfig,
     consumer: StreamConsumer,
 }
 
 impl KafkaConsumer {
-    pub fn new(config: &KafkaConfig) -> Self {
+    pub fn new(agent_id: String, config: &KafkaConfig) -> Self {
         KafkaConsumer {
+            agent_id,
             config: config.clone(),
             consumer: Self::create_consumer(config),
         }
@@ -91,7 +99,7 @@ impl KafkaConsumer {
             .set("auto.offset.reset", "earliest")
             .set("socket.keepalive.enable", "true")
             .set("auto.commit.interval.ms", "500")
-            .set("fetch.wait.max.ms", format!("{}", kafka.fetch_wait_max_ms))
+            .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
             // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
 
@@ -167,8 +175,20 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                     _ => HashMap::<String, String>::new(),
                 };
 
+                // Extract agent id from headers
+                // todo: See KDT-26
+                let is_id_matching = !self.agent_id.as_str().is_empty();
+                // let is_id_matching = match headers.get(HEADER_AGENT_ID).and_then(|received_agent_id| {
+                //    Some(received_agent_id) => received_agent_id == self.agent_id.as_str()
+                //    None => false
+                // });
+
+                if !is_id_matching {
+                    return None;
+                }
+
                 // Extract message type from headers
-                let parsed_type = headers.get("messageType").and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
+                let parsed_type = headers.get(HEADER_MESSAGE_TYPE).and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
                     Ok(parsed_type) => Some(parsed_type),
                     Err(parse_error) => {
                         error!(

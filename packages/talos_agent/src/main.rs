@@ -15,14 +15,16 @@ const IS_ASYNC: bool = true;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
+    let agent_id = format!("agent-for-{}-{}", cohort, Uuid::new_v4());
     let cfg_agent = AgentConfig {
+        agent_id: agent_id.clone(),
         agent_name: format!("agent-for-{}", cohort),
         cohort_name: cohort.to_string(),
     };
 
     let cfg_kafka = KafkaConfig {
         brokers: "localhost:9093".to_string(),
-        group_id: "agent-test".to_string(),
+        group_id: agent_id,
         enqueue_timeout_ms: 10,
         message_timeout_ms: 5000,
         fetch_wait_max_ms: 1000,

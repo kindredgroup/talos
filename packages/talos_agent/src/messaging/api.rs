@@ -3,6 +3,9 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
+pub static HEADER_MESSAGE_TYPE: &str = "messageType";
+pub static HEADER_AGENT_ID: &str = "agentId";
+
 // This should live in the external shared schema exported by Talos
 #[derive(Debug, EnumString, Display)]
 pub enum TalosMessageType {

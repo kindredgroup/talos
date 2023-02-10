@@ -43,8 +43,8 @@ impl TalosAgentImpl {
         }
     }
 
-    fn create_kafka_consumer(config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        let kc = KafkaConsumer::new(config);
+    fn create_kafka_consumer(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
+        let kc = KafkaConsumer::new(agent_id, config);
         match kc.subscribe() {
             Ok(()) => Ok(Box::new(kc)),
             Err(e) => Err(e),
@@ -57,13 +57,14 @@ impl TalosAgentImpl {
 
     /// Starts listener task which reads Talos decisions from the topic
     pub fn start(&self, int_type: &TalosIntegrationType) -> Result<(), String> {
+        let agent_id = self.config.agent_id.clone();
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let in_flight = Arc::clone(&self.in_flight);
 
         let it = int_type.clone();
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it {
-                TalosIntegrationType::Kafka => Self::create_kafka_consumer(&config),
+                TalosIntegrationType::Kafka => Self::create_kafka_consumer(agent_id, &config),
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
             }
             .unwrap();
@@ -121,9 +122,6 @@ impl TalosAgent for TalosAgentImpl {
                 return Ok(CertificationResponse {
                     xid: answer.xid.clone(),
                     is_accepted: answer.decision == Decision::Committed,
-                    polled_total: 0,
-                    polled_empty: 0,
-                    polled_others: 0,
                 });
             }
             debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);
