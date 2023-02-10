@@ -5,6 +5,7 @@ use crate::messaging::kafka::KafkaPublisher;
 use crate::messaging::mock::MockPublisher;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
+use tokio::time::Instant;
 
 ///
 /// Data structures and interfaces exposed to agent client
@@ -25,6 +26,7 @@ pub struct CandidateData {
 pub struct CertificationRequest {
     pub message_key: String,
     pub candidate: CandidateData,
+    pub created_at: Instant,
 }
 
 /// The data output from agent to client

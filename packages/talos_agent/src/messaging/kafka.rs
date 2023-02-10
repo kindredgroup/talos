@@ -34,6 +34,7 @@ impl KafkaPublisher {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
+            .set("queue.buffering.max.messages", "1000000")
             .set_log_level(kafka.log_level);
 
         cfg.create().expect("Unable to create kafka producer")
