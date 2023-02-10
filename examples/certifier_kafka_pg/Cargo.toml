@@ -1,12 +1,12 @@
 [package]
 # [package]
-name = "talos_certifier_kafka_pg"
+name = "certifier_kafka_pg"
 version = "0.0.1"
 edition = "2021"
 keywords = ["talos"]
 description = "Talos Certifier using Kafka and Pg adapters"
 
-[dependencies]
+[dev-dependencies]
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
@@ -17,10 +17,8 @@ tokio = { workspace = true }
 refinery = { version = "0.8.7", features = ["tokio-postgres"] }
 
 # internal crates
-logger = { path = "../logger" }
-talos_certifier = { path = "../talos_certifier" }
-talos_certifier_adapters = { path = "../talos_certifier_adapters" }
-
+logger = { path = "../../packages/logger" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
 
 [dev-dependencies.cargo-husky]
 version = "1"
