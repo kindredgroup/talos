@@ -96,7 +96,7 @@ test.unit:
 	$(call pp,rust unit tests...)
 	cargo test
 
-## test.unit.coverage.rust: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
+## test.unit.coverage: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
 test.unit.coverage:
 	$(call pp,rust unit tests...)
 	sh bin/coverage-report.sh
