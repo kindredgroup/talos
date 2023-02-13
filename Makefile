@@ -65,6 +65,10 @@ build:
 	$(call pp,build rust...)
 	cargo build
 
+## dev.run-agent: 🧪 Runs agent
+dev.run-agent:
+	$(call pp,run-agent app...)
+	cargo run --bin talos_agent
 
 ## dev.run: 🧪 Runs rust app in watch mode
 dev.run:
@@ -92,7 +96,7 @@ test.unit:
 	$(call pp,rust unit tests...)
 	cargo test
 
-## test.unit.coverage.rust: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
+## test.unit.coverage: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
 test.unit.coverage:
 	$(call pp,rust unit tests...)
 	sh bin/coverage-report.sh
