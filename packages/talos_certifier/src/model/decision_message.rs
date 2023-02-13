@@ -81,7 +81,7 @@ pub struct DecisionMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub conflicts: Option<Vec<ConflictMessage>>,
+    pub conflicts: Option<Vec<u64>>,
     //TODO:- Add them in next iteration
     // pub time: String,
     // pub certifier: String,
@@ -89,22 +89,27 @@ pub struct DecisionMessage {
 }
 
 impl DecisionMessage {
-    pub fn new(candidate_message: &CandidateMessage, conflict_candidate: Option<CandidateMessage>, outcome: Outcome, suffix_start: u64) -> Self {
+    pub fn new(candidate_message: &CandidateMessage, outcome: Outcome, suffix_start: u64) -> Self {
         let CandidateMessage {
             xid, agent, cohort, version, ..
         } = candidate_message;
 
+        // let (decision, safepoint, conflicts) = match outcome {
+        //     Outcome::Commited { discord: _, safepoint } => (Decision::Committed, Some(safepoint), None as Option<Vec<ConflictMessage>>),
+        //     Outcome::Aborted { version: _, discord: _ } => (
+        //         Decision::Aborted,
+        //         None,
+        //         if conflict_candidate.is_none() {
+        //             None
+        //         } else {
+        //             Some(vec![conflict_candidate.unwrap().into()])
+        //         },
+        //     ),
+        // };
+
         let (decision, safepoint, conflicts) = match outcome {
-            Outcome::Commited { discord: _, safepoint } => (Decision::Committed, Some(safepoint), None as Option<Vec<ConflictMessage>>),
-            Outcome::Aborted { version: _, discord: _ } => (
-                Decision::Aborted,
-                None,
-                if conflict_candidate.is_none() {
-                    None
-                } else {
-                    Some(vec![conflict_candidate.unwrap().into()])
-                },
-            ),
+            Outcome::Commited { discord: _, safepoint } => (Decision::Committed, Some(safepoint), None),
+            Outcome::Aborted { version, discord: _ } => (Decision::Aborted, None, if version.is_some() { Some(vec![version.unwrap()]) } else { None }),
         };
 
         Self {

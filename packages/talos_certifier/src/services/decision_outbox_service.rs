@@ -72,6 +72,8 @@ impl DecisionOutboxService {
                 .publish_message(xid.as_str(), &decision_str, Some(decision_publish_header.clone()))
                 .await
             {
+                error!("Publish decision error for version={} \n error={}", decision.version, publish_error);
+
                 outbox_tx
                     .send(DecisionOutboxChannelMessage::OutboundServiceError(SystemServiceError {
                         kind: SystemServiceErrorKind::MessagePublishError,

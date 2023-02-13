@@ -2,7 +2,7 @@ use ahash::AHashMap;
 
 use super::CertifierCandidate;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Discord {
     Permissive,
     Assertive,
@@ -14,7 +14,7 @@ pub enum CertifyOutcome {
     Aborted { version: Option<u64>, discord: Discord },
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Commited { discord: Discord, safepoint: u64 },
     Aborted { version: Option<u64>, discord: Discord },

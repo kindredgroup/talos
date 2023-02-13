@@ -121,6 +121,7 @@ impl SystemService for MessageReceiverService {
 
             let (prev_commit_vers, lastest_commit_vers) = self.commit_vers;
             if prev_commit_vers < lastest_commit_vers {
+                info!("Commiting offset {offset}");
                 self.receiver.commit(self.commit_vers.1).await?;
                 self.commit_vers.0 = lastest_commit_vers;
             }
