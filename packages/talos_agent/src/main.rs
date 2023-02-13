@@ -3,6 +3,7 @@ extern crate core;
 use log::{debug, info};
 use rdkafka::config::RDKafkaLogLevel;
 use std::cmp;
+use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType};
 use tokio::task::JoinHandle;
@@ -51,7 +52,6 @@ fn make_candidate(xid: String) -> CertificationRequest {
     CertificationRequest {
         message_key: "12345".to_string(),
         candidate: tx_data,
-        created_at: Instant::now(),
     }
 }
 
@@ -107,8 +107,8 @@ async fn certify_async(batch_size: i32) -> Result<(), String> {
     for _ in 0..batch_size {
         let ac = Arc::clone(&agent);
         let task = tokio::spawn(async move {
+            let created_at = Instant::now();
             let request = make_candidate(Uuid::new_v4().to_string());
-            let created_at = request.created_at;
             let resp = ac.certify(request).await.unwrap();
             (resp, created_at, Instant::now())
         });
@@ -131,63 +131,68 @@ async fn certify_async(batch_size: i32) -> Result<(), String> {
         debug!("Transaction has been certified. Details: {:?}", rsp);
     }
 
-    metrics.sort();
-    let p90i = cmp::min((((metrics.len() * 90) as f32 / 100.0).ceil()) as usize, metrics.len() - 1);
-    let p95i = cmp::min((((metrics.len() * 95) as f32 / 100.0).ceil()) as usize, metrics.len() - 1);
-    let p75i = cmp::min((((metrics.len() * 75) as f32 / 100.0).ceil()) as usize, metrics.len() - 1);
-
-    let p90 = metrics[p90i];
-    let p95 = metrics[p95i];
-    let p75 = metrics[p75i];
-    let mut p90h: u128 = 0;
-    let mut p75h: u128 = 0;
-    let mut p95h: u128 = 0;
-    let mut p95done = false;
-    let mut p90done = false;
-    let mut p75done = false;
-
-    for (i, duration) in metrics.iter().enumerate().skip(p75i + 1) {
-        if !p75done && *duration != p75 {
-            p75done = true;
-            p75h = *duration;
-        }
-        if !p90done && i > p90i && *duration != p90 {
-            p90done = true;
-            p90h = *duration;
-        }
-        if !p95done && i > p95i && *duration != p95 {
-            p95done = true;
-            p95h = *duration;
-        }
-    }
-
-    if !p75done {
-        p75h = metrics[metrics.len() - 1];
-    }
-    if !p90done {
-        p90h = metrics[metrics.len() - 1];
-    }
-    if !p95done {
-        p95h = metrics[metrics.len() - 1];
-    }
-
     let finished_at = time::Instant::now();
     let duration_ms = finished_at.duration_since(started_at).as_millis();
+
+    metrics.sort();
+
+    let p50 = Percentile::compute(&metrics, 50, "ms");
+    let p75 = Percentile::compute(&metrics, 75, "ms");
+    let p90 = Percentile::compute(&metrics, 90, "ms");
+    let p95 = Percentile::compute(&metrics, 95, "ms");
+    let p99 = Percentile::compute(&metrics, 99, "ms");
+
     info!(
-        "Finished in {}ms / {}tps. min: {}ms, max: {}ms, p75: {}-{}ms, p90: {}-{}ms, p95: {}-{}ms",
+        "Test duration: {} ms\nThroughput: {} tps\nMin: {} ms\nMax: {} ms\nPercentiles:\n\t{}\n\t{}\n\t{}\n\t{}\n\t{}",
         duration_ms,
         get_rate(batch_size, duration_ms),
         min,
         max,
+        p50,
         p75,
-        p75h,
         p90,
-        p90h,
         p95,
-        p95h
+        p99,
     );
 
     // info!("{:?}", metrics);
 
     Ok(())
+}
+
+struct Percentile {
+    percentage: u32,
+    value: u128,
+    value_high: u128,
+    unit: String,
+}
+
+impl Percentile {
+    fn compute(data_set: &Vec<u128>, percentage: u32, unit: &str) -> Percentile {
+        let index = cmp::min((((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize, data_set.len() - 1);
+        let value = data_set[index];
+        let mut value_high = data_set[data_set.len() - 1];
+        for (_i, v) in data_set.iter().enumerate().skip(index + 1) {
+            if *v != value {
+                value_high = *v;
+                break;
+            }
+        }
+
+        Percentile {
+            percentage,
+            unit: unit.to_string(),
+            value,
+            value_high,
+        }
+    }
+}
+impl Display for Percentile {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.value_high == self.value {
+            write!(f, "p{}: {} {}", self.percentage, self.value, self.unit)
+        } else {
+            write!(f, "p{}: {} (+{}) {}", self.percentage, self.value, self.value_high - self.value, self.unit)
+        }
+    }
 }
