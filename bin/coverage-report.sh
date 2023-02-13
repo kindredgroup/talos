@@ -20,16 +20,16 @@ cargo +nightly build
 
 echo "Testing $app_name"
 export LLVM_PROFILE_FILE="${app_name}-%p-%m.profraw"
-cargo +nightly test --tests --workspace --exclude ${excludes} # don't run doctests
+cargo +nightly test --tests # don't run doctests
 
 rm ccov.zip 2> /dev/null || true
-zip -0 ccov.zip `find . \( -name "*.gc*" \) -print`
+zip -0 ccov.zip `find . \( -name "*.gc*" \) -print | grep -v ${excludes}`
 
 echo "Generating HTML coverage report for $app_name"
 rm -rf coverage 2> /dev/null || true
 mkdir coverage
 grcov ccov.zip --branch -s . --llvm --ignore-not-existing --ignore "/*" --excl-start "\\\$coverage:ignore-start" --excl-stop "\\\$coverage:ignore-end" --excl-line "(//!|///|$coverage:ignore|unreachable!())" -t html -o coverage
-#
+
 echo "Generating LCOV coverage report for $app_name"
 rm lcov.info 2> /dev/null || true
 grcov ccov.zip -s . --llvm  --ignore-not-existing --ignore "/*" --excl-start "\\\$coverage:ignore-start" --excl-stop "\\\$coverage:ignore-end" --excl-line "(//!|///|$coverage:ignore|unreachable!())" -t lcov -o lcov.info
