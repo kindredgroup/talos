@@ -1638,22 +1638,6 @@ dependencies = [
 name = "talos_agent"
 version = "0.0.1"
 dependencies = [
- "ahash",
- "async-trait",
- "env_logger",
- "log",
- "rdkafka",
- "serde",
- "serde_json",
- "strum",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "talos_agent"
-version = "0.0.1"
-dependencies = [
  "async-trait",
  "env_logger",
  "log",
