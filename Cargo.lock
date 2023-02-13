@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "ahash"
-version = "0.8.2"
+version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf6ccdb167abbf410dcb915cabd428929d7f6a04980b54a11f26a39f1c7f7107"
+checksum = "2c99f64d1e06488f620f932677e24bc6e2897582980441ae90a671415bd7ec2f"
 dependencies = [
  "cfg-if",
  "getrandom",
@@ -145,20 +145,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9f73505338f7d905b19d18738976aae232eb46b8efc15554ffc56deb5d9ebe4"
 
 [[package]]
-name = "certifier"
-version = "0.1.0"
+name = "certifier_kafka_pg"
+version = "0.0.1"
 dependencies = [
- "ahash",
- "async-trait",
- "criterion",
+ "cargo-husky",
  "env_logger",
  "log",
- "mockall",
- "serde",
- "serde_json",
- "thiserror",
+ "logger",
+ "refinery",
+ "talos_certifier_adapters",
  "tokio",
- "tokio-test",
 ]
 
 [[package]]
@@ -400,6 +396,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "5.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "907076dfda823b0b36d2a1bb5f90c96660a5bbcd7729e10727f07858f22c4edc"
+dependencies = [
+ "cfg-if",
+ "hashbrown",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "deadpool"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -548,10 +557,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c2141d6d6c8512188a7891b4b01590a45f6dac67afb4f255c4124dbb86d4eaa"
 
 [[package]]
-name = "futures-channel"
-version = "0.3.25"
+name = "futures"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52ba265a92256105f45b719605a571ffe2d1f0fea3807304b522c1d778f79eed"
+checksum = "13e2792b0ff0340399d58445b88fd9770e3489eff258a4cbc1523418f12abf84"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-io",
+ "futures-sink",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
+name = "futures-channel"
+version = "0.3.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e5317663a9089767a1ec00a487df42e0ca174b61b4483213ac24448e4664df5"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -559,15 +583,32 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04909a7a7e4633ae6c4a9ab280aeb86da1236243a77b694a49eacd659a4bd3ac"
+checksum = "ec90ff4d0fe1f57d600049061dc6bb68ed03c7d2fbd697274c41805dcb3f8608"
+
+[[package]]
+name = "futures-executor"
+version = "0.3.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8de0a35a6ab97ec8869e32a2473f4b1324459e14c29275d14b10cb1fd19b50e"
+dependencies = [
+ "futures-core",
+ "futures-task",
+ "futures-util",
+]
+
+[[package]]
+name = "futures-io"
+version = "0.3.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb8371b6fb2aeb2d280374607aeabfc99d95c72edfe51692e42d3d7f0d08531"
 
 [[package]]
 name = "futures-macro"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bdfb8ce053d86b91919aad980c220b1fb8401a9394410e1c289ed7e66b61835d"
+checksum = "95a73af87da33b5acf53acfebdc339fe592ecf5357ac7c0a7734ab9d8c876a70"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -576,26 +617,29 @@ dependencies = [
 
 [[package]]
 name = "futures-sink"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39c15cf1a4aa79df40f1bb462fb39676d0ad9e366c2a33b590d7c66f4f81fcf9"
+checksum = "f310820bb3e8cfd46c80db4d7fb8353e15dfff853a127158425f31e0be6c8364"
 
 [[package]]
 name = "futures-task"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ffb393ac5d9a6eaa9d3fdf37ae2776656b706e200c8e16b1bdb227f5198e6ea"
+checksum = "dcf79a1bf610b10f42aea489289c5a2c478a786509693b80cd39c44ccd936366"
 
 [[package]]
 name = "futures-util"
-version = "0.3.25"
+version = "0.3.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "197676987abd2f9cadff84926f410af1c183608d36641465df73ae8211dc65d6"
+checksum = "9c1d6de3acfef38d2be4b1f543f553131788603495be83da675e180c8d6b7bd1"
 dependencies = [
+ "futures-channel",
  "futures-core",
+ "futures-io",
  "futures-macro",
  "futures-sink",
  "futures-task",
+ "memchr",
  "pin-project-lite",
  "pin-utils",
  "slab",
@@ -1089,16 +1133,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "postgres"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "refinery",
- "tokio",
- "tokio-postgres",
-]
-
-[[package]]
 name = "postgres-protocol"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1457,6 +1491,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "serial_test"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "538c30747ae860d6fb88330addbbd3e0ddbe46d662d032855596d8a8ca260611"
+dependencies = [
+ "dashmap",
+ "futures",
+ "lazy_static",
+ "log",
+ "parking_lot",
+ "serial_test_derive",
+]
+
+[[package]]
+name = "serial_test_derive"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "079a83df15f85d89a68d64ae1238f142f172b1fa915d0d76b26a7cba1b659a69"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1556,22 +1615,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 
 [[package]]
-name = "suffix"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "criterion",
- "env_logger",
- "log",
- "mockall",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-test",
-]
-
-[[package]]
 name = "sval"
 version = "1.0.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1589,28 +1632,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "talos_adapters"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "certifier",
- "deadpool-postgres",
- "env_logger",
- "futures-util",
- "log",
- "logger",
- "mockall",
- "rdkafka",
- "serde",
- "serde_json",
- "talos_core",
- "thiserror",
- "tokio",
- "tokio-postgres",
- "uuid",
 ]
 
 [[package]]
@@ -1632,58 +1653,60 @@ dependencies = [
 name = "talos_certifier"
 version = "0.0.1"
 dependencies = [
+ "ahash",
  "async-trait",
  "cargo-husky",
+ "criterion",
+ "env_logger",
+ "futures-util",
+ "log",
+ "logger",
+ "serde",
+ "serde_json",
+ "strum",
+ "talos_suffix",
+ "thiserror",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
+name = "talos_certifier_adapters"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "deadpool-postgres",
  "env_logger",
  "futures-util",
  "log",
  "logger",
  "mockall",
  "rdkafka",
+ "refinery",
  "serde",
  "serde_json",
- "talos_adapters",
- "talos_core",
- "talos_services",
+ "serial_test",
+ "talos_certifier",
  "thiserror",
  "tokio",
+ "tokio-postgres",
+ "uuid",
 ]
 
 [[package]]
-name = "talos_core"
+name = "talos_suffix"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "certifier",
+ "criterion",
  "env_logger",
  "log",
- "logger",
+ "mockall",
  "serde",
  "serde_json",
- "strum",
- "suffix",
  "thiserror",
  "tokio",
-]
-
-[[package]]
-name = "talos_services"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "certifier",
- "env_logger",
- "futures-util",
- "log",
- "logger",
- "rdkafka",
- "serde",
- "serde_json",
- "suffix",
- "talos_adapters",
- "talos_core",
- "thiserror",
- "tokio",
+ "tokio-test",
 ]
 
 [[package]]

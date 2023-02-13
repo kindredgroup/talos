@@ -36,17 +36,17 @@ dev.init: install
 ## dev.kafka_init: 🥁 Init kafka topic
 dev.kafka_init:
 	$(call pp,creating kafka topic...)
-	cargo run --package talos_certifier --bin deploy_kafka
+	cargo run --example kafka_create_topic
 
 ## pg.create: 🥁 Create database
 pg.create:
 	$(call pp,creating database...)
-	cargo run --package postgres --bin create_database
+	cargo run --example pg_create_database
 
 ## pg.migrate: 🥁 Run migrations on database
 pg.migrate:
 	$(call pp,running migrations on database...)
-	cargo run --package postgres --bin migrations
+	cargo run --example pg_migrations
 
 # TEST / DEPLOY ###################################################################################
 
@@ -73,16 +73,16 @@ dev.run-agent:
 ## dev.run: 🧪 Runs rust app in watch mode
 dev.run:
 	$(call pp,run app...)
-	cargo  watch -q -c -x 'run --bin talos_certifier'
+	cargo  watch -q -c -x 'run --example certifier_kafka_pg'
 ## run: 🧪 Runs rust app
 run:
 	$(call pp,run app...)
-	cargo run --bin talos_certifier
+	cargo run --example certifier_kafka_pg
 
 ## run: 🧪 Runs rust app in release mode
 run.release:
 	$(call pp,run app...)
-	cargo run -r --bin talos_certifier
+	cargo run -r --example certifier_kafka_pg
 
 ## lint: 🧹 Checks for lint failures on rust
 lint:
@@ -99,7 +99,7 @@ test.unit:
 ## test.unit.coverage: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
 test.unit.coverage:
 	$(call pp,rust unit tests...)
-	sh bin/coverage-report.sh
+	sh scripts/coverage-report.sh
 # PHONY ###########################################################################################
 
 # To force rebuild of not-file-related targets, make the targets "phony".

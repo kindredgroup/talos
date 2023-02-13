@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
 
-sh bin/pre-commit-checks.sh
+sh scripts/pre-commit-checks.sh

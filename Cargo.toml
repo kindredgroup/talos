@@ -1,5 +1,9 @@
 [workspace]
-members = ["deployment/postgres", "packages/*"]
+members = [
+    "packages/*",
+    #  Example crates
+    "examples/*",
+]
 
 [workspace.dependencies]
 # Logging
