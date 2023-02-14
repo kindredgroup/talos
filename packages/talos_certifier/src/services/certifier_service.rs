@@ -14,6 +14,28 @@ use crate::{
     Certifier, ChannelMessage, SystemMessage,
 };
 
+/// Certifier service configuration
+pub struct CertifierServiceConfig {
+    /// Initial size of the suffix
+    pub suffix_size: usize,
+    /// Prune threshold in percentage.
+    /// This will be used to check if `suffix.meta.prune_vers` is above the threshold %
+    /// of suffix length.
+    pub suffix_prune_threshold: usize,
+    /// The frequency in milliseconds at which the check is done to decided whether the suffix should be pruned.
+    pub suffix_prune_frequency_ms: u64,
+}
+
+impl Default for CertifierServiceConfig {
+    fn default() -> Self {
+        Self {
+            suffix_size: 100_000,
+            suffix_prune_threshold: 30, //defaults to 30% of the suffix length.
+            suffix_prune_frequency_ms: 15_000,
+        }
+    }
+}
+
 pub struct CertifierService {
     pub suffix: Suffix<CandidateMessage>,
     pub certifier: Certifier,
@@ -21,6 +43,7 @@ pub struct CertifierService {
     pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
     pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
+    pub config: CertifierServiceConfig,
 }
 
 impl CertifierService {
@@ -29,9 +52,13 @@ impl CertifierService {
         decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
+        config: Option<CertifierServiceConfig>,
     ) -> Self {
         let certifier = Certifier::new();
-        let suffix = Suffix::new(100_000);
+
+        let config = config.unwrap_or_default();
+
+        let suffix = Suffix::new(config.suffix_size);
 
         Self {
             suffix,
@@ -40,6 +67,7 @@ impl CertifierService {
             message_channel_rx,
             decision_outbox_tx,
             commit_offset,
+            config,
         }
     }
 
@@ -55,6 +83,18 @@ impl CertifierService {
             }
             _ => None,
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn is_suffix_prune_ready(&self) -> bool {
+        let prune_index = if let Some(prune_vers) = self.suffix.meta.prune_vers {
+            self.suffix.index_from_head(prune_vers).unwrap_or(0)
+        } else {
+            0
+        };
+
+        let threshold_calculated = ((self.suffix.messages.len() as f64) * self.config.suffix_prune_threshold as f64 / 100_f64).round() as usize;
+        prune_index.ge(&threshold_calculated)
     }
 
     /// Process CandidateMessage to provide the DecisionMessage
@@ -103,8 +143,11 @@ impl CertifierService {
         // Reserve space if version is beyond the suffix capacity
         //
         // Applicable in scenarios where certifier starts from a committed version
-        if version > self.suffix.messages.capacity().try_into().unwrap() {
-            self.suffix.reserve_space_if_required(version).map_err(CertificationError::SuffixError)?;
+        let candidate_version = decision_message.version;
+        if candidate_version > self.suffix.messages.capacity().try_into().unwrap() {
+            self.suffix
+                .reserve_space_if_required(candidate_version)
+                .map_err(CertificationError::SuffixError)?;
         }
 
         self.suffix

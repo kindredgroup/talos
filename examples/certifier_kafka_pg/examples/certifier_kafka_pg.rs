@@ -11,7 +11,7 @@ async fn main() -> Result<(), impl std::error::Error> {
 
     info!("Talos certifier starting...");
 
-    let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default()).await?;
+    let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default(), None).await?;
 
     // Services thread thread spawned
     let svc_handle = tokio::spawn(async move { talos_certifier.run().await });
