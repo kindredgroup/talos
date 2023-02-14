@@ -1,4 +1,6 @@
 use crate::agent::TalosAgentImpl;
+use crate::agentv2::agent_v2::TalosAgentImplV2;
+use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
 use crate::messaging::api::PublisherType;
 use crate::messaging::kafka::KafkaPublisher;
@@ -40,6 +42,8 @@ pub struct AgentConfig {
     pub agent_id: String,
     pub agent_name: String,
     pub cohort_name: String,
+    // The size of internal buffer for candidates
+    pub buffer_size: usize,
 }
 
 /// Kafka-related configuration
@@ -113,6 +117,24 @@ impl TalosAgentBuilder {
         agent
             .start(&self.integration_type)
             .unwrap_or_else(|e| panic!("{}", format!("Unable to start agent {}", e)));
+
+        Ok(Box::new(agent))
+    }
+
+    pub async fn build_v2(&self) -> Result<Box<TalosAgentType>, String> {
+        let agent = TalosAgentImplV2::new(
+            self.config.clone(),
+            self.kafka_config.clone(),
+            &self.integration_type,
+            tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size),
+            tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size),
+        )
+        .await
+        .map_err(|e| {
+            log::error!("Unable to create agent instance: {}", e);
+            e
+        })
+        .unwrap();
 
         Ok(Box::new(agent))
     }

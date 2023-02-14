@@ -15,8 +15,7 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 100;
-const IS_ASYNC: bool = true;
+const BATCH_SIZE: i32 = 1000;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
@@ -25,6 +24,7 @@ fn make_configs() -> (AgentConfig, KafkaConfig) {
         agent_id: agent_id.clone(),
         agent_name: format!("agent-for-{}", cohort),
         cohort_name: cohort.to_string(),
+        buffer_size: 10_000,
     };
 
     let cfg_kafka = KafkaConfig {
@@ -55,12 +55,22 @@ fn make_candidate(xid: String) -> CertificationRequest {
     }
 }
 
-fn make_agent() -> Box<TalosAgentType> {
+// fn make_agent() -> Box<TalosAgentType> {
+//     let (cfg_agent, cfg_kafka) = make_configs();
+//
+//     TalosAgentBuilder::new(cfg_agent)
+//         .with_kafka(cfg_kafka)
+//         .build()
+//         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
+// }
+
+async fn make_agent() -> Box<TalosAgentType> {
     let (cfg_agent, cfg_kafka) = make_configs();
 
     TalosAgentBuilder::new(cfg_agent)
         .with_kafka(cfg_kafka)
-        .build()
+        .build_v2()
+        .await
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 }
 
@@ -71,38 +81,15 @@ fn get_rate(count: i32, duration_ms: u128) -> u32 {
 #[tokio::main]
 async fn main() -> Result<(), String> {
     env_logger::init();
-
-    if IS_ASYNC {
-        certify_async(BATCH_SIZE).await
-    } else {
-        certify(BATCH_SIZE).await
-    }
+    certify(BATCH_SIZE).await
 }
 
 async fn certify(batch_size: i32) -> Result<(), String> {
     let started_at = time::Instant::now();
     info!("Certifying {} transactions", batch_size);
 
-    let agent = make_agent();
-    for _ in 0..batch_size {
-        let request = make_candidate(Uuid::new_v4().to_string());
-        let rsp = agent.certify(request).await.unwrap();
-        debug!("Transaction has been certified. Details: {:?}", rsp);
-    }
-
-    let finished_at = time::Instant::now();
-    let duration_ms = finished_at.duration_since(started_at).as_millis();
-    info!("Finished in {}ms / {}tps", duration_ms, get_rate(batch_size, duration_ms));
-
-    Ok(())
-}
-
-async fn certify_async(batch_size: i32) -> Result<(), String> {
-    let started_at = time::Instant::now();
-    info!("Certifying {} transactions", batch_size);
-
     let mut tasks = Vec::<JoinHandle<(CertificationResponse, Instant, Instant)>>::new();
-    let agent = Arc::new(make_agent());
+    let agent = Arc::new(make_agent().await);
 
     for _ in 0..batch_size {
         let ac = Arc::clone(&agent);
