@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
@@ -45,7 +47,7 @@ impl StateManager {
         let it = self.int_type.clone();
 
         tokio::spawn(async move {
-            let mut state: HashMap<String, Sender<CertificationResponse>> = HashMap::new();
+            let mut state: HashMap<String, (u64, Sender<CertificationResponse>)> = HashMap::new();
 
             let consumer: Box<ConsumerType> = match it {
                 TalosIntegrationType::Kafka => Self::create_kafka_consumer(agent_id, &config),
@@ -53,12 +55,12 @@ impl StateManager {
             }
             .unwrap();
 
-            let publisher: Box<PublisherType> = match it {
+            let publisher: Arc<Box<PublisherType>> = match it {
                 TalosIntegrationType::Kafka => {
                     let kafka_publisher = KafkaPublisher::new(agent_config.agent_id.clone(), &config);
-                    Box::new(kafka_publisher)
+                    Arc::new(Box::new(kafka_publisher))
                 }
-                TalosIntegrationType::InMemory => Box::new(MockPublisher {}),
+                TalosIntegrationType::InMemory => Arc::new(Box::new(MockPublisher {})),
             };
 
             loop {
@@ -72,7 +74,7 @@ impl StateManager {
                                 //      handle case when something is already enqueued on this XID
                                 state.insert(
                                     request_msg.request.candidate.xid.clone(),
-                                    request_msg.tx_answer
+                                    (OffsetDateTime::now_utc().unix_timestamp_nanos() as u64, request_msg.tx_answer)
                                 );
 
                                 let msg = CandidateMessage::new(
@@ -81,8 +83,11 @@ impl StateManager {
                                     request_msg.request.candidate.clone()
                                 );
 
-                                publisher.send_message(request_msg.request.message_key.clone(), msg).await.unwrap();
-
+                                let publisher_ref = Arc::clone(&publisher);
+                                let key = request_msg.request.message_key.clone();
+                                tokio::spawn(async move {
+                                    publisher_ref.send_message(key, msg).await.unwrap();
+                                });
                             },
                             None => break,
                         }
@@ -103,7 +108,7 @@ impl StateManager {
                         match rslt_decision_msg {
                             Some(Ok(decision_msg)) => {
                                 let xid = &decision_msg.xid;
-                                match Self::reply_to_agent(xid, decision_msg.decision, state.get(&decision_msg.xid)).await {
+                                match Self::reply_to_agent(xid, decision_msg.decision, decision_msg.decided_at, state.get(&decision_msg.xid)).await {
                                     Some(()) => {
                                         state.remove(xid);
                                     }
@@ -122,12 +127,16 @@ impl StateManager {
         });
     }
 
-    async fn reply_to_agent(xid: &str, decision: Decision, tx: Option<&Sender<CertificationResponse>>) -> Option<()> {
+    async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, tx: Option<&(u64, Sender<CertificationResponse>)>) -> Option<()> {
         match tx {
-            Some(sender) => {
+            Some((channel_time, sender)) => {
                 let response = CertificationResponse {
                     xid: xid.to_string(),
                     is_accepted: decision == Decision::Committed,
+                    send_started_at: *channel_time,
+                    decided_at: decided_at.unwrap_or(0),
+                    decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+                    received_at: 0,
                 };
 
                 sender.send(response).await.unwrap();

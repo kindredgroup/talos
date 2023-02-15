@@ -29,3 +29,5 @@ suffix = { path = "../suffix" }
 logger = { path = "../logger" }
 talos_core = { path = "../talos_core" }
 talos_adapters = { path = "../talos_adapters" }
+
+time = "0.3.17"

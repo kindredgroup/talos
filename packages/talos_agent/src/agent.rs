@@ -122,6 +122,10 @@ impl TalosAgent for TalosAgentImpl {
                 return Ok(CertificationResponse {
                     xid: answer.xid.clone(),
                     is_accepted: answer.decision == Decision::Committed,
+                    send_started_at: 0,
+                    decided_at: 0,
+                    decision_buffered_at: 0,
+                    received_at: 0,
                 });
             }
             debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);

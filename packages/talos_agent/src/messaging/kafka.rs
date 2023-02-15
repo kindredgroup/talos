@@ -122,7 +122,11 @@ impl KafkaConsumer {
         }
     }
 
-    fn deserialize_decision(message_type: &TalosMessageType, payload_view: &Option<Result<&str, Utf8Error>>) -> Option<Result<DecisionMessage, String>> {
+    fn deserialize_decision(
+        message_type: &TalosMessageType,
+        payload_view: &Option<Result<&str, Utf8Error>>,
+        decided_at: Option<u64>,
+    ) -> Option<Result<DecisionMessage, String>> {
         let decision: Option<Result<DecisionMessage, String>> = match message_type {
             TalosMessageType::Candidate => None,
 
@@ -130,7 +134,13 @@ impl KafkaConsumer {
             TalosMessageType::Decision => payload_view.and_then(|raw_payload| Some(KafkaConsumer::parse_payload_as_decision(&raw_payload))),
         };
 
-        decision
+        decision.map(|v| match v {
+            Ok(mut m) => {
+                m.decided_at = decided_at;
+                Ok(m)
+            }
+            Err(e) => Err(e),
+        })
     }
 
     fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, String> {
@@ -202,7 +212,15 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                     }
                 });
 
-                parsed_type.and_then(|message_type| KafkaConsumer::deserialize_decision(&message_type, &received.payload_view::<str>()))
+                let decided_at = headers.get("decisionTime").and_then(|raw_value| match raw_value.as_str().parse::<u64>() {
+                    Ok(parsed) => Some(parsed),
+                    Err(e) => {
+                        log::warn!("Unable to parse decisionTime from this value '{}'. Error: {:?}", raw_value, e);
+                        None
+                    }
+                });
+
+                parsed_type.and_then(|message_type| KafkaConsumer::deserialize_decision(&message_type, &received.payload_view::<str>(), decided_at))
             }
         };
 

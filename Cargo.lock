@@ -1624,6 +1624,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strum",
+ "time 0.3.17",
  "tokio",
  "uuid",
 ]
@@ -1683,6 +1684,7 @@ dependencies = [
  "talos_adapters",
  "talos_core",
  "thiserror",
+ "time 0.3.17",
  "tokio",
 ]
 

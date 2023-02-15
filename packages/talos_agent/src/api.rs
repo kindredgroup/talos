@@ -34,6 +34,10 @@ pub struct CertificationRequest {
 pub struct CertificationResponse {
     pub xid: String,
     pub is_accepted: bool,
+    pub send_started_at: u64,
+    pub received_at: u64,
+    pub decided_at: u64,
+    pub decision_buffered_at: u64,
 }
 
 #[derive(Clone)]

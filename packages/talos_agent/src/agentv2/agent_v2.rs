@@ -2,6 +2,7 @@ use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMe
 use crate::agentv2::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
 use async_trait::async_trait;
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -39,7 +40,10 @@ impl TalosAgent for TalosAgentImplV2 {
         let to_state_manager = self.rx_certify.clone();
         let response = match to_state_manager.send(m).await {
             Ok(()) => match rx.recv().await {
-                Some(response) => Ok(response),
+                Some(mut response) => {
+                    response.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+                    Ok(response)
+                }
                 None => Err("No response received".to_string()),
             },
 

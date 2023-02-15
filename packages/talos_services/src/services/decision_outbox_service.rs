@@ -1,4 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
+use time::OffsetDateTime;
 
 use async_trait::async_trait;
 use log::{debug, error, info};
@@ -66,6 +67,7 @@ impl DecisionOutboxService {
             let decision_str = serde_json::to_string(&decision).unwrap();
             let mut decision_publish_header = HashMap::new();
             decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
+            decision_publish_header.insert("decisionTime".to_string(), OffsetDateTime::now_utc().unix_timestamp_nanos().to_string());
 
             debug!("Publishing message {}", decision.version);
             if let Err(publish_error) = publisher
