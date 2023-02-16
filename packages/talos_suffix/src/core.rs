@@ -17,6 +17,8 @@ pub struct SuffixMeta {
     pub head: u64,
     /// The suffix version till where it's safe to prune.
     pub prune_vers: Option<u64>,
+    /// The minimum size to be maintained by the suffix
+    pub min_size: usize,
 }
 
 type SuffixItemType<T> = T;

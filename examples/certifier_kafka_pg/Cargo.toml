@@ -18,6 +18,7 @@ refinery = { version = "0.8.7", features = ["tokio-postgres"] }
 
 # internal crates
 logger = { path = "../../packages/logger" }
+talos_certifier = { path = "../../packages/talos_certifier" }
 talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
 
 [dev-dependencies.cargo-husky]

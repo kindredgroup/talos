@@ -2,6 +2,8 @@
 
 use std::collections::VecDeque;
 
+use log::{debug, info};
+
 use crate::{
     core::{convert_u64_to_usize, SuffixMeta, SuffixResult, SuffixTrait},
     errors::SuffixError,
@@ -18,11 +20,15 @@ impl<T> Suffix<T>
 where
     T: Sized + Clone + std::fmt::Debug,
 {
-    pub fn new(capacity: usize) -> Suffix<T> {
-        let suffix_vec: Vec<Option<SuffixItem<T>>> = vec![None; capacity + 1];
-        let messages = VecDeque::from(suffix_vec);
+    pub fn new(min_size: usize, capacity: usize) -> Suffix<T> {
+        // let suffix_vec: Vec<Option<SuffixItem<T>>> = vec![None; capacity];
+        let messages = VecDeque::with_capacity(capacity);
 
-        let meta = SuffixMeta { head: 0, prune_vers: None };
+        let meta = SuffixMeta {
+            head: 0,
+            prune_vers: None,
+            min_size,
+        };
 
         Suffix { meta, messages }
     }
@@ -49,17 +55,17 @@ where
     ///
     /// Reserves space and defaults them with None.
     pub fn reserve_space_if_required(&mut self, version: u64) -> Result<(), SuffixError> {
-        let new_len: usize = convert_u64_to_usize(version).map_err(|_e| SuffixError::VersionToIndexConversionError(version))?;
+        let ver_diff: usize = (version - self.meta.head) as usize + 1;
 
-        self.index_from_head(version)
-            .map_or(false, |x| x >= self.messages.len())
-            .then(|| self.messages.resize_with(new_len + 1, || None))
-            .unwrap_or_default();
+        if ver_diff.gt(&(self.messages.len())) {
+            // let resize_len = if ver_diff < self.meta.min_size { self.meta.min_size + 1 } else { ver_diff };
+            self.messages.reserve(ver_diff + 1);
+        }
 
         Ok(())
     }
 
-    /// Checks if a version is prune ready
+    /// Find prior versions are all decided.
     ///
     /// Returns true, if the versions prior to the current version has either been decided or
     /// if suffix item is empty (None).
@@ -69,7 +75,9 @@ where
             return result;
         };
 
-        let prune_vers = self.meta.prune_vers.unwrap_or(0);
+        let Some(prune_vers) = self.meta.prune_vers else {
+            return true;
+        };
 
         let prune_index = self.index_from_head(prune_vers).unwrap_or(0);
 
@@ -80,6 +88,10 @@ where
                 .filter_map(|x| x.is_some().then(|| x.as_ref().unwrap()))
                 .all(|x| x.is_decided);
         } else {
+            info!(
+                "Split index used is {index} for version {version} and message length is {}",
+                self.messages.len()
+            );
             let slice = self.messages.make_contiguous().split_at(index).0;
             result = slice.iter().filter_map(|x| x.is_some().then(|| x.as_ref().unwrap())).all(|x| x.is_decided);
         }
@@ -99,12 +111,14 @@ where
     pub fn update_decision_suffix_item(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         // When Certifier is catching up with messages ignore the messages which are prior to the head
         if version < self.meta.head {
+            info!("Returned due to version < self.meta.head for version={version} and decision version={decision_ver}");
             return Ok(());
         }
 
         let Some(sfx_item) = self
-            .get(version)?
-            else {
+        .get(version)?
+        else {
+                info!("Returned due item not found in suffix for version={version} and decision version={decision_ver}");
                 return Ok(());
             };
 
@@ -118,6 +132,7 @@ where
             .index_from_head(version)
             .ok_or(SuffixError::IndexCalculationError(self.meta.head, version))?;
 
+        info!("Updating version={version} with index={index:?} and decision version={decision_ver}");
         self.messages[index] = Some(new_sfx_item);
         Ok(())
     }
@@ -130,26 +145,41 @@ where
     fn get(&mut self, version: u64) -> SuffixResult<Option<SuffixItem<T>>> {
         let index = self.index_from_head(version).ok_or(SuffixError::VersionToIndexConversionError(version))?;
         let suffix_item = self.messages.get(index).and_then(|x| x.as_ref()).cloned();
+        info!("[SUFFIX GET] ver={version} index={index}");
 
         Ok(suffix_item)
     }
 
     fn insert(&mut self, version: u64, message: T) -> SuffixResult<()> {
-        self.reserve_space_if_required(version)?;
-
         // // The very first item inserted on the suffix will automatically be made head of the suffix.
         if self.meta.head == 0 {
             self.update_head(version);
         }
 
-        let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
+        if self.meta.head.le(&version) {
+            self.reserve_space_if_required(version)?;
+            let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
+            info!(
+                "GK - going to insert to suffix with len={}, HEAD={}, version={version} and index={index}",
+                self.messages.len(),
+                self.meta.head
+            );
 
-        self.messages[index] = Some(SuffixItem {
-            item: message,
-            item_ver: version,
-            decision_ver: None,
-            is_decided: false,
-        });
+            let none_item_block = self.messages.push_back(Some(SuffixItem {
+                item: message,
+                item_ver: version,
+                decision_ver: None,
+                is_decided: false,
+            }));
+
+            let k: Vec<(usize, u64, Option<u64>)> = self
+                .messages
+                .iter()
+                .enumerate()
+                .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
+                .collect();
+            info!("[SUFFIX INSERT] Suffix dump \n{k:?}");
+        }
 
         Ok(())
     }
@@ -181,14 +211,26 @@ where
         let ver = self.meta.prune_vers.ok_or(SuffixError::PruneVersionNotFound)?;
 
         if let Some(suffix_item) = self.find_next_message(ver) {
+            info!("Next suffix item found is.....{:?}", suffix_item.item_ver);
+
+            let k: Vec<u64> = self.messages.iter().filter_map(|x| x.is_some().then(|| x.as_ref().unwrap().item_ver)).collect();
+            info!("Items before pruning are \n{k:?}");
+
             let next_index = self
                 .index_from_head(suffix_item.item_ver)
                 .ok_or(SuffixError::VersionToIndexConversionError(ver))?;
-            drop(self.messages.drain(0..next_index));
+            drop(self.messages.drain(0..(self.meta.min_size)));
 
             self.update_prune_vers(None);
 
             self.update_head(suffix_item.item_ver);
+
+            let k: Vec<(u64, Option<u64>)> = self
+                .messages
+                .iter()
+                .filter_map(|x| x.is_some().then(|| (x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
+                .collect();
+            info!("Items after pruning are \n{k:?}");
         }
 
         Ok(())

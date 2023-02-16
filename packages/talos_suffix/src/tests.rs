@@ -21,7 +21,7 @@ mod suffix_tests {
 
     #[test]
     fn get_index_from_head() {
-        let mut sfx = Suffix::<MockSuffixItemMessage>::new(20);
+        let mut sfx = Suffix::<MockSuffixItemMessage>::new(10, 20);
 
         assert_eq!(sfx.index_from_head(10).unwrap(), 10);
 
@@ -31,7 +31,7 @@ mod suffix_tests {
     }
     #[test]
     fn insert_version_within_dq_len() {
-        let mut sfx = Suffix::new(1000);
+        let mut sfx = Suffix::new(300, 1000);
         // Test has length of 1000
         assert_eq!(sfx.messages.len(), 1001);
         // Test the indexes are Empty
@@ -63,7 +63,7 @@ mod suffix_tests {
     // }
     #[test]
     fn insert_version_above_dq_len() {
-        let mut sfx = Suffix::new(20);
+        let mut sfx = Suffix::new(10, 20);
         // Test inserting to a particular index which is
         sfx.insert(30, create_mock_candidate_message(30)).unwrap();
         assert_eq!(sfx.messages.len(), 31);
@@ -74,7 +74,7 @@ mod suffix_tests {
     #[test]
     fn check_version_safe_to_prune_when_all_prior_is_empty() {
         let ver: u64 = 20;
-        let mut sfx = Suffix::new(20);
+        let mut sfx = Suffix::new(10, 20);
         sfx.insert(ver, create_mock_candidate_message(ver)).unwrap();
 
         assert!(sfx.are_prior_items_decided(ver));
@@ -82,7 +82,7 @@ mod suffix_tests {
     #[test]
     fn check_version_safe_to_prune_when_prior_undecided() {
         let ver: u64 = 20;
-        let mut sfx = Suffix::new(20);
+        let mut sfx = Suffix::new(10, 20);
         sfx.insert(10, create_mock_candidate_message(10)).unwrap();
         sfx.insert(ver, create_mock_candidate_message(ver)).unwrap();
 
@@ -90,7 +90,7 @@ mod suffix_tests {
     }
     #[test]
     fn check_version_safe_to_prune_when_prior_decided() {
-        let mut sfx = Suffix::new(20);
+        let mut sfx = Suffix::new(10, 20);
         let ver_10: u64 = 10;
         sfx.insert(ver_10, create_mock_candidate_message(ver_10)).unwrap();
         let result = sfx.update_decision_suffix_item(ver_10, 23);
@@ -108,7 +108,7 @@ mod suffix_tests {
     fn update_decision_within_bounds_and_item_exists() {
         env_logger::init();
 
-        let mut sfx = Suffix::new(20);
+        let mut sfx = Suffix::new(10, 20);
         let ver_10: u64 = 10;
         let decision_ver: u64 = 23;
         sfx.insert(ver_10, create_mock_candidate_message(ver_10)).unwrap();
@@ -124,7 +124,7 @@ mod suffix_tests {
 
     #[test]
     fn update_decision_when_item_not_in_suffix() {
-        let mut sfx = Suffix::<MockSuffixItemMessage>::new(20);
+        let mut sfx = Suffix::<MockSuffixItemMessage>::new(10, 20);
         let ver_10: u64 = 10;
         let decision_ver: u64 = 23;
 
@@ -142,7 +142,7 @@ mod suffix_tests {
 
     #[test]
     fn prune_items() {
-        let mut sfx = Suffix::new(20);
+        let mut sfx = Suffix::new(10, 20);
         let ver_10: u64 = 10;
         sfx.insert(ver_10, create_mock_candidate_message(ver_10)).unwrap();
 

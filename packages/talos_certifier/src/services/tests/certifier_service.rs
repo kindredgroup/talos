@@ -448,7 +448,6 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
         system,
         Some(CertifierServiceConfig {
             suffix_size: 5,
-            suffix_prune_threshold: 50,
             ..Default::default()
         }),
     );

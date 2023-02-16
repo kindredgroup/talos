@@ -153,6 +153,7 @@ dependencies = [
  "log",
  "logger",
  "refinery",
+ "talos_certifier",
  "talos_certifier_adapters",
  "tokio",
 ]

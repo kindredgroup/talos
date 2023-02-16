@@ -1,3 +1,4 @@
+use log::info;
 // use super::CandidateMessage;
 use serde::{Deserialize, Serialize};
 
@@ -77,7 +78,12 @@ pub struct DecisionMessage {
     pub decision: Decision,
     pub suffix_start: u64,
 
+    // the version for which this decision is made.
     pub version: u64,
+    /// if the original version is found, the decision of that version is returned as the decision
+    /// and this field will have the value of the original version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate_version: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,6 +122,7 @@ impl DecisionMessage {
             version: *version,
             safepoint,
             conflicts,
+            duplicate_version: None,
         }
     }
 }
