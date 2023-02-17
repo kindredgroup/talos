@@ -52,8 +52,8 @@ pub struct AgentConfig {
 
 #[derive(Clone)]
 pub enum TalosType {
-    External,
-    InProcessMock,
+    External,      // kafka listener and decision publisher is the external process
+    InProcessMock, // kafka listener and decision publisher is out internal function
 }
 
 /// Kafka-related configuration
@@ -114,6 +114,7 @@ impl TalosAgentBuilder {
         self
     }
 
+    /// Build agent instance implemented using shared state between threads.
     pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
         let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
@@ -132,6 +133,7 @@ impl TalosAgentBuilder {
         Ok(Box::new(agent))
     }
 
+    /// Build agent instance implemented using actor model.
     pub async fn build_v2(&self) -> Result<Box<TalosAgentType>, String> {
         let agent = TalosAgentImplV2::new(
             self.config.clone(),
