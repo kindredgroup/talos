@@ -2,11 +2,12 @@ extern crate core;
 
 use log::{debug, info};
 use rdkafka::config::RDKafkaLogLevel;
-use std::cmp;
 use std::fmt::{Display, Formatter};
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType};
+use std::{cmp, thread};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType};
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -15,7 +16,17 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 9000;
+const BATCH_SIZE: i32 = 1_000;
+const TALOS_TYPE: TalosType = TalosType::InProcessMock;
+const PROGRESS_EVERY: i32 = 10_000;
+// const RATE_100_TPS: Duration = Duration::from_millis(10);
+// const RATE_200_TPS: Duration = Duration::from_millis(5);
+// const RATE_500_TPS: Duration = Duration::from_millis(2);
+// const RATE_1000_TPS: Duration = Duration::from_millis(1);
+const RATE_2000_TPS: Duration = Duration::from_nanos(500_000);
+// const RATE_5000_TPS: Duration = Duration::from_nanos(200_000);
+// const RATE_10000_TPS: Duration = Duration::from_nanos(100_000);
+const RATE: Duration = RATE_2000_TPS;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
@@ -28,13 +39,14 @@ fn make_configs() -> (AgentConfig, KafkaConfig) {
     };
 
     let cfg_kafka = KafkaConfig {
-        brokers: "localhost:9093".to_string(),
+        brokers: "127.0.0.1:9093".to_string(),
         group_id: agent_id,
         enqueue_timeout_ms: 10,
         message_timeout_ms: 15000,
         fetch_wait_max_ms: 6000,
         certification_topic: "dev.ksp.certification".to_string(),
         log_level: RDKafkaLogLevel::Info,
+        talos_type: TALOS_TYPE,
     };
 
     (cfg_agent, cfg_kafka)
@@ -64,7 +76,7 @@ fn make_candidate(xid: String) -> CertificationRequest {
 //         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 // }
 
-async fn make_agent() -> Box<TalosAgentType> {
+async fn make_agentv2() -> Box<TalosAgentType> {
     let (cfg_agent, cfg_kafka) = make_configs();
 
     TalosAgentBuilder::new(cfg_agent)
@@ -101,27 +113,25 @@ async fn main() -> Result<(), String> {
 }
 
 async fn certify(batch_size: i32) -> Result<(), String> {
-    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     info!("Certifying {} transactions", batch_size);
 
     let mut tasks = Vec::<JoinHandle<Timing>>::new();
-    let agent = Arc::new(make_agent().await);
+    let agent = Arc::new(make_agentv2().await);
 
-    for _ in 0..batch_size {
+    thread::sleep(Duration::from_secs(5));
+    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    info!("Starting publishing process...");
+
+    for i in 0..batch_size {
+        thread::sleep(RATE);
         let ac = Arc::clone(&agent);
-        let task = tokio::spawn(async move {
-            let created_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
-            let request = make_candidate(Uuid::new_v4().to_string());
-            let resp = ac.certify(request).await.unwrap();
-            let decided_at = resp.decided_at;
-            let received_at = resp.received_at;
-            let send_started_at = resp.send_started_at;
-            let decision_buffered_at = resp.decision_buffered_at;
-            let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
-
-            Timing::new(resp, created_at, send_started_at, decided_at, decision_buffered_at, received_at, finished_at)
-        });
+        let task = tokio::spawn(async move { Timing::capture(|| async { ac.certify(make_candidate(Uuid::new_v4().to_string())).await }).await });
         tasks.push(task);
+
+        let p = i + 1;
+        if p % PROGRESS_EVERY == 0 || p == batch_size {
+            info!("Published {} of {}", p, batch_size);
+        }
     }
 
     let mut min = 500_000 * 1_000_000;
@@ -129,8 +139,13 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let mut min_timing: Option<Timing> = None;
     let mut max_timing: Option<Timing> = None;
     let mut metrics = Vec::new();
+    let mut i = 1;
     for task in tasks {
         let timing = task.await.unwrap();
+        if i % PROGRESS_EVERY == 0 {
+            info!("Completed {} of {}", i, batch_size);
+        }
+        i += 1;
         let rsp = timing.response.clone();
         let d = timing.get_total();
         if d < min {
@@ -146,43 +161,25 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         debug!("Transaction has been certified. Details: {:?}", rsp);
     }
 
+    // Compute and print metrics
+
     let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     let duration_ms = Duration::from_nanos((finished_at - started_at) as u64).as_millis() as u64;
 
-    metrics.sort_by_key(|i| i.total.duration.as_millis());
-    let p50 = Percentile::compute(&metrics, 50, "ms", Box::new(Timing::get_total));
-    let p75 = Percentile::compute(&metrics, 75, "ms", Box::new(Timing::get_total));
-    let p90 = Percentile::compute(&metrics, 90, "ms", Box::new(Timing::get_total));
-    let p95 = Percentile::compute(&metrics, 95, "ms", Box::new(Timing::get_total));
-    let p99 = Percentile::compute(&metrics, 99, "ms", Box::new(Timing::get_total));
+    metrics.sort_by_key(|i| i.total.as_millis());
+    let total = PercentileSet::new(&metrics, Timing::get_total);
 
-    metrics.sort_by_key(|i| i.outbox.duration.as_millis());
-    let p50_span1 = Percentile::compute(&metrics, 50, "ms", Box::new(Timing::get_outbox));
-    let p75_span1 = Percentile::compute(&metrics, 75, "ms", Box::new(Timing::get_outbox));
-    let p90_span1 = Percentile::compute(&metrics, 90, "ms", Box::new(Timing::get_outbox));
-    let p95_span1 = Percentile::compute(&metrics, 95, "ms", Box::new(Timing::get_outbox));
-    let p99_span1 = Percentile::compute(&metrics, 99, "ms", Box::new(Timing::get_outbox));
+    metrics.sort_by_key(|i| i.outbox.as_millis());
+    let span1 = PercentileSet::new(&metrics, Timing::get_outbox);
 
-    metrics.sort_by_key(|i| i.receive_and_decide.duration.as_millis());
-    let p50_span2 = Percentile::compute(&metrics, 50, "ms", Box::new(Timing::get_receive_and_decide));
-    let p75_span2 = Percentile::compute(&metrics, 75, "ms", Box::new(Timing::get_receive_and_decide));
-    let p90_span2 = Percentile::compute(&metrics, 90, "ms", Box::new(Timing::get_receive_and_decide));
-    let p95_span2 = Percentile::compute(&metrics, 95, "ms", Box::new(Timing::get_receive_and_decide));
-    let p99_span2 = Percentile::compute(&metrics, 99, "ms", Box::new(Timing::get_receive_and_decide));
+    metrics.sort_by_key(|i| i.receive_and_decide.as_millis());
+    let span2 = PercentileSet::new(&metrics, Timing::get_receive_and_decide);
 
-    metrics.sort_by_key(|i| i.decision_send.duration.as_millis());
-    let p50_span3 = Percentile::compute(&metrics, 50, "ms", Box::new(Timing::get_decision_send));
-    let p75_span3 = Percentile::compute(&metrics, 75, "ms", Box::new(Timing::get_decision_send));
-    let p90_span3 = Percentile::compute(&metrics, 90, "ms", Box::new(Timing::get_decision_send));
-    let p95_span3 = Percentile::compute(&metrics, 95, "ms", Box::new(Timing::get_decision_send));
-    let p99_span3 = Percentile::compute(&metrics, 99, "ms", Box::new(Timing::get_decision_send));
+    metrics.sort_by_key(|i| i.decision_send.as_millis());
+    let span3 = PercentileSet::new(&metrics, Timing::get_decision_send);
 
-    metrics.sort_by_key(|i| i.inbox.duration.as_millis());
-    let p50_span4 = Percentile::compute(&metrics, 50, "ms", Box::new(Timing::get_inbox));
-    let p75_span4 = Percentile::compute(&metrics, 75, "ms", Box::new(Timing::get_inbox));
-    let p90_span4 = Percentile::compute(&metrics, 90, "ms", Box::new(Timing::get_inbox));
-    let p95_span4 = Percentile::compute(&metrics, 95, "ms", Box::new(Timing::get_inbox));
-    let p99_span4 = Percentile::compute(&metrics, 99, "ms", Box::new(Timing::get_inbox));
+    metrics.sort_by_key(|i| i.inbox.as_millis());
+    let span4 = PercentileSet::new(&metrics, Timing::get_inbox);
 
     info!(
         "Test duration: {} ms\nThroughput: {} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
@@ -191,26 +188,33 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         "Metric: value [client->agent.th1 + agent.th1->talos.decision + talos.publish->agent.th1 + agent.th1->client])",
         format_spans("Min".to_string(), min_timing.unwrap()),
         format_spans("Max".to_string(), max_timing.unwrap()),
-        format(p50, p50_span1, p50_span2, p50_span3, p50_span4),
-        format(p75, p75_span1, p75_span2, p75_span3, p75_span4),
-        format(p90, p90_span1, p90_span2, p90_span3, p90_span4),
-        format(p95, p95_span1, p95_span2, p95_span3, p95_span4),
-        format(p99, p99_span1, p99_span2, p99_span3, p99_span4),
+        format(total.p50, span1.p50, span2.p50, span3.p50, span4.p50),
+        format(total.p75, span1.p75, span2.p75, span3.p75, span4.p75),
+        format(total.p90, span1.p90, span2.p90, span3.p90, span4.p90),
+        format(total.p95, span1.p95, span2.p95, span3.p95, span4.p95),
+        format(total.p99, span1.p99, span2.p99, span3.p99, span4.p99),
     );
 
     Ok(())
 }
 
-#[derive(Clone, Debug)]
-struct Span {
-    duration: Duration,
+struct PercentileSet {
+    p50: Percentile,
+    p75: Percentile,
+    p90: Percentile,
+    p95: Percentile,
+    p99: Percentile,
 }
 
-impl Span {
-    fn new(started_at: u64, ended_at: u64) -> Span {
-        Span {
-            duration: Duration::from_nanos(ended_at - started_at),
-        }
+impl PercentileSet {
+    fn new(metrics: &Vec<Timing>, getter: impl Fn(&Timing) -> u64) -> Self {
+        let p50 = Percentile::compute(metrics, 50, "ms", &getter);
+        let p75 = Percentile::compute(metrics, 75, "ms", &getter);
+        let p90 = Percentile::compute(metrics, 90, "ms", &getter);
+        let p95 = Percentile::compute(metrics, 95, "ms", &getter);
+        let p99 = Percentile::compute(metrics, 99, "ms", &getter);
+
+        PercentileSet { p50, p75, p90, p95, p99 }
     }
 }
 
@@ -221,7 +225,7 @@ struct Percentile {
 }
 
 impl Percentile {
-    fn compute(data_set: &Vec<Timing>, percentage: u32, unit: &str, get: Box<dyn Fn(&Timing) -> u64>) -> Percentile {
+    fn compute(data_set: &Vec<Timing>, percentage: u32, unit: &str, get: &impl Fn(&Timing) -> u64) -> Percentile {
         let index = cmp::min((((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize, data_set.len() - 1);
 
         Percentile {
@@ -241,45 +245,50 @@ impl Display for Percentile {
 #[derive(Clone, Debug)]
 struct Timing {
     response: CertificationResponse,
-    outbox: Span,             // time candidate spent in the internal channel queue before being sent to kafka
-    receive_and_decide: Span, // time from start till talos made a decision (including kafka transmit and read)
-    decision_send: Span,
-    inbox: Span,
-    total: Span,
+    outbox: Duration,             // time candidate spent in the internal channel queue before being sent to kafka
+    receive_and_decide: Duration, // time from start till talos made a decision (including kafka transmit and read)
+    decision_send: Duration,
+    inbox: Duration,
+    total: Duration,
 }
 
 impl Timing {
-    fn new(
-        response: CertificationResponse,
-        created_at: u64,
-        send_started_at: u64,
-        decided_at: u64,
-        decision_buffered_at: u64,
-        received_at: u64,
-        finished_at: u64,
-    ) -> Self {
+    async fn capture<T>(action: impl Fn() -> T + Send) -> Self
+    where
+        T: Future<Output = Result<CertificationResponse, String>>,
+    {
+        let created_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+        let response: CertificationResponse = action().await.unwrap();
+        let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+
+        let send_started_at = response.send_started_at;
+        let decided_at = response.decided_at;
+        let decision_buffered_at = response.decision_buffered_at;
+        let received_at = response.received_at;
+
         Timing {
             response,
-            outbox: Span::new(created_at, send_started_at),
-            receive_and_decide: Span::new(send_started_at, decided_at),
-            decision_send: Span::new(decided_at, decision_buffered_at),
-            inbox: Span::new(decision_buffered_at, received_at),
-            total: Span::new(created_at, finished_at),
+            outbox: Duration::from_nanos(send_started_at - created_at),
+            receive_and_decide: Duration::from_nanos(decided_at - send_started_at),
+            decision_send: Duration::from_nanos(decision_buffered_at - decided_at),
+            inbox: Duration::from_nanos(received_at - decision_buffered_at),
+            total: Duration::from_nanos(finished_at - created_at),
         }
     }
+
     fn get_total(&self) -> u64 {
-        self.total.duration.as_millis() as u64
+        self.total.as_millis() as u64
     }
     fn get_outbox(&self) -> u64 {
-        self.outbox.duration.as_millis() as u64
+        self.outbox.as_millis() as u64
     }
     fn get_receive_and_decide(&self) -> u64 {
-        self.receive_and_decide.duration.as_millis() as u64
+        self.receive_and_decide.as_millis() as u64
     }
     fn get_decision_send(&self) -> u64 {
-        self.decision_send.duration.as_millis() as u64
+        self.decision_send.as_millis() as u64
     }
     fn get_inbox(&self) -> u64 {
-        self.inbox.duration.as_millis() as u64
+        self.inbox.as_millis() as u64
     }
 }

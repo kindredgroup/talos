@@ -50,6 +50,12 @@ pub struct AgentConfig {
     pub buffer_size: usize,
 }
 
+#[derive(Clone)]
+pub enum TalosType {
+    External,
+    InProcessMock,
+}
+
 /// Kafka-related configuration
 #[derive(Clone)]
 pub struct KafkaConfig {
@@ -65,6 +71,7 @@ pub struct KafkaConfig {
     // Group session keepalive heartbeat interval
     // pub heartbeat_interval_ms: u64,
     pub log_level: RDKafkaLogLevel,
+    pub talos_type: TalosType,
 }
 
 /// The agent interface exposed to the client

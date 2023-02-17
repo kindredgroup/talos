@@ -28,14 +28,6 @@ impl StateManager {
         Ok(state_manager)
     }
 
-    fn create_kafka_consumer(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        let kc = KafkaConsumer::new(agent_id, config);
-        match kc.subscribe() {
-            Ok(()) => Ok(Box::new(kc)),
-            Err(e) => Err(e),
-        }
-    }
-
     fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
         Ok(Box::new(MockConsumer {}))
     }
@@ -46,14 +38,14 @@ impl StateManager {
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let it = self.int_type.clone();
 
+        let consumer: Box<ConsumerType> = match it {
+            TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent_id, &config),
+            TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
+        }
+        .unwrap();
+
         tokio::spawn(async move {
             let mut state: HashMap<String, (u64, Sender<CertificationResponse>)> = HashMap::new();
-
-            let consumer: Box<ConsumerType> = match it {
-                TalosIntegrationType::Kafka => Self::create_kafka_consumer(agent_id, &config),
-                TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
-            }
-            .unwrap();
 
             let publisher: Arc<Box<PublisherType>> = match it {
                 TalosIntegrationType::Kafka => {

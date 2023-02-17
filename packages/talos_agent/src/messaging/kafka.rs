@@ -1,17 +1,19 @@
 use crate::api::KafkaConfig;
-use crate::messaging::api::{CandidateMessage, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE};
+use crate::messaging::api::{
+    CandidateMessage, ConsumerType, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE,
+};
 use async_trait::async_trait;
 use log::debug;
 use log::error;
-use rdkafka::consumer::{Consumer, StreamConsumer};
+use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::{ClientConfig, Message};
+use rdkafka::{ClientConfig, ClientContext, Message};
 use std::collections::HashMap;
-use std::str;
 use std::str::Utf8Error;
 use std::time::Duration;
+use std::{str, thread};
 
 /// The implementation of publisher which communicates with kafka brokers.
 
@@ -80,7 +82,20 @@ impl Publisher for KafkaPublisher {
 pub struct KafkaConsumer {
     agent_id: String,
     config: KafkaConfig,
-    consumer: StreamConsumer,
+    consumer: StreamConsumer<KafkaConsumerContext>,
+}
+
+struct KafkaConsumerContext {}
+impl ClientContext for KafkaConsumerContext {}
+impl ConsumerContext for KafkaConsumerContext {
+    fn pre_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
+        log::info!("[{}] pre_rebalance()", thread::current().name().unwrap_or("-"));
+    }
+
+    fn post_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
+        // thread::sleep(Duration::from_secs(5));
+        log::info!("[{}] post_rebalance()", thread::current().name().unwrap_or("-"));
+    }
 }
 
 impl KafkaConsumer {
@@ -92,19 +107,27 @@ impl KafkaConsumer {
         }
     }
 
-    fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer {
+    pub fn new_subscribed(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
+        let kc = KafkaConsumer::new(agent_id, config);
+        match kc.subscribe() {
+            Ok(()) => Ok(Box::new(kc)),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer<KafkaConsumerContext> {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("group.id", &kafka.group_id)
             .set("enable.auto.commit", "true")
-            .set("auto.offset.reset", "earliest")
+            .set("auto.offset.reset", "latest")
             .set("socket.keepalive.enable", "true")
             .set("auto.commit.interval.ms", "500")
             .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
             // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
 
-        match cfg.create() {
+        match cfg.create_with_context(KafkaConsumerContext {}) {
             Ok(v) => v,
             Err(e) => {
                 panic!("Cannot create consumer instance. {}", e)
@@ -114,7 +137,41 @@ impl KafkaConsumer {
 
     pub fn subscribe(&self) -> Result<(), String> {
         match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
-            Ok(_) => Ok(()),
+            Ok(_) => {
+                loop {
+                    match self.consumer.fetch_group_list(None, Duration::from_secs(1)) {
+                        Ok(group_list) => {
+                            let list = group_list.groups();
+                            let mut found = false;
+                            for group_info in list {
+                                if group_info.name() == self.config.group_id {
+                                    log::info!("Detected consumer group: name: {}, state: {}", group_info.name(), group_info.state());
+
+                                    if group_info.state() != "Stable" {
+                                        continue;
+                                    }
+
+                                    found = true;
+                                    break;
+                                }
+                            }
+
+                            if found {
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            log::error!("Cannot fetch group info for group id '{}'", self.config.group_id);
+                            break;
+                        }
+                    }
+
+                    log::info!("Consumer group is not ready yet");
+                    thread::sleep(Duration::from_secs(1));
+                }
+
+                Ok(())
+            }
             Err(kafka_error) => {
                 error!("Error when subscribing to topics. {:?}", kafka_error);
                 Err(kafka_error.to_string())
@@ -127,20 +184,17 @@ impl KafkaConsumer {
         payload_view: &Option<Result<&str, Utf8Error>>,
         decided_at: Option<u64>,
     ) -> Option<Result<DecisionMessage, String>> {
-        let decision: Option<Result<DecisionMessage, String>> = match message_type {
+        match message_type {
             TalosMessageType::Candidate => None,
 
             // Take only decisions...
-            TalosMessageType::Decision => payload_view.and_then(|raw_payload| Some(KafkaConsumer::parse_payload_as_decision(&raw_payload))),
-        };
-
-        decision.map(|v| match v {
-            Ok(mut m) => {
-                m.decided_at = decided_at;
-                Ok(m)
-            }
-            Err(e) => Err(e),
-        })
+            TalosMessageType::Decision => payload_view.and_then(|raw_payload| {
+                Some(KafkaConsumer::parse_payload_as_decision(&raw_payload).map(|mut decision| {
+                    decision.decided_at = decided_at;
+                    decision
+                }))
+            }),
+        }
     }
 
     fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, String> {
