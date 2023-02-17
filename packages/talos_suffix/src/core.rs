@@ -14,7 +14,10 @@ pub struct SuffixItem<T> {
 
 #[derive(Debug, Clone)]
 pub struct SuffixMeta {
+    /// The version which is the head of the suffix
     pub head: u64,
+    /// The last inserted version
+    pub last_insert_vers: u64,
     /// The suffix version till where it's safe to prune.
     pub prune_vers: Option<u64>,
     /// The minimum size to be maintained by the suffix

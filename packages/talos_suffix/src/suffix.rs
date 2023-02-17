@@ -26,6 +26,7 @@ where
 
         let meta = SuffixMeta {
             head: 0,
+            last_insert_vers: 0,
             prune_vers: None,
             min_size,
         };
@@ -118,7 +119,7 @@ where
         let Some(sfx_item) = self
         .get(version)?
         else {
-                info!("Returned due item not found in suffix for version={version} and decision version={decision_ver}");
+                info!("Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}", self.index_from_head(version));
                 return Ok(());
             };
 
@@ -165,12 +166,21 @@ where
                 self.meta.head
             );
 
-            let none_item_block = self.messages.push_back(Some(SuffixItem {
+            if index > 0 {
+                let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
+                for _ in (last_item_index + 1)..index {
+                    self.messages.push_back(None);
+                }
+            }
+
+            self.messages.push_back(Some(SuffixItem {
                 item: message,
                 item_ver: version,
                 decision_ver: None,
                 is_decided: false,
             }));
+
+            self.meta.last_insert_vers = version;
 
             let k: Vec<(usize, u64, Option<u64>)> = self
                 .messages

@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::{sync::atomic::AtomicI64, time::Duration};
+use std::{sync::atomic::AtomicI64};
 
 use async_trait::async_trait;
 use log::{debug, info};
@@ -171,15 +171,15 @@ impl CertifierService {
                 .map_err(CertificationError::SuffixError)?;
 
             // prune suffix if required?
-            if self.is_suffix_prune_ready() {
-                info!("Suffix message length before pruning ... {}!!!", self.suffix.messages.len());
-                self.suffix.prune().unwrap();
-                info!(
-                    "Suffix pruned and new length is ... {} and head is {}!!!",
-                    self.suffix.messages.len(),
-                    self.suffix.meta.head
-                );
-            }
+            // if self.is_suffix_prune_ready() {
+            //     info!("Suffix message length before pruning ... {}!!!", self.suffix.messages.len());
+            //     self.suffix.prune().unwrap();
+            //     info!(
+            //         "Suffix pruned and new length is ... {} and head is {}!!!",
+            //         self.suffix.messages.len(),
+            //         self.suffix.meta.head
+            //     );
+            // }
             // remove sets from certifier if pruning?
 
             // commit the offset if all prior suffix items have been decided?
@@ -249,11 +249,12 @@ impl SystemService for CertifierService {
 
                     },
 
-                    Some(ChannelMessage::Decision(version, decision_message)) => {
-                        self.process_decision(version, &decision_message).await?
-                    },
+                    // Some(ChannelMessage::Decision(version, decision_message)) => {
+                    //     self.process_decision(version, &decision_message).await?
+                    // },
 
-                    None => (),
+                    // None => (),
+                    _ => (),
                 }
             }
             // ** Received System Messages (shutdown/healthcheck).
