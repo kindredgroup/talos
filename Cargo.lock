@@ -1668,7 +1668,6 @@ dependencies = [
  "strum",
  "talos_suffix",
  "thiserror",
- "time 0.3.17",
  "tokio",
  "tokio-test",
 ]

@@ -28,9 +28,6 @@ serde_json = { workspace = true }
 # Error
 thiserror = "1.0.31"
 
-# Others
-time = { workspace = true }
-
 # internal crates
 talos_suffix = { path = "../talos_suffix" }
 logger = { path = "../logger" }
