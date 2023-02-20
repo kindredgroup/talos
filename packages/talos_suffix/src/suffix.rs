@@ -39,7 +39,7 @@ where
         if version < head {
             None
         } else {
-            Some(convert_u64_to_usize(version - head).ok()?)
+            Some((version - head) as usize)
         }
     }
 
@@ -98,6 +98,42 @@ where
         }
 
         result
+    }
+
+    pub fn retrieve_all_some_vec_items(&self) -> Vec<(usize, u64, Option<u64>)> {
+        self.messages
+            .iter()
+            .enumerate()
+            .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
+            .collect()
+    }
+
+    pub fn get_prune_version(&mut self) -> bool {
+        let Some(prune_vers) = self.meta.prune_vers else {
+            return false;
+        };
+
+        let prune_index = self.index_from_head(prune_vers).unwrap_or(0);
+
+        let mut some_items_count = 0;
+        let distance_iter = self.messages.iter().enumerate().rev();
+
+        for (i, item) in distance_iter {
+            if item.is_some() {
+                some_items_count += 1;
+
+                if some_items_count > self.meta.min_size - 1 {
+                    let item_ver = item.as_ref().unwrap().item_ver;
+                    info!("[Get Prune Version fn] Item version={item_ver} and prune version={prune_vers}");
+                    if item_ver < prune_vers {
+                        self.meta.prune_vers = Some(item_ver);
+                    }
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     /// Find the next valid suffix item from a particular version.
@@ -160,7 +196,8 @@ where
         if self.meta.head.le(&version) {
             self.reserve_space_if_required(version)?;
             let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
-            info!(
+
+            debug!(
                 "GK - going to insert to suffix with len={}, HEAD={}, version={version} and index={index}",
                 self.messages.len(),
                 self.meta.head
@@ -219,27 +256,35 @@ where
     ///        This enables to move the head to the appropiate location.
     fn prune(&mut self) -> SuffixResult<()> {
         let ver = self.meta.prune_vers.ok_or(SuffixError::PruneVersionNotFound)?;
+        let prune_index = self.index_from_head(ver).unwrap_or(0);
+
+        if prune_index == 0 {
+            return Ok(());
+        }
 
         if let Some(suffix_item) = self.find_next_message(ver) {
-            info!("Next suffix item found is.....{:?}", suffix_item.item_ver);
+            info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+            info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
-            let k: Vec<u64> = self.messages.iter().filter_map(|x| x.is_some().then(|| x.as_ref().unwrap().item_ver)).collect();
+            let k = self.retrieve_all_some_vec_items();
             info!("Items before pruning are \n{k:?}");
 
             let next_index = self
                 .index_from_head(suffix_item.item_ver)
                 .ok_or(SuffixError::VersionToIndexConversionError(ver))?;
-            drop(self.messages.drain(0..(self.meta.min_size)));
+            let max_to_prune = std::cmp::max(self.meta.min_size, next_index);
+            drop(self.messages.drain(..prune_index));
 
             self.update_prune_vers(None);
 
-            self.update_head(suffix_item.item_ver);
+            if let Some(first_item) = self.messages.front() {
+                if let Some(s_item) = first_item {
+                    self.update_head(s_item.item_ver);
+                }
+            }
 
-            let k: Vec<(u64, Option<u64>)> = self
-                .messages
-                .iter()
-                .filter_map(|x| x.is_some().then(|| (x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
-                .collect();
+            info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+            let k = self.retrieve_all_some_vec_items();
             info!("Items after pruning are \n{k:?}");
         }
 

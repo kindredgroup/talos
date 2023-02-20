@@ -16,7 +16,7 @@ async fn main() -> Result<(), impl std::error::Error> {
         TalosCertifierChannelBuffers::default(),
         Some(CertifierServiceConfig {
             suffix_size: 8,
-            min_suffix_size: 7,
+            min_suffix_size: 4,
             suffix_prune_frequency_ms: 300_000,
         }),
     )
