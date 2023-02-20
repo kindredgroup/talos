@@ -84,7 +84,7 @@ impl CertifierService {
     }
 
     pub(crate) fn is_suffix_prune_ready(&mut self) -> bool {
-        self.suffix.get_prune_version() //.is_some()
+        self.suffix.is_ready_for_prune() //.is_some()
     }
 
     /// Process CandidateMessage to provide the DecisionMessage
@@ -180,7 +180,7 @@ impl CertifierService {
 
             // commit the offset if all prior suffix items have been decided?
             if all_decided{
-                info!("Prior items decided if condition with dv={}", decision_message.version);
+                debug!("Prior items decided if condition with dv={}", decision_message.version);
                 // self.suffix.update_prune_vers(Some(decision_message.version));
 
                 self.commit_offset

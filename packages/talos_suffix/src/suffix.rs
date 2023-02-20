@@ -5,8 +5,9 @@ use std::collections::VecDeque;
 use log::{debug, info};
 
 use crate::{
-    core::{convert_u64_to_usize, SuffixMeta, SuffixResult, SuffixTrait},
+    core::{SuffixMeta, SuffixResult, SuffixTrait},
     errors::SuffixError,
+    utils::get_nonempty_suffix_items,
     SuffixItem,
 };
 
@@ -43,6 +44,20 @@ where
         }
     }
 
+    fn suffix_length(&self) -> usize {
+        self.messages.len()
+    }
+
+    fn is_valid_prune_version_index(&self) -> bool {
+        // If none, not valid
+        let Some(prune_index) = self.meta.prune_index else {
+            return false;
+        };
+
+        // If no greater than 0, not valid
+        prune_index > 0
+    }
+
     fn update_head(&mut self, version: u64) {
         self.meta.head = version;
     }
@@ -71,31 +86,17 @@ where
     /// Returns true, if the versions prior to the current version has either been decided or
     /// if suffix item is empty (None).
     pub fn are_prior_items_decided(&mut self, version: u64) -> bool {
-        let mut result = false;
         let Some(index) = self.index_from_head(version) else {
-            return result;
+            return false;
         };
 
         let Some(prune_index) = self.meta.prune_index else {
             return true;
         };
 
-        if index > prune_index {
-            result = self
-                .messages
-                .range(prune_index..index)
-                .filter_map(|x| x.is_some().then(|| x.as_ref().unwrap()))
-                .all(|x| x.is_decided);
-        } else {
-            info!(
-                "Split index used is {index} for version {version} and message length is {}",
-                self.messages.len()
-            );
-            let slice = self.messages.make_contiguous().split_at(index).0;
-            result = slice.iter().filter_map(|x| x.is_some().then(|| x.as_ref().unwrap())).all(|x| x.is_decided);
-        }
+        let range = if index > prune_index { prune_index..index } else { 0..index };
 
-        result
+        get_nonempty_suffix_items(self.messages.range(range)).all(|k| k.is_decided)
     }
 
     pub fn retrieve_all_some_vec_items(&self) -> Vec<(usize, u64, Option<u64>)> {
@@ -106,22 +107,26 @@ where
             .collect()
     }
 
-    pub fn get_prune_version(&mut self) -> bool {
+    pub fn is_ready_for_prune(&mut self) -> bool {
         // Not ready to prune, if prune version is not set
-        let Some(prune_index) = self.meta.prune_index else {
-            return false;
-        };
-
-        if prune_index == 0 {
+        if !self.is_valid_prune_version_index() {
             return false;
         }
 
         // Not ready to prune, if we dont have enough entries in the suffix
-        if self.messages.len() <= self.meta.min_size {
+        if self.suffix_length() <= self.meta.min_size {
             return false;
         }
 
-        let prune_till_index = std::cmp::min(self.messages.len() - prune_index + 1, self.messages.len() - self.meta.min_size - 1);
+        let prune_index = self.meta.prune_index.unwrap();
+
+        let v1 = prune_index - 1; // self.messages.len() - prune_index + 1;
+        let v2 = self.messages.len() - self.meta.min_size - 1;
+        let prune_till_index = std::cmp::min(v1, v2);
+        info!(
+            "[Prune index updating..] Current prune_index={:?} and new prune_index={:?} and v1={v1} , v2={v2} ",
+            self.meta.prune_index, prune_till_index
+        );
 
         let prune_till_index = self
             .messages
@@ -131,41 +136,10 @@ where
             .find_map(|(i, x)| x.is_some().then(|| i))
             .unwrap();
 
-        info!(
-            "[Prune index updating..] Current prune_index={:?} and new prune_index={:?} ",
-            self.meta.prune_index, prune_till_index
-        );
+        info!("[Prune index updating..] After reverse searching, new prune_index={:?} ", prune_till_index);
+
         self.meta.prune_index = Some(prune_till_index);
         true
-
-        // let mut some_items_count = 0;
-        // let distance_iter = self.messages.iter().enumerate().rev();
-
-        // for (i, item) in distance_iter {
-        //     if item.is_some() {
-        //         some_items_count += 1;
-
-        //         if some_items_count > self.meta.min_size - 1 {
-        //             let item_ver = item.as_ref().unwrap().item_ver;
-        //             info!("[Get Prune Version fn] Item version={item_ver} and prune version={prune_vers}");
-        //             if item_ver < prune_vers {
-        //                 self.meta.prune_vers = Some(item_ver);
-        //             }
-        //             return true;
-        //         }
-        //     }
-        // }
-
-        // false
-    }
-
-    /// Find the next valid suffix item from a particular version.
-    /// Returns None if there are no valid suffix item
-    fn find_next_message(&self, from_version: u64) -> Option<SuffixItem<T>> {
-        self.messages
-            .iter()
-            .find(|&x| x.is_some() && x.clone().unwrap().item_ver > from_version)?
-            .clone()
     }
 
     pub fn update_decision_suffix_item(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
@@ -192,7 +166,7 @@ where
             .index_from_head(version)
             .ok_or(SuffixError::IndexCalculationError(self.meta.head, version))?;
 
-        info!("Updating version={version} with index={index:?} and decision version={decision_ver}");
+        debug!("Updating version={version} with index={index:?} and decision version={decision_ver}");
         self.messages[index] = Some(new_sfx_item);
         Ok(())
     }

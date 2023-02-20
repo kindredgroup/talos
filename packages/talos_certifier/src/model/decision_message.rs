@@ -1,4 +1,3 @@
-use log::info;
 // use super::CandidateMessage;
 use serde::{Deserialize, Serialize};
 

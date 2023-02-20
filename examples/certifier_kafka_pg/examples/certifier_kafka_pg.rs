@@ -15,8 +15,8 @@ async fn main() -> Result<(), impl std::error::Error> {
     let talos_certifier = certifier_with_kafka_pg(
         TalosCertifierChannelBuffers::default(),
         Some(CertifierServiceConfig {
-            suffix_size: 8,
-            min_suffix_size: 4,
+            suffix_size: 30,
+            min_suffix_size: 20,
             suffix_prune_frequency_ms: 300_000,
         }),
     )
