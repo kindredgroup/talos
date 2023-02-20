@@ -1,5 +1,7 @@
 use crate::api::{KafkaConfig, TalosType};
-use crate::messaging::api::{CandidateMessage, ConsumerType, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE, Decision};
+use crate::messaging::api::{
+    CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE,
+};
 use async_trait::async_trait;
 use log::debug;
 use log::error;

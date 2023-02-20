@@ -7,6 +7,8 @@ use time::OffsetDateTime;
 
 /// Data structures-needed for metrics
 
+const MICRO_PER_MS: f32 = 1_000_f32;
+
 /// Returns throughput in items per second
 pub fn get_rate(count: i32, duration_ms: u64) -> u64 {
     ((count as f32) / (duration_ms as f32) * 1000.0) as u64
@@ -21,11 +23,11 @@ pub fn format_metric(metric: String, time: Timing) -> String {
     format!(
         "{}: {} ms [{} + {} + {} + {}]",
         metric,
-        time.get_total(),
-        time.get_outbox(),
-        time.get_receive_and_decide(),
-        time.get_decision_send(),
-        time.get_inbox(),
+        time.get_total_ms(),
+        time.get_outbox_ms(),
+        time.get_receive_and_decide_ms(),
+        time.get_decision_send_ms(),
+        time.get_inbox_ms(),
     )
 }
 
@@ -39,19 +41,20 @@ pub struct PercentileSet {
 
 impl PercentileSet {
     pub fn new<K>(
-        metrics: &Vec<Timing>,                   // the whole data set
-        fn_getter: impl Fn(&Timing) -> u64,      // function returning value of attribute from Timing object
+        metrics: &mut [Timing],                  // the whole data set
+        fn_getter: impl Fn(&Timing) -> f32,      // function returning value of attribute from Timing object
         fn_key_getter: impl FnMut(&Timing) -> K, // data set need to be sorted before producing percentiles. This function represent sorting key.
     ) -> Self
     where
         K: Ord,
     {
-        let _ = &metrics.clone().sort_by_key(fn_key_getter);
-        let p50 = Percentile::compute(metrics, 50, "ms", &fn_getter);
-        let p75 = Percentile::compute(metrics, 75, "ms", &fn_getter);
-        let p90 = Percentile::compute(metrics, 90, "ms", &fn_getter);
-        let p95 = Percentile::compute(metrics, 95, "ms", &fn_getter);
-        let p99 = Percentile::compute(metrics, 99, "ms", &fn_getter);
+        let sorted = &mut metrics.to_owned();
+        sorted.sort_by_key(fn_key_getter);
+        let p50 = Percentile::compute(sorted, 50, "ms", &fn_getter);
+        let p75 = Percentile::compute(sorted, 75, "ms", &fn_getter);
+        let p90 = Percentile::compute(sorted, 90, "ms", &fn_getter);
+        let p95 = Percentile::compute(sorted, 95, "ms", &fn_getter);
+        let p99 = Percentile::compute(sorted, 99, "ms", &fn_getter);
 
         PercentileSet { p50, p75, p90, p95, p99 }
     }
@@ -59,12 +62,12 @@ impl PercentileSet {
 
 pub struct Percentile {
     percentage: u32,
-    value: u64,
+    value: f32,
     unit: String,
 }
 
 impl Percentile {
-    fn compute(data_set: &Vec<Timing>, percentage: u32, unit: &str, get: &impl Fn(&Timing) -> u64) -> Percentile {
+    fn compute(data_set: &Vec<Timing>, percentage: u32, unit: &str, get: &impl Fn(&Timing) -> f32) -> Percentile {
         let index = cmp::min((((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize, data_set.len() - 1);
 
         Percentile {
@@ -115,19 +118,19 @@ impl Timing {
         }
     }
 
-    pub fn get_total(&self) -> u64 {
-        self.total.as_millis() as u64
+    pub fn get_total_ms(&self) -> f32 {
+        self.total.as_micros() as f32 / MICRO_PER_MS
     }
-    pub fn get_outbox(&self) -> u64 {
-        self.outbox.as_millis() as u64
+    pub fn get_outbox_ms(&self) -> f32 {
+        self.outbox.as_micros() as f32 / MICRO_PER_MS
     }
-    pub fn get_receive_and_decide(&self) -> u64 {
-        self.receive_and_decide.as_millis() as u64
+    pub fn get_receive_and_decide_ms(&self) -> f32 {
+        self.receive_and_decide.as_micros() as f32 / MICRO_PER_MS
     }
-    pub fn get_decision_send(&self) -> u64 {
-        self.decision_send.as_millis() as u64
+    pub fn get_decision_send_ms(&self) -> f32 {
+        self.decision_send.as_micros() as f32 / MICRO_PER_MS
     }
-    pub fn get_inbox(&self) -> u64 {
-        self.inbox.as_millis() as u64
+    pub fn get_inbox_ms(&self) -> f32 {
+        self.inbox.as_micros() as f32 / MICRO_PER_MS
     }
 }

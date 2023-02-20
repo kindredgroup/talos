@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use time::OffsetDateTime;
 use tokio::sync::Notify;
 
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
@@ -43,14 +44,6 @@ impl TalosAgentImpl {
         }
     }
 
-    fn create_kafka_consumer(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        let kc = KafkaConsumer::new(agent_id, config);
-        match kc.subscribe() {
-            Ok(()) => Ok(Box::new(kc)),
-            Err(e) => Err(e),
-        }
-    }
-
     fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
         Ok(Box::new(MockConsumer {}))
     }
@@ -64,7 +57,7 @@ impl TalosAgentImpl {
         let it = int_type.clone();
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it {
-                TalosIntegrationType::Kafka => Self::create_kafka_consumer(agent_id, &config),
+                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent_id, &config),
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
             }
             .unwrap();
@@ -107,10 +100,12 @@ impl TalosAgent for TalosAgentImpl {
             monitor: Notify::new(),
         });
 
+        let enqueued_at: u64;
         // todo: Introduce the limit of in-flight transactions.
         {
             let mut state = self.in_flight.lock().unwrap();
             state.insert(request.candidate.xid.clone(), Arc::clone(&in_flight));
+            enqueued_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
         }
 
         let msg = CandidateMessage::new(self.config.agent_name.clone(), self.config.cohort_name.clone(), request.candidate.clone());
@@ -122,10 +117,10 @@ impl TalosAgent for TalosAgentImpl {
                 return Ok(CertificationResponse {
                     xid: answer.xid.clone(),
                     is_accepted: answer.decision == Decision::Committed,
-                    send_started_at: 0,
-                    decided_at: 0,
-                    decision_buffered_at: 0,
-                    received_at: 0,
+                    send_started_at: enqueued_at,
+                    decided_at: answer.decided_at.unwrap_or(0),
+                    decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+                    received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
                 });
             }
             debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);

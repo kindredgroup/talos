@@ -15,8 +15,8 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 1_000;
-const TALOS_TYPE: TalosType = TalosType::InProcessMock;
+const BATCH_SIZE: i32 = 10_000;
+const TALOS_TYPE: TalosType = TalosType::External;
 const PROGRESS_EVERY: i32 = 10_000;
 // const RATE_100_TPS: Duration = Duration::from_millis(10);
 // const RATE_200_TPS: Duration = Duration::from_millis(5);
@@ -66,7 +66,7 @@ fn make_candidate(xid: String) -> CertificationRequest {
     }
 }
 
-// fn make_agent() -> Box<TalosAgentType> {
+// async fn make_agent() -> Box<TalosAgentType> {
 //     let (cfg_agent, cfg_kafka) = make_configs();
 //
 //     TalosAgentBuilder::new(cfg_agent)
@@ -117,8 +117,8 @@ async fn certify(batch_size: i32) -> Result<(), String> {
 
     // Collect all stats and produce metrics
 
-    let mut min = 500_000 * 1_000_000;
-    let mut max = 0;
+    let mut min = f32::MAX;
+    let mut max = f32::MIN;
     let mut min_timing: Option<Timing> = None;
     let mut max_timing: Option<Timing> = None;
     let mut metrics = Vec::new();
@@ -129,7 +129,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             info!("Completed {} of {}", i, batch_size);
         }
         i += 1;
-        let d = timing.get_total();
+        let d = timing.get_total_ms();
         if d < min {
             min = d;
             min_timing = Some(timing.clone());
@@ -148,11 +148,11 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     let duration_ms = Duration::from_nanos((finished_at - started_at) as u64).as_millis() as u64;
 
-    let total = PercentileSet::new(&metrics, Timing::get_total, |i| i.total.as_millis());
-    let span1 = PercentileSet::new(&metrics, Timing::get_outbox, |i| i.outbox.as_millis());
-    let span2 = PercentileSet::new(&metrics, Timing::get_receive_and_decide, |i| i.receive_and_decide.as_millis());
-    let span3 = PercentileSet::new(&metrics, Timing::get_decision_send, |i| i.decision_send.as_millis());
-    let span4 = PercentileSet::new(&metrics, Timing::get_inbox, |i| i.inbox.as_millis());
+    let total = PercentileSet::new(&mut metrics, Timing::get_total_ms, |i| i.total.as_micros());
+    let span1 = PercentileSet::new(&mut metrics, Timing::get_outbox_ms, |i| i.outbox.as_micros());
+    let span2 = PercentileSet::new(&mut metrics, Timing::get_receive_and_decide_ms, |i| i.receive_and_decide.as_micros());
+    let span3 = PercentileSet::new(&mut metrics, Timing::get_decision_send_ms, |i| i.decision_send.as_micros());
+    let span4 = PercentileSet::new(&mut metrics, Timing::get_inbox_ms, |i| i.inbox.as_micros());
 
     info!(
         "Test duration: {} ms\nThroughput: {} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
