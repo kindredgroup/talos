@@ -1,7 +1,5 @@
-use crate::api::KafkaConfig;
-use crate::messaging::api::{
-    CandidateMessage, ConsumerType, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE,
-};
+use crate::api::{KafkaConfig, TalosType};
+use crate::messaging::api::{CandidateMessage, ConsumerType, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE, Decision};
 use async_trait::async_trait;
 use log::debug;
 use log::error;
@@ -14,6 +12,7 @@ use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::time::Duration;
 use std::{str, thread};
+use time::OffsetDateTime;
 
 /// The implementation of publisher which communicates with kafka brokers.
 
@@ -180,12 +179,22 @@ impl KafkaConsumer {
     }
 
     fn deserialize_decision(
+        talos_type: &TalosType,
         message_type: &TalosMessageType,
         payload_view: &Option<Result<&str, Utf8Error>>,
         decided_at: Option<u64>,
     ) -> Option<Result<DecisionMessage, String>> {
         match message_type {
-            TalosMessageType::Candidate => None,
+            TalosMessageType::Candidate => match talos_type {
+                TalosType::External => None,
+                TalosType::InProcessMock => payload_view.and_then(|raw_payload| {
+                    Some(KafkaConsumer::parse_payload_as_candidate(
+                        &raw_payload,
+                        Decision::Committed,
+                        decided_at.or_else(|| Some(OffsetDateTime::now_utc().unix_timestamp_nanos() as u64)),
+                    ))
+                }),
+            },
 
             // Take only decisions...
             TalosMessageType::Decision => payload_view.and_then(|raw_payload| {
@@ -210,6 +219,34 @@ impl KafkaConsumer {
                     error!("Unable to parse JSON into DecisionMessage: {}", json_error);
                     json_error.to_string()
                 })
+            }
+        };
+    }
+
+    fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision, decided_at: Option<u64>) -> Result<DecisionMessage, String> {
+        return match raw_payload {
+            Err(payload_read_error) => {
+                error!("Unable to read kafka message payload: {}", payload_read_error);
+                Err(payload_read_error.to_string())
+            }
+
+            Ok(json) => {
+                // convert JSON text into DecisionMessage
+                serde_json::from_str::<CandidateMessage>(json)
+                    .map_err(|json_error| {
+                        error!("Unable to parse JSON into DecisionMessage: {}", json_error);
+                        json_error.to_string()
+                    })
+                    .map(|candidate| DecisionMessage {
+                        xid: candidate.xid,
+                        agent: candidate.agent,
+                        cohort: candidate.cohort,
+                        decision,
+                        suffix_start: 0,
+                        version: 0,
+                        safepoint: None,
+                        decided_at,
+                    })
             }
         };
     }
@@ -274,7 +311,9 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                     }
                 });
 
-                parsed_type.and_then(|message_type| KafkaConsumer::deserialize_decision(&message_type, &received.payload_view::<str>(), decided_at))
+                parsed_type.and_then(|message_type| {
+                    KafkaConsumer::deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>(), decided_at)
+                })
             }
         };
 

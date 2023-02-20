@@ -3,6 +3,24 @@
 version = 3
 
 [[package]]
+name = "agent_client"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "env_logger",
+ "log",
+ "rdkafka",
+ "rdkafka-sys",
+ "serde",
+ "serde_json",
+ "strum",
+ "talos_agent",
+ "time 0.3.17",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
