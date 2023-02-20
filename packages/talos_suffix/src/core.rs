@@ -18,8 +18,8 @@ pub struct SuffixMeta {
     pub head: u64,
     /// The last inserted version
     pub last_insert_vers: u64,
-    /// The suffix version till where it's safe to prune.
-    pub prune_vers: Option<u64>,
+    /// The suffix index till where it's safe to prune.
+    pub prune_index: Option<usize>,
     /// The minimum size to be maintained by the suffix
     pub min_size: usize,
 }

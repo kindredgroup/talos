@@ -27,7 +27,7 @@ where
         let meta = SuffixMeta {
             head: 0,
             last_insert_vers: 0,
-            prune_vers: None,
+            prune_index: None,
             min_size,
         };
 
@@ -47,8 +47,8 @@ where
         self.meta.head = version;
     }
 
-    pub fn update_prune_vers(&mut self, vers: Option<u64>) {
-        self.meta.prune_vers = vers;
+    pub fn update_prune_index(&mut self, index: Option<usize>) {
+        self.meta.prune_index = index;
     }
 
     /// Reserve space when the version we are inserting is
@@ -76,11 +76,9 @@ where
             return result;
         };
 
-        let Some(prune_vers) = self.meta.prune_vers else {
+        let Some(prune_index) = self.meta.prune_index else {
             return true;
         };
-
-        let prune_index = self.index_from_head(prune_vers).unwrap_or(0);
 
         if index > prune_index {
             result = self
@@ -109,31 +107,56 @@ where
     }
 
     pub fn get_prune_version(&mut self) -> bool {
-        let Some(prune_vers) = self.meta.prune_vers else {
+        // Not ready to prune, if prune version is not set
+        let Some(prune_index) = self.meta.prune_index else {
             return false;
         };
 
-        let prune_index = self.index_from_head(prune_vers).unwrap_or(0);
-
-        let mut some_items_count = 0;
-        let distance_iter = self.messages.iter().enumerate().rev();
-
-        for (i, item) in distance_iter {
-            if item.is_some() {
-                some_items_count += 1;
-
-                if some_items_count > self.meta.min_size - 1 {
-                    let item_ver = item.as_ref().unwrap().item_ver;
-                    info!("[Get Prune Version fn] Item version={item_ver} and prune version={prune_vers}");
-                    if item_ver < prune_vers {
-                        self.meta.prune_vers = Some(item_ver);
-                    }
-                    return true;
-                }
-            }
+        if prune_index == 0 {
+            return false;
         }
 
-        false
+        // Not ready to prune, if we dont have enough entries in the suffix
+        if self.messages.len() <= self.meta.min_size {
+            return false;
+        }
+
+        let prune_till_index = std::cmp::min(self.messages.len() - prune_index + 1, self.messages.len() - self.meta.min_size - 1);
+
+        let prune_till_index = self
+            .messages
+            .range(..prune_till_index + 1)
+            .enumerate()
+            .rev()
+            .find_map(|(i, x)| x.is_some().then(|| i))
+            .unwrap();
+
+        info!(
+            "[Prune index updating..] Current prune_index={:?} and new prune_index={:?} ",
+            self.meta.prune_index, prune_till_index
+        );
+        self.meta.prune_index = Some(prune_till_index);
+        true
+
+        // let mut some_items_count = 0;
+        // let distance_iter = self.messages.iter().enumerate().rev();
+
+        // for (i, item) in distance_iter {
+        //     if item.is_some() {
+        //         some_items_count += 1;
+
+        //         if some_items_count > self.meta.min_size - 1 {
+        //             let item_ver = item.as_ref().unwrap().item_ver;
+        //             info!("[Get Prune Version fn] Item version={item_ver} and prune version={prune_vers}");
+        //             if item_ver < prune_vers {
+        //                 self.meta.prune_vers = Some(item_ver);
+        //             }
+        //             return true;
+        //         }
+        //     }
+        // }
+
+        // false
     }
 
     /// Find the next valid suffix item from a particular version.
@@ -240,7 +263,8 @@ where
         self.update_decision_suffix_item(version, decision_ver)?;
 
         if self.are_prior_items_decided(version) {
-            self.update_prune_vers(Some(version));
+            let index = self.index_from_head(version).unwrap();
+            self.update_prune_index(Some(index));
         }
 
         Ok(())
@@ -255,38 +279,44 @@ where
     ///     2. And there is atleast one suffix item remaining, which can be the new head.
     ///        This enables to move the head to the appropiate location.
     fn prune(&mut self) -> SuffixResult<()> {
-        let ver = self.meta.prune_vers.ok_or(SuffixError::PruneVersionNotFound)?;
-        let prune_index = self.index_from_head(ver).unwrap_or(0);
+        let ver = self.meta.prune_index.ok_or(SuffixError::PruneVersionNotFound)?;
+        let Some(prune_index) = self.meta.prune_index else {
+            return Ok(());
+        };
 
         if prune_index == 0 {
             return Ok(());
         }
 
-        if let Some(suffix_item) = self.find_next_message(ver) {
-            info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
-            info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
+        // if let Some(suffix_item) = self.find_next_message(ver) {
+        info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
-            let k = self.retrieve_all_some_vec_items();
-            info!("Items before pruning are \n{k:?}");
+        let k = self.retrieve_all_some_vec_items();
+        info!("Items before pruning are \n{k:?}");
 
-            let next_index = self
-                .index_from_head(suffix_item.item_ver)
-                .ok_or(SuffixError::VersionToIndexConversionError(ver))?;
-            let max_to_prune = std::cmp::max(self.meta.min_size, next_index);
-            drop(self.messages.drain(..prune_index));
+        // let next_index = self
+        //     .index_from_head(suffix_item.item_ver)
+        //     .ok_or(SuffixError::VersionToIndexConversionError(suffix_item.item_ver))?;
+        // let max_to_prune = std::cmp::max(self.meta.min_size, next_index);
+        drop(self.messages.drain(..prune_index));
 
-            self.update_prune_vers(None);
+        self.update_prune_index(None);
 
-            if let Some(first_item) = self.messages.front() {
-                if let Some(s_item) = first_item {
-                    self.update_head(s_item.item_ver);
-                }
+        // find the first `Some()` item to set as head
+        // let first_some_item = self.messages.iter().find_map(|x| x.is_some().then(|| x.as_ref().unwrap().item_ver)).unwrap();
+        // self.update_head(first_some_item);
+
+        if let Some(first_item) = self.messages.front() {
+            if let Some(s_item) = first_item {
+                self.update_head(s_item.item_ver);
             }
-
-            info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
-            let k = self.retrieve_all_some_vec_items();
-            info!("Items after pruning are \n{k:?}");
         }
+
+        info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        let k = self.retrieve_all_some_vec_items();
+        info!("Items after pruning are \n{k:?}");
+        // }
 
         Ok(())
     }
@@ -297,8 +327,8 @@ where
         self.messages[index] = None;
 
         // if we are removing the pruneable version, set prune_vers to None.
-        if self.meta.prune_vers == Some(version) {
-            self.update_prune_vers(None);
+        if self.meta.prune_index == Some(index) {
+            self.update_prune_index(None);
         }
 
         Ok(())

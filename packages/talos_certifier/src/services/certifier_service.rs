@@ -142,12 +142,11 @@ impl CertifierService {
         let candidate_version_index = self.suffix.index_from_head(candidate_version);
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             info!(
-                "I reached here.... \nis prune ready {}\nprior items are decided={} \n message len={} and prune ready version {} and index={:?} \n HEAD={}, current candidate message version={candidate_version} and index={candidate_version_index:?} and decision message version={decision_version}\n config.min_suffix_size={}",
+                "I reached here.... \nis prune ready {}\nprior items are decided={} \n message len={} and prune ready index={:?} \n HEAD={}, current candidate message version={candidate_version} and index={candidate_version_index:?} and decision message version={decision_version}\n config.min_suffix_size={}",
                 self.is_suffix_prune_ready(),
                 self.suffix.are_prior_items_decided(candidate_version),
                 self.suffix.messages.len(),
-                self.suffix.meta.prune_vers.unwrap_or_default(),
-                self.suffix.index_from_head(self.suffix.meta.prune_vers.unwrap_or_default()),
+                self.suffix.meta.prune_index,
                 self.suffix.meta.head,
                 self.config.min_suffix_size
     
@@ -164,7 +163,7 @@ impl CertifierService {
 
 
             if all_decided {
-                self.suffix.update_prune_vers(Some(decision_message.version));
+                self.suffix.update_prune_index(Some(candidate_version_index.unwrap()));
             }
 
             // prune suffix if required?

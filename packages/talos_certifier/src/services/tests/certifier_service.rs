@@ -409,13 +409,9 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     assert!(result.is_ok());
 
     // assert suffix is above 30pc and prune ready
-    assert_eq!(certifier_svc.suffix.meta.prune_vers, Some(3));
+    assert_eq!(certifier_svc.suffix.meta.prune_index, Some(3));
 
-    let prune_index = if let Some(prune_vers) = certifier_svc.suffix.meta.prune_vers {
-        certifier_svc.suffix.index_from_head(prune_vers).unwrap_or(0)
-    } else {
-        0
-    };
+    let prune_index = certifier_svc.suffix.meta.prune_index.unwrap_or(0);
     assert_eq!(prune_index, 2);
 
     // let threshold = ((certifier_svc.suffix.messages.len() as f64) * certifier_svc.config.suffix_prune_threshold as f64 / 100 as f64).round() as usize;
@@ -526,6 +522,6 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
     assert!(result.is_ok());
 
     // assert suffix is above 50pc and prune ready
-    assert_eq!(certifier_svc.suffix.meta.prune_vers, Some(2));
+    assert_eq!(certifier_svc.suffix.meta.prune_index, Some(2));
     assert!(!certifier_svc.is_suffix_prune_ready());
 }
