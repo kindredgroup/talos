@@ -7,6 +7,10 @@ use crate::messaging::kafka::KafkaPublisher;
 use crate::messaging::mock::MockPublisher;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+pub const TRACK_PUBLISH_METRICS: bool = true;
 
 ///
 /// Data structures and interfaces exposed to agent client
@@ -134,13 +138,14 @@ impl TalosAgentBuilder {
     }
 
     /// Build agent instance implemented using actor model.
-    pub async fn build_v2(&self) -> Result<Box<TalosAgentType>, String> {
+    pub async fn build_v2(&self, publish_times: &Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
         let agent = TalosAgentImplV2::new(
             self.config.clone(),
             self.kafka_config.clone(),
             &self.integration_type,
             tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size),
             tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size),
+            publish_times,
         )
         .await
         .map_err(|e| {

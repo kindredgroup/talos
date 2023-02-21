@@ -15,19 +15,27 @@ pub fn get_rate(count: i32, duration_ms: u64) -> u64 {
 }
 
 /// Formats 4 sequential spans as single string value
-pub fn format(v: Percentile, span1: Percentile, span2: Percentile, span3: Percentile, span4: Percentile) -> String {
-    format!("\t{} [{} + {} + {} + {}]", v, span1.value, span2.value, span3.value, span4.value)
+pub fn format(v: &Percentile, span1: Percentile, span2: Percentile, span3: Percentile, span4: Percentile, publish: Option<Percentile>) -> String {
+    match publish {
+        Some(p) => {
+            format!("\t{} [{} + {} + {} + {}], {}", v, span1.value, span2.value, span3.value, span4.value, p.value)
+        }
+        None => {
+            format!("\t{} [{} + {} + {} + {}]", v, span1.value, span2.value, span3.value, span4.value)
+        }
+    }
 }
 
 pub fn format_metric(metric: String, time: Timing) -> String {
     format!(
-        "{}: {} ms [{} + {} + {} + {}]",
+        "{}: {} ms [{} + {} + {} + {}], {}",
         metric,
         time.get_total_ms(),
         time.get_outbox_ms(),
         time.get_receive_and_decide_ms(),
         time.get_decision_send_ms(),
         time.get_inbox_ms(),
+        time.get_publish_ms(),
     )
 }
 
@@ -60,9 +68,10 @@ impl PercentileSet {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Percentile {
     percentage: u32,
-    value: f32,
+    pub value: f32,
     unit: String,
 }
 
@@ -87,7 +96,9 @@ impl Display for Percentile {
 #[derive(Clone, Debug)]
 pub struct Timing {
     pub response: CertificationResponse,
+    pub started_at: u64,
     pub outbox: Duration,             // time candidate spent in the internal channel queue before being sent to kafka
+    pub publish: Duration,            // time between start and publish to kafka
     pub receive_and_decide: Duration, // time from start till talos made a decision (including kafka transmit and read)
     pub decision_send: Duration,
     pub inbox: Duration,
@@ -95,42 +106,57 @@ pub struct Timing {
 }
 
 impl Timing {
-    pub async fn capture<T>(action: impl Fn() -> T + Send) -> Self
+    pub async fn capture<T>(action: impl Fn() -> T + Send) -> Result<Timing, String>
     where
         T: Future<Output = Result<CertificationResponse, String>>,
     {
         let created_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
-        let response: CertificationResponse = action().await.unwrap();
-        let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
 
-        let send_started_at = response.send_started_at;
-        let decided_at = response.decided_at;
-        let decision_buffered_at = response.decision_buffered_at;
-        let received_at = response.received_at;
+        match action().await {
+            Ok(response) => {
+                let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
 
-        Timing {
-            response,
-            outbox: Duration::from_nanos(send_started_at - created_at),
-            receive_and_decide: Duration::from_nanos(decided_at - send_started_at),
-            decision_send: Duration::from_nanos(decision_buffered_at - decided_at),
-            inbox: Duration::from_nanos(received_at - decision_buffered_at),
-            total: Duration::from_nanos(finished_at - created_at),
+                let send_started_at = response.send_started_at;
+                let decided_at = response.decided_at;
+                let decision_buffered_at = response.decision_buffered_at;
+                let received_at = response.received_at;
+
+                Ok(Timing {
+                    response,
+                    started_at: created_at,
+                    outbox: Duration::from_nanos(send_started_at - created_at),
+                    receive_and_decide: Duration::from_nanos(decided_at - send_started_at),
+                    decision_send: Duration::from_nanos(decision_buffered_at - decided_at),
+                    inbox: Duration::from_nanos(received_at - decision_buffered_at),
+                    total: Duration::from_nanos(finished_at - created_at),
+                    publish: Duration::from_nanos(0),
+                })
+            }
+
+            Err(error) => Err(error),
         }
     }
 
     pub fn get_total_ms(&self) -> f32 {
-        self.total.as_micros() as f32 / MICRO_PER_MS
+        Timing::ms(self.total)
     }
     pub fn get_outbox_ms(&self) -> f32 {
-        self.outbox.as_micros() as f32 / MICRO_PER_MS
+        Timing::ms(self.outbox)
     }
     pub fn get_receive_and_decide_ms(&self) -> f32 {
-        self.receive_and_decide.as_micros() as f32 / MICRO_PER_MS
+        Timing::ms(self.receive_and_decide)
     }
     pub fn get_decision_send_ms(&self) -> f32 {
-        self.decision_send.as_micros() as f32 / MICRO_PER_MS
+        Timing::ms(self.decision_send)
     }
     pub fn get_inbox_ms(&self) -> f32 {
-        self.inbox.as_micros() as f32 / MICRO_PER_MS
+        Timing::ms(self.inbox)
+    }
+    pub fn get_publish_ms(&self) -> f32 {
+        Timing::ms(self.publish)
+    }
+
+    fn ms(value: Duration) -> f32 {
+        value.as_micros() as f32 / MICRO_PER_MS
     }
 }

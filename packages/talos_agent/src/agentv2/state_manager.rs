@@ -1,11 +1,11 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 
-use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TalosIntegrationType};
+use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TalosIntegrationType, TRACK_PUBLISH_METRICS};
 use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, PublisherType};
 
 use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
@@ -15,14 +15,21 @@ pub struct StateManager {
     agent_config: AgentConfig,
     kafka_config: Option<KafkaConfig>,
     int_type: TalosIntegrationType,
+    publish_times: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl StateManager {
-    pub fn new(agent_config: AgentConfig, kafka_config: Option<KafkaConfig>, int_type: &TalosIntegrationType) -> Result<StateManager, String> {
+    pub fn new(
+        agent_config: AgentConfig,
+        kafka_config: Option<KafkaConfig>,
+        int_type: &TalosIntegrationType,
+        publish_times: &Arc<Mutex<HashMap<String, u64>>>,
+    ) -> Result<StateManager, String> {
         let state_manager = StateManager {
             agent_config,
             kafka_config,
             int_type: int_type.clone(),
+            publish_times: Arc::clone(publish_times),
         };
 
         Ok(state_manager)
@@ -44,6 +51,7 @@ impl StateManager {
         }
         .unwrap();
 
+        let publish_times = Arc::clone(&self.publish_times);
         tokio::spawn(async move {
             let mut state: HashMap<String, (u64, Sender<CertificationResponse>)> = HashMap::new();
 
@@ -77,8 +85,22 @@ impl StateManager {
 
                                 let publisher_ref = Arc::clone(&publisher);
                                 let key = request_msg.request.message_key.clone();
+                                let xid = msg.xid.clone();
+                                let times = Arc::clone(&publish_times);
                                 tokio::spawn(async move {
                                     publisher_ref.send_message(key, msg).await.unwrap();
+                                    if TRACK_PUBLISH_METRICS {
+                                        let published_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+                                        match times.lock() {
+                                            Ok(mut map) => {
+                                                map.insert(xid, published_at);
+                                            },
+                                            Err(e) => {
+                                                log::error!("Unable to insert publish time for xid: {}. {:?}", xid, e.to_string());
+                                            }
+                                        }
+                                    }
+
                                 });
                             },
                             None => break,

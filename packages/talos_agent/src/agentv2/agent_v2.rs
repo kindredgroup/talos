@@ -2,6 +2,8 @@ use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMe
 use crate::agentv2::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
 use async_trait::async_trait;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -18,8 +20,9 @@ impl TalosAgentImplV2 {
         int_type: &TalosIntegrationType,
         certify: (Sender<CertifyRequestChannelMessage>, Receiver<CertifyRequestChannelMessage>),
         cancel: (Sender<CancelRequestChannelMessage>, Receiver<CancelRequestChannelMessage>),
+        publish_times: &Arc<Mutex<HashMap<String, u64>>>,
     ) -> Result<TalosAgentImplV2, String> {
-        let state_manager = StateManager::new(agent_config, kafka_config, int_type).unwrap();
+        let state_manager = StateManager::new(agent_config, kafka_config, int_type, publish_times).unwrap();
 
         state_manager.start(certify.1, cancel.1).await;
 
