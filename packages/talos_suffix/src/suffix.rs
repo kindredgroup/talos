@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use log::{debug, info};
 
 use crate::{
-    core::{SuffixMeta, SuffixResult, SuffixTrait},
+    core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
     errors::SuffixError,
     utils::get_nonempty_suffix_items,
     SuffixItem,
@@ -21,15 +21,21 @@ impl<T> Suffix<T>
 where
     T: Sized + Clone + std::fmt::Debug,
 {
-    pub fn new(min_size: usize, capacity: usize) -> Suffix<T> {
-        // let suffix_vec: Vec<Option<SuffixItem<T>>> = vec![None; capacity];
+    pub fn with_config(config: SuffixConfig) -> Suffix<T> {
+        let SuffixConfig {
+            capacity,
+            prune_start_threshold,
+            min_size_after_prune,
+        } = config;
+
         let messages = VecDeque::with_capacity(capacity);
 
         let meta = SuffixMeta {
             head: 0,
             last_insert_vers: 0,
             prune_index: None,
-            min_size,
+            prune_start_threshold,
+            min_size_after_prune,
         };
 
         Suffix { meta, messages }
@@ -90,9 +96,8 @@ where
             return false;
         };
 
-        let Some(prune_index) = self.meta.prune_index else {
-            return true;
-        };
+        // If prune index is `None` assumption is this is the first item.
+        let prune_index = self.meta.prune_index.unwrap_or(0);
 
         let range = if index > prune_index { prune_index..index } else { 0..index };
 
@@ -107,39 +112,73 @@ where
             .collect()
     }
 
-    pub fn is_ready_for_prune(&mut self) -> bool {
-        // Not ready to prune, if prune version is not set
-        if !self.is_valid_prune_version_index() {
-            return false;
-        }
-
-        // Not ready to prune, if we dont have enough entries in the suffix
-        if self.suffix_length() <= self.meta.min_size {
-            return false;
-        }
-
-        let prune_index = self.meta.prune_index.unwrap();
-
-        let v1 = prune_index - 1; // self.messages.len() - prune_index + 1;
-        let v2 = self.messages.len() - self.meta.min_size - 1;
-        let prune_till_index = std::cmp::min(v1, v2);
-        info!(
-            "[Prune index updating..] Current prune_index={:?} and new prune_index={:?} and v1={v1} , v2={v2} ",
-            self.meta.prune_index, prune_till_index
-        );
-
+    pub fn find_prune_till_index(&mut self, prune_till_index: usize) -> usize {
         let prune_till_index = self
             .messages
             .range(..prune_till_index + 1)
             .enumerate()
             .rev()
-            .find_map(|(i, x)| x.is_some().then(|| i))
+            .find_map(|(i, x)| x.is_some().then_some(i))
             .unwrap();
 
-        info!("[Prune index updating..] After reverse searching, new prune_index={:?} ", prune_till_index);
+        prune_till_index
+    }
 
-        self.meta.prune_index = Some(prune_till_index);
-        true
+    pub fn is_ready_for_prune(&mut self) -> bool {
+        // If `prune_start_threshold=None` don't prune.
+        let Some(prune_threshold) = self.meta.prune_start_threshold else {
+            return false;
+        };
+
+        // If not reached the max threshold
+        if self.suffix_length() < prune_threshold {
+            info!(
+                "[is_ready_for_prune] returning false because suffix.len={} < {prune_threshold}",
+                self.suffix_length()
+            );
+            return false;
+        }
+
+        // Not ready to prune, if prune version is not set
+        if !self.is_valid_prune_version_index() {
+            return false;
+        }
+
+        // If the `min_size_after_prune=None`, then we prune and the current prune index.
+        let Some(suffix_min_size) = self.meta.min_size_after_prune else {
+            return true;
+        };
+
+        let prune_index = self.meta.prune_index.unwrap();
+
+        let min_threshold_index = self.messages.len() - suffix_min_size - 1;
+
+        if min_threshold_index <= prune_index {
+            let next_prune_index = self.find_prune_till_index(min_threshold_index);
+            info!(
+                "[Prune index updating..] Current prune_index={:?} and new prune_index={:?} and find next prune index ={} ",
+                self.meta.prune_index, min_threshold_index, next_prune_index
+            );
+            if self.messages[min_threshold_index].is_some() {
+                self.meta.prune_index = Some(min_threshold_index);
+            } else {
+                self.meta.prune_index = Some(next_prune_index);
+            }
+            return true;
+        }
+
+        false
+        // let prune_till_index = if min_threshold_index > prune_index {
+        //     prune_index
+        // } else {
+        //     self.find_prune_till_index(prune_till_index)
+        // };
+
+        // let prune_till_index = self.find_prune_till_index(prune_till_index);
+
+        // info!("[Prune index updating..] After reverse searching, new prune_index={:?} ", prune_till_index);
+
+        // true
     }
 
     pub fn update_decision_suffix_item(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
@@ -253,7 +292,6 @@ where
     ///     2. And there is atleast one suffix item remaining, which can be the new head.
     ///        This enables to move the head to the appropiate location.
     fn prune(&mut self) -> SuffixResult<()> {
-        let ver = self.meta.prune_index.ok_or(SuffixError::PruneVersionNotFound)?;
         let Some(prune_index) = self.meta.prune_index else {
             return Ok(());
         };
@@ -281,10 +319,8 @@ where
         // let first_some_item = self.messages.iter().find_map(|x| x.is_some().then(|| x.as_ref().unwrap().item_ver)).unwrap();
         // self.update_head(first_some_item);
 
-        if let Some(first_item) = self.messages.front() {
-            if let Some(s_item) = first_item {
-                self.update_head(s_item.item_ver);
-            }
+        if let Some(Some(s_item)) = self.messages.front() {
+            self.update_head(s_item.item_ver);
         }
 
         info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);

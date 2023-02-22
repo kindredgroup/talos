@@ -12,6 +12,33 @@ pub struct SuffixItem<T> {
     pub is_decided: bool,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct SuffixConfig {
+    /// Initial capacity of the suffix
+    pub capacity: usize,
+    /// Flag to enable/disable pruning.
+    // pub enable_prune: bool,
+    /// - The suffix prune threshold from when we start checking if the suffix
+    /// should prune.
+    /// - Set to None if pruning is not required.
+    /// - Defaults to None.
+    pub prune_start_threshold: Option<usize>,
+    /// Minimum size of suffix after prune.
+    /// Default value will be 30% of initial capacity.
+    pub min_size_after_prune: Option<usize>,
+}
+
+impl Default for SuffixConfig {
+    fn default() -> Self {
+        const DEFAULT_CAPACITY: usize = 100_000;
+        Self {
+            capacity: DEFAULT_CAPACITY,
+            prune_start_threshold: Default::default(),
+            min_size_after_prune: Default::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SuffixMeta {
     /// The version which is the head of the suffix
@@ -20,8 +47,13 @@ pub struct SuffixMeta {
     pub last_insert_vers: u64,
     /// The suffix index till where it's safe to prune.
     pub prune_index: Option<usize>,
-    /// The minimum size to be maintained by the suffix
-    pub min_size: usize,
+    /// The suffix prune threshold from when we start checking if the suffix
+    /// should prune.
+    /// - If `None`, the suffix will not be pruned
+    pub prune_start_threshold: Option<usize>,
+    /// The minimum size to be maintained by the suffix.
+    /// - If `None`, doesn't check for the minimum length to maintain in suffix while pruning.
+    pub min_size_after_prune: Option<usize>,
 }
 
 type SuffixItemType<T> = T;

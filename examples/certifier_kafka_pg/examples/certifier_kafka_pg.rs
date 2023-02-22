@@ -2,6 +2,7 @@ use log::{error, info};
 
 use talos_certifier::services::CertifierServiceConfig;
 use talos_certifier_adapters::{certifier_with_kafka_pg, TalosCertifierChannelBuffers};
+use talos_suffix::core::SuffixConfig;
 use tokio::signal;
 
 use logger::logs;
@@ -15,9 +16,12 @@ async fn main() -> Result<(), impl std::error::Error> {
     let talos_certifier = certifier_with_kafka_pg(
         TalosCertifierChannelBuffers::default(),
         Some(CertifierServiceConfig {
-            suffix_size: 30,
-            min_suffix_size: 20,
-            suffix_prune_frequency_ms: 300_000,
+            suffix_config: SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(25),
+                min_size_after_prune: Some(10),
+                // ..Default::default()
+            },
         }),
     )
     .await?;

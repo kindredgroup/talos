@@ -155,6 +155,7 @@ dependencies = [
  "refinery",
  "talos_certifier",
  "talos_certifier_adapters",
+ "talos_suffix",
  "tokio",
 ]
 
