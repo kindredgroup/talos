@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType, TRACK_PUBLISH_METRICS};
-use talos_agent::metrics::{format, format_metric, get_rate, PercentileSet, Timing};
+use talos_agent::metrics::{format, format_metric, get_rate, name_talos_type, PercentileSet, Timing};
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -17,7 +17,7 @@ use uuid::Uuid;
 ///
 
 const BATCH_SIZE: i32 = 10_000;
-const TALOS_TYPE: TalosType = TalosType::InProcessMock;
+const TALOS_TYPE: TalosType = TalosType::External;
 const PROGRESS_EVERY: i32 = 10_000;
 const RATE_100_TPS: Duration = Duration::from_millis(10);
 const RATE_200_TPS: Duration = Duration::from_millis(5);
@@ -36,14 +36,14 @@ const RATE_200000_TPS: Duration = Duration::from_nanos(5_000);
 const RATE_250000_TPS: Duration = Duration::from_nanos(4_000);
 const RATE_320000_TPS: Duration = Duration::from_nanos(3_125);
 const RATE_400000_TPS: Duration = Duration::from_nanos(2_500);
-const RATE: Duration = RATE_5000_TPS;
+const RATE: Duration = RATE_1000_TPS;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
     let agent_id = format!("agent-for-{}-{}", cohort, Uuid::new_v4());
     let cfg_agent = AgentConfig {
         agent_id: agent_id.clone(),
-        agent_name: format!("agent-for-{}", cohort),
+        agent_name: agent_id.clone(),
         cohort_name: cohort.to_string(),
         buffer_size: 10_000,
     };
@@ -82,13 +82,13 @@ fn name_rate(v: Duration) -> &'static str {
         RATE_100_TPS => "100/s",
         RATE_200_TPS => "200/s",
         RATE_500_TPS => "500/s",
-        RATE_1000_TPS => "1000/s",
-        RATE_2000_TPS => "2000/s",
-        RATE_5000_TPS => "5000/s",
-        RATE_10000_TPS => "10000/s",
-        RATE_20000_TPS => "20000/s",
-        RATE_40000_TPS => "40000/s",
-        RATE_80000_TPS => "80000/s",
+        RATE_1000_TPS => "1k/s",
+        RATE_2000_TPS => "2k/s",
+        RATE_5000_TPS => "5k/s",
+        RATE_10000_TPS => "10k/s",
+        RATE_20000_TPS => "20k/s",
+        RATE_40000_TPS => "40k/s",
+        RATE_80000_TPS => "80k/s",
         RATE_100000_TPS => "100k/s",
         RATE_125000_TPS => "125k/s",
         RATE_160000_TPS => "160k/s",
@@ -121,6 +121,9 @@ async fn make_agentv2(publish_times: &Arc<Mutex<HashMap<String, u64>>>) -> Box<T
 #[tokio::main]
 async fn main() -> Result<(), String> {
     env_logger::init();
+
+    thread::sleep(Duration::from_secs(10));
+
     certify(BATCH_SIZE).await
 }
 
@@ -252,11 +255,11 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         // Print metrics for spreadsheet
 
         info!(
-            "{}\tempty\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             batch_size,
             "Hashmap+actor+task pub".to_string(),
             "FutureProducer".to_string(),
-            "In proc mock".to_string(),
+            name_talos_type(&TALOS_TYPE),
             name_rate(RATE),
             get_rate(batch_size, duration_ms),
             total_min.get_total_ms(),
@@ -286,11 +289,11 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         );
 
         info!(
-            "{}\tempty\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{},{},{},{},{},{},{},{},{},{},{}",
             batch_size,
             "Hashmap+actor+task pub".to_string(),
             "FutureProducer".to_string(),
-            "In proc mock".to_string(),
+            name_talos_type(&TALOS_TYPE),
             name_rate(RATE),
             get_rate(batch_size, duration_ms),
             total_min.get_total_ms(),

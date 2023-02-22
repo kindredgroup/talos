@@ -71,6 +71,7 @@ impl DecisionOutboxService {
                 "decisionTime".to_string(),
                 SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos().to_string(),
             );
+            decision_publish_header.insert("certAgent".to_string(), decision.agent);
 
             debug!("Publishing message {}", decision.version);
             if let Err(publish_error) = publisher

@@ -1,4 +1,4 @@
-use crate::api::CertificationResponse;
+use crate::api::{CertificationResponse, TalosType, TRACK_PUBLISH_METRICS};
 use std::cmp;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
@@ -14,6 +14,13 @@ pub fn get_rate(count: i32, duration_ms: u64) -> u64 {
     ((count as f32) / (duration_ms as f32) * 1000.0) as u64
 }
 
+pub fn name_talos_type(talos_type: &TalosType) -> &'static str {
+    match talos_type {
+        TalosType::External => "Talos",
+        TalosType::InProcessMock => "In proc mock",
+    }
+}
+
 /// Formats 4 sequential spans as single string value
 pub fn format(v: &Percentile, span1: Percentile, span2: Percentile, span3: Percentile, span4: Percentile, publish: Option<Percentile>) -> String {
     match publish {
@@ -27,16 +34,28 @@ pub fn format(v: &Percentile, span1: Percentile, span2: Percentile, span3: Perce
 }
 
 pub fn format_metric(metric: String, time: Timing) -> String {
-    format!(
-        "{}: {} ms [{} + {} + {} + {}], {}",
-        metric,
-        time.get_total_ms(),
-        time.get_outbox_ms(),
-        time.get_receive_and_decide_ms(),
-        time.get_decision_send_ms(),
-        time.get_inbox_ms(),
-        time.get_publish_ms(),
-    )
+    if TRACK_PUBLISH_METRICS {
+        format!(
+            "{}: {} ms [{} + {} + {} + {}], {}",
+            metric,
+            time.get_total_ms(),
+            time.get_outbox_ms(),
+            time.get_receive_and_decide_ms(),
+            time.get_decision_send_ms(),
+            time.get_inbox_ms(),
+            time.get_publish_ms(),
+        )
+    } else {
+        format!(
+            "{}: {} ms [{} + {} + {} + {}]",
+            metric,
+            time.get_total_ms(),
+            time.get_outbox_ms(),
+            time.get_receive_and_decide_ms(),
+            time.get_decision_send_ms(),
+            time.get_inbox_ms(),
+        )
+    }
 }
 
 pub struct PercentileSet {

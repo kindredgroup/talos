@@ -281,11 +281,10 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
 
                 // Extract agent id from headers
                 // todo: See KDT-26
-                let is_id_matching = !self.agent_id.as_str().is_empty();
-                // let is_id_matching = match headers.get(HEADER_AGENT_ID).and_then(|received_agent_id| {
-                //    Some(received_agent_id) => received_agent_id == self.agent_id.as_str()
-                //    None => false
-                // });
+                let is_id_matching = match headers.get(HEADER_AGENT_ID) {
+                    Some(value) => value == self.agent_id.as_str(),
+                    None => false,
+                };
 
                 if !is_id_matching {
                     return None;

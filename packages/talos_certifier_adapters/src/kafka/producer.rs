@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use log::{debug, info};
+use log::debug;
 use rdkafka::producer::{BaseRecord, DefaultProducerContext, ThreadedProducer};
 use talos_certifier::{
     errors::SystemServiceError,
@@ -50,7 +50,7 @@ impl MessagePublisher for KafkaProducer {
                 data: Some(format!("{:?}", record)),
             })?;
 
-        info!("Sent the Decision Message successfully {:?} ", delivery_result.to_owned());
+        debug!("Sent the Decision Message successfully {:?} ", delivery_result.to_owned());
         Ok(())
     }
 }
