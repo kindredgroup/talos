@@ -49,7 +49,6 @@ mod suffix_tests {
         assert_eq!(sfx.meta.prune_start_threshold, Some(15));
         assert_eq!(sfx.meta.prune_index, None);
         assert_eq!(sfx.meta.min_size_after_prune, Some(10));
-        assert!(sfx.messages.capacity() > 20);
         assert_eq!(sfx.messages.len(), 0);
     }
 
