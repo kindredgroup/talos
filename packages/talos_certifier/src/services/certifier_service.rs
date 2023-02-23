@@ -71,10 +71,6 @@ impl CertifierService {
         }
     }
 
-    pub(crate) fn is_suffix_prune_ready(&mut self) -> bool {
-        self.suffix.is_ready_for_prune() //.is_some()
-    }
-
     /// Process CandidateMessage to provide the DecisionMessage
     ///
     /// * Inserts the message into suffix.
@@ -135,8 +131,8 @@ impl CertifierService {
         let candidate_version_index = self.suffix.index_from_head(candidate_version);
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             info!(
-                "I reached here.... \nis prune ready {}\nprior items are decided={} \n message len={} and prune ready index={:?} \n HEAD={}, current candidate message version={candidate_version} and index={candidate_version_index:?} and decision message version={decision_version}\n config.min_suffix_size={:?}",
-                self.is_suffix_prune_ready(),
+                "I reached here.... \nis prune ready {:?}\nprior items are decided={} \n message len={} and prune ready index={:?} \n HEAD={}, current candidate message version={candidate_version} and index={candidate_version_index:?} and decision message version={decision_version}\n config.min_suffix_size={:?}",
+                self.suffix.get_safe_prune_index(),
                 self.suffix.are_prior_items_decided(candidate_version),
                 self.suffix.messages.len(),
                 self.suffix.meta.prune_index,
@@ -169,8 +165,8 @@ impl CertifierService {
             }
 
             // prune suffix if required?
-            if self.is_suffix_prune_ready() {
-                self.suffix.prune().unwrap();
+            if let Some(prune_index) = self.suffix.get_safe_prune_index() {
+                self.suffix.prune_till_index(prune_index).unwrap();
                 info!(
                     "Suffix pruned and new length is ... {} and head is {}!!!",
                     self.suffix.messages.len(),

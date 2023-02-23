@@ -116,7 +116,7 @@ mod suffix_tests {
         assert_eq!(sfx.messages.len(), 81);
 
         assert_eq!(sfx.meta.prune_index, Some(39));
-        assert!(!sfx.is_ready_for_prune());
+        assert!(sfx.get_safe_prune_index().is_none());
     }
 
     #[test]
@@ -141,7 +141,7 @@ mod suffix_tests {
         assert_eq!(sfx.messages.len(), 21);
 
         assert_eq!(sfx.meta.prune_index, Some(13));
-        assert!(!sfx.is_ready_for_prune());
+        assert!(sfx.get_safe_prune_index().is_none());
     }
 
     #[test]
@@ -161,7 +161,7 @@ mod suffix_tests {
         assert_eq!(sfx.messages.len(), 21);
 
         assert_eq!(sfx.meta.prune_index, None);
-        assert!(!sfx.is_ready_for_prune());
+        assert!(sfx.get_safe_prune_index().is_none());
     }
 
     #[test]
@@ -186,7 +186,18 @@ mod suffix_tests {
         assert_eq!(sfx.messages.len(), 30);
 
         assert_eq!(sfx.meta.prune_index, Some(24));
-        assert!(sfx.is_ready_for_prune());
+        assert!(sfx.get_safe_prune_index().is_some());
+
+        let prune_index = sfx.get_safe_prune_index().unwrap();
+        assert_eq!(prune_index, 24);
+
+        // prune suffix
+        let result = sfx.prune_till_index(24).unwrap();
+        // new length of suffix after pruning.
+        assert_eq!(sfx.messages.len(), 6);
+        assert_eq!(result.len(), 24); // result.len() + sfx.messages.len() = 30
+        assert_eq!(sfx.meta.head, 24);
+        assert_eq!(sfx.meta.prune_index, None);
     }
 
     #[test]
@@ -213,7 +224,7 @@ mod suffix_tests {
         });
 
         assert_eq!(sfx.meta.prune_index, Some(16)); // because version 18, index 17 is not decided.
-        assert!(sfx.is_ready_for_prune()); // because message.len > prune_start_threshold, we are ready for prune till the prune_index
+        assert!(sfx.get_safe_prune_index().is_some()); // because message.len > prune_start_threshold, we are ready for prune till the prune_index
     }
 
     // test the following while pruning
