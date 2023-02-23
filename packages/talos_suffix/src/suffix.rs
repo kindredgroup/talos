@@ -30,6 +30,13 @@ where
 
         let messages = VecDeque::with_capacity(capacity);
 
+        assert!(
+            min_size_after_prune <= prune_start_threshold,
+            "The config min_size_after={:?} is greater than prune_start_threshold={:?}",
+            min_size_after_prune,
+            prune_start_threshold
+        );
+
         let meta = SuffixMeta {
             head: 0,
             last_insert_vers: 0,
@@ -154,14 +161,10 @@ where
         let min_threshold_index = self.messages.len() - suffix_min_size - 1;
 
         if min_threshold_index <= prune_index {
-            let next_prune_index = self.find_prune_till_index(min_threshold_index);
-            info!(
-                "[Prune index updating..] Current prune_index={:?} and new prune_index={:?} and find next prune index ={} ",
-                self.meta.prune_index, min_threshold_index, next_prune_index
-            );
             if self.messages[min_threshold_index].is_some() {
                 self.meta.prune_index = Some(min_threshold_index);
             } else {
+                let next_prune_index = self.find_prune_till_index(min_threshold_index);
                 self.meta.prune_index = Some(next_prune_index);
             }
             return true;
@@ -233,11 +236,11 @@ where
             self.reserve_space_if_required(version)?;
             let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
 
-            debug!(
-                "GK - going to insert to suffix with len={}, HEAD={}, version={version} and index={index}",
-                self.messages.len(),
-                self.meta.head
-            );
+            // debug!(
+            //     "GK - going to insert to suffix with len={}, HEAD={}, version={version} and index={index}",
+            //     self.messages.len(),
+            //     self.meta.head
+            // );
 
             if index > 0 {
                 let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
@@ -255,13 +258,13 @@ where
 
             self.meta.last_insert_vers = version;
 
-            let k: Vec<(usize, u64, Option<u64>)> = self
-                .messages
-                .iter()
-                .enumerate()
-                .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
-                .collect();
-            info!("[SUFFIX INSERT] Suffix dump \n{k:?}");
+            // let k: Vec<(usize, u64, Option<u64>)> = self
+            //     .messages
+            //     .iter()
+            //     .enumerate()
+            //     .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
+            //     .collect();
+            // info!("[SUFFIX INSERT] Suffix dump \n{k:?}");
         }
 
         Ok(())
