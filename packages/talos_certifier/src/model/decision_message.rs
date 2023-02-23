@@ -79,8 +79,8 @@ pub struct DecisionMessage {
 
     // the version for which this decision is made.
     pub version: u64,
-    /// if the original version is found, the decision of that version is returned as the decision
-    /// and this field will have the value of the original version.
+    /// if duplicate is found on XDB, this field will hold the new duplicate candidate
+    /// message's version.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duplicate_version: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]

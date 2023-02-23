@@ -118,6 +118,7 @@ impl CertifierService {
 
     pub(crate) async fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> ServiceResult {
         // update the decision in suffix
+
         info!(
             "[Process Decision message] Version {} and Decision Message {:?} ",
             decision_version, decision_message
@@ -126,7 +127,10 @@ impl CertifierService {
         // Reserve space if version is beyond the suffix capacity
         //
         // Applicable in scenarios where certifier starts from a committed version
-        let candidate_version = decision_message.version;
+        let candidate_version = match decision_message.duplicate_version {
+            Some(ver) => ver,
+            None => decision_message.version,
+        };
 
         let candidate_version_index = self.suffix.index_from_head(candidate_version);
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
@@ -141,7 +145,7 @@ impl CertifierService {
             );
 
             self.suffix
-                .update_decision_suffix_item(decision_message.version, decision_version)
+                .update_decision_suffix_item(candidate_version, decision_version)
                 .map_err(CertificationError::SuffixError)?;
 
             // check if all prioir items are decided.

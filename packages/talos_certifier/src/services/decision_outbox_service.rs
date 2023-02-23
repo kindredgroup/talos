@@ -52,8 +52,8 @@ impl DecisionOutboxService {
                 // if duplicated decision, we update the decision version and duplicate_version fields in DecisionMessage
                 let decision_from_db = if decision.version.ne(&decision_message.version) {
                     DecisionMessage {
-                        version: decision_message.version,
-                        duplicate_version: Some(decision.version),
+                        duplicate_version: Some(decision_message.version),
+                        agent: decision_message.agent,
                         ..decision
                     }
                 } else {
