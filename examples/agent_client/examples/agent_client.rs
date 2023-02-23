@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType, TRACK_PUBLISH_METRICS};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType, TRACK_PUBLISH_LATENCY};
 use talos_agent::metrics::{format, format_metric, get_rate, name_talos_type, PercentileSet, Timing};
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
@@ -16,27 +16,12 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 10_000;
-const TALOS_TYPE: TalosType = TalosType::External;
-const PROGRESS_EVERY: i32 = 10_000;
-const RATE_100_TPS: Duration = Duration::from_millis(10);
-const RATE_200_TPS: Duration = Duration::from_millis(5);
-const RATE_500_TPS: Duration = Duration::from_millis(2);
-const RATE_1000_TPS: Duration = Duration::from_millis(1);
-const RATE_2000_TPS: Duration = Duration::from_nanos(500_000);
-const RATE_5000_TPS: Duration = Duration::from_nanos(200_000);
-const RATE_10000_TPS: Duration = Duration::from_nanos(100_000);
-const RATE_20000_TPS: Duration = Duration::from_nanos(50_000);
-const RATE_40000_TPS: Duration = Duration::from_nanos(25_000);
-const RATE_80000_TPS: Duration = Duration::from_nanos(12_500);
-const RATE_100000_TPS: Duration = Duration::from_nanos(10_000);
-const RATE_125000_TPS: Duration = Duration::from_nanos(8_000);
-const RATE_160000_TPS: Duration = Duration::from_nanos(6_250);
-const RATE_200000_TPS: Duration = Duration::from_nanos(5_000);
-const RATE_250000_TPS: Duration = Duration::from_nanos(4_000);
-const RATE_320000_TPS: Duration = Duration::from_nanos(3_125);
-const RATE_400000_TPS: Duration = Duration::from_nanos(2_500);
-const RATE: Duration = RATE_1000_TPS;
+const BATCH_SIZE: i32 = 30_000;
+const TALOS_TYPE: TalosType = TalosType::InProcessMock;
+const PROGRESS_EVERY: i32 = 50_000;
+const NANO_IN_SEC: i32 = 1_000_000_000;
+const TARGET_RATE: f64 = 1_500_f64;
+const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
@@ -77,28 +62,15 @@ fn make_candidate(xid: String) -> CertificationRequest {
     }
 }
 
-fn name_rate(v: Duration) -> &'static str {
-    match v {
-        RATE_100_TPS => "100/s",
-        RATE_200_TPS => "200/s",
-        RATE_500_TPS => "500/s",
-        RATE_1000_TPS => "1k/s",
-        RATE_2000_TPS => "2k/s",
-        RATE_5000_TPS => "5k/s",
-        RATE_10000_TPS => "10k/s",
-        RATE_20000_TPS => "20k/s",
-        RATE_40000_TPS => "40k/s",
-        RATE_80000_TPS => "80k/s",
-        RATE_100000_TPS => "100k/s",
-        RATE_125000_TPS => "125k/s",
-        RATE_160000_TPS => "160k/s",
-        RATE_200000_TPS => "200k/s",
-        RATE_250000_TPS => "250k/s",
-        RATE_320000_TPS => "320k/s",
-        RATE_400000_TPS => "400k/s",
-        _ => "unknown",
+fn name_rate(v: Duration) -> String {
+    let nr = 1_f64 / v.as_secs_f64();
+    if nr > 1000_f64 {
+        format!("{}k/s", nr / 1000_f64)
+    } else {
+        format!("{}/s", nr)
     }
 }
+
 // async fn make_agent() -> Box<TalosAgentType> {
 //     let (cfg_agent, cfg_kafka) = make_configs();
 //
@@ -122,7 +94,7 @@ async fn make_agentv2(publish_times: &Arc<Mutex<HashMap<String, u64>>>) -> Box<T
 async fn main() -> Result<(), String> {
     env_logger::init();
 
-    thread::sleep(Duration::from_secs(10));
+    thread::sleep(Duration::from_secs(5));
 
     certify(BATCH_SIZE).await
 }
@@ -143,8 +115,18 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     info!("Starting publishing process...");
 
+    let adjust_every = 100;
+    let mut delay = BASE_DELAY;
+    let mut done = 0;
+    let mut skip = 0;
+    let min_sleep = Duration::from_secs_f32(0.0001);
     for i in 0..batch_size {
-        thread::sleep(RATE);
+        done += 1;
+        if skip == 0 {
+            thread::sleep(delay);
+        } else {
+            skip -= 1
+        }
         let ac = Arc::clone(&agent);
         let task = tokio::spawn(async move { Timing::capture(|| async { ac.certify(make_candidate(Uuid::new_v4().to_string())).await }).await });
         tasks.push(task);
@@ -152,6 +134,21 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         let p = i + 1;
         if p % PROGRESS_EVERY == 0 || p == batch_size {
             info!("Published {} of {}", p, batch_size);
+        }
+
+        if done % adjust_every == 0 {
+            let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+            let elapsed = Duration::from_nanos((now - started_at) as u64).as_secs_f64();
+            let effective_rate = done as f64 / elapsed;
+            let scale = TARGET_RATE / effective_rate;
+            let sleep = delay.as_secs_f64() / scale;
+            if Duration::from_secs_f64(sleep) < min_sleep {
+                skip = (min_sleep.as_secs_f64() / sleep).ceil() as i32 * adjust_every;
+                // info!("skip = {} -> {}, {}", (min_sleep.as_secs_f64() / sleep), skip, sleep);
+            } else {
+                delay = Duration::from_secs_f64(sleep);
+                skip = 0;
+            }
         }
     }
 
@@ -189,10 +186,13 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let mut total_max_timing: Option<Timing> = None;
     let mut pub_min_timing: Option<Timing> = None;
     let mut pub_max_timing: Option<Timing> = None;
+
+    // Complete stage 1 metrics by adding info about publishing latency
+
     let mut metrics = Vec::new();
     for s1_timing in metrics_stage1 {
         let mut timing = s1_timing.clone();
-        let published_at = if TRACK_PUBLISH_METRICS {
+        let published_at = if TRACK_PUBLISH_LATENCY {
             *publish_times.lock().unwrap().get(s1_timing.response.xid.as_str()).unwrap()
         } else {
             0
@@ -210,7 +210,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             total_max_timing = Some(timing.clone());
         }
 
-        if TRACK_PUBLISH_METRICS {
+        if TRACK_PUBLISH_LATENCY {
             let p = timing.get_publish_ms();
             if p < pub_min {
                 pub_min = p;
@@ -225,6 +225,8 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         metrics.push(timing.clone());
     }
 
+    // Compute all spans
+
     let duration_ms = Duration::from_nanos((finished_at - started_at) as u64).as_millis() as u64;
 
     let total = PercentileSet::new(&mut metrics, Timing::get_total_ms, |i| i.total.as_micros());
@@ -237,11 +239,25 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let total_min = total_min_timing.unwrap();
     let total_max = total_max_timing.unwrap();
 
-    if TRACK_PUBLISH_METRICS {
+    // Compute publishing rate
+    let mut mi = u64::MAX;
+    let mut ma = 0;
+    for t in &metrics {
+        if mi > t.started_at {
+            mi = t.started_at;
+        }
+        if ma < t.started_at {
+            ma = t.started_at;
+        }
+    }
+    let publish_rate_tps = (metrics.len() as f64 / Duration::from_nanos(ma - mi).as_secs_f64()) as i32;
+
+    if TRACK_PUBLISH_LATENCY {
         info!(
-            "Test duration: {} ms\nThroughput: {} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
+            "Test duration: {} ms\nThroughputs (overall / publishing): {}/{} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
             duration_ms,
             get_rate(batch_size, duration_ms),
+            publish_rate_tps,
             "Metric: value [client->agent.th1 + agent.th1->talos.decision + talos.publish->agent.th1 + agent.th1->client])",
             format_metric("Min".to_string(), total_min.clone()),
             format_metric("Max".to_string(), total_max.clone()),
@@ -260,7 +276,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             "Hashmap+actor+task pub".to_string(),
             "FutureProducer".to_string(),
             name_talos_type(&TALOS_TYPE),
-            name_rate(RATE),
+            name_rate(BASE_DELAY),
             get_rate(batch_size, duration_ms),
             total_min.get_total_ms(),
             total_max.get_total_ms(),
@@ -275,9 +291,10 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         );
     } else {
         info!(
-            "Test duration: {} ms\nThroughput: {} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
+            "Test duration: {} ms\nThroughputs (overall / publishing): {}/{}\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
             duration_ms,
             get_rate(batch_size, duration_ms),
+            publish_rate_tps,
             "Metric: value [client->agent.th1 + agent.th1->talos.decision + talos.publish->agent.th1 + agent.th1->client])",
             format_metric("Min".to_string(), total_min.clone()),
             format_metric("Max".to_string(), total_max.clone()),
@@ -294,7 +311,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             "Hashmap+actor+task pub".to_string(),
             "FutureProducer".to_string(),
             name_talos_type(&TALOS_TYPE),
-            name_rate(RATE),
+            name_rate(BASE_DELAY),
             get_rate(batch_size, duration_ms),
             total_min.get_total_ms(),
             total_max.get_total_ms(),

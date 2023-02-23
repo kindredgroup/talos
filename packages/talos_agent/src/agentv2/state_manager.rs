@@ -5,8 +5,8 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 
-use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TalosIntegrationType, TRACK_PUBLISH_METRICS};
-use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, PublisherType};
+use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TalosIntegrationType, TRACK_PUBLISH_LATENCY};
+use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMessage, PublisherType};
 
 use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
 use crate::messaging::mock::{MockConsumer, MockPublisher};
@@ -45,11 +45,33 @@ impl StateManager {
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let it = self.int_type.clone();
 
-        let consumer: Box<ConsumerType> = match it {
-            TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent_id, &config),
-            TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
-        }
-        .unwrap();
+        let (tx_decision, mut rx_decision) = tokio::sync::mpsc::channel::<DecisionMessage>(10_000);
+
+        let it_for_consumer = self.int_type.clone();
+        let config_for_consumer = config.clone();
+        tokio::spawn(async move {
+            let consumer: Box<ConsumerType> = match it_for_consumer {
+                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent_id, &config_for_consumer),
+                TalosIntegrationType::InMemory => Self::create_mock_consumer(&config_for_consumer),
+            }
+            .unwrap();
+
+            loop {
+                let rslt_decision_msg = consumer.receive_message().await;
+                match rslt_decision_msg {
+                    Some(Ok(decision_msg)) => {
+                        match tx_decision.send(decision_msg).await {
+                            Ok(()) => continue,
+                            Err(e) => {
+                                log::error!("Unable to send decision message over internal channel to main loop {:?}", e);
+                            }
+                        };
+                    }
+
+                    _ => continue, // just take next message
+                }
+            }
+        });
 
         let publish_times = Arc::clone(&self.publish_times);
         tokio::spawn(async move {
@@ -89,7 +111,7 @@ impl StateManager {
                                 let times = Arc::clone(&publish_times);
                                 tokio::spawn(async move {
                                     publisher_ref.send_message(key, msg).await.unwrap();
-                                    if TRACK_PUBLISH_METRICS {
+                                    if TRACK_PUBLISH_LATENCY {
                                         let published_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
                                         match times.lock() {
                                             Ok(mut map) => {
@@ -117,10 +139,9 @@ impl StateManager {
                     }
                     // end of receive certification request from agent
 
-                    rslt_decision_msg = consumer.receive_message() => {
-
+                    rslt_decision_msg = rx_decision.recv() => {
                         match rslt_decision_msg {
-                            Some(Ok(decision_msg)) => {
+                            Some(decision_msg) => {
                                 let xid = &decision_msg.xid;
                                 match Self::reply_to_agent(xid, decision_msg.decision, decision_msg.decided_at, state.get(&decision_msg.xid)).await {
                                     Some(()) => {
@@ -130,12 +151,11 @@ impl StateManager {
                                         log::debug!("Skipping not in-flight transaction: {}", xid);
                                     }
                                 }
-                            },
-
-                            _ => continue // just take next message
+                            }
+                            None => break
                         }
                     }
-                    // end of receive decision from kafka
+                    // end of receive decision from kafka via channel
                 }
             }
         });

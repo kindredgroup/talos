@@ -137,7 +137,7 @@ impl KafkaConsumer {
     }
 
     pub fn subscribe(&self) -> Result<(), String> {
-        match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
+        let result = match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
             Ok(_) => {
                 loop {
                     match self.consumer.fetch_group_list(None, Duration::from_secs(1)) {
@@ -177,7 +177,9 @@ impl KafkaConsumer {
                 error!("Error when subscribing to topics. {:?}", kafka_error);
                 Err(kafka_error.to_string())
             }
-        }
+        };
+
+        result
     }
 
     fn deserialize_decision(
@@ -257,7 +259,7 @@ impl KafkaConsumer {
 #[async_trait]
 impl crate::messaging::api::Consumer for KafkaConsumer {
     async fn receive_message(&self) -> Option<Result<DecisionMessage, String>> {
-        let received = match self.consumer.recv().await {
+        match self.consumer.recv().await {
             Err(kafka_error) => {
                 error!("KafkaConsumer.receive_message(): error: {:?}", kafka_error);
                 Some(Err(kafka_error.to_string()))
@@ -316,8 +318,6 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                     KafkaConsumer::deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>(), decided_at)
                 })
             }
-        };
-
-        received
+        }
     }
 }

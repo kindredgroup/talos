@@ -1,4 +1,4 @@
-use crate::api::{CertificationResponse, TalosType, TRACK_PUBLISH_METRICS};
+use crate::api::{CertificationResponse, TalosType, TRACK_PUBLISH_LATENCY};
 use std::cmp;
 use std::fmt::{Display, Formatter};
 use std::future::Future;
@@ -34,7 +34,7 @@ pub fn format(v: &Percentile, span1: Percentile, span2: Percentile, span3: Perce
 }
 
 pub fn format_metric(metric: String, time: Timing) -> String {
-    if TRACK_PUBLISH_METRICS {
+    if TRACK_PUBLISH_LATENCY {
         format!(
             "{}: {} ms [{} + {} + {} + {}], {}",
             metric,

@@ -10,7 +10,7 @@ use rdkafka::config::RDKafkaLogLevel;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-pub const TRACK_PUBLISH_METRICS: bool = false;
+pub const TRACK_PUBLISH_LATENCY: bool = false;
 
 ///
 /// Data structures and interfaces exposed to agent client
