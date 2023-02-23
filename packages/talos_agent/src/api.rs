@@ -47,9 +47,8 @@ pub struct CertificationResponse {
 #[derive(Clone)]
 pub struct AgentConfig {
     // must be unique for each instance
-    pub agent_id: String,
-    pub agent_name: String,
-    pub cohort_name: String,
+    pub agent: String,
+    pub cohort: String,
     // The size of internal buffer for candidates
     pub buffer_size: usize,
 }
@@ -123,7 +122,7 @@ impl TalosAgentBuilder {
         let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-                let kafka_publisher = KafkaPublisher::new(self.config.agent_id.clone(), config);
+                let kafka_publisher = KafkaPublisher::new(self.config.agent.clone(), config);
                 Box::new(kafka_publisher)
             }
             _ => Box::new(MockPublisher {}),

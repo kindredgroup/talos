@@ -50,14 +50,14 @@ impl TalosAgentImpl {
 
     /// Starts listener task which reads Talos decisions from the topic
     pub fn start(&self, int_type: &TalosIntegrationType) -> Result<(), String> {
-        let agent_id = self.config.agent_id.clone();
+        let agent = self.config.agent.clone();
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let in_flight = Arc::clone(&self.in_flight);
 
         let it = int_type.clone();
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it {
-                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent_id, &config),
+                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent, &config),
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
             }
             .unwrap();
@@ -108,7 +108,7 @@ impl TalosAgent for TalosAgentImpl {
             enqueued_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
         }
 
-        let msg = CandidateMessage::new(self.config.agent_name.clone(), self.config.cohort_name.clone(), request.candidate.clone());
+        let msg = CandidateMessage::new(self.config.agent.clone(), self.config.cohort.clone(), request.candidate.clone());
         let _publish_response = self.publisher.send_message(request.message_key.clone(), msg).await?;
 
         loop {

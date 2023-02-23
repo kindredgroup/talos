@@ -40,7 +40,7 @@ impl StateManager {
     }
 
     pub async fn start(&self, mut rx_certify: Receiver<CertifyRequestChannelMessage>, mut rx_cancel: Receiver<CancelRequestChannelMessage>) {
-        let agent_id = self.agent_config.agent_id.clone();
+        let agent = self.agent_config.agent.clone();
         let agent_config = self.agent_config.clone();
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let it = self.int_type.clone();
@@ -51,7 +51,7 @@ impl StateManager {
         let config_for_consumer = config.clone();
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it_for_consumer {
-                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent_id, &config_for_consumer),
+                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent, &config_for_consumer),
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config_for_consumer),
             }
             .unwrap();
@@ -79,7 +79,7 @@ impl StateManager {
 
             let publisher: Arc<Box<PublisherType>> = match it {
                 TalosIntegrationType::Kafka => {
-                    let kafka_publisher = KafkaPublisher::new(agent_config.agent_id.clone(), &config);
+                    let kafka_publisher = KafkaPublisher::new(agent_config.agent.clone(), &config);
                     Arc::new(Box::new(kafka_publisher))
                 }
                 TalosIntegrationType::InMemory => Arc::new(Box::new(MockPublisher {})),
@@ -100,8 +100,8 @@ impl StateManager {
                                 );
 
                                 let msg = CandidateMessage::new(
-                                    agent_config.agent_name.clone(),
-                                    agent_config.cohort_name.clone(),
+                                    agent_config.agent.clone(),
+                                    agent_config.cohort.clone(),
                                     request_msg.request.candidate.clone()
                                 );
 

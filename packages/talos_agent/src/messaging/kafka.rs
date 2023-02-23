@@ -19,15 +19,15 @@ use time::OffsetDateTime;
 /// The implementation of publisher which communicates with kafka brokers.
 
 pub struct KafkaPublisher {
-    agent_id: String,
+    agent: String,
     config: KafkaConfig,
     producer: FutureProducer,
 }
 
 impl KafkaPublisher {
-    pub fn new(agent_id: String, config: &KafkaConfig) -> KafkaPublisher {
+    pub fn new(agent: String, config: &KafkaConfig) -> KafkaPublisher {
         Self {
-            agent_id,
+            agent,
             config: config.clone(),
             producer: Self::create_producer(config),
         }
@@ -56,7 +56,7 @@ impl Publisher for KafkaPublisher {
         };
         let h_agent_id = Header {
             key: HEADER_AGENT_ID,
-            value: Some(self.agent_id.as_str()),
+            value: Some(self.agent.as_str()),
         };
         let payload = serde_json::to_string(&message).unwrap();
 
@@ -81,7 +81,7 @@ impl Publisher for KafkaPublisher {
 
 /// The implementation of consumer which receives from kafka.
 pub struct KafkaConsumer {
-    agent_id: String,
+    agent: String,
     config: KafkaConfig,
     consumer: StreamConsumer<KafkaConsumerContext>,
 }
@@ -100,9 +100,9 @@ impl ConsumerContext for KafkaConsumerContext {
 }
 
 impl KafkaConsumer {
-    pub fn new(agent_id: String, config: &KafkaConfig) -> Self {
+    pub fn new(agent: String, config: &KafkaConfig) -> Self {
         KafkaConsumer {
-            agent_id,
+            agent,
             config: config.clone(),
             consumer: Self::create_consumer(config),
         }
@@ -284,7 +284,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                 // Extract agent id from headers
                 // todo: See KDT-26
                 let is_id_matching = match headers.get(HEADER_AGENT_ID) {
-                    Some(value) => value == self.agent_id.as_str(),
+                    Some(value) => value == self.agent.as_str(),
                     None => false,
                 };
 

@@ -20,22 +20,21 @@ const BATCH_SIZE: i32 = 30_000;
 const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
-const TARGET_RATE: f64 = 1_500_f64;
+const TARGET_RATE: f64 = 5_000_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
-    let agent_id = format!("agent-for-{}-{}", cohort, Uuid::new_v4());
+    let agent = format!("agent-for-{}-{}", cohort, Uuid::new_v4());
     let cfg_agent = AgentConfig {
-        agent_id: agent_id.clone(),
-        agent_name: agent_id.clone(),
-        cohort_name: cohort.to_string(),
+        agent: agent.clone(),
+        cohort: cohort.to_string(),
         buffer_size: 10_000,
     };
 
     let cfg_kafka = KafkaConfig {
         brokers: "127.0.0.1:9093".to_string(),
-        group_id: agent_id,
+        group_id: agent,
         enqueue_timeout_ms: 10,
         message_timeout_ms: 15000,
         fetch_wait_max_ms: 6000,
