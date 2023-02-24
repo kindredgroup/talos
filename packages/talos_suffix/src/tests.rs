@@ -6,6 +6,7 @@ mod suffix_tests {
 
     use crate::{
         core::{SuffixConfig, SuffixTrait},
+        utils::get_nonempty_suffix_items,
         Suffix,
     };
 
@@ -356,45 +357,30 @@ mod suffix_tests {
         assert!(result.is_ok());
     }
 
-    // #[test]
-    // fn prune_items() {
-    //     let mut sfx = Suffix::new(10, 20);
-    //     let ver_10: u64 = 10;
-    //     sfx.insert(ver_10, create_mock_candidate_message(ver_10)).unwrap();
+    #[test]
+    fn test_get_non_empty_items_when_no_empty_items() {
+        let list_to_scan = vec![Some(10_u8); 100];
+        let result = get_nonempty_suffix_items(list_to_scan.iter());
 
-    //     let ver_25: u64 = 25;
-    //     sfx.insert(ver_25, create_mock_candidate_message(ver_25)).unwrap();
+        assert_eq!(result.count(), 100);
+    }
 
-    //     let decision_ver: u64 = 23;
-    //     let _ = sfx.update_decision(ver_10, decision_ver);
+    #[test]
+    fn test_get_non_empty_items_with_empty_items() {
+        let list_to_scan = (0..100)
+            .map(|i| {
+                if i % 2 == 0 {
+                    return None;
+                }
+                Some(i)
+            })
+            .collect::<Vec<Option<i32>>>();
+        let result = get_nonempty_suffix_items(list_to_scan.iter()).collect::<Vec<&i32>>();
 
-    //     let decision_ver: u64 = 29;
-    //     let _ = sfx.update_decision(ver_25, decision_ver);
+        assert_eq!(result.len(), 50);
+        assert_eq!(result[1], &3);
 
-    //     let ver_33: u64 = 33;
-    //     sfx.insert(ver_33, create_mock_candidate_message(ver_33)).unwrap();
-
-    //     assert_eq!(sfx.messages.len(), 34);
-    //     assert_eq!(sfx.meta.prune_index.unwrap(), 25);
-
-    //     sfx.prune().unwrap();
-
-    //     assert!(sfx.meta.prune_index.is_none());
-    //     assert_eq!(sfx.meta.head, 33);
-    //     assert_eq!(sfx.messages.len(), 11);
-
-    //     let sfx_v33 = sfx.get(33).unwrap().unwrap();
-    //     assert_eq!(sfx_v33.item_ver, 33);
-
-    //     let decision_ver: u64 = 39;
-    //     let result = sfx.update_decision(ver_33, decision_ver);
-
-    //     assert!(result.is_ok());
-
-    //     assert!(sfx.meta.prune_index.is_some());
-
-    //     sfx.prune().unwrap();
-
-    //     assert_eq!(sfx.messages.len(), 11);
-    // }
+        let last_item = *result.last().unwrap();
+        assert_eq!(last_item, &99);
+    }
 }

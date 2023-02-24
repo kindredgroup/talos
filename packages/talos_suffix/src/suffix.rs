@@ -21,6 +21,16 @@ impl<T> Suffix<T>
 where
     T: Sized + Clone + std::fmt::Debug,
 {
+    /// Creates a new suffix using the config passed.
+    ///
+    /// The config can be used to control
+    /// - Required:
+    ///     - `capacity` - The initial capacity of the suffix.
+    /// - Optional:
+    ///     - `prune_start_threshold` - The threshold index beyond which pruning starts.
+    ///         - If `None`, no pruning will occur.
+    ///         - If `Some()`, attempts to prune suffix if suffix length crosses the threshold.
+    ///
     pub fn with_config(config: SuffixConfig) -> Suffix<T> {
         let SuffixConfig {
             capacity,

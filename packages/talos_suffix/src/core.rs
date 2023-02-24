@@ -16,15 +16,13 @@ pub struct SuffixItem<T> {
 pub struct SuffixConfig {
     /// Initial capacity of the suffix
     pub capacity: usize,
-    /// Flag to enable/disable pruning.
-    // pub enable_prune: bool,
     /// - The suffix prune threshold from when we start checking if the suffix
     /// should prune.
     /// - Set to None if pruning is not required.
     /// - Defaults to None.
     pub prune_start_threshold: Option<usize>,
     /// Minimum size of suffix after prune.
-    /// Default value will be 30% of initial capacity.
+    /// - Defaults to None.
     pub min_size_after_prune: Option<usize>,
 }
 
