@@ -138,20 +138,19 @@ impl TalosAgentBuilder {
 
     /// Build agent instance implemented using actor model.
     pub async fn build_v2(&self, publish_times: &Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
+        let (tx_certify, rx_certify) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
+        let (tx_cancel, rx_cancel) = tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
+
         let agent = TalosAgentImplV2::new(
             self.config.clone(),
             self.kafka_config.clone(),
             &self.integration_type,
-            tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size),
-            tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size),
+            tx_certify,
+            tx_cancel,
             publish_times,
-        )
-        .await
-        .map_err(|e| {
-            log::error!("Unable to create agent instance: {}", e);
-            e
-        })
-        .unwrap();
+        );
+
+        agent.start(rx_certify, rx_cancel).await;
 
         Ok(Box::new(agent))
     }

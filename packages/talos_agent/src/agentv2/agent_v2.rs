@@ -9,27 +9,31 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct TalosAgentImplV2 {
+    state_manager: StateManager,
     tx_certify: Sender<CertifyRequestChannelMessage>,
     _tx_cancel: Sender<CancelRequestChannelMessage>,
 }
 
 impl TalosAgentImplV2 {
-    pub async fn new(
+    pub fn new(
         agent_config: AgentConfig,
         kafka_config: Option<KafkaConfig>,
         int_type: &TalosIntegrationType,
-        certify: (Sender<CertifyRequestChannelMessage>, Receiver<CertifyRequestChannelMessage>),
-        cancel: (Sender<CancelRequestChannelMessage>, Receiver<CancelRequestChannelMessage>),
+        tx_certify: Sender<CertifyRequestChannelMessage>,
+        tx_cancel: Sender<CancelRequestChannelMessage>,
         publish_times: &Arc<Mutex<HashMap<String, u64>>>,
-    ) -> Result<TalosAgentImplV2, String> {
-        let state_manager = StateManager::new(agent_config, kafka_config, int_type, publish_times).unwrap();
+    ) -> TalosAgentImplV2 {
+        TalosAgentImplV2 {
+            state_manager: StateManager::new(agent_config, kafka_config, int_type, publish_times),
+            tx_certify,
+            _tx_cancel: tx_cancel,
+        }
+    }
+}
 
-        state_manager.start(certify.1, cancel.1).await;
-
-        Ok(TalosAgentImplV2 {
-            tx_certify: certify.0,
-            _tx_cancel: cancel.0,
-        })
+impl TalosAgentImplV2 {
+    pub async fn start(&self, rx_certify: Receiver<CertifyRequestChannelMessage>, rx_cancel: Receiver<CancelRequestChannelMessage>) {
+        self.state_manager.start(rx_certify, rx_cancel).await;
     }
 }
 

@@ -30,15 +30,13 @@ impl StateManager {
         kafka_config: Option<KafkaConfig>,
         int_type: &TalosIntegrationType,
         publish_times: &Arc<Mutex<HashMap<String, u64>>>,
-    ) -> Result<StateManager, String> {
-        let state_manager = StateManager {
+    ) -> StateManager {
+        StateManager {
             agent_config,
             kafka_config,
             int_type: int_type.clone(),
             publish_times: Arc::clone(publish_times),
-        };
-
-        Ok(state_manager)
+        }
     }
 
     fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
