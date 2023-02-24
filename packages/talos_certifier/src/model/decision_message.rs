@@ -77,7 +77,12 @@ pub struct DecisionMessage {
     pub decision: Decision,
     pub suffix_start: u64,
 
+    // the version for which this decision is made.
     pub version: u64,
+    /// if duplicate is found on XDB, this field will hold the new duplicate candidate
+    /// message's version.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duplicate_version: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,6 +121,7 @@ impl DecisionMessage {
             version: *version,
             safepoint,
             conflicts,
+            duplicate_version: None,
         }
     }
 }
