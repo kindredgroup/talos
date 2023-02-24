@@ -9,8 +9,8 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 pub struct TalosAgentImplV2 {
-    rx_certify: Sender<CertifyRequestChannelMessage>,
-    _rx_cancel: Sender<CancelRequestChannelMessage>,
+    tx_certify: Sender<CertifyRequestChannelMessage>,
+    _tx_cancel: Sender<CancelRequestChannelMessage>,
 }
 
 impl TalosAgentImplV2 {
@@ -27,8 +27,8 @@ impl TalosAgentImplV2 {
         state_manager.start(certify.1, cancel.1).await;
 
         Ok(TalosAgentImplV2 {
-            rx_certify: certify.0,
-            _rx_cancel: cancel.0,
+            tx_certify: certify.0,
+            _tx_cancel: cancel.0,
         })
     }
 }
@@ -40,7 +40,7 @@ impl TalosAgent for TalosAgentImplV2 {
 
         let m = CertifyRequestChannelMessage::new(&request, &tx);
 
-        let to_state_manager = self.rx_certify.clone();
+        let to_state_manager = self.tx_certify.clone();
         let response = match to_state_manager.send(m).await {
             Ok(()) => match rx.recv().await {
                 Some(mut response) => {
