@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 use tokio::sync::Notify;
 
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
-use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMessage, PublisherType};
+use crate::messaging::api::{CandidateMessage, ConsumerType, DecisionMessage, PublisherType};
 use crate::messaging::kafka::KafkaConsumer;
 use crate::messaging::mock::MockConsumer;
 
@@ -116,7 +116,7 @@ impl TalosAgent for TalosAgentImpl {
                 debug!("certify(): received decision for xid: {}, {:?}", request.candidate.xid, answer);
                 return Ok(CertificationResponse {
                     xid: answer.xid.clone(),
-                    is_accepted: answer.decision == Decision::Committed,
+                    decision: answer.decision.clone(),
                     send_started_at: enqueued_at,
                     decided_at: answer.decided_at.unwrap_or(0),
                     decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,

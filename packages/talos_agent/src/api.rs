@@ -2,7 +2,7 @@ use crate::agent::TalosAgentImpl;
 use crate::agentv2::agent_v2::TalosAgentImplV2;
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
-use crate::messaging::api::PublisherType;
+use crate::messaging::api::{Decision, PublisherType};
 use crate::messaging::kafka::KafkaPublisher;
 use crate::messaging::mock::MockPublisher;
 use async_trait::async_trait;
@@ -37,7 +37,7 @@ pub struct CertificationRequest {
 #[derive(Clone, Debug)]
 pub struct CertificationResponse {
     pub xid: String,
-    pub is_accepted: bool,
+    pub decision: Decision,
     pub send_started_at: u64,
     pub received_at: u64,
     pub decided_at: u64,

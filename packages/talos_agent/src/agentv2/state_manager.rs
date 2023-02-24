@@ -1,3 +1,4 @@
+use multimap::MultiMap;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
@@ -10,6 +11,11 @@ use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMe
 
 use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
 use crate::messaging::mock::{MockConsumer, MockPublisher};
+
+struct WaitingClient {
+    received_at: u64,
+    tx_sender: Sender<CertificationResponse>,
+}
 
 pub struct StateManager {
     agent_config: AgentConfig,
@@ -75,7 +81,7 @@ impl StateManager {
 
         let publish_times = Arc::clone(&self.publish_times);
         tokio::spawn(async move {
-            let mut state: HashMap<String, (u64, Sender<CertificationResponse>)> = HashMap::new();
+            let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
 
             let publisher: Arc<Box<PublisherType>> = match it {
                 TalosIntegrationType::Kafka => {
@@ -91,13 +97,10 @@ impl StateManager {
                     rslt_request_msg = rx_certify.recv() => {
                         match rslt_request_msg {
                             Some(request_msg) => {
-
-                                // todo:
-                                //      handle case when something is already enqueued on this XID
-                                state.insert(
-                                    request_msg.request.candidate.xid.clone(),
-                                    (OffsetDateTime::now_utc().unix_timestamp_nanos() as u64, request_msg.tx_answer)
-                                );
+                                state.insert(request_msg.request.candidate.xid.clone(), WaitingClient {
+                                    received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+                                    tx_sender: request_msg.tx_answer,
+                                });
 
                                 let msg = CandidateMessage::new(
                                     agent_config.agent.clone(),
@@ -143,7 +146,7 @@ impl StateManager {
                         match rslt_decision_msg {
                             Some(decision_msg) => {
                                 let xid = &decision_msg.xid;
-                                match Self::reply_to_agent(xid, decision_msg.decision, decision_msg.decided_at, state.get(&decision_msg.xid)).await {
+                                match Self::reply_to_agent(xid, decision_msg.decision, decision_msg.decided_at, state.get_vec(&decision_msg.xid)).await {
                                     Some(()) => {
                                         state.remove(xid);
                                     }
@@ -161,19 +164,35 @@ impl StateManager {
         });
     }
 
-    async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, tx: Option<&(u64, Sender<CertificationResponse>)>) -> Option<()> {
+    async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, tx: Option<&Vec<WaitingClient>>) -> Option<()> {
         match tx {
-            Some((channel_time, sender)) => {
-                let response = CertificationResponse {
-                    xid: xid.to_string(),
-                    is_accepted: decision == Decision::Committed,
-                    send_started_at: *channel_time,
-                    decided_at: decided_at.unwrap_or(0),
-                    decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
-                    received_at: 0,
-                };
+            Some(waiting_clients) => {
+                let count = waiting_clients.len();
+                let mut c = 0;
+                for waiting_client in waiting_clients {
+                    c += 1;
+                    let response = CertificationResponse {
+                        xid: xid.to_string(),
+                        decision: decision.clone(),
+                        send_started_at: waiting_client.received_at,
+                        decided_at: decided_at.unwrap_or(0),
+                        decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+                        received_at: 0,
+                    };
+                    match waiting_client.tx_sender.send(response.clone()).await {
+                        Ok(()) => {}
+                        Err(e) => {
+                            log::error!(
+                                "Error processing XID: {}. Unable to send response {} of {} to the client. Error: {}",
+                                xid,
+                                c,
+                                count,
+                                e,
+                            );
+                        }
+                    };
+                }
 
-                sender.send(response).await.unwrap();
                 Some(())
             }
 

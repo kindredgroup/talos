@@ -16,11 +16,11 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 30_000;
-const TALOS_TYPE: TalosType = TalosType::InProcessMock;
+const BATCH_SIZE: i32 = 1_000;
+const TALOS_TYPE: TalosType = TalosType::External;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
-const TARGET_RATE: f64 = 5_000_f64;
+const TARGET_RATE: f64 = 100_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
@@ -33,7 +33,7 @@ fn make_configs() -> (AgentConfig, KafkaConfig) {
     };
 
     let cfg_kafka = KafkaConfig {
-        brokers: "127.0.0.1:9093".to_string(),
+        brokers: "127.0.0.1:9092".to_string(),
         group_id: agent,
         enqueue_timeout_ms: 10,
         message_timeout_ms: 15000,
