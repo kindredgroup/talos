@@ -21,7 +21,7 @@ impl TalosAgentImplV2 {
         int_type: &TalosIntegrationType,
         tx_certify: Sender<CertifyRequestChannelMessage>,
         tx_cancel: Sender<CancelRequestChannelMessage>,
-        publish_times: &Arc<Mutex<HashMap<String, u64>>>,
+        publish_times: Arc<Mutex<HashMap<String, u64>>>,
     ) -> TalosAgentImplV2 {
         TalosAgentImplV2 {
             state_manager: StateManager::new(agent_config, kafka_config, int_type, publish_times),

@@ -29,13 +29,13 @@ impl StateManager {
         agent_config: AgentConfig,
         kafka_config: Option<KafkaConfig>,
         int_type: &TalosIntegrationType,
-        publish_times: &Arc<Mutex<HashMap<String, u64>>>,
+        publish_times: Arc<Mutex<HashMap<String, u64>>>,
     ) -> StateManager {
         StateManager {
             agent_config,
             kafka_config,
             int_type: int_type.clone(),
-            publish_times: Arc::clone(publish_times),
+            publish_times,
         }
     }
 

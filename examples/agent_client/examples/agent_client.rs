@@ -79,7 +79,7 @@ fn name_rate(v: Duration) -> String {
 //         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
 // }
 
-async fn make_agentv2(publish_times: &Arc<Mutex<HashMap<String, u64>>>) -> Box<TalosAgentType> {
+async fn make_agentv2(publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Box<TalosAgentType> {
     let (cfg_agent, cfg_kafka) = make_configs();
 
     TalosAgentBuilder::new(cfg_agent)
@@ -106,7 +106,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     // A: the end of call to kafka send_message(candidate)
     let publish_times: Arc<Mutex<HashMap<String, u64>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut tasks = Vec::<JoinHandle<Result<Timing, String>>>::new();
-    let agent = Arc::new(make_agentv2(&publish_times).await);
+    let agent = Arc::new(make_agentv2(Arc::clone(&publish_times)).await);
 
     // Allow some time for consumer to properly connect
     thread::sleep(Duration::from_secs(5));

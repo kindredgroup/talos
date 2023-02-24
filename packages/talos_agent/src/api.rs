@@ -137,7 +137,7 @@ impl TalosAgentBuilder {
     }
 
     /// Build agent instance implemented using actor model.
-    pub async fn build_v2(&self, publish_times: &Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
+    pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
         let (tx_certify, rx_certify) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
         let (tx_cancel, rx_cancel) = tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
 
