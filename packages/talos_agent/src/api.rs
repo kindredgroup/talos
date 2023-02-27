@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub const TRACK_PUBLISH_LATENCY: bool = false;
 
@@ -31,6 +32,7 @@ pub struct CandidateData {
 pub struct CertificationRequest {
     pub message_key: String,
     pub candidate: CandidateData,
+    pub timeout: Option<Duration>,
 }
 
 /// The data output from agent to client
@@ -51,6 +53,7 @@ pub struct AgentConfig {
     pub cohort: String,
     // The size of internal buffer for candidates
     pub buffer_size: usize,
+    pub timout_ms: u64,
 }
 
 #[derive(Clone)]

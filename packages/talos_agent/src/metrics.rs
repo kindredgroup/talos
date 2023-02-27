@@ -96,12 +96,20 @@ pub struct Percentile {
 
 impl Percentile {
     fn compute(data_set: &Vec<Timing>, percentage: u32, unit: &str, get: &impl Fn(&Timing) -> f32) -> Percentile {
-        let index = cmp::min((((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize, data_set.len() - 1);
+        if data_set.is_empty() {
+            Percentile {
+                percentage,
+                unit: unit.to_string(),
+                value: 0_f32,
+            }
+        } else {
+            let index = cmp::min((((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize, data_set.len() - 1);
 
-        Percentile {
-            percentage,
-            unit: unit.to_string(),
-            value: get(&data_set[index]),
+            Percentile {
+                percentage,
+                unit: unit.to_string(),
+                value: get(&data_set[index]),
+            }
         }
     }
 }
