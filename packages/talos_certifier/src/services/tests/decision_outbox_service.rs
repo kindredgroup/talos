@@ -117,6 +117,7 @@ async fn test_candidate_message_create_decision_message() {
                 decision: Decision::Committed,
                 suffix_start: 2,
                 version: 4,
+                duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
             }))
@@ -174,6 +175,7 @@ async fn test_save_and_publish_multiple_decisions() {
                 decision: Decision::Committed,
                 suffix_start: 2,
                 version: 4,
+                duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
             }))
@@ -190,6 +192,7 @@ async fn test_save_and_publish_multiple_decisions() {
                 decision: Decision::Committed,
                 suffix_start: 2,
                 version: 4,
+                duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
             }))
@@ -284,6 +287,7 @@ async fn test_capture_child_thread_dberror() {
                 decision: Decision::Committed,
                 suffix_start: 2,
                 version: 4,
+                duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
             }))
@@ -365,6 +369,7 @@ async fn test_capture_child_thread_publish_error() {
                 decision: Decision::Committed,
                 suffix_start: 2,
                 version: 4,
+                duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
             }))

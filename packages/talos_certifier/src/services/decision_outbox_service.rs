@@ -49,7 +49,19 @@ impl DecisionOutboxService {
 
         // Insert into XDB
         let decision = match datastore.insert_decision(xid.clone(), decision_message.clone()).await {
-            Ok(decision) => Ok(decision),
+            Ok(decision) => {
+                // if duplicated decision, we update the decision version and duplicate_version fields in DecisionMessage
+                let decision_from_db = if decision.version.ne(&decision_message.version) {
+                    DecisionMessage {
+                        duplicate_version: Some(decision_message.version),
+                        agent: decision_message.agent,
+                        ..decision
+                    }
+                } else {
+                    decision
+                };
+                Ok(decision_from_db)
+            }
             Err(insert_error) => {
                 let error = SystemServiceError {
                     kind: SystemServiceErrorKind::DBError,
@@ -72,7 +84,6 @@ impl DecisionOutboxService {
                 SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos().to_string(),
             );
             decision_publish_header.insert("certAgent".to_string(), decision.agent);
-
             debug!("Publishing message {}", decision.version);
             if let Err(publish_error) = publisher
                 .publish_message(xid.as_str(), &decision_str, Some(decision_publish_header.clone()))
@@ -125,7 +136,6 @@ impl SystemService for DecisionOutboxService {
                             let publisher = Arc::clone(&self.decision_publisher);
                             let datastore = Arc::clone(&self.decision_store);
                             let outbox_tx = self.decision_outbox_channel_tx.clone();
-                            // let mut system_channel_rx = self.system.system_notifier.subscribe();
                             async move {
                                 let _result = DecisionOutboxService::save_and_publish_task(publisher, datastore, outbox_tx, decision_message).await;
                             }
