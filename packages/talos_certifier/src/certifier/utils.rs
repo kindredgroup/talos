@@ -15,18 +15,18 @@ pub fn convert_vec_to_hashmap(v: Vec<(&str, u64)>) -> AHashMap<String, u64> {
 /// As the readset and writesets are hashmaps, if there are duplicate inserts of readset/writeset for different suffix versions,
 /// the last version will be stored in the value. Therefore ensure the vector is sorted to prevent incorrect
 /// read and write sets.
-pub fn generate_certifier_sets_from_suffix<'a, T>(items: impl Iterator<Item = &'a SuffixItem<T>>) -> (CertifierReadset, CertifierWriteset)
+pub(crate) fn generate_certifier_sets_from_suffix<'a, T>(items: impl Iterator<Item = &'a SuffixItem<T>>) -> (CertifierReadset, CertifierWriteset)
 where
     T: 'a + CandidateReadWriteSet,
 {
     items.fold(
         (HashMap::<String, u64>::new().into(), HashMap::<String, u64>::new().into()),
-        |mut acc, suffix_item| {
-            suffix_item.item.get_readset().iter().for_each(|read_item| {
-                acc.0.insert(read_item.to_string(), suffix_item.item_ver);
+        |mut acc, prune_item| {
+            prune_item.item.get_readset().iter().for_each(|read_item| {
+                acc.0.insert(read_item.to_string(), prune_item.item_ver);
             });
-            suffix_item.item.get_writeset().iter().for_each(|write_item| {
-                acc.1.insert(write_item.to_string(), suffix_item.item_ver);
+            prune_item.item.get_writeset().iter().for_each(|write_item| {
+                acc.1.insert(write_item.to_string(), prune_item.item_ver);
             });
             acc
         },
