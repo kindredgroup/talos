@@ -1,8 +1,7 @@
 use log::{error, info};
 
-use talos_certifier::services::CertifierServiceConfig;
-use talos_certifier_adapters::{certifier_with_kafka_pg, TalosCertifierChannelBuffers};
 use talos_suffix::core::SuffixConfig;
+use talos_certifier_adapters::{certifier_with_kafka_pg, Configuration, KafkaConfig, PgConfig, TalosCertifierChannelBuffers};
 use tokio::signal;
 
 use logger::logs;
@@ -13,18 +12,23 @@ async fn main() -> Result<(), impl std::error::Error> {
 
     info!("Talos certifier starting...");
 
-    let talos_certifier = certifier_with_kafka_pg(
-        TalosCertifierChannelBuffers::default(),
-        Some(CertifierServiceConfig {
-            suffix_config: SuffixConfig {
-                capacity: 30,
-                prune_start_threshold: Some(25),
-                min_size_after_prune: Some(10),
-                // ..Default::default()
-            },
-        }),
-    )
-    .await?;
+    let kafka_config = KafkaConfig::from_env();
+    let pg_config = PgConfig::from_env();
+    let suffix_config = Some(SuffixConfig {
+        capacity: 30,
+        prune_start_threshold: Some(25),
+        min_size_after_prune: Some(10),
+    });
+
+    let configuration = Configuration {
+        suffix_config,
+        certifier_mock: false,
+        pg_config: Some(pg_config),
+        kafka_config,
+        db_mock: false,
+    };
+
+    let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default(), configuration).await?;
 
     // Services thread thread spawned
     let svc_handle = tokio::spawn(async move { talos_certifier.run().await });

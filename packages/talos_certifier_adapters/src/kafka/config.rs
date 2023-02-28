@@ -1,30 +1,36 @@
 use rdkafka::ClientConfig;
+use std::collections::HashMap;
 use talos_certifier::env_var;
 
 #[derive(Debug)]
-pub struct Config {
+pub struct KafkaConfig<'a> {
     pub brokers: Vec<String>,
-    pub topic_prefix: String,
-    pub consumer_topic: String,
-    pub producer_topic: String,
+    pub topic: String,
     pub client_id: String,
     pub group_id: String,
     pub username: String,
     pub password: String,
+    pub producer_config_overrides: HashMap<&'a str, &'a str>,
+    pub consumer_config_overrides: HashMap<&'a str, &'a str>,
 }
 
-impl Config {
-    pub fn from_env() -> Config {
-        Config {
+impl<'a> KafkaConfig<'a> {
+    pub fn from_env() -> Self {
+        KafkaConfig {
             brokers: env_var!("KAFKA_BROKERS", Vec<String>),
-            topic_prefix: env_var!("KAFKA_TOPIC_PREFIX"),
-            consumer_topic: env_var!("KAFKA_TOPIC"),
-            producer_topic: env_var!("KAFKA_TOPIC"),
+            topic: env_var!("KAFKA_TOPIC"),
             client_id: env_var!("KAFKA_CLIENT_ID"),
             group_id: env_var!("KAFKA_GROUP_ID"),
             username: env_var!("KAFKA_USERNAME"),
             password: env_var!("KAFKA_PASSWORD"),
+            producer_config_overrides: HashMap::new(),
+            consumer_config_overrides: HashMap::new(),
         }
+    }
+
+    pub fn set_overrides(&mut self, producer_config_overrides: HashMap<&'a str, &'a str>, consumer_config_overrides: HashMap<&'a str, &'a str>) {
+        self.producer_config_overrides = producer_config_overrides;
+        self.consumer_config_overrides = consumer_config_overrides;
     }
 
     pub fn build_consumer_config(&self) -> ClientConfig {
@@ -32,18 +38,20 @@ impl Config {
 
         let username = self.username.to_owned();
         let password = self.password.to_owned();
+        let brokers = self.brokers.join(",");
+        let mut base_config = HashMap::from([
+            ("group.id", self.group_id.as_str()),
+            ("bootstrap.servers", brokers.as_str()),
+            ("auto.offset.reset", "earliest"),
+            ("socket.keepalive.enable", "true"),
+            ("enable.auto.commit", "false"),
+        ]);
 
-        client_config
-            .set("group.id", &self.group_id)
-            .set("bootstrap.servers", self.brokers.join(","))
-            .set("auto.offset.reset", "earliest")
-            .set("socket.keepalive.enable", "true")
-            // .set("auto.commit.interval.ms", "5000")
-            // .set("enable.auto.offset.store", "false")
-            .set("enable.auto.commit", "false");
-        // .set("fetch.min.bytes", "524288")
-        // .set("fetch.wait.max.ms", "500")
-        // .set("max.partition.fetch.bytes", "1048576");
+        base_config.extend(&self.consumer_config_overrides);
+
+        for (k, v) in base_config.into_iter() {
+            client_config.set(k, v);
+        }
 
         if !username.is_empty() && !password.is_empty() {
             client_config
@@ -61,11 +69,16 @@ impl Config {
 
         let username = self.username.to_owned();
         let password = self.password.to_owned();
-
-        client_config
-            .set("bootstrap.servers", self.brokers.join(","))
-            .set("message.timeout.ms", "30000");
-
+        let brokers = self.brokers.join(",");
+        let mut base_config = HashMap::from([
+            ("message.timeout.ms", "30000"),
+            ("bootstrap.servers", brokers.as_str()),
+            ("message.send.max.retries", "100000"),
+        ]);
+        base_config.extend(&self.producer_config_overrides);
+        for (k, v) in base_config.into_iter() {
+            client_config.set(k, v);
+        }
         if !username.is_empty() && !password.is_empty() {
             client_config
                 .set("security.protocol", "SASL_PLAINTEXT")
@@ -97,7 +110,6 @@ mod tests {
     fn get_kafka_env_variables() -> HashMap<&'static str, &'static str> {
         let env_hashmap = [
             ("KAFKA_BROKERS", "broker1, broker2 "),
-            ("KAFKA_TOPIC_PREFIX", "prefix-"),
             ("KAFKA_TOPIC", "some-topic"),
             ("KAFKA_CLIENT_ID", "some-client-id"),
             ("KAFKA_GROUP_ID", "some-group-id"),
@@ -107,16 +119,16 @@ mod tests {
         HashMap::from(env_hashmap)
     }
 
-    fn build_test_kafka_config() -> Config {
-        Config {
+    fn build_test_kafka_config<'a>() -> KafkaConfig<'a> {
+        KafkaConfig {
             brokers: vec!["broker1".to_string()],
-            topic_prefix: "".to_owned(),
-            consumer_topic: "consumer-topic-1".to_owned(),
-            producer_topic: "producer-topic-1".to_owned(),
+            topic: "topic".to_owned(),
             client_id: "client-id-1".to_string(),
             group_id: "group-id-1".to_string(),
-            username: "".to_owned(),
-            password: "".to_owned(),
+            username: "user_name".to_owned(),
+            password: "password".to_owned(),
+            producer_config_overrides: Default::default(),
+            consumer_config_overrides: Default::default(),
         }
     }
 
@@ -127,7 +139,7 @@ mod tests {
             set_env_var(k, v);
         });
 
-        let config = Config::from_env();
+        let config = KafkaConfig::from_env();
 
         assert_eq!(config.client_id, "some-client-id");
         assert_eq!(config.brokers.len(), 2);
@@ -138,15 +150,15 @@ mod tests {
     }
     #[test]
     #[serial]
-    #[should_panic(expected = "KAFKA_TOPIC_PREFIX environment variable is not defined")]
+    #[should_panic(expected = "KAFKA_TOPIC environment variable is not defined")]
     fn test_from_env_when_env_variable_not_found() {
         get_kafka_env_variables().iter().for_each(|(k, v)| {
             set_env_var(k, v);
         });
 
-        unset_env_var("KAFKA_TOPIC_PREFIX");
+        unset_env_var("KAFKA_TOPIC");
 
-        let _config = Config::from_env();
+        let _config = KafkaConfig::from_env();
 
         get_kafka_env_variables().iter().for_each(|(k, _)| {
             unset_env_var(k);
@@ -158,47 +170,58 @@ mod tests {
         let config = build_test_kafka_config().build_consumer_config();
         assert_eq!(config.get("group.id").unwrap(), "group-id-1");
         assert_eq!(config.get("socket.keepalive.enable").unwrap(), "true");
-        assert!(config.get("sasl.username").is_none());
+        assert_eq!(config.get("sasl.username").unwrap(), "user_name");
     }
     #[test]
     fn test_passing_credentials_to_build_consumer_config() {
-        let config = Config {
+        let config = KafkaConfig {
             brokers: vec!["broker1".to_string()],
-            topic_prefix: "".to_owned(),
-            consumer_topic: "consumer-topic-1".to_owned(),
-            producer_topic: "producer-topic-1".to_owned(),
+            topic: "consumer-topic-1".to_owned(),
             client_id: "client-id-1".to_string(),
             group_id: "groud-id-1".to_string(),
             username: "user".to_string(),
             password: "password".to_string(),
+            producer_config_overrides: Default::default(),
+            consumer_config_overrides: Default::default(),
         };
-        let config = config.build_consumer_config();
-        assert_eq!(config.get("sasl.username").unwrap(), "user");
-        assert_eq!(config.get("sasl.password").unwrap(), "password");
-        assert_eq!(config.get("security.protocol").unwrap(), "SASL_PLAINTEXT");
+        let client_config = config.build_consumer_config();
+        assert_eq!(client_config.get("auto.offset.reset").unwrap(), "earliest");
+        assert_eq!(client_config.get("socket.keepalive.enable").unwrap(), "true");
+        assert_eq!(client_config.get("enable.auto.commit").unwrap(), "false");
+        assert_eq!(client_config.get("sasl.username").unwrap(), "user");
+        assert_eq!(client_config.get("sasl.password").unwrap(), "password");
+        assert_eq!(client_config.get("security.protocol").unwrap(), "SASL_PLAINTEXT");
     }
 
     #[test]
     fn test_build_producer_config_obj() {
         let config = build_test_kafka_config().build_producer_config();
         assert!(config.get("group.id").is_none());
-        assert!(config.get("sasl.username").is_none());
+        assert_eq!(config.get("sasl.username").unwrap(), "user_name");
+        assert_eq!(config.get("sasl.password").unwrap(), "password");
+        assert_eq!(config.get("message.timeout.ms").unwrap(), "30000");
+        assert_eq!(config.get("message.send.max.retries").unwrap(), "100000");
     }
     #[test]
-    fn test_passing_credentials_to_build_producer_config() {
-        let config = Config {
+    fn test_passing_overrides() {
+        let mut kafka_config = KafkaConfig {
             brokers: vec!["broker1".to_string()],
-            topic_prefix: "".to_owned(),
-            consumer_topic: "consumer-topic-1".to_owned(),
-            producer_topic: "producer-topic-1".to_owned(),
+            topic: "topic".to_owned(),
             client_id: "client-id-1".to_string(),
             group_id: "groud-id-1".to_string(),
             username: "user".to_string(),
             password: "password".to_string(),
+            producer_config_overrides: Default::default(),
+            consumer_config_overrides: Default::default(),
         };
-        let config = config.build_producer_config();
-        assert_eq!(config.get("sasl.username").unwrap(), "user");
-        assert_eq!(config.get("sasl.password").unwrap(), "password");
-        assert_eq!(config.get("security.protocol").unwrap(), "SASL_PLAINTEXT");
+        let producer_override = HashMap::from([("message.timeout.ms", "10")]);
+        let consumer_override = HashMap::from([("auto.offset.reset", "latest")]);
+        kafka_config.set_overrides(producer_override, consumer_override);
+        let producer_config = kafka_config.build_producer_config();
+        assert_eq!(producer_config.get("sasl.username").unwrap(), "user");
+        assert_eq!(producer_config.get("message.timeout.ms").unwrap(), "10");
+        let consumer_config = kafka_config.build_consumer_config();
+        assert_eq!(consumer_config.get("sasl.username").unwrap(), "user");
+        assert_eq!(consumer_config.get("auto.offset.reset").unwrap(), "latest");
     }
 }

@@ -20,7 +20,7 @@ use talos_certifier::{
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
-use super::{config::Config, utils};
+use super::{config::KafkaConfig, utils};
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
@@ -31,14 +31,14 @@ pub struct KafkaConsumer {
 }
 
 impl KafkaConsumer {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(config: &KafkaConfig) -> Self {
         //TODO :Error handling to be improved.
         let consumer = config.build_consumer_config().create().expect("Failed to create consumer");
 
-        let topic = &utils::kafka_topic_prefixed(&config.consumer_topic, &config.topic_prefix);
+        let topic = config.topic.clone();
         Self {
             consumer,
-            topic: topic.to_string(),
+            topic,
             tpl: TopicPartitionList::new(),
         }
     }

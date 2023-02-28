@@ -1724,6 +1724,7 @@ dependencies = [
  "serde_json",
  "serial_test",
  "talos_certifier",
+ "talos_suffix",
  "thiserror",
  "tokio",
  "tokio-postgres",
