@@ -4,7 +4,7 @@ use crate as Adapters;
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
-    services::{CertifierService, DecisionOutboxService, MessageReceiverService},
+    services::{CertifierService, CertifierServiceConfig, DecisionOutboxService, MessageReceiverService},
     talos_certifier_service::{TalosCertifierService, TalosCertifierServiceBuilder},
 };
 
@@ -28,7 +28,10 @@ impl Default for TalosCertifierChannelBuffers {
 }
 
 /// Talos certifier instantiated with Kafka as Abcast and Postgres as XDB.
-pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffers) -> Result<TalosCertifierService, SystemServiceError> {
+pub async fn certifier_with_kafka_pg(
+    channel_buffer: TalosCertifierChannelBuffers,
+    certifier_service_config: Option<CertifierServiceConfig>,
+) -> Result<TalosCertifierService, SystemServiceError> {
     let (system_notifier, _) = broadcast::channel(channel_buffer.system_broadcast);
 
     let system = System {
@@ -53,7 +56,13 @@ pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffer
 
     /* START - Certifier service  */
 
-    let certifier_service = CertifierService::new(rx, outbound_tx.clone(), Arc::clone(&commit_offset), system.clone());
+    let certifier_service = CertifierService::new(
+        rx,
+        outbound_tx.clone(),
+        Arc::clone(&commit_offset),
+        system.clone(),
+        Some(certifier_service_config.unwrap_or_default()),
+    );
     /* END - Certifier service  */
 
     /* START - Decision Outbox service  */
