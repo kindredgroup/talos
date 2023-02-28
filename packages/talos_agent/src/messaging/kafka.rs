@@ -147,38 +147,30 @@ impl KafkaConsumer {
         partition_list.set_partition_offset(topic, partition, Offset::End).unwrap();
 
         let rslt_assign = self.consumer.assign(&partition_list);
-        match rslt_assign {
-            Ok(()) => {
-                return match self.get_offset(partition, Duration::from_secs(5)) {
-                    Ok(offset) => {
-                        log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
-                        match self.consumer.seek(topic, partition, offset, Duration::from_secs(5)) {
-                            Ok(()) => Ok(()),
-                            Err(e) => Err(format!("Error when Seeking to offset {:?}. Error: {}", offset, e)),
-                        }
-                    }
-                    Err(e) => Err(format!("Error fetching offset of partition {}. Error: {})", partition, e)),
-                };
-            }
+        rslt_assign.map_err(|e| format!("Error invoking assign('{}', {}. Error: {})", topic, partition, e))?;
 
-            Err(e) => Err(format!("Error invoking assign('{}', {}. Error: {})", topic, partition, e)),
-        }
+        let offset = self
+            .get_offset(partition, Duration::from_secs(5))
+            .map_err(|e| format!("Error fetching offset of partition {}. Error: {})", partition, e))?;
+        log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
+
+        self.consumer
+            .seek(topic, partition, offset, Duration::from_secs(5))
+            .map_err(|e| format!("Error when seeking to offset {:?}. Error: {}", offset, e))
     }
 
     fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, String> {
         let now_ms = OffsetDateTime::now_utc().unix_timestamp() * 1000;
         let topic = self.config.certification_topic.as_str();
-        match self.consumer.offsets_for_timestamp(now_ms, timeout) {
-            Ok(partitions) => {
-                for p in partitions.elements().iter() {
-                    if p.partition() == partition && p.topic() == topic {
-                        return Ok(p.offset());
-                    }
-                }
-                Err(format!("No such partition {}", partition))
+        let partitions = self.consumer.offsets_for_timestamp(now_ms, timeout).map_err(|e| e.to_string())?;
+
+        for p in partitions.elements().iter() {
+            if p.partition() == partition && p.topic() == topic {
+                return Ok(p.offset());
             }
-            Err(e) => Err(e.to_string()),
         }
+
+        Err(format!("No such partition {}", partition))
     }
 
     fn deserialize_decision(
