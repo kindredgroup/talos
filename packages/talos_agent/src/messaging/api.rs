@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 pub static HEADER_MESSAGE_TYPE: &str = "messageType";
-pub static HEADER_AGENT_ID: &str = "agentId";
+pub static HEADER_AGENT_ID: &str = "certAgent";
 
 // This should live in the external shared schema exported by Talos
 #[derive(Debug, EnumString, Display)]
@@ -52,15 +52,20 @@ pub enum Decision {
 #[serde(rename_all = "camelCase", tag = "_typ")]
 pub struct DecisionMessage {
     pub xid: String,
+    #[serde(skip_deserializing)]
     pub agent: String,
+    #[serde(skip_deserializing)]
     pub cohort: String,
     pub decision: Decision,
+    #[serde(skip_deserializing)]
     pub suffix_start: u64,
     pub version: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
     // #[serde(skip_serializing_if = "Option::is_none")]
     // pub conflicts: Option<Vec<ConflictMessage>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decided_at: Option<u64>,
 }
 
 /// The response of message publishing action, essentially this is

@@ -65,10 +65,10 @@ build:
 	$(call pp,build rust...)
 	cargo build
 
-## dev.run-agent: 🧪 Runs agent
-dev.run-agent:
+## dev.run-agent-client: 🧪 Runs agent
+dev.run-agent-client:
 	$(call pp,run-agent app...)
-	cargo run --bin talos_agent
+	cargo run --example agent_client --release
 
 ## dev.run: 🧪 Runs rust app in watch mode
 dev.run:

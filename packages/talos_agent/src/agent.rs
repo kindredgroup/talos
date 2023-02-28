@@ -2,10 +2,11 @@ use async_trait::async_trait;
 use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use time::OffsetDateTime;
 use tokio::sync::Notify;
 
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
-use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMessage, PublisherType};
+use crate::messaging::api::{CandidateMessage, ConsumerType, DecisionMessage, PublisherType};
 use crate::messaging::kafka::KafkaConsumer;
 use crate::messaging::mock::MockConsumer;
 
@@ -43,28 +44,20 @@ impl TalosAgentImpl {
         }
     }
 
-    fn create_kafka_consumer(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        let kc = KafkaConsumer::new(agent_id, config);
-        match kc.subscribe() {
-            Ok(()) => Ok(Box::new(kc)),
-            Err(e) => Err(e),
-        }
-    }
-
     fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
         Ok(Box::new(MockConsumer {}))
     }
 
     /// Starts listener task which reads Talos decisions from the topic
     pub fn start(&self, int_type: &TalosIntegrationType) -> Result<(), String> {
-        let agent_id = self.config.agent_id.clone();
+        let agent = self.config.agent.clone();
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let in_flight = Arc::clone(&self.in_flight);
 
         let it = int_type.clone();
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it {
-                TalosIntegrationType::Kafka => Self::create_kafka_consumer(agent_id, &config),
+                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent, &config),
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
             }
             .unwrap();
@@ -107,13 +100,15 @@ impl TalosAgent for TalosAgentImpl {
             monitor: Notify::new(),
         });
 
+        let enqueued_at: u64;
         // todo: Introduce the limit of in-flight transactions.
         {
             let mut state = self.in_flight.lock().unwrap();
             state.insert(request.candidate.xid.clone(), Arc::clone(&in_flight));
+            enqueued_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
         }
 
-        let msg = CandidateMessage::new(self.config.agent_name.clone(), self.config.cohort_name.clone(), request.candidate.clone());
+        let msg = CandidateMessage::new(self.config.agent.clone(), self.config.cohort.clone(), request.candidate.clone());
         let _publish_response = self.publisher.send_message(request.message_key.clone(), msg).await?;
 
         loop {
@@ -121,7 +116,11 @@ impl TalosAgent for TalosAgentImpl {
                 debug!("certify(): received decision for xid: {}, {:?}", request.candidate.xid, answer);
                 return Ok(CertificationResponse {
                     xid: answer.xid.clone(),
-                    is_accepted: answer.decision == Decision::Committed,
+                    decision: answer.decision.clone(),
+                    send_started_at: enqueued_at,
+                    decided_at: answer.decided_at.unwrap_or(0),
+                    decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+                    received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
                 });
             }
             debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);

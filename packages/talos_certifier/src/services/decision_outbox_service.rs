@@ -1,3 +1,4 @@
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
@@ -78,6 +79,10 @@ impl DecisionOutboxService {
             let decision_str = serde_json::to_string(&decision).unwrap();
             let mut decision_publish_header = HashMap::new();
             decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
+            decision_publish_header.insert(
+                "decisionTime".to_string(),
+                SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos().to_string(),
+            );
             decision_publish_header.insert("certAgent".to_string(), decision.agent);
             debug!("Publishing message {}", decision.version);
             if let Err(publish_error) = publisher

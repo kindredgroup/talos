@@ -1,10 +1,16 @@
 use crate::agent::TalosAgentImpl;
+use crate::agentv2::agent_v2::TalosAgentImplV2;
+use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::api::TalosIntegrationType::{InMemory, Kafka};
-use crate::messaging::api::PublisherType;
+use crate::messaging::api::{Decision, PublisherType};
 use crate::messaging::kafka::KafkaPublisher;
 use crate::messaging::mock::MockPublisher;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+pub const TRACK_PUBLISH_LATENCY: bool = false;
 
 ///
 /// Data structures and interfaces exposed to agent client
@@ -31,15 +37,26 @@ pub struct CertificationRequest {
 #[derive(Clone, Debug)]
 pub struct CertificationResponse {
     pub xid: String,
-    pub is_accepted: bool,
+    pub decision: Decision,
+    pub send_started_at: u64,
+    pub received_at: u64,
+    pub decided_at: u64,
+    pub decision_buffered_at: u64,
 }
 
 #[derive(Clone)]
 pub struct AgentConfig {
     // must be unique for each instance
-    pub agent_id: String,
-    pub agent_name: String,
-    pub cohort_name: String,
+    pub agent: String,
+    pub cohort: String,
+    // The size of internal buffer for candidates
+    pub buffer_size: usize,
+}
+
+#[derive(Clone)]
+pub enum TalosType {
+    External,      // kafka listener and decision publisher is the external process
+    InProcessMock, // kafka listener and decision publisher is out internal function
 }
 
 /// Kafka-related configuration
@@ -57,6 +74,7 @@ pub struct KafkaConfig {
     // Group session keepalive heartbeat interval
     // pub heartbeat_interval_ms: u64,
     pub log_level: RDKafkaLogLevel,
+    pub talos_type: TalosType,
 }
 
 /// The agent interface exposed to the client
@@ -99,11 +117,12 @@ impl TalosAgentBuilder {
         self
     }
 
+    /// Build agent instance implemented using shared state between threads.
     pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
         let publisher: Box<PublisherType> = match self.integration_type {
             Kafka => {
                 let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-                let kafka_publisher = KafkaPublisher::new(self.config.agent_id.clone(), config);
+                let kafka_publisher = KafkaPublisher::new(self.config.agent.clone(), config);
                 Box::new(kafka_publisher)
             }
             _ => Box::new(MockPublisher {}),
@@ -113,6 +132,25 @@ impl TalosAgentBuilder {
         agent
             .start(&self.integration_type)
             .unwrap_or_else(|e| panic!("{}", format!("Unable to start agent {}", e)));
+
+        Ok(Box::new(agent))
+    }
+
+    /// Build agent instance implemented using actor model.
+    pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
+        let (tx_certify, rx_certify) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
+        let (tx_cancel, rx_cancel) = tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
+
+        let agent = TalosAgentImplV2::new(
+            self.config.clone(),
+            self.kafka_config.clone(),
+            &self.integration_type,
+            tx_certify,
+            tx_cancel,
+            publish_times,
+        );
+
+        agent.start(rx_certify, rx_cancel).await;
 
         Ok(Box::new(agent))
     }
