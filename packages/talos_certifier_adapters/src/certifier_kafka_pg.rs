@@ -34,18 +34,18 @@ impl Default for TalosCertifierChannelBuffers {
     }
 }
 
-pub struct Configuration<'a> {
+pub struct Configuration {
     pub suffix_config: Option<SuffixConfig>,
     pub pg_config: Option<PgConfig>,
-    pub kafka_config: KafkaConfig<'a>,
+    pub kafka_config: KafkaConfig,
     pub certifier_mock: bool,
     pub db_mock: bool,
 }
 
 /// Talos certifier instantiated with Kafka as Abcast and Postgres as XDB.
-pub async fn certifier_with_kafka_pg<'a>(
+pub async fn certifier_with_kafka_pg(
     channel_buffer: TalosCertifierChannelBuffers,
-    configuration: Configuration<'_>,
+    configuration: Configuration,
 ) -> Result<TalosCertifierService, SystemServiceError> {
     let (system_notifier, _) = broadcast::channel(channel_buffer.system_broadcast);
 

@@ -3,18 +3,18 @@ use std::collections::HashMap;
 use talos_certifier::env_var;
 
 #[derive(Debug)]
-pub struct KafkaConfig<'a> {
+pub struct KafkaConfig {
     pub brokers: Vec<String>,
     pub topic: String,
     pub client_id: String,
     pub group_id: String,
     pub username: String,
     pub password: String,
-    pub producer_config_overrides: HashMap<&'a str, &'a str>,
-    pub consumer_config_overrides: HashMap<&'a str, &'a str>,
+    pub producer_config_overrides: HashMap<&'static str, &'static str>,
+    pub consumer_config_overrides: HashMap<&'static str, &'static str>,
 }
 
-impl<'a> KafkaConfig<'a> {
+impl KafkaConfig {
     pub fn from_env() -> Self {
         KafkaConfig {
             brokers: env_var!("KAFKA_BROKERS", Vec<String>),
@@ -28,7 +28,11 @@ impl<'a> KafkaConfig<'a> {
         }
     }
 
-    pub fn set_overrides(&mut self, producer_config_overrides: HashMap<&'a str, &'a str>, consumer_config_overrides: HashMap<&'a str, &'a str>) {
+    pub fn set_overrides(
+        &mut self,
+        producer_config_overrides: HashMap<&'static str, &'static str>,
+        consumer_config_overrides: HashMap<&'static str, &'static str>,
+    ) {
         self.producer_config_overrides = producer_config_overrides;
         self.consumer_config_overrides = consumer_config_overrides;
     }
@@ -119,7 +123,7 @@ mod tests {
         HashMap::from(env_hashmap)
     }
 
-    fn build_test_kafka_config<'a>() -> KafkaConfig<'a> {
+    fn build_test_kafka_config() -> KafkaConfig {
         KafkaConfig {
             brokers: vec!["broker1".to_string()],
             topic: "topic".to_owned(),
