@@ -408,3 +408,13 @@ fn test_util_generate_certifier_sets_from_suffix_success_with_duplicates() {
 
     assert_eq!(*writeset.get(&"ws:6:1".to_string()).unwrap(), 7);
 }
+#[test]
+fn test_util_generate_certifier_sets_from_empty_suffix_read_write_sets() {
+    let test_data = (0..10_u64)
+        .map(|v| generate_data_for_util_test(v, Some(vec![]), Some(vec![])))
+        .collect::<Vec<SuffixItem<MockCandidateReadWriteSetItem>>>();
+    let (readset, writeset) = generate_certifier_sets_from_suffix(test_data.iter());
+
+    assert_eq!(readset.len(), 0);
+    assert_eq!(writeset.len(), 0);
+}
