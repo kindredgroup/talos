@@ -40,6 +40,7 @@ impl KafkaPublisher {
             .set("queue.buffering.max.messages", "1000000")
             .set_log_level(kafka.log_level);
 
+        setup_kafka_auth(&mut cfg, kafka);
         cfg.create().expect("Unable to create kafka producer")
     }
 }
@@ -125,6 +126,8 @@ impl KafkaConsumer {
             .set("auto.commit.interval.ms", "500")
             .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
             .set_log_level(kafka.log_level);
+
+        setup_kafka_auth(&mut cfg, kafka);
 
         match cfg.create_with_context(KafkaConsumerContext {}) {
             Ok(v) => v,
@@ -315,5 +318,17 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                 })
             }
         }
+    }
+}
+
+/// Utilities.
+
+fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
+    if let Some(username) = &config.username {
+        client
+            .set("security.protocol", "SASL_PLAINTEXT")
+            .set("sasl.mechanisms", config.sasl_mechanisms.clone().unwrap_or_else(|| "SCRAM-SHA-512".to_string()))
+            .set("sasl.username", username)
+            .set("sasl.password", config.password.clone().unwrap_or_default());
     }
 }

@@ -42,6 +42,9 @@ fn make_configs() -> (AgentConfig, KafkaConfig) {
         certification_topic: "dev.ksp.certification".to_string(),
         log_level: RDKafkaLogLevel::Info,
         talos_type: TALOS_TYPE,
+        sasl_mechanisms: None,
+        username: None,
+        password: None,
     };
 
     (cfg_agent, cfg_kafka)
