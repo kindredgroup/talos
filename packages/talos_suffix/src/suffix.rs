@@ -144,12 +144,15 @@ where
     pub fn get_safe_prune_index(&mut self) -> Option<usize> {
         // If `prune_start_threshold=None` don't prune.
         let Some(prune_threshold) = self.meta.prune_start_threshold else {
+            debug!(
+                "[SUFFIX PRUNE CHECK] As suffix.meta.prune_start_threshold is None, pruning is disabled."
+            );
             return None;
         };
 
         // If not reached the max threshold
         if self.suffix_length() < prune_threshold {
-            info!(
+            debug!(
                 "[is_ready_for_prune] returning None because suffix.len={} < {prune_threshold}",
                 self.suffix_length()
             );
@@ -158,6 +161,7 @@ where
 
         // Not ready to prune, if prune version is not set
         if !self.is_valid_prune_version_index() {
+            debug!("[SUFFIX PRUNE CHECK] suffix.meta.prune_index is None, not ready to prune at the moment.");
             return None;
         }
 
@@ -220,7 +224,6 @@ where
     fn get(&mut self, version: u64) -> SuffixResult<Option<SuffixItem<T>>> {
         let index = self.index_from_head(version).ok_or(SuffixError::VersionToIndexConversionError(version))?;
         let suffix_item = self.messages.get(index).and_then(|x| x.as_ref()).cloned();
-        info!("[SUFFIX GET] ver={version} index={index}");
 
         Ok(suffix_item)
     }
@@ -234,12 +237,6 @@ where
         if self.meta.head.le(&version) {
             self.reserve_space_if_required(version)?;
             let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
-
-            // debug!(
-            //     "GK - going to insert to suffix with len={}, HEAD={}, version={version} and index={index}",
-            //     self.messages.len(),
-            //     self.meta.head
-            // );
 
             if index > 0 {
                 let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
@@ -256,14 +253,6 @@ where
             }));
 
             self.meta.last_insert_vers = version;
-
-            // let k: Vec<(usize, u64, Option<u64>)> = self
-            //     .messages
-            //     .iter()
-            //     .enumerate()
-            //     .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
-            //     .collect();
-            // info!("[SUFFIX INSERT] Suffix dump \n{k:?}");
         }
 
         Ok(())

@@ -27,6 +27,21 @@ pub struct CandidateMessage {
     pub on_commit: Option<HashMap<String, Vec<DeliveryOrder>>>,
 }
 
+pub trait CandidateReadWriteSet {
+    fn get_readset(&self) -> &Vec<String>;
+    fn get_writeset(&self) -> &Vec<String>;
+}
+
+impl CandidateReadWriteSet for CandidateMessage {
+    fn get_readset(&self) -> &Vec<String> {
+        &self.readset
+    }
+
+    fn get_writeset(&self) -> &Vec<String> {
+        &self.writeset
+    }
+}
+
 impl CandidateMessage {
     pub fn convert_into_certifier_candidate(&self, version: u64) -> CertifierCandidate {
         CertifierCandidate {

@@ -20,9 +20,11 @@ pub enum Outcome {
     Aborted { version: Option<u64>, discord: Discord },
 }
 
+pub type CertifierReadset = AHashMap<String, u64>;
+pub type CertifierWriteset = AHashMap<String, u64>;
 pub struct Certifier {
-    pub reads: AHashMap<String, u64>,
-    pub writes: AHashMap<String, u64>,
+    pub reads: CertifierReadset,
+    pub writes: CertifierWriteset,
 }
 
 /**
@@ -146,10 +148,10 @@ impl Certifier {
         self_items.extend(add_items);
     }
 
-    /// Remove the items from the read or write hash map
+    /// Prune items from the read or write hash map
     ///
     /// Removes if key is found and the version < version in the certifier.
-    pub fn prune_set(self_items: &mut AHashMap<String, u64>, remove_items: AHashMap<String, u64>) {
+    pub fn prune_set(self_items: &mut AHashMap<String, u64>, remove_items: &AHashMap<String, u64>) {
         self_items.retain(|k, v| match remove_items.get(k) {
             Some(read_value) => read_value > v,
             None => true,
