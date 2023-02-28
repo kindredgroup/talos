@@ -9,7 +9,7 @@ use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::{ClientConfig, ClientContext, Message};
+use rdkafka::{ClientConfig, ClientContext, Message, Offset, TopicPartitionList};
 use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::time::Duration;
@@ -94,7 +94,6 @@ impl ConsumerContext for KafkaConsumerContext {
     }
 
     fn post_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
-        // thread::sleep(Duration::from_secs(5));
         log::info!("[{}] post_rebalance()", thread::current().name().unwrap_or("-"));
     }
 }
@@ -120,12 +119,11 @@ impl KafkaConsumer {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("group.id", &kafka.group_id)
-            .set("enable.auto.commit", "true")
+            .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "latest")
             .set("socket.keepalive.enable", "true")
             .set("auto.commit.interval.ms", "500")
             .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
-            // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
 
         match cfg.create_with_context(KafkaConsumerContext {}) {
@@ -137,49 +135,47 @@ impl KafkaConsumer {
     }
 
     pub fn subscribe(&self) -> Result<(), String> {
-        let result = match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
-            Ok(_) => {
-                loop {
-                    match self.consumer.fetch_group_list(None, Duration::from_secs(1)) {
-                        Ok(group_list) => {
-                            let list = group_list.groups();
-                            let mut found = false;
-                            for group_info in list {
-                                if group_info.name() == self.config.group_id {
-                                    log::info!("Detected consumer group: name: {}, state: {}", group_info.name(), group_info.state());
+        let topic = self.config.certification_topic.as_str();
+        let partition = 0_i32;
 
-                                    if group_info.state() != "Stable" {
-                                        continue;
-                                    }
+        let mut partition_list = TopicPartitionList::new();
+        partition_list.add_partition(topic, partition);
+        // This line is required for seek operation to be successful.
+        partition_list.set_partition_offset(topic, partition, Offset::End).unwrap();
 
-                                    found = true;
-                                    break;
-                                }
-                            }
-
-                            if found {
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            log::error!("Cannot fetch group info for group id '{}'", self.config.group_id);
-                            break;
+        let rslt_assign = self.consumer.assign(&partition_list);
+        match rslt_assign {
+            Ok(()) => {
+                return match self.get_offset(partition, Duration::from_secs(5)) {
+                    Ok(offset) => {
+                        log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
+                        match self.consumer.seek(topic, partition, offset, Duration::from_secs(5)) {
+                            Ok(()) => Ok(()),
+                            Err(e) => Err(format!("Error when Seeking to offset {:?}. Error: {}", offset, e)),
                         }
                     }
+                    Err(e) => Err(format!("Error fetching offset of partition {}. Error: {})", partition, e)),
+                };
+            }
 
-                    log::info!("Consumer group is not ready yet");
-                    thread::sleep(Duration::from_secs(1));
+            Err(e) => Err(format!("Error invoking assign('{}', {}. Error: {})", topic, partition, e)),
+        }
+    }
+
+    fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, String> {
+        let now_ms = OffsetDateTime::now_utc().unix_timestamp() * 1000;
+        let topic = self.config.certification_topic.as_str();
+        match self.consumer.offsets_for_timestamp(now_ms, timeout) {
+            Ok(partitions) => {
+                for p in partitions.elements().iter() {
+                    if p.partition() == partition && p.topic() == topic {
+                        return Ok(p.offset());
+                    }
                 }
-
-                Ok(())
+                Err(format!("No such partition {}", partition))
             }
-            Err(kafka_error) => {
-                error!("Error when subscribing to topics. {:?}", kafka_error);
-                Err(kafka_error.to_string())
-            }
-        };
-
-        result
+            Err(e) => Err(e.to_string()),
+        }
     }
 
     fn deserialize_decision(

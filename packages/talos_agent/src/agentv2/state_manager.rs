@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::Notify;
 
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 
@@ -61,12 +62,21 @@ impl StateManager {
 
         let it_for_consumer = self.int_type.clone();
         let config_for_consumer = config.clone();
+
+        let consumer_barrier = Arc::new(Notify::new());
+        let consumer_barrier_arc = Arc::clone(&consumer_barrier);
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it_for_consumer {
                 TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent, &config_for_consumer),
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config_for_consumer),
             }
+            .map_err(|e| {
+                log::error!("{}", e);
+                e
+            })
             .unwrap();
+
+            consumer_barrier_arc.notify_one();
 
             loop {
                 let rslt_decision_msg = consumer.receive_message().await;
@@ -84,6 +94,11 @@ impl StateManager {
                 }
             }
         });
+
+        // wait until consumer is ready
+        log::info!("Waiting until consumer is ready...");
+        consumer_barrier.notified().await;
+        log::info!("Consumer is ready.");
 
         let publish_times = Arc::clone(&self.publish_times);
         tokio::spawn(async move {
