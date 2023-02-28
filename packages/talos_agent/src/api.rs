@@ -78,6 +78,10 @@ pub struct KafkaConfig {
     // pub heartbeat_interval_ms: u64,
     pub log_level: RDKafkaLogLevel,
     pub talos_type: TalosType,
+    // defaults to SCRAM-SHA-512
+    pub sasl_mechanisms: Option<String>,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 /// The agent interface exposed to the client
