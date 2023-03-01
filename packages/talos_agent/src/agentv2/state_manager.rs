@@ -8,11 +8,10 @@ use tokio::sync::Notify;
 
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 
-use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TalosIntegrationType, TRACK_PUBLISH_LATENCY};
+use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TRACK_PUBLISH_LATENCY};
 use crate::messaging::api::{CandidateMessage, ConsumerType, Decision, DecisionMessage, PublisherType};
 
 use crate::messaging::kafka::{KafkaConsumer, KafkaPublisher};
-use crate::messaging::mock::{MockConsumer, MockPublisher};
 
 struct WaitingClient {
     received_at: u64,
@@ -30,57 +29,38 @@ impl WaitingClient {
 pub struct StateManager {
     agent_config: AgentConfig,
     kafka_config: Option<KafkaConfig>,
-    int_type: TalosIntegrationType,
     publish_times: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl StateManager {
-    pub fn new(
-        agent_config: AgentConfig,
-        kafka_config: Option<KafkaConfig>,
-        int_type: &TalosIntegrationType,
-        publish_times: Arc<Mutex<HashMap<String, u64>>>,
-    ) -> StateManager {
+    pub fn new(agent_config: AgentConfig, kafka_config: Option<KafkaConfig>, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> StateManager {
         StateManager {
             agent_config,
             kafka_config,
-            int_type: int_type.clone(),
             publish_times,
         }
-    }
-
-    fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        Ok(Box::new(MockConsumer {}))
     }
 
     pub async fn start(&self, mut rx_certify: Receiver<CertifyRequestChannelMessage>, mut rx_cancel: Receiver<CancelRequestChannelMessage>) {
         let agent = self.agent_config.agent.clone();
         let agent_config = self.agent_config.clone();
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
-        let it = self.int_type.clone();
 
         let (tx_decision, mut rx_decision) = tokio::sync::mpsc::channel::<DecisionMessage>(agent_config.buffer_size);
 
-        let it_for_consumer = self.int_type.clone();
         let config_for_consumer = config.clone();
 
         let consumer_barrier = Arc::new(Notify::new());
         let consumer_barrier_arc = Arc::clone(&consumer_barrier);
 
         tokio::spawn(async move {
-            let consumer: Box<ConsumerType> = match it_for_consumer {
-                TalosIntegrationType::Kafka => {
-                    let result = KafkaConsumer::new_subscribed(agent, &config_for_consumer);
-                    log::info!("Created kafka consumer");
-                    result
-                }
-                TalosIntegrationType::InMemory => Self::create_mock_consumer(&config_for_consumer),
-            }
-            .map_err(|e| {
-                log::error!("{}", e);
-                e
-            })
-            .unwrap();
+            let consumer: Box<ConsumerType> = KafkaConsumer::new_subscribed(agent, &config_for_consumer)
+                .map_err(|e| {
+                    log::error!("{}", e);
+                    e
+                })
+                .unwrap();
+            log::info!("Created kafka consumer");
 
             consumer_barrier_arc.notify_one();
 
@@ -92,14 +72,8 @@ impl StateManager {
         tokio::spawn(async move {
             let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
 
-            let publisher: Arc<Box<PublisherType>> = match it {
-                TalosIntegrationType::Kafka => {
-                    let kafka_publisher = KafkaPublisher::new(agent_config.agent.clone(), &config);
-                    log::info!("Created kafka publisher");
-                    Arc::new(Box::new(kafka_publisher))
-                }
-                TalosIntegrationType::InMemory => Arc::new(Box::new(MockPublisher {})),
-            };
+            let publisher: Arc<Box<PublisherType>> = Arc::new(Box::new(KafkaPublisher::new(agent_config.agent.clone(), &config)));
+            log::info!("Created kafka publisher");
 
             loop {
                 tokio::select! {

@@ -5,10 +5,9 @@ use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use tokio::sync::Notify;
 
-use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosIntegrationType};
+use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
 use crate::messaging::api::{CandidateMessage, ConsumerType, DecisionMessage, PublisherType};
 use crate::messaging::kafka::KafkaConsumer;
-use crate::messaging::mock::MockConsumer;
 
 ///
 /// Agent implementation which uses single consumer task. Once decision is received, it will lookup for
@@ -44,23 +43,14 @@ impl TalosAgentImpl {
         }
     }
 
-    fn create_mock_consumer(_config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        Ok(Box::new(MockConsumer {}))
-    }
-
     /// Starts listener task which reads Talos decisions from the topic
-    pub fn start(&self, int_type: &TalosIntegrationType) -> Result<(), String> {
+    pub fn start(&self) -> Result<(), String> {
         let agent = self.config.agent.clone();
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let in_flight = Arc::clone(&self.in_flight);
 
-        let it = int_type.clone();
         tokio::spawn(async move {
-            let consumer: Box<ConsumerType> = match it {
-                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent, &config),
-                TalosIntegrationType::InMemory => Self::create_mock_consumer(&config),
-            }
-            .unwrap();
+            let consumer: Box<ConsumerType> = KafkaConsumer::new_subscribed(agent, &config).unwrap();
 
             loop {
                 match consumer.receive_message().await {
