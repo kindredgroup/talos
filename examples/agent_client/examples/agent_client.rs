@@ -16,11 +16,11 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 1_000;
-const TALOS_TYPE: TalosType = TalosType::External;
+const BATCH_SIZE: i32 = 10000;
+const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
-const TARGET_RATE: f64 = 100_f64;
+const TARGET_RATE: f64 = 500_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
@@ -30,6 +30,7 @@ fn make_configs() -> (AgentConfig, KafkaConfig) {
         agent: agent.clone(),
         cohort: cohort.to_string(),
         buffer_size: 10_000,
+        timout_ms: 3_000,
     };
 
     let cfg_kafka = KafkaConfig {
@@ -58,6 +59,7 @@ fn make_candidate(xid: String) -> CertificationRequest {
     CertificationRequest {
         message_key: "12345".to_string(),
         candidate: tx_data,
+        timeout: None, // this will use the default global value as defined in AgentConfig
     }
 }
 
@@ -118,7 +120,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let mut delay = BASE_DELAY;
     let mut done = 0;
     let mut skip = 0;
-    let min_sleep = Duration::from_secs_f32(0.0001);
+    let min_sleep = Duration::from_micros(500);
     for i in 0..batch_size {
         done += 1;
         if skip == 0 {
@@ -143,7 +145,6 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             let sleep = delay.as_secs_f64() / scale;
             if Duration::from_secs_f64(sleep) < min_sleep {
                 skip = (min_sleep.as_secs_f64() / sleep).ceil() as i32 * adjust_every;
-                // info!("skip = {} -> {}, {}", (min_sleep.as_secs_f64() / sleep), skip, sleep);
             } else {
                 delay = Duration::from_secs_f64(sleep);
                 skip = 0;
@@ -155,6 +156,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
 
     let mut metrics_stage1 = Vec::new(); // incomplete metrics, missing publishing times
     let mut i = 1;
+    let mut errors_count = 0;
     for task in tasks {
         let r_timing = task.await.unwrap();
         if i % PROGRESS_EVERY == 0 {
@@ -168,9 +170,14 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             }
 
             Err(e) => {
+                errors_count += 1;
                 log::error!("{:?}", e);
             }
         };
+    }
+
+    if metrics_stage1.is_empty() {
+        return Err(format!("There is no data for metrics. Encountered errors: {}", errors_count));
     }
 
     // Compute and print metrics
@@ -253,7 +260,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
 
     if TRACK_PUBLISH_LATENCY {
         info!(
-            "Test duration: {} ms\nThroughputs (overall / publishing): {}/{} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
+            "Test duration: {} ms\nThroughputs (overall / publishing): {}/{} tps\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}\nErrors: {}",
             duration_ms,
             get_rate(batch_size, duration_ms),
             publish_rate_tps,
@@ -265,12 +272,13 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             format(&total.p90, span1.p90, span2.p90, span3.p90, span4.p90, Some(publish.p90.clone())),
             format(&total.p95, span1.p95, span2.p95, span3.p95, span4.p95, Some(publish.p95.clone())),
             format(&total.p99, span1.p99, span2.p99, span3.p99, span4.p99, Some(publish.p99)),
+            errors_count
         );
 
         // Print metrics for spreadsheet
 
         info!(
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             batch_size,
             "Hashmap+actor+task pub".to_string(),
             "FutureProducer".to_string(),
@@ -284,13 +292,14 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             total.p95.value,
             pub_min_timing.unwrap().get_publish_ms(),
             pub_max_timing.unwrap().get_publish_ms(),
+            errors_count,
             publish.p75.value.clone(),
             publish.p90.value.clone(),
             publish.p95.value.clone(),
         );
     } else {
         info!(
-            "Test duration: {} ms\nThroughputs (overall / publishing): {}/{}\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}",
+            "Test duration: {} ms\nThroughputs (overall / publishing): {}/{}\n\n{}\n\n{} \n{} \nPercentiles:\n{}\n{}\n{}\n{}\n{}\nErrors: {}",
             duration_ms,
             get_rate(batch_size, duration_ms),
             publish_rate_tps,
@@ -302,10 +311,11 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             format(&total.p90, span1.p90, span2.p90, span3.p90, span4.p90, None),
             format(&total.p95, span1.p95, span2.p95, span3.p95, span4.p95, None),
             format(&total.p99, span1.p99, span2.p99, span3.p99, span4.p99, None),
+            errors_count,
         );
 
         info!(
-            "{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{}",
             batch_size,
             "Hashmap+actor+task pub".to_string(),
             "FutureProducer".to_string(),
@@ -317,6 +327,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             total.p75.value,
             total.p90.value,
             total.p95.value,
+            errors_count,
         );
     }
 

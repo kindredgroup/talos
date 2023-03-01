@@ -17,6 +17,14 @@ struct WaitingClient {
     tx_sender: Sender<CertificationResponse>,
 }
 
+impl WaitingClient {
+    async fn notify(&self, response: CertificationResponse, error_message: String) {
+        if let Err(e) = self.tx_sender.send(response).await {
+            log::error!("{}. Error: {}", error_message, e);
+        };
+    }
+}
+
 pub struct StateManager {
     agent_config: AgentConfig,
     kafka_config: Option<KafkaConfig>,
@@ -49,7 +57,7 @@ impl StateManager {
         let config = self.kafka_config.clone().expect("Kafka configuration is required");
         let it = self.int_type.clone();
 
-        let (tx_decision, mut rx_decision) = tokio::sync::mpsc::channel::<DecisionMessage>(10_000);
+        let (tx_decision, mut rx_decision) = tokio::sync::mpsc::channel::<DecisionMessage>(agent_config.buffer_size);
 
         let it_for_consumer = self.int_type.clone();
         let config_for_consumer = config.clone();
@@ -129,29 +137,26 @@ impl StateManager {
                             None => break,
                         }
                     }
-                    // end of receive request cancellation from agent
+                    // end of receive certification request from agent
 
                     rslt_cancel_request_msg = rx_cancel.recv() => {
                         match rslt_cancel_request_msg {
                             // This is timeout
-                            Some(cancel_msg) => state.remove(&cancel_msg.request.candidate.xid),
+                            Some(cancel_msg) => {
+                                log::warn!("The candidate '{}' is cancelled.", &cancel_msg.request.candidate.xid);
+                                state.remove(&cancel_msg.request.candidate.xid)
+                            },
                             None => break,
                         };
                     }
-                    // end of receive certification request from agent
+                    // end of receive request cancellation from agent
 
                     rslt_decision_msg = rx_decision.recv() => {
                         match rslt_decision_msg {
                             Some(decision_msg) => {
                                 let xid = &decision_msg.xid;
-                                match Self::reply_to_agent(xid, decision_msg.decision, decision_msg.decided_at, state.get_vec(&decision_msg.xid)).await {
-                                    Some(()) => {
-                                        state.remove(xid);
-                                    }
-                                    None => {
-                                        log::debug!("Skipping not in-flight transaction: {}", xid);
-                                    }
-                                }
+                                Self::reply_to_agent(xid, decision_msg.decision, decision_msg.decided_at, state.get_vec(&decision_msg.xid)).await;
+                                state.remove(xid);
                             }
                             None => break
                         }
@@ -162,13 +167,13 @@ impl StateManager {
         });
     }
 
-    async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, tx: Option<&Vec<WaitingClient>>) -> Option<()> {
-        match tx {
+    async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, clients: Option<&Vec<WaitingClient>>) {
+        match clients {
             Some(waiting_clients) => {
                 let count = waiting_clients.len();
-                let mut c = 0;
+                let mut client_nr = 0;
                 for waiting_client in waiting_clients {
-                    c += 1;
+                    client_nr += 1;
                     let response = CertificationResponse {
                         xid: xid.to_string(),
                         decision: decision.clone(),
@@ -177,24 +182,19 @@ impl StateManager {
                         decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
                         received_at: 0,
                     };
-                    match waiting_client.tx_sender.send(response.clone()).await {
-                        Ok(()) => {}
-                        Err(e) => {
-                            log::error!(
-                                "Error processing XID: {}. Unable to send response {} of {} to the client. Error: {}",
-                                xid,
-                                c,
-                                count,
-                                e,
-                            );
-                        }
-                    };
-                }
 
-                Some(())
+                    let error_message = format!(
+                        "Error processing XID: {}. Unable to send response {} of {} to waiting client.",
+                        xid, client_nr, count,
+                    );
+
+                    waiting_client.notify(response.clone(), error_message).await;
+                }
             }
 
-            None => None,
-        }
+            None => {
+                log::warn!("There are no waiting clients for the candidate '{}'", xid);
+            }
+        };
     }
 }
