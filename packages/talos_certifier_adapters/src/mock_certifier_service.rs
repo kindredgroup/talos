@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use talos_certifier::core::{DecisionOutboxChannelMessage, SystemService};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
-use talos_certifier::model::{DecisionMessage, Decision};
+use talos_certifier::model::{Decision, DecisionMessage};
 use talos_certifier::ports::common::SharedPortTraits;
 use talos_certifier::ChannelMessage;
 use tokio::sync::mpsc;

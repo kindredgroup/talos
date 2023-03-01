@@ -1,7 +1,7 @@
 use log::{error, info};
 
-use talos_suffix::core::SuffixConfig;
 use talos_certifier_adapters::{certifier_with_kafka_pg, Configuration, KafkaConfig, PgConfig, TalosCertifierChannelBuffers};
+use talos_suffix::core::SuffixConfig;
 use tokio::signal;
 
 use logger::logs;
