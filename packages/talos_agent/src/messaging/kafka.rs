@@ -123,7 +123,6 @@ impl KafkaConsumer {
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "latest")
             .set("socket.keepalive.enable", "true")
-            .set("auto.commit.interval.ms", "500")
             .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
             .set_log_level(kafka.log_level);
 
@@ -152,25 +151,21 @@ impl KafkaConsumer {
         let offset = self
             .get_offset(partition, Duration::from_secs(5))
             .map_err(|e| format!("Error fetching offset of partition {}. Error: {})", partition, e))?;
-        log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
 
+        log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
         self.consumer
             .seek(topic, partition, offset, Duration::from_secs(5))
             .map_err(|e| format!("Error when seeking to offset {:?}. Error: {}", offset, e))
     }
 
     fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, String> {
-        let now_ms = OffsetDateTime::now_utc().unix_timestamp() * 1000;
         let topic = self.config.certification_topic.as_str();
-        let partitions = self.consumer.offsets_for_timestamp(now_ms, timeout).map_err(|e| e.to_string())?;
+        let (_low, high) = self
+            .consumer
+            .fetch_watermarks(topic, partition, timeout)
+            .map_err(|e| format!("Error when fetching watermarks of partition {}. Error: {}", partition, e))?;
 
-        for p in partitions.elements().iter() {
-            if p.partition() == partition && p.topic() == topic {
-                return Ok(p.offset());
-            }
-        }
-
-        Err(format!("No such partition {}", partition))
+        Ok(Offset::Offset(high))
     }
 
     fn deserialize_decision(

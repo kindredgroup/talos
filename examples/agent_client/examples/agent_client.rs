@@ -16,7 +16,7 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 100;
+const BATCH_SIZE: i32 = 3;
 const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
@@ -111,8 +111,10 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     let mut tasks = Vec::<JoinHandle<Result<Timing, String>>>::new();
     let agent = Arc::new(make_agentv2(Arc::clone(&publish_times)).await);
 
+    // todo: remove this
     // Allow some time for consumer to properly connect
-    // thread::sleep(Duration::from_secs(5));
+    log::info!("sleeping for  15 sec ... ");
+    thread::sleep(Duration::from_secs(15));
 
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     info!("Starting publishing process...");

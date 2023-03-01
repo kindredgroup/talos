@@ -65,9 +65,14 @@ impl StateManager {
 
         let consumer_barrier = Arc::new(Notify::new());
         let consumer_barrier_arc = Arc::clone(&consumer_barrier);
+
         tokio::spawn(async move {
             let consumer: Box<ConsumerType> = match it_for_consumer {
-                TalosIntegrationType::Kafka => KafkaConsumer::new_subscribed(agent, &config_for_consumer),
+                TalosIntegrationType::Kafka => {
+                    let result = KafkaConsumer::new_subscribed(agent, &config_for_consumer);
+                    log::info!("Created kafka consumer");
+                    result
+                }
                 TalosIntegrationType::InMemory => Self::create_mock_consumer(&config_for_consumer),
             }
             .map_err(|e| {
@@ -95,11 +100,6 @@ impl StateManager {
             }
         });
 
-        // wait until consumer is ready
-        log::info!("Waiting until consumer is ready...");
-        consumer_barrier.notified().await;
-        log::info!("Consumer is ready.");
-
         let publish_times = Arc::clone(&self.publish_times);
         tokio::spawn(async move {
             let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
@@ -107,6 +107,7 @@ impl StateManager {
             let publisher: Arc<Box<PublisherType>> = match it {
                 TalosIntegrationType::Kafka => {
                     let kafka_publisher = KafkaPublisher::new(agent_config.agent.clone(), &config);
+                    log::info!("Created kafka publisher");
                     Arc::new(Box::new(kafka_publisher))
                 }
                 TalosIntegrationType::InMemory => Arc::new(Box::new(MockPublisher {})),
@@ -180,6 +181,11 @@ impl StateManager {
                 }
             }
         });
+
+        // wait until consumer is ready
+        log::info!("Waiting until consumer is ready...");
+        consumer_barrier.notified().await;
+        log::info!("Consumer is ready.");
     }
 
     async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, clients: Option<&Vec<WaitingClient>>) {
