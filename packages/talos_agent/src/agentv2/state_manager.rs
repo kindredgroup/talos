@@ -1,3 +1,4 @@
+use crate::agentv2::decision_reader::DecisionReaderService;
 use multimap::MultiMap;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -83,21 +84,8 @@ impl StateManager {
 
             consumer_barrier_arc.notify_one();
 
-            loop {
-                let rslt_decision_msg = consumer.receive_message().await;
-                match rslt_decision_msg {
-                    Some(Ok(decision_msg)) => {
-                        match tx_decision.send(decision_msg).await {
-                            Ok(()) => continue,
-                            Err(e) => {
-                                log::error!("Unable to send decision message over internal channel to main loop {:?}", e);
-                            }
-                        };
-                    }
-
-                    _ => continue, // just take next message
-                }
-            }
+            let decision_reader = DecisionReaderService::new(consumer, tx_decision);
+            decision_reader.run().await;
         });
 
         let publish_times = Arc::clone(&self.publish_times);
