@@ -9,7 +9,7 @@ use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::{ClientConfig, ClientContext, Message};
+use rdkafka::{ClientConfig, ClientContext, Message, Offset, TopicPartitionList};
 use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::time::Duration;
@@ -40,6 +40,7 @@ impl KafkaPublisher {
             .set("queue.buffering.max.messages", "1000000")
             .set_log_level(kafka.log_level);
 
+        setup_kafka_auth(&mut cfg, kafka);
         cfg.create().expect("Unable to create kafka producer")
     }
 }
@@ -94,7 +95,6 @@ impl ConsumerContext for KafkaConsumerContext {
     }
 
     fn post_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
-        // thread::sleep(Duration::from_secs(5));
         log::info!("[{}] post_rebalance()", thread::current().name().unwrap_or("-"));
     }
 }
@@ -120,13 +120,13 @@ impl KafkaConsumer {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("group.id", &kafka.group_id)
-            .set("enable.auto.commit", "true")
+            .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "latest")
             .set("socket.keepalive.enable", "true")
-            .set("auto.commit.interval.ms", "500")
             .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
-            // .set("heartbeat.interval.ms", &kafka.heartbeat_interval_ms)
             .set_log_level(kafka.log_level);
+
+        setup_kafka_auth(&mut cfg, kafka);
 
         match cfg.create_with_context(KafkaConsumerContext {}) {
             Ok(v) => v,
@@ -137,49 +137,35 @@ impl KafkaConsumer {
     }
 
     pub fn subscribe(&self) -> Result<(), String> {
-        let result = match self.consumer.subscribe(&[self.config.certification_topic.as_str()]) {
-            Ok(_) => {
-                loop {
-                    match self.consumer.fetch_group_list(None, Duration::from_secs(1)) {
-                        Ok(group_list) => {
-                            let list = group_list.groups();
-                            let mut found = false;
-                            for group_info in list {
-                                if group_info.name() == self.config.group_id {
-                                    log::info!("Detected consumer group: name: {}, state: {}", group_info.name(), group_info.state());
+        let topic = self.config.certification_topic.as_str();
+        let partition = 0_i32;
 
-                                    if group_info.state() != "Stable" {
-                                        continue;
-                                    }
+        let mut partition_list = TopicPartitionList::new();
+        partition_list.add_partition(topic, partition);
+        // This line is required for seek operation to be successful.
+        partition_list.set_partition_offset(topic, partition, Offset::End).unwrap();
 
-                                    found = true;
-                                    break;
-                                }
-                            }
+        let rslt_assign = self.consumer.assign(&partition_list);
+        rslt_assign.map_err(|e| format!("Error invoking assign('{}', {}. Error: {})", topic, partition, e))?;
 
-                            if found {
-                                break;
-                            }
-                        }
-                        Err(_) => {
-                            log::error!("Cannot fetch group info for group id '{}'", self.config.group_id);
-                            break;
-                        }
-                    }
+        let offset = self
+            .get_offset(partition, Duration::from_secs(5))
+            .map_err(|e| format!("Error fetching offset of partition {}. Error: {})", partition, e))?;
 
-                    log::info!("Consumer group is not ready yet");
-                    thread::sleep(Duration::from_secs(1));
-                }
+        log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
+        self.consumer
+            .seek(topic, partition, offset, Duration::from_secs(5))
+            .map_err(|e| format!("Error when seeking to offset {:?}. Error: {}", offset, e))
+    }
 
-                Ok(())
-            }
-            Err(kafka_error) => {
-                error!("Error when subscribing to topics. {:?}", kafka_error);
-                Err(kafka_error.to_string())
-            }
-        };
+    fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, String> {
+        let topic = self.config.certification_topic.as_str();
+        let (_low, high) = self
+            .consumer
+            .fetch_watermarks(topic, partition, timeout)
+            .map_err(|e| format!("Error when fetching watermarks of partition {}. Error: {}", partition, e))?;
 
-        result
+        Ok(Offset::Offset(high))
     }
 
     fn deserialize_decision(
@@ -319,5 +305,17 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
                 })
             }
         }
+    }
+}
+
+/// Utilities.
+
+fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
+    if let Some(username) = &config.username {
+        client
+            .set("security.protocol", "SASL_PLAINTEXT")
+            .set("sasl.mechanisms", config.sasl_mechanisms.clone().unwrap_or_else(|| "SCRAM-SHA-512".to_string()))
+            .set("sasl.username", username)
+            .set("sasl.password", config.password.clone().unwrap_or_default());
     }
 }
