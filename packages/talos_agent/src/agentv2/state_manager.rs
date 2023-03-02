@@ -124,7 +124,7 @@ impl StateManager {
         }
     }
 
-    /// Cleans the intenral state for this XID.
+    /// Cleans the internal state for this XID.
     fn handle_cancellation(opt_cancellation: Option<CancelRequestChannelMessage>, state: &mut MultiMap<String, WaitingClient>) {
         if let Some(message) = opt_cancellation {
             log::warn!("The candidate '{}' is cancelled.", &message.request.candidate.xid);
