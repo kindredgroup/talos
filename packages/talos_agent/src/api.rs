@@ -128,8 +128,8 @@ impl TalosAgentBuilder {
     pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
         let (tx_certify, rx_certify) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
         let (tx_cancel, rx_cancel) = tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
-        let agent = TalosAgentImplV2::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel, publish_times);
-        agent.start(rx_certify, rx_cancel).await;
+        let agent = TalosAgentImplV2::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel);
+        agent.start(rx_certify, rx_cancel, publish_times).await;
 
         Ok(Box::new(agent))
     }
