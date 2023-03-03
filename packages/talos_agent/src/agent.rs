@@ -6,8 +6,8 @@ use time::OffsetDateTime;
 use tokio::sync::Notify;
 
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
-use crate::messaging::api::{CandidateMessage, ConsumerType, DecisionMessage, PublisherType};
-use crate::messaging::kafka::KafkaConsumer;
+use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType};
+//use crate::messaging::kafka::KafkaConsumer;
 
 ///
 /// Agent implementation which uses single consumer task. Once decision is received, it will lookup for
@@ -45,35 +45,35 @@ impl TalosAgentImpl {
 
     /// Starts listener task which reads Talos decisions from the topic
     pub fn start(&self) -> Result<(), String> {
-        let agent = self.config.agent.clone();
-        let config = self.kafka_config.clone().expect("Kafka configuration is required");
-        let in_flight = Arc::clone(&self.in_flight);
-
-        tokio::spawn(async move {
-            let consumer: Box<ConsumerType> = KafkaConsumer::new_subscribed(agent, &config).unwrap();
-
-            loop {
-                match consumer.receive_message().await {
-                    Some(Ok(received_message)) => {
-                        let state = in_flight.lock().unwrap();
-
-                        // check if candidate was posted by this agent
-                        match state.get(received_message.xid.as_str()) {
-                            None => {
-                                debug!("receive_message(): skip xid: {}", received_message.xid);
-                                continue;
-                            }
-                            Some(pending) => {
-                                let mut decision = pending.decision.lock().unwrap();
-                                *decision = Some(received_message);
-                                pending.monitor.notify_one();
-                            }
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-        });
+        // let agent = self.config.agent.clone();
+        // let config = self.kafka_config.clone().expect("Kafka configuration is required");
+        // let in_flight = Arc::clone(&self.in_flight);
+        //
+        // tokio::spawn(async move {
+        //     let consumer: Box<ConsumerType> = KafkaConsumer::new_subscribed(agent, &config).unwrap();
+        //
+        //     loop {
+        //         match consumer.receive_message().await {
+        //             Some(Ok(received_message)) => {
+        //                 let state = in_flight.lock().unwrap();
+        //
+        //                 // check if candidate was posted by this agent
+        //                 match state.get(received_message.xid.as_str()) {
+        //                     None => {
+        //                         debug!("receive_message(): skip xid: {}", received_message.xid);
+        //                         continue;
+        //                     }
+        //                     Some(pending) => {
+        //                         let mut decision = pending.decision.lock().unwrap();
+        //                         *decision = Some(received_message);
+        //                         pending.monitor.notify_one();
+        //                     }
+        //                 }
+        //             }
+        //             _ => continue,
+        //         }
+        //     }
+        // });
 
         Ok(())
     }

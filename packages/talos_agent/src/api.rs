@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-pub const TRACK_PUBLISH_LATENCY: bool = false;
+pub const TRACK_PUBLISH_LATENCY: bool = true;
 
 ///
 /// Data structures and interfaces exposed to agent client

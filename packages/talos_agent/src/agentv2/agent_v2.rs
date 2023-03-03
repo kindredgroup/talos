@@ -3,14 +3,14 @@ use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMe
 use crate::agentv2::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
 use crate::messaging::api::{ConsumerType, DecisionMessage};
-use crate::messaging::kafka::KafkaConsumer;
+use crate::messaging::kafka::KafkaInitializer;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use time::OffsetDateTime;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{mpsc, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
@@ -52,42 +52,30 @@ impl TalosAgentImplV2 {
         // channel to exchange decision messages between StateManager and DecisionReaderService
         let (tx_decision, rx_decision) = mpsc::channel::<DecisionMessage>(self.agent_config.buffer_size);
 
+        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config.clone())
+            .await
+            .unwrap_or_else(|e| panic!("{}", format!("Cannot connect to kafka: {}", e)));
+
+        log::info!("Publisher and Consumer are ready.");
+
         // Start StateManager
         tokio::spawn(async move {
-            StateManager::new(agent_config, kafka_config, publish_times)
-                .run(rx_certify, rx_cancel, rx_decision)
+            StateManager::new(agent_config, publish_times)
+                .run(rx_certify, rx_cancel, rx_decision, publisher)
                 .await;
         });
 
-        let (_, barrier) = self.start_reading_decisions(tx_decision);
-        log::info!("Waiting until consumer is ready...");
-        barrier.notified().await;
-        log::info!("Consumer is ready.");
+        let _ = self.start_reading_decisions(tx_decision, consumer);
     }
 
-    /// Spawn the task which hosts kafka Consumer connected with DecisionReaderService.
-    /// Return task handle as well as the barrier which gets notified once consumer is ready.
-    fn start_reading_decisions(&self, tx_decision: Sender<DecisionMessage>) -> (JoinHandle<()>, Arc<Notify>) {
-        let agent = self.agent_config.agent.clone();
-        let kafka_config = self.kafka_config.clone().expect("Kafka config is required");
-        let barrier = Arc::new(Notify::new());
-        let barrier_ref = Arc::clone(&barrier);
-        let task_handle = tokio::spawn(async move {
-            let consumer: Box<ConsumerType> = KafkaConsumer::new_subscribed(agent, &kafka_config)
-                .map_err(|e| {
-                    log::error!("{}", e);
-                    e
-                })
-                .unwrap();
-            log::info!("Created kafka consumer");
-
-            barrier_ref.notify_one();
-
-            let decision_reader = DecisionReaderService::new(consumer, tx_decision);
+    /// Spawn the task which hosts DecisionReaderService.
+    /// Return task handle.
+    fn start_reading_decisions(&self, tx_decision: Sender<DecisionMessage>, consumer: Arc<Box<ConsumerType>>) -> JoinHandle<()> {
+        let consumer_ref = Arc::clone(&consumer);
+        tokio::spawn(async move {
+            let decision_reader = DecisionReaderService::new(consumer_ref, tx_decision);
             decision_reader.run().await;
-        });
-
-        (task_handle, barrier)
+        })
     }
 }
 
