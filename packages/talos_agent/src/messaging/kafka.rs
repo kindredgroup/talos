@@ -142,14 +142,6 @@ impl KafkaConsumer {
         }
     }
 
-    // pub fn new_subscribed(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-    //     let kc = KafkaConsumer::new(agent_id, config);
-    //     match kc.subscribe() {
-    //         Ok(()) => Ok(Box::new(kc)),
-    //         Err(e) => Err(e),
-    //     }
-    // }
-
     fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer<KafkaConsumerContext> {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
