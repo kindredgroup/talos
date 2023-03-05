@@ -366,7 +366,7 @@ fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
     }
 }
 
-/// Sets up connectivity to kafka broker/
+/// Sets up connectivity to kafka broker.
 pub struct KafkaInitializer {}
 
 impl KafkaInitializer {
