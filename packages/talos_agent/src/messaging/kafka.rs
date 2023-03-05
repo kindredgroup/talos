@@ -279,13 +279,10 @@ impl KafkaConsumer {
             }
 
             if fn_is_our_message(headers) {
-                Ok(Some(()))
-            } else {
-                Ok(None)
+                return Ok(Some(()));
             }
-        } else {
-            Ok(None)
         }
+        Ok(None)
     }
 }
 
