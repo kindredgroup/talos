@@ -42,7 +42,7 @@ pub async fn create_topic() -> Result<KafkaDeployStatus, KafkaDeployError> {
             name: &kafka_certification_topic,
             num_partitions: 1,
             replication: TopicReplication::Fixed(1),
-            config: vec![],
+            config: vec![("message.timestamp.type", "LogAppendTime")],
         };
 
         let opts = AdminOptions::new().operation_timeout(Some(timeout));

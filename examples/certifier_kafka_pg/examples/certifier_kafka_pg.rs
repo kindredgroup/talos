@@ -1,10 +1,15 @@
 use log::{error, info};
-
+use talos_certifier::env_var;
 use talos_certifier_adapters::{certifier_with_kafka_pg, Configuration, KafkaConfig, PgConfig, TalosCertifierChannelBuffers};
 use talos_suffix::core::SuffixConfig;
 use tokio::signal;
 
 use logger::logs;
+
+struct MockConfig {
+    db_mock: bool,
+    certifier_mock: bool,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), impl std::error::Error> {
@@ -14,18 +19,19 @@ async fn main() -> Result<(), impl std::error::Error> {
 
     let kafka_config = KafkaConfig::from_env();
     let pg_config = PgConfig::from_env();
+    let mock_config = get_mock_config();
     let suffix_config = Some(SuffixConfig {
-        capacity: 30,
-        prune_start_threshold: Some(25),
-        min_size_after_prune: Some(10),
+        capacity: 400_000,
+        prune_start_threshold: Some(300_000),
+        min_size_after_prune: Some(250_000),
     });
 
     let configuration = Configuration {
         suffix_config,
-        certifier_mock: false,
+        certifier_mock: mock_config.certifier_mock,
         pg_config: Some(pg_config),
         kafka_config,
-        db_mock: false,
+        db_mock: mock_config.db_mock,
     };
 
     let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default(), configuration).await?;
@@ -51,4 +57,11 @@ async fn main() -> Result<(), impl std::error::Error> {
     info!("Talos Certifier shutdown complete!!!");
 
     Ok(())
+}
+
+fn get_mock_config() -> MockConfig {
+    MockConfig {
+        db_mock: env_var!("DB_MOCK").parse().unwrap(),
+        certifier_mock: env_var!("CERTIFIER_MOCK").parse().unwrap(),
+    }
 }
