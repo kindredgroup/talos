@@ -16,7 +16,7 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 100;
+const BATCH_SIZE: i32 = 3;
 const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
@@ -334,13 +334,12 @@ async fn certify(batch_size: i32) -> Result<(), String> {
         );
     }
 
-    {
-        let map = &*publish_times.lock().unwrap();
-        let mut published = 0_i128;
-        for v in map.values() {
-            published = *v as i128;
-        }
-        info!(
+    // Code below debugs publishing times for each candidate
+    let map = &*publish_times.lock().unwrap();
+    let mut published;
+    for v in map.values() {
+        published = *v as i128;
+        debug!(
             "\nstarted : {},\nfinished: {},\npublished: {} / {:?}",
             started_at,
             finished_at,
