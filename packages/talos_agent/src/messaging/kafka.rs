@@ -366,9 +366,11 @@ fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
     }
 }
 
+/// Sets up connectivity to kafka broker/
 pub struct KafkaInitializer {}
 
 impl KafkaInitializer {
+    /// Creates new instances of initialised and fully connected publisher and consumer
     pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), String> {
         let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config);
         let kafka_consumer = KafkaConsumer::new(agent.clone(), &kafka_config);
@@ -389,6 +391,9 @@ impl KafkaInitializer {
         Ok((publisher, consumer))
     }
 
+    /// Sends init message to broker and receives it. This operation ensures both publisher and consumer are
+    /// fully initialised and ready to use. Otherwise attempt to publish and consume message from kafka may produce
+    /// some delay (approx 1 second).
     async fn send_and_receive(
         _agent: String,
         publisher: &KafkaPublisher,
