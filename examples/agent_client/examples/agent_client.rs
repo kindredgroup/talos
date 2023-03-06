@@ -91,7 +91,7 @@ async fn make_agentv2(publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Box<Ta
         .with_kafka(cfg_kafka)
         .build_v2(publish_times)
         .await
-        .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
+        .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent.\nReason: {}", e)))
 }
 
 #[tokio::main]
