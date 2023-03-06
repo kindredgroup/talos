@@ -1,5 +1,5 @@
 use crate::agentv2::agent_v2::TalosAgentImplV2;
-use crate::agentv2::errors::AgentStartError;
+use crate::agentv2::errors::{AgentStartError, CertifyError};
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::messaging::api::Decision;
 use async_trait::async_trait;
@@ -83,7 +83,7 @@ pub struct KafkaConfig {
 /// The agent interface exposed to the client
 #[async_trait]
 pub trait TalosAgent {
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, CertifyError>;
 }
 
 pub type TalosAgentType = dyn TalosAgent + Send + Sync;

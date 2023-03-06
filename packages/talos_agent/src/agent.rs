@@ -1,13 +1,11 @@
+use crate::agentv2::errors::CertifyError;
 use async_trait::async_trait;
-use log::debug;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use time::OffsetDateTime;
 use tokio::sync::Notify;
 
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
-use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType};
-//use crate::messaging::kafka::KafkaConsumer;
+use crate::messaging::api::{DecisionMessage, PublisherType};
 
 ///
 /// Agent implementation which uses single consumer task. Once decision is received, it will lookup for
@@ -83,41 +81,45 @@ impl TalosAgentImpl {
 impl TalosAgent for TalosAgentImpl {
     /// Certifies transaction represented by given request object. Caller of this method should '.await' for
     /// the response.
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String> {
-        let in_flight = Arc::new(InFlight {
-            xid: request.candidate.xid.clone(),
-            decision: Mutex::new(None),
-            monitor: Notify::new(),
-        });
-
-        let enqueued_at: u64;
-        // todo: Introduce the limit of in-flight transactions.
-        {
-            let mut state = self.in_flight.lock().unwrap();
-            state.insert(request.candidate.xid.clone(), Arc::clone(&in_flight));
-            enqueued_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
-        }
-
-        let msg = CandidateMessage::new(self.config.agent.clone(), self.config.cohort.clone(), request.candidate.clone());
-        let _publish_response = self.publisher.send_message(request.message_key.clone(), msg).await?;
-
-        loop {
-            if let Some(answer) = in_flight.decision.lock().unwrap().as_ref() {
-                debug!("certify(): received decision for xid: {}, {:?}", request.candidate.xid, answer);
-                return Ok(CertificationResponse {
-                    xid: answer.xid.clone(),
-                    decision: answer.decision.clone(),
-                    send_started_at: enqueued_at,
-                    decided_at: answer.decided_at.unwrap_or(0),
-                    decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
-                    received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
-                });
-            }
-            debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);
-            in_flight.monitor.notified().await;
-
-            let mut state = self.in_flight.lock().unwrap();
-            state.remove(request.candidate.xid.as_str());
-        }
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, CertifyError> {
+        // let in_flight = Arc::new(InFlight {
+        //     xid: request.candidate.xid.clone(),
+        //     decision: Mutex::new(None),
+        //     monitor: Notify::new(),
+        // });
+        //
+        // let enqueued_at: u64;
+        // // todo: Introduce the limit of in-flight transactions.
+        // {
+        //     let mut state = self.in_flight.lock().unwrap();
+        //     state.insert(request.candidate.xid.clone(), Arc::clone(&in_flight));
+        //     enqueued_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+        // }
+        //
+        // let msg = CandidateMessage::new(self.config.agent.clone(), self.config.cohort.clone(), request.candidate.clone());
+        // let _publish_response = self.publisher.send_message(request.message_key.clone(), msg).await?;
+        //
+        // loop {
+        //     if let Some(answer) = in_flight.decision.lock().unwrap().as_ref() {
+        //         debug!("certify(): received decision for xid: {}, {:?}", request.candidate.xid, answer);
+        //         return Ok(CertificationResponse {
+        //             xid: answer.xid.clone(),
+        //             decision: answer.decision.clone(),
+        //             send_started_at: enqueued_at,
+        //             decided_at: answer.decided_at.unwrap_or(0),
+        //             decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+        //             received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+        //         });
+        //     }
+        //     debug!("certify(): waiting for decision on xid: {}", request.candidate.xid);
+        //     in_flight.monitor.notified().await;
+        //
+        //     let mut state = self.in_flight.lock().unwrap();
+        //     state.remove(request.candidate.xid.as_str());
+        // }
+        Err(CertifyError::InternalError {
+            xid: request.candidate.xid,
+            reason: "Not implemented".to_string(),
+        })
     }
 }
