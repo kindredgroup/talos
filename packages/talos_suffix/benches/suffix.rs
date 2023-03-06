@@ -41,7 +41,6 @@ fn bench_suffix_real(c: &mut Criterion) {
     c.bench_function("[SUFFIX REAL] insert 500,000 items", |b| {
         let mut suffix = Suffix::<MockSuffixItemMessage>::with_config(SuffixConfig {
             capacity: 500_000,
-            min_size_after_prune: Some(10_000),
             ..SuffixConfig::default()
         });
 
@@ -54,7 +53,6 @@ fn bench_suffix_real(c: &mut Criterion) {
     c.bench_function("[SUFFIX REAL] insert an item in a vec of capacity 500,000", |b| {
         let mut suffix = Suffix::with_config(SuffixConfig {
             capacity: 500_000,
-            min_size_after_prune: Some(10_000),
             ..SuffixConfig::default()
         });
         b.iter(|| {
@@ -64,7 +62,6 @@ fn bench_suffix_real(c: &mut Criterion) {
     c.bench_function("[SUFFIX REAL] get version=99999 item from 500,000 items", |b| {
         let mut suffix = Suffix::with_config(SuffixConfig {
             capacity: 500_000,
-            min_size_after_prune: Some(10_000),
             ..SuffixConfig::default()
         });
 
@@ -101,7 +98,7 @@ fn bench_suffix_find_prune_index(c: &mut Criterion) {
         let mut suffix = Suffix::with_config(SuffixConfig {
             capacity: 500_000,
             min_size_after_prune: Some(10_000),
-            ..SuffixConfig::default()
+            prune_start_threshold: Some(200_000),
         });
 
         (0..500_000).for_each(|i| {

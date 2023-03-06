@@ -1,8 +1,15 @@
-use crate::certifier::{
-    certification::{Certifier, CertifyOutcome, Discord, Outcome},
-    utils::convert_vec_to_hashmap,
-    CertifierCandidate,
+use talos_suffix::SuffixItem;
+
+use crate::{
+    certifier::{
+        certification::{Certifier, CertifyOutcome, Discord, Outcome},
+        utils::convert_vec_to_hashmap,
+        CertifierCandidate,
+    },
+    model::CandidateReadWriteSet,
 };
+
+use super::utils::generate_certifier_sets_from_suffix;
 
 #[test]
 fn test_certify_rule_1() {
@@ -267,12 +274,12 @@ fn test_prune_set() {
 
     // test all keys in prune hashmap is present in certifier write hashmap
     let remove_writes = convert_vec_to_hashmap(vec![("g1", 12), ("m2", 31)]);
-    Certifier::prune_set(&mut certifier.writes, remove_writes);
+    Certifier::prune_set(&mut certifier.writes, &remove_writes);
     assert_eq!(certifier.writes.len(), 4);
 
     // test not all keys in prune hashmap is present in certifier write hashmap
     let remove_writes = convert_vec_to_hashmap(vec![("g2", 12), ("mk", 31)]);
-    Certifier::prune_set(&mut certifier.writes, remove_writes);
+    Certifier::prune_set(&mut certifier.writes, &remove_writes);
     assert_eq!(certifier.writes.len(), 3);
 }
 
@@ -330,4 +337,84 @@ fn test_certifying_txn() {
             discord: Discord::Permissive
         }
     )
+}
+
+struct MockCandidateReadWriteSetItem {
+    readset: Vec<String>,
+    writeset: Vec<String>,
+}
+
+impl CandidateReadWriteSet for MockCandidateReadWriteSetItem {
+    fn get_readset(&self) -> &Vec<String> {
+        &self.readset
+    }
+
+    fn get_writeset(&self) -> &Vec<String> {
+        &self.writeset
+    }
+}
+
+fn generate_basic_mock_set_item(prefix: &str, vers: u64, suffix: &str) -> String {
+    format!("{prefix}:{vers}:{suffix}")
+}
+
+fn generate_data_for_util_test(vers: u64, readset: Option<Vec<String>>, writeset: Option<Vec<String>>) -> SuffixItem<MockCandidateReadWriteSetItem> {
+    SuffixItem {
+        item: MockCandidateReadWriteSetItem {
+            readset: readset.unwrap_or_else(|| vec![generate_basic_mock_set_item("rs", vers, "1")]),
+            writeset: writeset.unwrap_or_else(|| vec![generate_basic_mock_set_item("ws", vers, "1")]),
+        },
+        item_ver: vers,
+        decision_ver: None,
+        is_decided: false,
+    }
+}
+
+#[test]
+fn test_util_generate_certifier_sets_from_suffix_success_with_no_duplicates() {
+    let test_data = (0..10_u64)
+        .map(|v| generate_data_for_util_test(v, None, None))
+        .collect::<Vec<SuffixItem<MockCandidateReadWriteSetItem>>>();
+    let (readset, writeset) = generate_certifier_sets_from_suffix(test_data.iter());
+
+    assert_eq!(readset.len(), 10);
+    assert_eq!(writeset.len(), 10);
+
+    assert_eq!(*readset.get(&"rs:9:1".to_string()).unwrap(), 9);
+    assert_eq!(*writeset.get(&"ws:7:1".to_string()).unwrap(), 7);
+}
+#[test]
+fn test_util_generate_certifier_sets_from_suffix_success_with_duplicates() {
+    let test_data = (0..10_u64)
+        .map(|v| {
+            if v % 2 == 0 {
+                return generate_data_for_util_test(v, None, None);
+            }
+            // read and write sets get duplicated to v-1 version.
+            generate_data_for_util_test(
+                v,
+                Some(vec![generate_basic_mock_set_item("rs", v - 1, "1")]),
+                Some(vec![generate_basic_mock_set_item("ws", v - 1, "1")]),
+            )
+        })
+        .collect::<Vec<SuffixItem<MockCandidateReadWriteSetItem>>>();
+    let (readset, writeset) = generate_certifier_sets_from_suffix(test_data.iter());
+
+    assert_eq!(readset.len(), 5);
+    assert_eq!(writeset.len(), 5);
+
+    assert!(readset.get(&"rs:9:1".to_string()).is_none()); // when v % 2 = 0, we store on key v-1
+    assert_eq!(*readset.get(&"rs:8:1".to_string()).unwrap(), 9);
+
+    assert_eq!(*writeset.get(&"ws:6:1".to_string()).unwrap(), 7);
+}
+#[test]
+fn test_util_generate_certifier_sets_from_empty_suffix_read_write_sets() {
+    let test_data = (0..10_u64)
+        .map(|v| generate_data_for_util_test(v, Some(vec![]), Some(vec![])))
+        .collect::<Vec<SuffixItem<MockCandidateReadWriteSetItem>>>();
+    let (readset, writeset) = generate_certifier_sets_from_suffix(test_data.iter());
+
+    assert_eq!(readset.len(), 0);
+    assert_eq!(writeset.len(), 0);
 }

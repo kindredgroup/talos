@@ -4,9 +4,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use log::{debug, info};
 use talos_suffix::core::SuffixConfig;
-use talos_suffix::{Suffix, SuffixTrait};
+use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use tokio::sync::mpsc;
 
+use crate::certifier::utils::generate_certifier_sets_from_suffix;
 use crate::{
     certifier::Outcome,
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
@@ -78,7 +79,7 @@ impl CertifierService {
     /// * Create the DecisionMessage from the certification outcome.
     ///
     pub(crate) fn process_candidate_message_outcome(&mut self, message: &CandidateMessage) -> ServiceResult<DecisionMessage> {
-        info!("[Process Candidate message] Version {} ", message.version);
+        debug!("[Process Candidate message] Version {} ", message.version);
 
         // Insert into Suffix
         self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
@@ -114,8 +115,7 @@ impl CertifierService {
 
     pub(crate) async fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> ServiceResult {
         // update the decision in suffix
-
-        info!(
+        debug!(
             "[Process Decision message] Version {} and Decision Message {:?} ",
             decision_version, decision_message
         );
@@ -129,17 +129,8 @@ impl CertifierService {
         };
 
         let candidate_version_index = self.suffix.index_from_head(candidate_version);
-        if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
-            info!(
-                "I reached here.... \nis prune ready {:?}\nprior items are decided={} \n message len={} and prune ready index={:?} \n HEAD={}, current candidate message version={candidate_version} and index={candidate_version_index:?} and decision message version={decision_version}\n config.min_suffix_size={:?}",
-                self.suffix.get_safe_prune_index(),
-                self.suffix.are_prior_items_decided(candidate_version),
-                self.suffix.messages.len(),
-                self.suffix.meta.prune_index,
-                self.suffix.meta.head,
-                self.config.suffix_config
-            );
 
+        if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             self.suffix
                 .update_decision_suffix_item(candidate_version, decision_version)
                 .map_err(CertificationError::SuffixError)?;
@@ -150,41 +141,27 @@ impl CertifierService {
 
             if all_decided {
                 self.suffix.update_prune_index(Some(candidate_version_index.unwrap()));
-            } else {
-                let k: Vec<u64> = self
-                    .suffix
-                    .messages
-                    .range(0..candidate_version_index.unwrap())
-                    .filter(|&x| x.is_some())
-                    .filter_map(|x| {
-                        let v = x.as_ref().unwrap();
-                        v.decision_ver.is_none().then_some(v.item.version)
-                    })
-                    .collect();
-                info!("Items not decided prioir to {candidate_version} with index={candidate_version_index:?} are \n{k:?}");
             }
 
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
-                self.suffix.prune_till_index(prune_index).unwrap();
-                info!(
-                    "Suffix pruned and new length is ... {} and head is {}!!!",
-                    self.suffix.messages.len(),
-                    self.suffix.meta.head
-                );
+                let pruned_suffix_items = self.suffix.prune_till_index(prune_index).unwrap();
+
+                let pruned_items = get_nonempty_suffix_items(pruned_suffix_items.iter());
+                let (readset, writeset) = generate_certifier_sets_from_suffix(pruned_items);
+
+                Certifier::prune_set(&mut self.certifier.reads, &readset);
+                Certifier::prune_set(&mut self.certifier.writes, &writeset);
             }
             // remove sets from certifier if pruning?
 
             // commit the offset if all prior suffix items have been decided?
             if all_decided {
                 debug!("Prior items decided if condition with dv={}", decision_message.version);
-                // self.suffix.update_prune_vers(Some(decision_message.version));
 
                 self.commit_offset
-                    .store(decision_version.try_into().unwrap(), std::sync::atomic::Ordering::Relaxed);
+                    .store(candidate_version.try_into().unwrap(), std::sync::atomic::Ordering::Relaxed);
             }
-            let k = self.suffix.retrieve_all_some_vec_items();
-            info!("[Process Decision Message] - Entire suffix with (index, ver, decision_ver) \n{k:?}");
         }
 
         Ok(())
