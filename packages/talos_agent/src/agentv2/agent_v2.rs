@@ -1,4 +1,5 @@
 use crate::agentv2::decision_reader::DecisionReaderService;
+use crate::agentv2::errors::AgentStartError;
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::agentv2::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
@@ -44,7 +45,7 @@ impl TalosAgentImplV2 {
         rx_certify: Receiver<CertifyRequestChannelMessage>,
         rx_cancel: Receiver<CancelRequestChannelMessage>,
         publish_times: Arc<Mutex<HashMap<String, u64>>>,
-    ) {
+    ) -> Result<(), AgentStartError> {
         let agent_config = self.agent_config.clone();
         let kafka_config = self.kafka_config.clone().expect("Kafka config is required");
         let publish_times = Arc::clone(&publish_times);
@@ -52,9 +53,7 @@ impl TalosAgentImplV2 {
         // channel to exchange decision messages between StateManager and DecisionReaderService
         let (tx_decision, rx_decision) = mpsc::channel::<DecisionMessage>(self.agent_config.buffer_size);
 
-        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config.clone())
-            .await
-            .unwrap_or_else(|e| panic!("{}", format!("Cannot connect to kafka: {}", e)));
+        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config.clone()).await?;
 
         log::info!("Publisher and Consumer are ready.");
 
@@ -66,6 +65,8 @@ impl TalosAgentImplV2 {
         });
 
         let _ = self.start_reading_decisions(tx_decision, consumer);
+
+        Ok(())
     }
 
     /// Spawn the task which hosts DecisionReaderService.

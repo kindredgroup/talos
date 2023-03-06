@@ -3,10 +3,12 @@ use crate::messaging::api::{
     CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
     HEADER_MESSAGE_TYPE,
 };
+use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
 use log::debug;
 use log::error;
 use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
+use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
@@ -27,15 +29,15 @@ pub struct KafkaPublisher {
 }
 
 impl KafkaPublisher {
-    pub fn new(agent: String, config: &KafkaConfig) -> KafkaPublisher {
-        Self {
+    pub fn new(agent: String, config: &KafkaConfig) -> Result<KafkaPublisher, MessagingError> {
+        Ok(Self {
             agent,
             config: config.clone(),
-            producer: Self::create_producer(config),
-        }
+            producer: Self::create_producer(config)?,
+        })
     }
 
-    fn create_producer(kafka: &KafkaConfig) -> FutureProducer {
+    fn create_producer(kafka: &KafkaConfig) -> Result<FutureProducer, KafkaError> {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
@@ -44,7 +46,7 @@ impl KafkaPublisher {
             .set_log_level(kafka.log_level);
 
         setup_kafka_auth(&mut cfg, kafka);
-        cfg.create().expect("Unable to create kafka producer")
+        cfg.create()
     }
 }
 
@@ -103,15 +105,17 @@ impl ConsumerContext for KafkaConsumerContext {
 }
 
 impl KafkaConsumer {
-    pub fn new(agent: String, config: &KafkaConfig) -> Self {
-        KafkaConsumer {
+    pub fn new(agent: String, config: &KafkaConfig) -> Result<Self, MessagingError> {
+        let consumer = Self::create_consumer(config)?;
+
+        Ok(KafkaConsumer {
             agent,
             config: config.clone(),
-            consumer: Self::create_consumer(config),
-        }
+            consumer,
+        })
     }
 
-    fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer<KafkaConsumerContext> {
+    fn create_consumer(kafka: &KafkaConfig) -> Result<StreamConsumer<KafkaConsumerContext>, KafkaError> {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("group.id", &kafka.group_id)
@@ -123,42 +127,33 @@ impl KafkaConsumer {
 
         setup_kafka_auth(&mut cfg, kafka);
 
-        match cfg.create_with_context(KafkaConsumerContext {}) {
-            Ok(v) => v,
-            Err(e) => {
-                panic!("Cannot create consumer instance. {}", e)
-            }
-        }
+        cfg.create_with_context(KafkaConsumerContext {})
     }
 
-    pub fn subscribe(&self) -> Result<(), String> {
+    pub fn subscribe(&self) -> Result<(), KafkaError> {
         let topic = self.config.certification_topic.as_str();
         let partition = 0_i32;
 
         let mut partition_list = TopicPartitionList::new();
         partition_list.add_partition(topic, partition);
         // This line is required for seek operation to be successful.
-        partition_list.set_partition_offset(topic, partition, Offset::End).unwrap();
+        partition_list.set_partition_offset(topic, partition, Offset::End)?;
 
-        let rslt_assign = self.consumer.assign(&partition_list);
-        rslt_assign.map_err(|e| format!("Error invoking assign('{}', {}. Error: {})", topic, partition, e))?;
+        log::info!("Assigning partition list to consumer: {:?}", partition_list);
+        self.consumer.assign(&partition_list)?;
 
-        let offset = self
-            .get_offset(partition, Duration::from_secs(5))
-            .map_err(|e| format!("Error fetching offset of partition {}. Error: {})", partition, e))?;
+        log::info!("Fetching offset for partition: {}", partition);
+        let offset = self.get_offset(partition, Duration::from_secs(5))?;
 
         log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
-        self.consumer
-            .seek(topic, partition, offset, Duration::from_secs(5))
-            .map_err(|e| format!("Error when seeking to offset {:?}. Error: {}", offset, e))
+        self.consumer.seek(topic, partition, offset, Duration::from_secs(5))?;
+
+        Ok(())
     }
 
-    fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, String> {
+    fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, KafkaError> {
         let topic = self.config.certification_topic.as_str();
-        let (_low, high) = self
-            .consumer
-            .fetch_watermarks(topic, partition, timeout)
-            .map_err(|e| format!("Error when fetching watermarks of partition {}. Error: {}", partition, e))?;
+        let (_low, high) = self.consumer.fetch_watermarks(topic, partition, timeout)?;
 
         Ok(Offset::Offset(high))
     }
@@ -320,9 +315,9 @@ pub struct KafkaInitializer {}
 
 impl KafkaInitializer {
     /// Creates new instances of initialised and fully connected publisher and consumer
-    pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), String> {
-        let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config);
-        let kafka_consumer = KafkaConsumer::new(agent, &kafka_config);
+    pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), MessagingError> {
+        let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config)?;
+        let kafka_consumer = KafkaConsumer::new(agent.clone(), &kafka_config)?;
         kafka_consumer.subscribe()?;
 
         let consumer: Arc<Box<ConsumerType>> = Arc::new(Box::new(kafka_consumer));
