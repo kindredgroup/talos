@@ -160,7 +160,7 @@ impl CertifierService {
                 debug!("Prior items decided if condition with dv={}", decision_message.version);
 
                 self.commit_offset
-                    .store(decision_version.try_into().unwrap(), std::sync::atomic::Ordering::Relaxed);
+                    .store(candidate_version.try_into().unwrap(), std::sync::atomic::Ordering::Relaxed);
             }
         }
 
