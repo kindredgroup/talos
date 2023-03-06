@@ -1,11 +1,11 @@
 extern crate core;
-
 use log::{debug, info};
 use rdkafka::config::RDKafkaLogLevel;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+use talos_agent::agentv2::errors::CertifyError;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType, TRACK_PUBLISH_LATENCY};
 use talos_agent::metrics::{format, format_metric, get_rate, name_talos_type, PercentileSet, Timing};
 use time::OffsetDateTime;
@@ -108,7 +108,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     // B: transaction start time
     // A: the end of call to kafka send_message(candidate)
     let publish_times: Arc<Mutex<HashMap<String, u64>>> = Arc::new(Mutex::new(HashMap::new()));
-    let mut tasks = Vec::<JoinHandle<Result<Timing, String>>>::new();
+    let mut tasks = Vec::<JoinHandle<Result<Timing, CertifyError>>>::new();
     let agent = Arc::new(make_agentv2(Arc::clone(&publish_times)).await);
 
     // todo: remove this

@@ -1,5 +1,5 @@
 use crate::agentv2::decision_reader::DecisionReaderService;
-use crate::agentv2::errors::AgentStartError;
+use crate::agentv2::errors::{AgentStartError, CertifyError};
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::agentv2::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
@@ -82,7 +82,7 @@ impl TalosAgentImplV2 {
 
 #[async_trait]
 impl TalosAgent for TalosAgentImplV2 {
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String> {
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, CertifyError> {
         let (tx, mut rx) = mpsc::channel::<CertificationResponse>(1);
 
         let m = CertifyRequestChannelMessage::new(&request, &tx);
@@ -90,25 +90,32 @@ impl TalosAgent for TalosAgentImplV2 {
 
         let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timout_ms));
 
-        let result: Result<Result<CertificationResponse, String>, Elapsed> = timeout(max_wait, async {
+        let result: Result<Result<CertificationResponse, CertifyError>, Elapsed> = timeout(max_wait, async {
             match to_state_manager.send(m).await {
                 Ok(()) => match rx.recv().await {
                     Some(mut response) => {
                         response.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
                         Ok(response)
                     }
-                    None => Err("No response received".to_string()),
+                    None => Err(CertifyError::InternalError {
+                        xid: request.candidate.xid.clone(),
+                        reason: "No response from state manager".to_string(),
+                    }),
                 },
-                Err(e) => Err(format!("No response received: {:?}", e.to_string())),
+                Err(e) => Err(e.into()),
             }
         })
         .await;
 
+        let xid = request.candidate.xid.clone();
         match result {
             Ok(rslt_certify) => rslt_certify,
             Err(_) => {
                 let _ = self.tx_cancel.send(CancelRequestChannelMessage { request }).await;
-                Err(format!("Unable to certify within {} millis", max_wait.as_millis()))
+                Err(CertifyError::Timeout {
+                    xid,
+                    elapsed_ms: max_wait.as_millis(),
+                })
             }
         }
     }
