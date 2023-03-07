@@ -19,6 +19,7 @@ type LatestCommitVers = u64;
 pub struct MessageReceiverService {
     pub receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
     pub message_channel_tx: mpsc::Sender<ChannelMessage>,
+    pub decision_message_channel_tx: mpsc::Sender<ChannelMessage>,
     pub commit_vers: (PreviousCommitVers, LatestCommitVers),
     pub commit_offset: Arc<AtomicI64>,
     pub system: System,
@@ -28,12 +29,14 @@ impl MessageReceiverService {
     pub fn new(
         receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
         message_channel_tx: mpsc::Sender<ChannelMessage>,
+        decision_message_channel_tx: mpsc::Sender<ChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
     ) -> Self {
         Self {
             receiver,
             message_channel_tx,
+            decision_message_channel_tx,
             system,
             commit_vers: (0, 0),
             commit_offset,
@@ -77,14 +80,27 @@ impl SystemService for MessageReceiverService {
           res = self.receiver.consume_message() => {
             match res {
                 Ok(Some(msg))  => {
-
-                    if let Err(error) = self.message_channel_tx.send(msg.clone()).await {
-                        return Err(SystemServiceError{
-                             kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                             reason: error.to_string(),
-                             data: Some(format!("{:?}", msg)),
-                             service: "Message Receiver Service".to_string()
-                             })
+                    match &msg {
+                        ChannelMessage::Candidate(_) => {
+                            if let Err(error) = self.message_channel_tx.send(msg.clone()).await {
+                                return Err(SystemServiceError{
+                                     kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
+                                     reason: error.to_string(),
+                                     data: Some(format!("{:?}", msg)),
+                                     service: "Message Receiver Service".to_string()
+                                     })
+                            };
+                        },
+                        ChannelMessage::Decision(..) => {
+                            if let Err(error) = self.decision_message_channel_tx.send(msg.clone()).await {
+                                return Err(SystemServiceError{
+                                     kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
+                                     reason: error.to_string(),
+                                     data: Some(format!("{:?}", msg)),
+                                     service: "Message Receiver Service".to_string()
+                                     })
+                            };
+                        },
                     }
                 },
                 Ok(None) => {

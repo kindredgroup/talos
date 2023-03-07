@@ -25,6 +25,7 @@ async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>
 struct CertifierChannels {
     system_channel: (broadcast::Sender<SystemMessage>, broadcast::Receiver<SystemMessage>),
     message_channel: (mpsc::Sender<ChannelMessage>, mpsc::Receiver<ChannelMessage>),
+    decision_message_channel: (mpsc::Sender<ChannelMessage>, mpsc::Receiver<ChannelMessage>),
     decision_outbox_channel: (mpsc::Sender<DecisionOutboxChannelMessage>, mpsc::Receiver<DecisionOutboxChannelMessage>),
 }
 
@@ -32,6 +33,7 @@ async fn get_certifier_channels() -> CertifierChannels {
     CertifierChannels {
         system_channel: broadcast::channel(10),
         message_channel: mpsc::channel(5),
+        decision_message_channel: mpsc::channel(5),
         decision_outbox_channel: mpsc::channel(5),
     }
 }
@@ -43,6 +45,7 @@ async fn test_certification_rule_2() {
 
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
+    let (_decision_message_channel_tx, decision_message_channel_rx) = channels.decision_message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
 
     let system = System {
@@ -50,7 +53,7 @@ async fn test_certification_rule_2() {
         is_shutdown: false,
     };
 
-    let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
+    let mut certifier_svc = CertifierService::new(message_channel_rx, decision_message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
 
     send_candidate_message(
         message_channel_tx.clone(),
@@ -111,6 +114,7 @@ async fn test_error_in_processing_candidate_message_certifying() {
 
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
+    let (_decision_message_channel_tx, decision_message_channel_rx) = channels.decision_message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
 
     let system = System {
@@ -118,7 +122,7 @@ async fn test_error_in_processing_candidate_message_certifying() {
         is_shutdown: false,
     };
 
-    let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
+    let mut certifier_svc = CertifierService::new(message_channel_rx, decision_message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
 
     send_candidate_message(
         message_channel_tx.clone(),
@@ -157,6 +161,7 @@ async fn test_certification_process_decision() {
 
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
+    let (decision_message_channel_tx, decision_message_channel_rx) = channels.decision_message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
 
     let system = System {
@@ -166,7 +171,14 @@ async fn test_certification_process_decision() {
 
     let commit_state: Arc<AtomicI64> = Arc::new(0.into());
 
-    let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, commit_state.clone(), system, None);
+    let mut certifier_svc = CertifierService::new(
+        message_channel_rx,
+        decision_message_channel_rx,
+        do_channel_tx,
+        commit_state.clone(),
+        system,
+        None,
+    );
 
     let message_channel_tx_clone = message_channel_tx.clone();
     send_candidate_message(
@@ -194,7 +206,10 @@ async fn test_certification_process_decision() {
 
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn(async move {
-            message_channel_tx.send(ChannelMessage::Decision(decision.version, decision)).await.unwrap();
+            decision_message_channel_tx
+                .send(ChannelMessage::Decision(decision.version, decision))
+                .await
+                .unwrap();
         });
     };
 
@@ -212,6 +227,7 @@ async fn test_certification_process_decision_incorrect_version() {
 
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
+    let (decision_message_channel_tx, decision_message_channel_rx) = channels.decision_message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
 
     let system = System {
@@ -219,7 +235,7 @@ async fn test_certification_process_decision_incorrect_version() {
         is_shutdown: false,
     };
 
-    let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
+    let mut certifier_svc = CertifierService::new(message_channel_rx, decision_message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
 
     let message_channel_tx_clone = message_channel_tx.clone();
     send_candidate_message(
@@ -247,7 +263,7 @@ async fn test_certification_process_decision_incorrect_version() {
     // pass incorrect decision (version incorrect), will not do anything as item is not found on suffix.
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn(async move {
-            message_channel_tx
+            decision_message_channel_tx
                 .send(ChannelMessage::Decision(12, DecisionMessage { version: 10, ..decision }))
                 .await
                 .unwrap();
@@ -264,6 +280,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
 
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
+    let (decision_message_channel_tx, decision_message_channel_rx) = channels.decision_message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
 
     let system = System {
@@ -273,6 +290,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
 
     let mut certifier_svc = CertifierService::new(
         message_channel_rx,
+        decision_message_channel_rx,
         do_channel_tx,
         Arc::new(0.into()),
         system,
@@ -393,9 +411,9 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
 
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn({
-            let message_channel_tx_clone = message_channel_tx.clone();
+            let decision_message_channel_tx_clone = decision_message_channel_tx.clone();
             async move {
-                message_channel_tx_clone
+                decision_message_channel_tx_clone
                     .send(ChannelMessage::Decision(6, DecisionMessage { ..decision }))
                     .await
                     .unwrap();
@@ -404,10 +422,10 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     };
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn({
-            let message_channel_tx_clone = message_channel_tx.clone();
+            let decision_message_channel_tx_clone = decision_message_channel_tx.clone();
 
             async move {
-                message_channel_tx_clone
+                decision_message_channel_tx_clone
                     .send(ChannelMessage::Decision(7, DecisionMessage { ..decision }))
                     .await
                     .unwrap();
@@ -416,10 +434,10 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     };
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn({
-            let message_channel_tx_clone = message_channel_tx.clone();
+            let decision_message_channel_tx_clone = decision_message_channel_tx.clone();
 
             async move {
-                message_channel_tx_clone
+                decision_message_channel_tx_clone
                     .send(ChannelMessage::Decision(8, DecisionMessage { ..decision }))
                     .await
                     .unwrap();
@@ -428,10 +446,10 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     };
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn({
-            let message_channel_tx_clone = message_channel_tx.clone();
+            let decision_message_channel_tx_clone = decision_message_channel_tx.clone();
 
             async move {
-                message_channel_tx_clone
+                decision_message_channel_tx_clone
                     .send(ChannelMessage::Decision(10, DecisionMessage { ..decision }))
                     .await
                     .unwrap();
@@ -461,6 +479,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
 
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
+    let (decision_message_channel_tx, decision_message_channel_rx) = channels.decision_message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
 
     let system = System {
@@ -470,6 +489,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
 
     let mut certifier_svc = CertifierService::new(
         message_channel_rx,
+        decision_message_channel_rx,
         do_channel_tx,
         Arc::new(0.into()),
         system,
@@ -527,9 +547,9 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
 
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn({
-            let message_channel_tx_clone = message_channel_tx.clone();
+            let decision_message_channel_tx_clone = decision_message_channel_tx.clone();
             async move {
-                message_channel_tx_clone
+                decision_message_channel_tx_clone
                     .send(ChannelMessage::Decision(6, DecisionMessage { ..decision }))
                     .await
                     .unwrap();
@@ -538,10 +558,10 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
     };
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
         tokio::spawn({
-            let message_channel_tx_clone = message_channel_tx.clone();
+            let decision_message_channel_tx_clone = decision_message_channel_tx.clone();
 
             async move {
-                message_channel_tx_clone
+                decision_message_channel_tx_clone
                     .send(ChannelMessage::Decision(7, DecisionMessage { ..decision }))
                     .await
                     .unwrap();

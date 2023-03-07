@@ -59,6 +59,7 @@ impl SharedPortTraits for MockReciever {
 async fn test_consume_message() {
     let (mock_channel_tx, mock_channel_rx) = mpsc::channel(2);
     let (msg_channel_tx, mut msg_channel_rx) = mpsc::channel(2);
+    let (d_msg_channel_tx, _d_msg_channel_rx) = mpsc::channel(2);
 
     let mock_receiver = MockReciever {
         consumer: mock_channel_rx,
@@ -74,7 +75,7 @@ async fn test_consume_message() {
 
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, commit_offset, system);
+    let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, d_msg_channel_tx, commit_offset, system);
 
     mock_channel_tx
         .send(ChannelMessage::Candidate(CandidateMessage {
@@ -106,6 +107,7 @@ async fn test_consume_message() {
 async fn test_consume_message_error() {
     let (mock_channel_tx, mock_channel_rx) = mpsc::channel(2);
     let (msg_channel_tx, mut msg_channel_rx) = mpsc::channel(2);
+    let (d_msg_channel_tx, _d_msg_channel_rx) = mpsc::channel(2);
 
     let mock_receiver = MockReciever {
         consumer: mock_channel_rx,
@@ -120,7 +122,7 @@ async fn test_consume_message_error() {
     };
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, commit_offset, system);
+    let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, d_msg_channel_tx, commit_offset, system);
 
     mock_channel_tx
         .send(ChannelMessage::Candidate(CandidateMessage {

@@ -40,6 +40,7 @@ pub async fn certifier_with_kafka_pg(
     };
 
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);
+    let (d_tx, d_rx) = mpsc::channel(channel_buffer.message_receiver);
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
     /* START - Kafka consumer service  */
@@ -47,7 +48,7 @@ pub async fn certifier_with_kafka_pg(
 
     let kafka_consumer = Adapters::KafkaConsumer::new(&kafka_config);
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
-    let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
+    let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, d_tx, Arc::clone(&commit_offset), system.clone());
 
     message_receiver_service.subscribe().await?;
     /* END - Kafka consumer service  */
@@ -58,6 +59,7 @@ pub async fn certifier_with_kafka_pg(
 
     let certifier_service = CertifierService::new(
         rx,
+        d_rx,
         outbound_tx.clone(),
         Arc::clone(&commit_offset),
         system.clone(),

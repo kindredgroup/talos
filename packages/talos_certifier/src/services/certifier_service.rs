@@ -28,6 +28,7 @@ pub struct CertifierService {
     pub certifier: Certifier,
     pub system: System,
     pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
+    pub decision_message_channel_rx: mpsc::Receiver<ChannelMessage>,
     pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
@@ -36,6 +37,7 @@ pub struct CertifierService {
 impl CertifierService {
     pub fn new(
         message_channel_rx: mpsc::Receiver<ChannelMessage>,
+        decision_message_channel_rx: mpsc::Receiver<ChannelMessage>,
         decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
@@ -52,6 +54,7 @@ impl CertifierService {
             certifier,
             system,
             message_channel_rx,
+            decision_message_channel_rx,
             decision_outbox_tx,
             commit_offset,
             config,
@@ -80,6 +83,7 @@ impl CertifierService {
     ///
     pub(crate) fn process_candidate_message_outcome(&mut self, message: &CandidateMessage) -> ServiceResult<DecisionMessage> {
         debug!("[Process Candidate message] Version {} ", message.version);
+        // error!("[Process Candidate message] Version {} ", message.version);
 
         // Insert into Suffix
         self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
@@ -195,18 +199,14 @@ impl SystemService for CertifierService {
         // while !self.is_shutdown() {
         tokio::select! {
            channel_msg =  self.message_channel_rx.recv() =>  {
-                match channel_msg {
-                    Some(ChannelMessage::Candidate( message)) => {
-                         self.process_candidate(&message).await?
+                if let Some(ChannelMessage::Candidate( message)) = channel_msg {
+                    self.process_candidate(&message).await?
 
-                    },
-
-                    Some(ChannelMessage::Decision(version, decision_message)) => {
-                        self.process_decision(version, &decision_message).await?
-                    },
-
-                    None => (),
-                    // _ => (),
+                }
+            }
+           decision_channel_msg =  self.decision_message_channel_rx.recv() =>  {
+                if let Some(ChannelMessage::Decision(version, decision_message)) = decision_channel_msg {
+                    self.process_decision(version, &decision_message).await?
                 }
             }
             // ** Received System Messages (shutdown/healthcheck).
