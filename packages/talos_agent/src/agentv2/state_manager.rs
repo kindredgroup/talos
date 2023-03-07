@@ -86,6 +86,9 @@ impl StateManager {
             let key = request_msg.request.message_key;
             let xid = msg.xid.clone();
             let times = Arc::clone(&self.publish_times);
+
+            // Fire and forget, errors will show up in the log,
+            // while corresponding requests will timeout.
             tokio::spawn(async move {
                 let a = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
                 publisher_ref.send_message(key, msg).await.unwrap();
@@ -125,33 +128,32 @@ impl StateManager {
     }
 
     async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, clients: Option<&Vec<WaitingClient>>) {
-        match clients {
-            Some(waiting_clients) => {
-                let count = waiting_clients.len();
-                let mut client_nr = 0;
-                for waiting_client in waiting_clients {
-                    client_nr += 1;
-                    let response = CertificationResponse {
-                        xid: xid.to_string(),
-                        decision: decision.clone(),
-                        send_started_at: waiting_client.received_at,
-                        decided_at: decided_at.unwrap_or(0),
-                        decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
-                        received_at: 0,
-                    };
+        if clients.is_none() {
+            log::warn!("There are no waiting clients for the candidate '{}'", xid);
+            return;
+        }
 
-                    let error_message = format!(
-                        "Error processing XID: {}. Unable to send response {} of {} to waiting client.",
-                        xid, client_nr, count,
-                    );
+        let waiting_clients = clients.unwrap();
 
-                    waiting_client.notify(response.clone(), error_message).await;
-                }
-            }
+        let count = waiting_clients.len();
+        let mut client_nr = 0;
+        for waiting_client in waiting_clients {
+            client_nr += 1;
+            let response = CertificationResponse {
+                xid: xid.to_string(),
+                decision: decision.clone(),
+                send_started_at: waiting_client.received_at,
+                decided_at: decided_at.unwrap_or(0),
+                decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
+                received_at: 0,
+            };
 
-            None => {
-                log::warn!("There are no waiting clients for the candidate '{}'", xid);
-            }
-        };
+            let error_message = format!(
+                "Error processing XID: {}. Unable to send response {} of {} to waiting client.",
+                xid, client_nr, count,
+            );
+
+            waiting_client.notify(response.clone(), error_message).await;
+        }
     }
 }
