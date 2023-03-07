@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use talos_agent::agentv2::errors::AgentError;
+use talos_agent::agent::errors::AgentError;
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType, TRACK_PUBLISH_LATENCY};
 use talos_agent::metrics::{format, format_metric, get_rate, name_talos_type, PercentileSet, Timing};
 use time::OffsetDateTime;
@@ -75,21 +75,12 @@ fn name_rate(v: Duration) -> String {
     }
 }
 
-// async fn make_agent() -> Box<TalosAgentType> {
-//     let (cfg_agent, cfg_kafka) = make_configs();
-//
-//     TalosAgentBuilder::new(cfg_agent)
-//         .with_kafka(cfg_kafka)
-//         .build()
-//         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent {}", e)))
-// }
-
-async fn make_agentv2(publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Box<TalosAgentType> {
+async fn make_agent(publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Box<TalosAgentType> {
     let (cfg_agent, cfg_kafka) = make_configs();
 
     TalosAgentBuilder::new(cfg_agent)
         .with_kafka(cfg_kafka)
-        .build_v2(publish_times)
+        .build(publish_times)
         .await
         .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent.\nReason: {}", e)))
 }
@@ -109,7 +100,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     // A: the end of call to kafka send_message(candidate)
     let publish_times: Arc<Mutex<HashMap<String, u64>>> = Arc::new(Mutex::new(HashMap::new()));
     let mut tasks = Vec::<JoinHandle<Result<Timing, AgentError>>>::new();
-    let agent = Arc::new(make_agentv2(Arc::clone(&publish_times)).await);
+    let agent = Arc::new(make_agent(Arc::clone(&publish_times)).await);
 
     // todo: remove this
     // Allow some time for consumer to properly connect
