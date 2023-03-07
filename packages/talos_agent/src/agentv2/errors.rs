@@ -53,3 +53,36 @@ impl From<SendError<CertifyRequestChannelMessage>> for AgentError {
         }
     }
 }
+
+// #[derive(Debug, ThisError)]
+// pub enum AgentStartError {
+//     /// Error connecting with messaging middleware
+//     #[error("Cannot connect to broker.\nReason: {reason}")]
+//     MessagingConnectivity { reason: String },
+// }
+
+// impl From<MessagingError> for AgentStartError {
+//     fn from(e: MessagingError) -> Self {
+//         MessagingConnectivity {
+//             reason: format!("Connection error.\nReason: {}", e),
+//         }
+//     }
+// }
+
+// #[derive(Debug, ThisError)]
+// pub enum CertifyError {
+//     #[error("Certification error for XID {xid}.\nReason: {reason}")]
+//     InternalError { xid: String, reason: String },
+//
+//     #[error("Certification request for XID {xid} timed out after {elapsed_ms}ms")]
+//     Timeout { xid: String, elapsed_ms: u128 },
+// }
+//
+// impl From<SendError<CertifyRequestChannelMessage>> for CertifyError {
+//     fn from(e: SendError<CertifyRequestChannelMessage>) -> Self {
+//         InternalError {
+//             xid: e.0.request.candidate.xid,
+//             reason: "Outgoing channel is closed".to_string(),
+//         }
+//     }
+// }
