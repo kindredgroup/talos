@@ -1,4 +1,4 @@
-use crate::agentv2::errors::CertifyError;
+use crate::agentv2::errors::AgentError;
 use crate::api::{CertificationResponse, TalosType, TRACK_PUBLISH_LATENCY};
 use std::cmp;
 use std::fmt::{Display, Formatter};
@@ -134,9 +134,9 @@ pub struct Timing {
 }
 
 impl Timing {
-    pub async fn capture<T>(action: impl Fn() -> T + Send) -> Result<Timing, CertifyError>
+    pub async fn capture<T>(action: impl Fn() -> T + Send) -> Result<Timing, AgentError>
     where
-        T: Future<Output = Result<CertificationResponse, CertifyError>>,
+        T: Future<Output = Result<CertificationResponse, AgentError>>,
     {
         let created_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
 

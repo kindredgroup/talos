@@ -1,4 +1,5 @@
-use crate::agentv2::errors::CertifyError;
+use crate::agentv2::errors::AgentError;
+use crate::agentv2::errors::AgentErrorKind::Internal;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -81,7 +82,7 @@ impl TalosAgentImpl {
 impl TalosAgent for TalosAgentImpl {
     /// Certifies transaction represented by given request object. Caller of this method should '.await' for
     /// the response.
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, CertifyError> {
+    async fn certify(&self, _request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
         // let in_flight = Arc::new(InFlight {
         //     xid: request.candidate.xid.clone(),
         //     decision: Mutex::new(None),
@@ -117,9 +118,10 @@ impl TalosAgent for TalosAgentImpl {
         //     let mut state = self.in_flight.lock().unwrap();
         //     state.remove(request.candidate.xid.as_str());
         // }
-        Err(CertifyError::InternalError {
-            xid: request.candidate.xid,
+        Err(AgentError {
+            kind: Internal,
             reason: "Not implemented".to_string(),
+            cause: None,
         })
     }
 }

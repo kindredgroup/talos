@@ -1,5 +1,6 @@
 use crate::agentv2::decision_reader::DecisionReaderService;
-use crate::agentv2::errors::{AgentStartError, CertifyError};
+use crate::agentv2::errors::AgentError;
+use crate::agentv2::errors::AgentErrorKind::Certification;
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::agentv2::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
@@ -45,7 +46,7 @@ impl TalosAgentImplV2 {
         rx_certify: Receiver<CertifyRequestChannelMessage>,
         rx_cancel: Receiver<CancelRequestChannelMessage>,
         publish_times: Arc<Mutex<HashMap<String, u64>>>,
-    ) -> Result<(), AgentStartError> {
+    ) -> Result<(), AgentError> {
         let agent_config = self.agent_config.clone();
         let kafka_config = self.kafka_config.clone().expect("Kafka config is required");
         let publish_times = Arc::clone(&publish_times);
@@ -82,7 +83,7 @@ impl TalosAgentImplV2 {
 
 #[async_trait]
 impl TalosAgent for TalosAgentImplV2 {
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, CertifyError> {
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
         let (tx, mut rx) = mpsc::channel::<CertificationResponse>(1);
 
         let m = CertifyRequestChannelMessage::new(&request, &tx);
@@ -90,16 +91,19 @@ impl TalosAgent for TalosAgentImplV2 {
 
         let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timout_ms));
 
-        let result: Result<Result<CertificationResponse, CertifyError>, Elapsed> = timeout(max_wait, async {
+        let result: Result<Result<CertificationResponse, AgentError>, Elapsed> = timeout(max_wait, async {
             match to_state_manager.send(m).await {
                 Ok(()) => match rx.recv().await {
                     Some(mut response) => {
                         response.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
                         Ok(response)
                     }
-                    None => Err(CertifyError::InternalError {
-                        xid: request.candidate.xid.clone(),
+                    None => Err(AgentError {
+                        kind: Certification {
+                            xid: request.candidate.xid.clone(),
+                        },
                         reason: "No response from state manager".to_string(),
+                        cause: None,
                     }),
                 },
                 Err(e) => Err(e.into()),
@@ -112,10 +116,7 @@ impl TalosAgent for TalosAgentImplV2 {
             Ok(rslt_certify) => rslt_certify,
             Err(_) => {
                 let _ = self.tx_cancel.send(CancelRequestChannelMessage { request }).await;
-                Err(CertifyError::Timeout {
-                    xid,
-                    elapsed_ms: max_wait.as_millis(),
-                })
+                Err(AgentError::new_certify_timout(xid, max_wait.as_millis()))
             }
         }
     }
