@@ -43,7 +43,6 @@ fn var<T: EnvVarFromStr>(name: &str) -> T {
 pub struct Config {
     // Kafka
     pub kafka_brokers: Vec<String>,
-    pub kafka_topic_prefix: String,
     pub kafka_topic: String,
     pub kafka_client_id: String,
     pub kafka_group_id: String,
@@ -63,7 +62,6 @@ impl Config {
 
         let config = Self {
             kafka_brokers: var("KAFKA_BROKERS"),
-            kafka_topic_prefix: var("KAFKA_TOPIC_PREFIX"),
             kafka_topic: var("KAFKA_TOPIC"),
             kafka_client_id: var("KAFKA_CLIENT_ID"),
             kafka_group_id: var("KAFKA_GROUP_ID"),
@@ -87,7 +85,6 @@ impl Default for Config {
         Config {
             // Kafka
             kafka_brokers: vec!["".to_owned()],
-            kafka_topic_prefix: "".to_owned(),
             kafka_topic: "".to_owned(),
             kafka_client_id: "".to_owned(),
             kafka_group_id: "".to_owned(),
@@ -115,7 +112,6 @@ mod tests {
         env::set_var("BUILD_VERSION", "0.0.1");
         env::set_var("KAFKA_BROKERS", "localhost:9093,foo:9094");
         env::set_var("KAFKA_TOPIC", "consumer.topic");
-        env::set_var("KAFKA_TOPIC_PREFIX", "dev.topic");
         env::set_var("KAFKA_CLIENT_ID", "client");
         env::set_var("KAFKA_GROUP_ID", "group");
         env::set_var("KAFKA_USERNAME", "kfadmin");
@@ -132,7 +128,6 @@ mod tests {
             config,
             Config {
                 kafka_brokers: vec!["localhost:9093".to_owned(), "foo:9094".to_owned()],
-                kafka_topic_prefix: "dev.topic".to_owned(),
                 kafka_topic: "consumer.topic".to_owned(),
                 kafka_client_id: "client".to_owned(),
                 kafka_group_id: "group".to_owned(),

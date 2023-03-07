@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::KakfaConfig as KafkaConfig;
+use crate::KafkaConfig;
 use rdkafka::{
     admin::{AdminClient, AdminOptions, NewTopic, TopicReplication},
     client::DefaultClientContext,
@@ -28,7 +28,7 @@ pub async fn create_topic() -> Result<KafkaDeployStatus, KafkaDeployError> {
     println!("kafka configs received from env... {kafka_config:#?}");
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create()?;
 
-    let kafka_certification_topic = format!("{}{}", kafka_config.topic_prefix, kafka_config.consumer_topic);
+    let kafka_certification_topic = kafka_config.topic.to_string();
     let timeout = Duration::from_secs(1);
     let metadata = consumer
         .fetch_metadata(Some(&kafka_certification_topic), timeout)
@@ -42,7 +42,7 @@ pub async fn create_topic() -> Result<KafkaDeployStatus, KafkaDeployError> {
             name: &kafka_certification_topic,
             num_partitions: 1,
             replication: TopicReplication::Fixed(1),
-            config: vec![],
+            config: vec![("message.timestamp.type", "LogAppendTime")],
         };
 
         let opts = AdminOptions::new().operation_timeout(Some(timeout));

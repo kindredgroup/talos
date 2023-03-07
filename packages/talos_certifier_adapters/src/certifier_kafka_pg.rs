@@ -1,13 +1,20 @@
-use std::sync::{atomic::AtomicI64, Arc};
-
 use crate as Adapters;
+use crate::kafka::config::KafkaConfig;
+use crate::mock_certifier_service::MockCertifierService;
+use crate::PgConfig;
+use std::sync::{atomic::AtomicI64, Arc};
+use talos_certifier::core::SystemService;
+use talos_certifier::model::DecisionMessage;
+use talos_certifier::ports::DecisionStore;
+
+use talos_certifier::services::CertifierServiceConfig;
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
-    services::{CertifierService, CertifierServiceConfig, DecisionOutboxService, MessageReceiverService},
+    services::{CertifierService, DecisionOutboxService, MessageReceiverService},
     talos_certifier_service::{TalosCertifierService, TalosCertifierServiceBuilder},
 };
-
+use talos_suffix::core::SuffixConfig;
 use tokio::sync::{broadcast, mpsc};
 
 /// Channel buffer values
@@ -27,10 +34,18 @@ impl Default for TalosCertifierChannelBuffers {
     }
 }
 
+pub struct Configuration {
+    pub suffix_config: Option<SuffixConfig>,
+    pub pg_config: Option<PgConfig>,
+    pub kafka_config: KafkaConfig,
+    pub certifier_mock: bool,
+    pub db_mock: bool,
+}
+
 /// Talos certifier instantiated with Kafka as Abcast and Postgres as XDB.
 pub async fn certifier_with_kafka_pg(
     channel_buffer: TalosCertifierChannelBuffers,
-    certifier_service_config: Option<CertifierServiceConfig>,
+    configuration: Configuration,
 ) -> Result<TalosCertifierService, SystemServiceError> {
     let (system_notifier, _) = broadcast::channel(channel_buffer.system_broadcast);
 
@@ -42,10 +57,7 @@ pub async fn certifier_with_kafka_pg(
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    /* START - Kafka consumer service  */
-    let kafka_config = Adapters::KakfaConfig::from_env();
-
-    let kafka_consumer = Adapters::KafkaConsumer::new(&kafka_config);
+    let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config);
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
     let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
 
@@ -55,32 +67,46 @@ pub async fn certifier_with_kafka_pg(
     let (outbound_tx, outbound_rx) = mpsc::channel::<DecisionOutboxChannelMessage>(channel_buffer.decision_outbox);
 
     /* START - Certifier service  */
+    let certifier_service: Box<dyn SystemService + Send + Sync> = match configuration.certifier_mock {
+        true => Box::new(MockCertifierService {
+            decision_outbox_tx: outbound_tx.clone(),
+            message_channel_rx: rx,
+        }),
+        false => Box::new(CertifierService::new(
+            rx,
+            outbound_tx.clone(),
+            Arc::clone(&commit_offset),
+            system.clone(),
+            Some(CertifierServiceConfig {
+                suffix_config: configuration.suffix_config.unwrap_or_default(),
+            }),
+        )),
+    };
 
-    let certifier_service = CertifierService::new(
-        rx,
-        outbound_tx.clone(),
-        Arc::clone(&commit_offset),
-        system.clone(),
-        Some(certifier_service_config.unwrap_or_default()),
-    );
     /* END - Certifier service  */
 
     /* START - Decision Outbox service  */
-    let pg_config = Adapters::PgConfig::from_env();
-    let pg = Adapters::Pg::new(pg_config.clone()).await.unwrap();
-    let kafka_producer = Adapters::KafkaProducer::new(&kafka_config);
 
+    let kafka_producer = Adapters::KafkaProducer::new(&configuration.kafka_config);
+    let data_store: Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync> = match configuration.db_mock {
+        true => Box::new(Adapters::mock_datastore::MockDataStore {}),
+        false => Box::new(
+            Adapters::Pg::new(configuration.pg_config.expect("pg config is required without mock."))
+                .await
+                .unwrap(),
+        ),
+    };
     let decision_outbox_service = DecisionOutboxService::new(
         outbound_tx.clone(),
         outbound_rx,
-        Arc::new(Box::new(pg)),
+        Arc::new(data_store),
         Arc::new(Box::new(kafka_producer)),
         system.clone(),
     );
     /* END - Decision Outbox service  */
 
     let talos_certifier = TalosCertifierServiceBuilder::new(system)
-        .add_certifier_service(Box::new(certifier_service))
+        .add_certifier_service(certifier_service)
         .add_adapter_service(Box::new(message_receiver_service))
         .add_adapter_service(Box::new(decision_outbox_service))
         .build();

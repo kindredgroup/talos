@@ -84,6 +84,10 @@ run.release:
 	$(call pp,run app...)
 	cargo run -r --example certifier_kafka_pg
 
+run.with_mock_db:
+	$(call pp,run app...)
+	cargo run -r --example certifier_kafka_dbmock
+
 ## lint: 🧹 Checks for lint failures on rust
 lint:
 	$(call pp,lint rust...)

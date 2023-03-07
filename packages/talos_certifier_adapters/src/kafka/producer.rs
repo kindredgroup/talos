@@ -10,7 +10,7 @@ use talos_certifier::{
 
 use crate::kafka::utils::build_kafka_headers;
 
-use super::{config::Config, utils::kafka_topic_prefixed};
+use super::config::KafkaConfig;
 
 // Kafka Producer
 // #[derive(Clone)]
@@ -20,9 +20,9 @@ pub struct KafkaProducer {
 }
 
 impl KafkaProducer {
-    pub fn new(config: &Config) -> Self {
+    pub fn new(config: &KafkaConfig) -> Self {
         let producer = config.build_producer_config().create().expect("Failed to create producer");
-        let topic = kafka_topic_prefixed(&config.producer_topic, &config.topic_prefix);
+        let topic = config.topic.to_owned();
 
         Self { producer, topic }
     }

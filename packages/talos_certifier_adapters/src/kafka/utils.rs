@@ -28,10 +28,6 @@ pub fn get_message_headers(message: &BorrowedMessage) -> Option<HashMap<String, 
     None
 }
 
-pub fn kafka_topic_prefixed(topic: &str, prefix: &str) -> String {
-    format!("{}{}", prefix, topic)
-}
-
 pub fn build_kafka_headers(headers: HashMap<String, String>) -> OwnedHeaders {
     let owned_headers = OwnedHeaders::new();
 
@@ -74,12 +70,7 @@ mod tests {
 
     use crate::kafka::utils::parse_kafka_payload;
 
-    use super::{build_kafka_headers, kafka_topic_prefixed, parse_message_variant};
-
-    #[test]
-    fn test_kafka_topic_prefix() {
-        assert_eq!(kafka_topic_prefixed("topic", "prefix-"), "prefix-topic");
-    }
+    use super::{build_kafka_headers, parse_message_variant};
 
     #[test]
     fn test_parse_kafka_payload_successfully() {
