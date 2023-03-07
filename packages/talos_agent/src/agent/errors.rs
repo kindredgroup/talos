@@ -1,5 +1,5 @@
-use crate::agentv2::errors::AgentErrorKind::{CertificationTimout, Messaging};
-use crate::agentv2::model::CertifyRequestChannelMessage;
+use crate::agent::errors::AgentErrorKind::{CertificationTimout, Messaging};
+use crate::agent::model::CertifyRequestChannelMessage;
 use crate::messaging::errors::MessagingError;
 use std::error::Error;
 use strum::Display;

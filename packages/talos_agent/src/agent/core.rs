@@ -1,8 +1,8 @@
-use crate::agentv2::decision_reader::DecisionReaderService;
-use crate::agentv2::errors::AgentError;
-use crate::agentv2::errors::AgentErrorKind::Certification;
-use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
-use crate::agentv2::state_manager::StateManager;
+use crate::agent::decision_reader::DecisionReaderService;
+use crate::agent::errors::AgentError;
+use crate::agent::errors::AgentErrorKind::Certification;
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use crate::agent::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
 use crate::messaging::api::{ConsumerType, DecisionMessage};
 use crate::messaging::kafka::KafkaInitializer;
@@ -17,21 +17,21 @@ use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
-pub struct TalosAgentImplV2 {
+pub struct TalosAgentImpl {
     agent_config: AgentConfig,
     kafka_config: Option<KafkaConfig>,
     tx_certify: Sender<CertifyRequestChannelMessage>,
     tx_cancel: Sender<CancelRequestChannelMessage>,
 }
 
-impl TalosAgentImplV2 {
+impl TalosAgentImpl {
     pub fn new(
         agent_config: AgentConfig,
         kafka_config: Option<KafkaConfig>,
         tx_certify: Sender<CertifyRequestChannelMessage>,
         tx_cancel: Sender<CancelRequestChannelMessage>,
-    ) -> TalosAgentImplV2 {
-        TalosAgentImplV2 {
+    ) -> TalosAgentImpl {
+        TalosAgentImpl {
             agent_config,
             kafka_config,
             tx_certify,
@@ -40,7 +40,7 @@ impl TalosAgentImplV2 {
     }
 }
 
-impl TalosAgentImplV2 {
+impl TalosAgentImpl {
     pub async fn start(
         &self,
         rx_certify: Receiver<CertifyRequestChannelMessage>,
@@ -82,7 +82,7 @@ impl TalosAgentImplV2 {
 }
 
 #[async_trait]
-impl TalosAgent for TalosAgentImplV2 {
+impl TalosAgent for TalosAgentImpl {
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
         let (tx, mut rx) = mpsc::channel::<CertificationResponse>(1);
 
