@@ -92,7 +92,7 @@ impl StateManager {
                 // todo: move into metrics tracker
                 if TRACK_PUBLISH_LATENCY {
                     let published_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
-                    log::info!("b - a = {}", (published_at - a) as f32 / 1_000_000_f32);
+                    log::debug!("b - a = {}", (published_at - a) as f32 / 1_000_000_f32);
                     match times.lock() {
                         Ok(mut map) => {
                             map.insert(xid, published_at);
