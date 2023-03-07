@@ -1,4 +1,5 @@
 use crate::api::CandidateData;
+use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
@@ -78,7 +79,7 @@ pub struct PublishResponse {
 /// The publishing contract
 #[async_trait]
 pub trait Publisher {
-    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, String>;
+    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, MessagingError>;
 }
 
 pub type PublisherType = dyn Publisher + Sync + Send;
@@ -86,7 +87,7 @@ pub type PublisherType = dyn Publisher + Sync + Send;
 /// The consuming contract
 #[async_trait]
 pub trait Consumer {
-    async fn receive_message(&self) -> Option<Result<DecisionMessage, String>>;
+    async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>>;
 }
 
 pub type ConsumerType = dyn Consumer + Sync + Send;

@@ -1,5 +1,5 @@
 use crate::agentv2::agent_v2::TalosAgentImplV2;
-use crate::agentv2::errors::{AgentStartError, CertifyError};
+use crate::agentv2::errors::AgentError;
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::messaging::api::Decision;
 use async_trait::async_trait;
@@ -83,7 +83,7 @@ pub struct KafkaConfig {
 /// The agent interface exposed to the client
 #[async_trait]
 pub trait TalosAgent {
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, CertifyError>;
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError>;
 }
 
 pub type TalosAgentType = dyn TalosAgent + Send + Sync;
@@ -125,7 +125,7 @@ impl TalosAgentBuilder {
     // }
 
     /// Build agent instance implemented using actor model.
-    pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, AgentStartError> {
+    pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, AgentError> {
         let (tx_certify, rx_certify) = mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
         let (tx_cancel, rx_cancel) = mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
         let agent = TalosAgentImplV2::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel);
