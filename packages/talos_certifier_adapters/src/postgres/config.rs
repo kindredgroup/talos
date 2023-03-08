@@ -7,6 +7,7 @@ pub struct PgConfig {
     pub host: String,
     pub port: String,
     pub database: String,
+    pub pool_size: usize,
 }
 
 impl PgConfig {
@@ -17,6 +18,7 @@ impl PgConfig {
             host: env_var!("PG_HOST"),
             port: env_var!("PG_PORT"),
             database: env_var!("PG_DATABASE"),
+            pool_size: env_var!("PG_POOL_SIZE").parse().unwrap(),
         }
     }
     pub fn get_base_connection_string(&self) -> String {
@@ -56,6 +58,7 @@ mod tests {
             ("PG_HOST", "some-host"),
             ("PG_PORT", "5432"),
             ("PG_DATABASE", "test-db"),
+            ("PG_POOL_SIZE", "10"),
         ];
         HashMap::from(env_hashmap)
     }
@@ -74,6 +77,7 @@ mod tests {
         assert_eq!(config.user, "test-user");
         assert_eq!(config.password, "test-pwd");
         assert_eq!(config.host, "some-host");
+        assert_eq!(config.pool_size, 10);
 
         get_pg_env_variables().iter().for_each(|(k, _)| {
             unset_env_var(k);

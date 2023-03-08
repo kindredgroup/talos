@@ -1,5 +1,6 @@
 use async_trait::async_trait;
-use deadpool_postgres::{Config, ManagerConfig, Object, Pool, Runtime};
+use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolConfig, Runtime};
+use log::error;
 use serde_json::{json, Value};
 use talos_certifier::{
     model::DecisionMessage,
@@ -31,19 +32,28 @@ impl Pg {
         config.manager = Some(ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
+        config.pool = Some(PoolConfig::new(pg_config.pool_size));
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
 
         //test connection
         let _ = pool.get().await.map_err(PgError::GetClientFromPool)?;
 
+        println!("pool.status: {:?}", pool.status());
         Ok(Pg { pool })
     }
 
     pub async fn get_client(&self) -> Result<Object, PgError> {
-        let client = self.pool.get().await.map_err(PgError::GetClientFromPool)?;
-
-        Ok(client)
+        // let client = self.pool.get().await.map_err(PgError::GetClientFromPool)?;
+        match self.pool.get().await {
+            Err(e) => {
+                error!("error::: {:?}", e);
+                Err(PgError::GetClientFromPool(e))
+            }
+            Ok(client) => Ok(client),
+        }
+        // println!("pool.status: {:?}",self.pool.status());
+        // Ok(client)
     }
 }
 
@@ -89,13 +99,13 @@ impl DecisionStore for Pg {
         let stmt = client
             .prepare_cached(
                 "WITH ins AS (
-                    INSERT INTO xdb(xid, decision) 
+                    INSERT INTO xdb(xid, decision)
                     VALUES ($1, $2)
-                    ON CONFLICT DO NOTHING 
+                    ON CONFLICT DO NOTHING
                     RETURNING xid, decision
                 )
                 SELECT * from ins
-                UNION 
+                UNION
                 SELECT xid, decision from xdb where xid = $1",
             )
             .await
