@@ -87,7 +87,7 @@ async fn make_agent(publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Box<Talo
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    env_logger::init();
+    env_logger::builder().format_timestamp_micros().init();
 
     certify(BATCH_SIZE).await
 }
