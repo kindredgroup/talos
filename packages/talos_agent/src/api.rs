@@ -1,6 +1,6 @@
-use crate::agentv2::agent_v2::TalosAgentImplV2;
-use crate::agentv2::errors::AgentError;
-use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use crate::agent::core::TalosAgentImpl;
+use crate::agent::errors::AgentError;
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::messaging::api::Decision;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
@@ -114,21 +114,11 @@ impl TalosAgentBuilder {
         self
     }
 
-    /// Build agent instance implemented using shared state between threads.
-    // pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
-    //     let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-    //     let publisher: Box<PublisherType> = Box::new(KafkaPublisher::new(self.config.agent.clone(), config));
-    //     let agent = TalosAgentImpl::new(self.config.clone(), self.kafka_config.clone(), publisher);
-    //     agent.start().unwrap_or_else(|e| panic!("{}", format!("Unable to start agent {}", e)));
-    //
-    //     Ok(Box::new(agent))
-    // }
-
     /// Build agent instance implemented using actor model.
-    pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, AgentError> {
+    pub async fn build(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, AgentError> {
         let (tx_certify, rx_certify) = mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
         let (tx_cancel, rx_cancel) = mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
-        let agent = TalosAgentImplV2::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel);
+        let agent = TalosAgentImpl::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel);
         agent.start(rx_certify, rx_cancel, publish_times).await?;
 
         Ok(Box::new(agent))

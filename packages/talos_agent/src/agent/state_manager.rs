@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 
 use crate::api::{AgentConfig, CertificationResponse, TRACK_PUBLISH_LATENCY};
 use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};

@@ -1,4 +1,4 @@
-use crate::agentv2::errors::AgentError;
+use crate::agent::errors::AgentError;
 use crate::api::{CertificationResponse, TalosType, TRACK_PUBLISH_LATENCY};
 use std::cmp;
 use std::fmt::{Display, Formatter};
