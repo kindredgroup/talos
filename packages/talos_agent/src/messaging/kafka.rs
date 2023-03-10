@@ -318,7 +318,7 @@ impl KafkaInitializer {
     /// Creates new instances of initialised and fully connected publisher and consumer
     pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), MessagingError> {
         let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config)?;
-        let kafka_consumer = KafkaConsumer::new(agent.clone(), &kafka_config)?;
+        let kafka_consumer = KafkaConsumer::new(agent, &kafka_config)?;
         kafka_consumer.subscribe()?;
 
         let consumer: Arc<Box<ConsumerType>> = Arc::new(Box::new(kafka_consumer));
