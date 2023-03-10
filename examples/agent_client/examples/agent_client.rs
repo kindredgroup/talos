@@ -17,7 +17,7 @@ use uuid::Uuid;
 ///
 
 const BATCH_SIZE: i32 = 3;
-const TALOS_TYPE: TalosType = TalosType::External;
+const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
 const TARGET_RATE: f64 = 500_f64;
