@@ -2,6 +2,7 @@ use crate::api::{CertificationRequest, CertificationResponse};
 use tokio::sync::mpsc::Sender;
 
 // Sent by agent to state manager
+#[derive(Debug)]
 pub struct CertifyRequestChannelMessage {
     pub request: CertificationRequest,
     pub tx_answer: Sender<CertificationResponse>,
