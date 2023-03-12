@@ -90,10 +90,12 @@ pub struct KafkaConsumer {
 struct KafkaConsumerContext {}
 impl ClientContext for KafkaConsumerContext {}
 impl ConsumerContext for KafkaConsumerContext {
+    #[allow(clippy::needless_lifetimes)]
     fn pre_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
         log::info!("[{}] pre_rebalance()", thread::current().name().unwrap_or("-"));
     }
 
+    #[allow(clippy::needless_lifetimes)]
     fn post_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
         log::info!("[{}] post_rebalance()", thread::current().name().unwrap_or("-"));
     }
@@ -197,7 +199,7 @@ impl KafkaConsumer {
     }
 
     fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, String> {
-        return match raw_payload {
+        match raw_payload {
             Err(payload_read_error) => {
                 error!("Unable to read kafka message payload: {}", payload_read_error);
                 Err(payload_read_error.to_string())
@@ -210,11 +212,11 @@ impl KafkaConsumer {
                     json_error.to_string()
                 })
             }
-        };
+        }
     }
 
     fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision, decided_at: Option<u64>) -> Result<DecisionMessage, String> {
-        return match raw_payload {
+        match raw_payload {
             Err(payload_read_error) => {
                 error!("Unable to read kafka message payload: {}", payload_read_error);
                 Err(payload_read_error.to_string())
@@ -238,7 +240,7 @@ impl KafkaConsumer {
                         decided_at,
                     })
             }
-        };
+        }
     }
 }
 

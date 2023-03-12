@@ -29,7 +29,7 @@ Talos is based on the STRIDE algorithm for strict serializable certification of 
 ### Requirements <a name="getting-started-requirements"></a>
 
 -   [docker (20.10.6)](https://docs.docker.com/get-docker/)
--   [cargo (1.66.0), rust (1.66.0)](https://www.rust-lang.org/tools/install) only required if wanting to run outside of docker
+-   [cargo (1.68.0), rust (1.68.0)](https://www.rust-lang.org/tools/install) only required if wanting to run outside of docker
 -   openssl for SASL supports
 
 ### Installation and setup. <a name="getting-started-installation-and-setup"></a>
