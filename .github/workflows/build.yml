@@ -13,7 +13,6 @@ jobs:
                   toolchain: stable
             - run: scripts/ubuntu-setup.sh
             - run: rustup component add rustfmt clippy
-            - run: cargo clean
             - name: cargo build
               run: cargo build --release
             - run: scripts/pre-commit-checks.sh
