@@ -1,6 +1,7 @@
 use crate::api::{KafkaConfig, TalosType};
 use crate::messaging::api::{
-    CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE,
+    CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
+    HEADER_MESSAGE_TYPE,
 };
 use async_trait::async_trait;
 use log::debug;
@@ -12,6 +13,7 @@ use rdkafka::util::Timeout;
 use rdkafka::{ClientConfig, ClientContext, Message, Offset, TopicPartitionList};
 use std::collections::HashMap;
 use std::str::Utf8Error;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{str, thread};
 use time::OffsetDateTime;
@@ -38,6 +40,7 @@ impl KafkaPublisher {
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
             .set("queue.buffering.max.messages", "1000000")
+            .set("topic.metadata.refresh.interval.ms", "4")
             .set_log_level(kafka.log_level);
 
         setup_kafka_auth(&mut cfg, kafka);
@@ -107,14 +110,6 @@ impl KafkaConsumer {
             agent,
             config: config.clone(),
             consumer: Self::create_consumer(config),
-        }
-    }
-
-    pub fn new_subscribed(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        let kc = KafkaConsumer::new(agent_id, config);
-        match kc.subscribe() {
-            Ok(()) => Ok(Box::new(kc)),
-            Err(e) => Err(e),
         }
     }
 
@@ -319,5 +314,22 @@ fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
             .set("sasl.mechanisms", config.sasl_mechanisms.clone().unwrap_or_else(|| "SCRAM-SHA-512".to_string()))
             .set("sasl.username", username)
             .set("sasl.password", config.password.clone().unwrap_or_default());
+    }
+}
+
+/// Sets up connectivity to kafka broker.
+pub struct KafkaInitializer {}
+
+impl KafkaInitializer {
+    /// Creates new instances of initialised and fully connected publisher and consumer
+    pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), String> {
+        let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config);
+        let kafka_consumer = KafkaConsumer::new(agent, &kafka_config);
+        kafka_consumer.subscribe()?;
+
+        let consumer: Arc<Box<ConsumerType>> = Arc::new(Box::new(kafka_consumer));
+        let publisher: Arc<Box<PublisherType>> = Arc::new(Box::new(kafka_publisher));
+
+        Ok((publisher, consumer))
     }
 }

@@ -113,8 +113,8 @@ async fn certify(batch_size: i32) -> Result<(), String> {
 
     // todo: remove this
     // Allow some time for consumer to properly connect
-    log::info!("sleeping for  15 sec ... ");
-    thread::sleep(Duration::from_secs(15));
+    // log::info!("sleeping for  15 sec ... ");
+    // thread::sleep(Duration::from_secs(15));
 
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     info!("Starting publishing process...");
@@ -331,6 +331,20 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             total.p90.value,
             total.p95.value,
             errors_count,
+        );
+    }
+
+    // Code below debugs publishing times for each candidate
+    let map = &*publish_times.lock().unwrap();
+    let mut published;
+    for v in map.values() {
+        published = *v as i128;
+        debug!(
+            "\nstarted : {},\nfinished: {},\npublished: {} / {:?}",
+            started_at,
+            finished_at,
+            published,
+            (published - started_at) as f32 / 1_000_000_f32,
         );
     }
 

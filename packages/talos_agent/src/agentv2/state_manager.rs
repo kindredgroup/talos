@@ -6,10 +6,8 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 
-use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TRACK_PUBLISH_LATENCY};
+use crate::api::{AgentConfig, CertificationResponse, TRACK_PUBLISH_LATENCY};
 use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
-
-use crate::messaging::kafka::KafkaPublisher;
 
 /// Structure represents client who sent the certification request.
 struct WaitingClient {
@@ -34,17 +32,12 @@ impl WaitingClient {
 
 pub struct StateManager {
     agent_config: AgentConfig,
-    kafka_config: KafkaConfig,
     publish_times: Arc<Mutex<HashMap<String, u64>>>,
 }
 
 impl StateManager {
-    pub fn new(agent_config: AgentConfig, kafka_config: KafkaConfig, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> StateManager {
-        StateManager {
-            agent_config,
-            kafka_config,
-            publish_times,
-        }
+    pub fn new(agent_config: AgentConfig, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> StateManager {
+        StateManager { agent_config, publish_times }
     }
 
     pub async fn run(
@@ -52,13 +45,9 @@ impl StateManager {
         mut rx_certify: Receiver<CertifyRequestChannelMessage>,
         mut rx_cancel: Receiver<CancelRequestChannelMessage>,
         mut rx_decision: Receiver<DecisionMessage>,
+        publisher: Arc<Box<PublisherType>>,
     ) {
-        let config = self.kafka_config.clone();
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
-
-        let publisher: Arc<Box<PublisherType>> = Arc::new(Box::new(KafkaPublisher::new(self.agent_config.agent.clone(), &config)));
-        log::info!("Created kafka publisher");
-
         loop {
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
@@ -98,9 +87,12 @@ impl StateManager {
             let xid = msg.xid.clone();
             let times = Arc::clone(&self.publish_times);
             tokio::spawn(async move {
+                let a = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
                 publisher_ref.send_message(key, msg).await.unwrap();
+                // todo: move into metrics tracker
                 if TRACK_PUBLISH_LATENCY {
                     let published_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+                    log::info!("b - a = {}", (published_at - a) as f32 / 1_000_000_f32);
                     match times.lock() {
                         Ok(mut map) => {
                             map.insert(xid, published_at);
