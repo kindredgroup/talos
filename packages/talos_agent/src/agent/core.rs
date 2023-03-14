@@ -14,7 +14,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
@@ -65,19 +64,19 @@ impl TalosAgentImpl {
             StateManager::new(agent_config, mc).run(rx_certify, rx_cancel, rx_decision, publisher).await;
         });
 
-        let _ = self.start_reading_decisions(tx_decision, consumer);
+        self.start_reading_decisions(tx_decision, consumer);
 
         Ok(())
     }
 
     /// Spawn the task which hosts DecisionReaderService.
     /// Return task handle.
-    fn start_reading_decisions(&self, tx_decision: Sender<DecisionMessage>, consumer: Arc<Box<ConsumerType>>) -> JoinHandle<()> {
+    fn start_reading_decisions(&self, tx_decision: Sender<DecisionMessage>, consumer: Arc<Box<ConsumerType>>) {
         let consumer_ref = Arc::clone(&consumer);
         tokio::spawn(async move {
             let decision_reader = DecisionReaderService::new(consumer_ref, tx_decision);
             decision_reader.run().await;
-        })
+        });
     }
 }
 
