@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc::Receiver;
 
+/// The internal Metrics service responsible for collecting and accumulating runtime events
 pub struct Metrics {
     state: Arc<Mutex<HashMap<String, HashMap<EventName, EventMetadata>>>>,
 }
@@ -22,10 +23,12 @@ impl Metrics {
         }
     }
 
+    /// Locates event in the given list and extracts its time or falls back to default value.
     fn get_time(events: &HashMap<EventName, EventMetadata>, event: &EventName) -> u64 {
         events.get(event).map(|data| data.event.time).unwrap_or(u64::MAX)
     }
 
+    /// Analyses collected data and produces metrics report.
     pub fn collect(&self) -> MetricsReport {
         let data = self.state.lock().unwrap();
 
@@ -96,6 +99,7 @@ impl Metrics {
         }
     }
 
+    /// Launches background task which collects and stores incoming signals
     pub fn run(&self, mut rx_destination: Receiver<Signal>) {
         let state = Arc::clone(&self.state);
         tokio::spawn(async move {

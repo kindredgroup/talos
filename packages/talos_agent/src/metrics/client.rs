@@ -4,15 +4,18 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::Sender;
 use tokio::task::JoinHandle;
 
+/// Clone-friendly service which can be used to transmit signal into metrics system.
 pub struct MetricsClient {
     pub tx_destination: Sender<Signal>,
 }
 
 impl MetricsClient {
+    /// Makes an instance of new event with current timestamp and transmits it to metrics system
     pub fn new_event(&self, name: EventName, id: String) -> JoinHandle<Result<u64, SendError<Signal>>> {
         self.new_event_at(name, id, OffsetDateTime::now_utc().unix_timestamp_nanos() as u64)
     }
 
+    /// Makes an instance of new event with the given timestamp and transmits it to metrics system
     pub fn new_event_at(&self, name: EventName, id: String, time: u64) -> JoinHandle<Result<u64, SendError<Signal>>> {
         let tx = self.tx_destination.clone();
         tokio::spawn(async move {

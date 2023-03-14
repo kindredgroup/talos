@@ -1,6 +1,7 @@
 use crate::metrics::aggregates::{PercentileSet, Timeline};
 use strum::Display;
 
+/// The trackable event within Talos Agent
 #[derive(Debug, Clone)]
 pub struct Event {
     pub id: String,
@@ -8,6 +9,7 @@ pub struct Event {
     pub time: u64,
 }
 
+/// Enum represents trackable events within Talos Agent
 #[derive(Debug, Clone, Display, PartialEq, Eq, Hash)]
 pub enum EventName {
     // Transaction started
@@ -29,12 +31,14 @@ pub struct EventMetadata {
     pub ended_at: Option<u64>,
 }
 
+/// Data sent from metrics client to metrics service
 #[derive(Debug, Clone, Display)]
 pub enum Signal {
     Start { time: u64, event: Event },
     End { time: u64, id: String, event_name: EventName },
 }
 
+/// Structure for aggregated report
 #[derive(Debug)]
 pub struct MetricsReport {
     pub times: Vec<Timeline>,
