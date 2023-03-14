@@ -7,7 +7,7 @@ use talos_certifier::core::SystemService;
 use talos_certifier::model::DecisionMessage;
 use talos_certifier::ports::DecisionStore;
 
-use talos_certifier::services::CertifierServiceConfig;
+use talos_certifier::services::{CertifierServiceConfig, MonitorService};
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
@@ -59,7 +59,7 @@ pub async fn certifier_with_kafka_pg(
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config);
+    let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config, monitor_tx).await;
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
     let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
 
@@ -107,10 +107,15 @@ pub async fn certifier_with_kafka_pg(
     );
     /* END - Decision Outbox service  */
 
+    /* Start - Monitor service  */
+    let monitor_service = MonitorService::new(monitor_rx, system.clone());
+    /* END - Monitor service  */
+
     let talos_certifier = TalosCertifierServiceBuilder::new(system)
         .add_certifier_service(certifier_service)
         .add_adapter_service(Box::new(message_receiver_service))
         .add_adapter_service(Box::new(decision_outbox_service))
+        .add_adapter_service(Box::new(monitor_service))
         .build();
 
     Ok(talos_certifier)
