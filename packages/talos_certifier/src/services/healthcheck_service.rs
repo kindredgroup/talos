@@ -1,6 +1,5 @@
 use crate::{
-    core::{System, SystemService},
-    errors::SystemServiceError,
+    core::{ServiceResult, System, SystemService},
     healthcheck::{self, HealthChecks},
     SystemMessage,
 };
@@ -43,7 +42,7 @@ impl SystemService for HealthCheckService {
         true
     }
 
-    async fn run(&mut self) -> Result<(), SystemServiceError> {
+    async fn run(&mut self) -> ServiceResult {
         const DURATION_BETWEEN_CHECKS: Duration = Duration::from_secs(10);
 
         let mut system_channel_rx = self.system.system_notifier.subscribe();

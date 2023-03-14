@@ -29,7 +29,7 @@ pub enum SystemMessage {
     HealthCheckStatus { service: &'static str, healthy: bool },
 }
 
-pub type ServiceResult<T = ()> = Result<T, SystemServiceError>;
+pub type ServiceResult<T = ()> = Result<T, Box<SystemServiceError>>;
 
 #[derive(Debug)]
 pub enum DecisionOutboxChannelMessage {
@@ -49,5 +49,5 @@ pub trait SystemService {
     fn is_shutdown(&self) -> bool;
     async fn update_shutdown_flag(&mut self, flag: bool);
     async fn health_check(&self) -> bool;
-    async fn run(&mut self) -> Result<(), SystemServiceError>;
+    async fn run(&mut self) -> ServiceResult;
 }

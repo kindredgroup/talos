@@ -189,7 +189,7 @@ impl SystemService for CertifierService {
         true
     }
 
-    async fn run(&mut self) -> Result<(), SystemServiceError> {
+    async fn run(&mut self) -> ServiceResult {
         let mut system_channel_rx = self.system.system_notifier.subscribe();
 
         // while !self.is_shutdown() {

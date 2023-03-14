@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{errors::SystemServiceError, SystemMessage};
+use crate::{core::ServiceResult, SystemMessage};
 use futures_util::future::join_all;
 use log::error;
 
@@ -58,12 +58,12 @@ pub struct TalosCertifierService {
 }
 
 impl TalosCertifierService {
-    pub async fn run(self) -> Result<(), SystemServiceError> {
+    pub async fn run(self) -> ServiceResult {
         let service_handle = self.services.into_iter().map(|mut service| {
             let shutdown_notifier_cloned = self.system.system_notifier.clone();
             let shutdown_flag = Arc::clone(&self.shutdown_flag);
             tokio::spawn(async move {
-                let mut result: Result<(), SystemServiceError> = Ok(());
+                let mut result: ServiceResult = Ok(());
                 while !shutdown_flag.load(Ordering::Relaxed) {
                     if let Err(service_error) = service.run().await {
                         // error!("\n {:?} \n\n More info: {:?} \n", *service_error, service_error);

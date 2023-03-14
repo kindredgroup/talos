@@ -8,7 +8,7 @@ use log::{debug, error, info};
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{System, SystemService},
+    core::{ServiceResult, System, SystemService},
     errors::{SystemErrorType, SystemServiceError, SystemServiceErrorKind},
     ports::MessageReciever,
     ChannelMessage, SystemMessage,
@@ -68,7 +68,7 @@ impl SystemService for MessageReceiverService {
         self.receiver.is_healthy().await
     }
 
-    async fn run(&mut self) -> Result<(), SystemServiceError> {
+    async fn run(&mut self) -> ServiceResult {
         let mut system_channel_rx = self.system.system_notifier.subscribe();
         let mut interval = tokio::time::interval(Duration::from_millis(10_000));
         // while !self.is_shutdown() {
@@ -79,12 +79,12 @@ impl SystemService for MessageReceiverService {
                 Ok(Some(msg))  => {
 
                     if let Err(error) = self.message_channel_tx.send(msg.clone()).await {
-                        return Err(SystemServiceError{
+                        return Err(Box::new(SystemServiceError{
                              kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
                              reason: error.to_string(),
                              data: Some(format!("{:?}", msg)),
                              service: "Message Receiver Service".to_string()
-                             })
+                             }))
                     }
                 },
                 Ok(None) => {
@@ -100,7 +100,7 @@ impl SystemService for MessageReceiverService {
                         _ => {
                                 // *** Shutdown the current service and return the error
                                 self.shutdown_service().await;
-                                return Err(consumer_error)
+                                return Err(Box::new(consumer_error))
                             }
                         // talos_core::errors::SystemServiceErrorKind::DBError => todo!(),
                         // talos_core::errors::SystemServiceErrorKind::CertifierError => todo!(),
