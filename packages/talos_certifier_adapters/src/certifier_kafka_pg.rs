@@ -49,8 +49,11 @@ pub async fn certifier_with_kafka_pg(
 ) -> Result<TalosCertifierService, SystemServiceError> {
     let (system_notifier, _) = broadcast::channel(channel_buffer.system_broadcast);
 
+    let (monitor_tx, monitor_rx) = mpsc::channel(2_000);
+
     let system = System {
         system_notifier,
+        monitor_tx: monitor_tx.clone(),
         is_shutdown: false,
     };
 
@@ -59,7 +62,7 @@ pub async fn certifier_with_kafka_pg(
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config, monitor_tx).await;
+    let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config, monitor_tx.clone());
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
     let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
 
@@ -89,7 +92,7 @@ pub async fn certifier_with_kafka_pg(
 
     /* START - Decision Outbox service  */
 
-    let kafka_producer = Adapters::KafkaProducer::new(&configuration.kafka_config);
+    let kafka_producer = Adapters::KafkaProducer::new(&configuration.kafka_config, monitor_tx);
     let data_store: Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync> = match configuration.db_mock {
         true => Box::new(Adapters::mock_datastore::MockDataStore {}),
         false => Box::new(
