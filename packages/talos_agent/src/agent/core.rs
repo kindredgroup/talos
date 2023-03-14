@@ -6,11 +6,12 @@ use crate::agent::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
 use crate::messaging::api::{ConsumerType, DecisionMessage};
 use crate::messaging::kafka::KafkaInitializer;
+use crate::metrics::client::MetricsClient;
+use crate::metrics::core::Metrics;
+use crate::metrics::model::{EventName, MetricsReport};
 use async_trait::async_trait;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
-use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
@@ -22,6 +23,8 @@ pub struct TalosAgentImpl {
     kafka_config: Option<KafkaConfig>,
     tx_certify: Sender<CertifyRequestChannelMessage>,
     tx_cancel: Sender<CancelRequestChannelMessage>,
+    metrics: Option<Metrics>,
+    metrics_client: Arc<Option<Box<MetricsClient>>>,
 }
 
 impl TalosAgentImpl {
@@ -30,26 +33,24 @@ impl TalosAgentImpl {
         kafka_config: Option<KafkaConfig>,
         tx_certify: Sender<CertifyRequestChannelMessage>,
         tx_cancel: Sender<CancelRequestChannelMessage>,
+        metrics: Option<Metrics>,
+        metrics_client: Arc<Option<Box<MetricsClient>>>,
     ) -> TalosAgentImpl {
         TalosAgentImpl {
             agent_config,
             kafka_config,
             tx_certify,
             tx_cancel,
+            metrics,
+            metrics_client,
         }
     }
 }
 
 impl TalosAgentImpl {
-    pub async fn start(
-        &self,
-        rx_certify: Receiver<CertifyRequestChannelMessage>,
-        rx_cancel: Receiver<CancelRequestChannelMessage>,
-        publish_times: Arc<Mutex<HashMap<String, u64>>>,
-    ) -> Result<(), AgentError> {
+    pub async fn start(&self, rx_certify: Receiver<CertifyRequestChannelMessage>, rx_cancel: Receiver<CancelRequestChannelMessage>) -> Result<(), AgentError> {
         let agent_config = self.agent_config.clone();
         let kafka_config = self.kafka_config.clone().expect("Kafka config is required");
-        let publish_times = Arc::clone(&publish_times);
 
         // channel to exchange decision messages between StateManager and DecisionReaderService
         let (tx_decision, rx_decision) = mpsc::channel::<DecisionMessage>(self.agent_config.buffer_size);
@@ -58,11 +59,10 @@ impl TalosAgentImpl {
 
         log::info!("Publisher and Consumer are ready.");
 
+        let mc = Arc::clone(&self.metrics_client);
         // Start StateManager
         tokio::spawn(async move {
-            StateManager::new(agent_config, publish_times)
-                .run(rx_certify, rx_cancel, rx_decision, publisher)
-                .await;
+            StateManager::new(agent_config, mc).run(rx_certify, rx_cancel, rx_decision, publisher).await;
         });
 
         let _ = self.start_reading_decisions(tx_decision, consumer);
@@ -86,6 +86,10 @@ impl TalosAgent for TalosAgentImpl {
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
         let (tx, mut rx) = mpsc::channel::<CertificationResponse>(1);
 
+        if let Some(mc) = self.metrics_client.as_ref() {
+            mc.new_event(EventName::Started, request.candidate.xid.clone());
+        }
+
         let m = CertifyRequestChannelMessage::new(&request, &tx);
         let to_state_manager = self.tx_certify.clone();
 
@@ -94,8 +98,11 @@ impl TalosAgent for TalosAgentImpl {
         let result: Result<Result<CertificationResponse, AgentError>, Elapsed> = timeout(max_wait, async {
             match to_state_manager.send(m).await {
                 Ok(()) => match rx.recv().await {
-                    Some(mut response) => {
-                        response.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+                    Some(response) => {
+                        if let Some(mc) = self.metrics_client.as_ref() {
+                            mc.new_event(EventName::Finished, request.candidate.xid.clone());
+                        }
+
                         Ok(response)
                     }
                     None => Err(AgentError {
@@ -119,5 +126,9 @@ impl TalosAgent for TalosAgentImpl {
                 Err(AgentError::new_certify_timout(xid, max_wait.as_millis()))
             }
         }
+    }
+
+    fn collect_metrics(&self) -> Option<MetricsReport> {
+        self.metrics.as_ref().map(|m| m.collect())
     }
 }
