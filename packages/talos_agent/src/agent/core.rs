@@ -70,7 +70,6 @@ impl TalosAgentImpl {
     }
 
     /// Spawn the task which hosts DecisionReaderService.
-    /// Return task handle.
     fn start_reading_decisions(&self, tx_decision: Sender<DecisionMessage>, consumer: Arc<Box<ConsumerType>>) {
         let consumer_ref = Arc::clone(&consumer);
         tokio::spawn(async move {
