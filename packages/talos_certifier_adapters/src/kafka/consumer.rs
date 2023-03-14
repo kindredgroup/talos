@@ -1,14 +1,14 @@
 use std::{num::TryFromIntError, time::Duration};
 
 use async_trait::async_trait;
-use log::{debug, error, info};
+use log::{debug, info};
 use rdkafka::{
-    consumer::{Consumer, ConsumerContext, StreamConsumer},
-    ClientContext, Message, TopicPartitionList,
+    consumer::{Consumer, StreamConsumer},
+    Message, TopicPartitionList,
 };
 use talos_certifier::{
-    core::MessageVariant,
-    errors::{AdapterFailureError, SystemErrorType, SystemServiceError},
+    core::{MessageVariant, SystemMonitorMessage},
+    errors::SystemServiceError,
     model::{CandidateMessage, DecisionMessage},
     ports::{
         common::SharedPortTraits,
@@ -21,42 +21,7 @@ use tokio::sync::mpsc;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
-use super::{config::KafkaConfig, utils};
-
-#[derive(Debug, Clone)]
-pub struct TalosKafkaConsumerContext {
-    channel: mpsc::Sender<SystemErrorType>,
-}
-
-impl ClientContext for TalosKafkaConsumerContext {
-    fn error(&self, error: rdkafka::error::KafkaError, reason: &str) {
-        if let Some(code) = error.rdkafka_error_code() {
-            let failure_errors = vec![
-                rdkafka::error::RDKafkaErrorCode::BrokerTransportFailure,
-                rdkafka::error::RDKafkaErrorCode::AllBrokersDown,
-            ];
-            if failure_errors.contains(&code) {
-                tokio::spawn({
-                    let channel = self.channel.clone();
-                    let error_clone = error.clone();
-                    async move {
-                        let res = channel
-                            .send(SystemErrorType::AdapterFailure(AdapterFailureError {
-                                adapter_name: "Kafka".to_string(),
-                                reason: error_clone.to_string(),
-                            }))
-                            .await;
-                        info!(" Send channel result is {res:?}");
-                    }
-                });
-                // panic!("librdkafka: [Gethyl Kurian] {}: {}", error, reason);
-            }
-        }
-        error!("librdkafka: {}: {}", error, reason);
-    }
-}
-
-impl ConsumerContext for TalosKafkaConsumerContext {}
+use super::{config::KafkaConfig, contexts::TalosKafkaConsumerContext, utils};
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
@@ -67,7 +32,7 @@ pub struct KafkaConsumer {
 }
 
 impl KafkaConsumer {
-    pub async fn new(config: &KafkaConfig, monitor_tx: mpsc::Sender<SystemErrorType>) -> Self {
+    pub fn new(config: &KafkaConfig, monitor_tx: mpsc::Sender<SystemMonitorMessage>) -> Self {
         let context = TalosKafkaConsumerContext { channel: monitor_tx };
 
         let consumer = config.build_consumer_config().create_with_context(context).expect("Failed to create consumer");

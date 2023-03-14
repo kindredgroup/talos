@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use strum::{Display, EnumString};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::{
-    errors::SystemServiceError,
+    errors::{SystemErrorType, SystemServiceError},
     model::{CandidateMessage, DecisionMessage},
 };
 
@@ -37,9 +37,15 @@ pub enum DecisionOutboxChannelMessage {
     OutboundServiceError(SystemServiceError),
 }
 
+#[derive(Debug)]
+pub enum SystemMonitorMessage {
+    Failures(SystemErrorType),
+}
+
 #[derive(Debug, Clone)]
 pub struct System {
     pub system_notifier: broadcast::Sender<SystemMessage>,
+    pub monitor_tx: mpsc::Sender<SystemMonitorMessage>,
     pub is_shutdown: bool,
 }
 

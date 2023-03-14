@@ -90,9 +90,11 @@ async fn test_candidate_message_create_decision_message() {
     let mock_decision_publisher = MockDecisionPublisher {};
 
     let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -147,9 +149,11 @@ async fn test_save_and_publish_multiple_decisions() {
     let mock_decision_publisher = MockDecisionPublisher {};
 
     let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -260,9 +264,11 @@ async fn test_capture_child_thread_dberror() {
     let mock_decision_publisher = MockDecisionPublisher {};
 
     let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -342,9 +348,11 @@ async fn test_capture_child_thread_publish_error() {
     let mock_decision_publisher = MockDecisionPublisherWithError {};
 
     let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 

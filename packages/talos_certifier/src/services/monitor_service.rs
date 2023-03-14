@@ -3,18 +3,18 @@ use log::info;
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{ServiceResult, System, SystemService},
+    core::{ServiceResult, System, SystemMonitorMessage, SystemService},
     errors::{SystemErrorType, SystemServiceError},
     SystemMessage,
 };
 
 pub struct MonitorService {
     pub system: System,
-    pub monitor_channel: mpsc::Receiver<SystemErrorType>,
+    pub monitor_channel: mpsc::Receiver<SystemMonitorMessage>,
 }
 
 impl MonitorService {
-    pub fn new(monitor_channel: mpsc::Receiver<SystemErrorType>, system: System) -> Self {
+    pub fn new(monitor_channel: mpsc::Receiver<SystemMonitorMessage>, system: System) -> Self {
         MonitorService { system, monitor_channel }
     }
 }
@@ -45,7 +45,7 @@ impl SystemService for MonitorService {
             // ** Monitor Channel messages
             monitor_message = self.monitor_channel.recv() => {
                 match monitor_message {
-                    Some(SystemErrorType::AdapterFailure(err)) => {
+                    Some(SystemMonitorMessage::Failures(SystemErrorType::AdapterFailure(err))) => {
                         info!("Monitor Service received error on {} with reason= {:#?}!", err.adapter_name, err.reason);
 
                          Err(Box::new(SystemServiceError{

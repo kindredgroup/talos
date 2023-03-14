@@ -44,9 +44,11 @@ async fn test_certification_rule_2() {
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -112,9 +114,11 @@ async fn test_error_in_processing_candidate_message_certifying() {
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -158,9 +162,11 @@ async fn test_certification_process_decision() {
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -213,9 +219,11 @@ async fn test_certification_process_decision_incorrect_version() {
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -265,9 +273,11 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
@@ -462,9 +472,11 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
     let (do_channel_tx, mut do_channel_rx) = channels.decision_outbox_channel;
     let (message_channel_tx, message_channel_rx) = channels.message_channel;
     let (system_notifier, _system_rx) = channels.system_channel;
+    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
+        monitor_tx,
         is_shutdown: false,
     };
 
