@@ -3,9 +3,8 @@ use crate::agent::errors::AgentError;
 use crate::agent::errors::AgentErrorKind::Certification;
 use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::agent::state_manager::StateManager;
-use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
-use crate::messaging::api::{ConsumerType, DecisionMessage};
-use crate::messaging::kafka::KafkaInitializer;
+use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, TalosAgent};
+use crate::messaging::api::{ConsumerType, DecisionMessage, PublisherType};
 use crate::metrics::client::MetricsClient;
 use crate::metrics::core::Metrics;
 use crate::metrics::model::{EventName, MetricsReport};
@@ -13,49 +12,57 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
+use crate::mpsc::core::{Receiver, ReceiverWrapper, Sender, SenderWrapper};
 
-pub struct TalosAgentImpl {
+pub struct TalosAgentImpl<TCancelTx>
+where
+    TCancelTx: Sender<Data=CancelRequestChannelMessage>
+{
     agent_config: AgentConfig,
-    kafka_config: Option<KafkaConfig>,
-    tx_certify: Sender<CertifyRequestChannelMessage>,
-    tx_cancel: Sender<CancelRequestChannelMessage>,
+    tx_certify: Arc<Box<dyn Sender<Data=CertifyRequestChannelMessage>>>,
+    tx_cancel: TCancelTx,
     metrics: Option<Metrics>,
     metrics_client: Arc<Option<Box<MetricsClient>>>,
 }
 
-impl TalosAgentImpl {
+impl <TCancelTx> TalosAgentImpl<TCancelTx>
+where
+    TCancelTx: Sender<Data=CancelRequestChannelMessage>
+{
     pub fn new(
         agent_config: AgentConfig,
-        kafka_config: Option<KafkaConfig>,
-        tx_certify: Sender<CertifyRequestChannelMessage>,
-        tx_cancel: Sender<CancelRequestChannelMessage>,
+        tx_certify: Arc<Box<dyn Sender<Data=CertifyRequestChannelMessage>>>,
+        tx_cancel: TCancelTx,
         metrics: Option<Metrics>,
         metrics_client: Arc<Option<Box<MetricsClient>>>,
-    ) -> TalosAgentImpl {
+    ) -> TalosAgentImpl<TCancelTx> {
         TalosAgentImpl {
             agent_config,
-            kafka_config,
             tx_certify,
             tx_cancel,
             metrics,
             metrics_client,
         }
     }
-}
 
-impl TalosAgentImpl {
-    pub async fn start(&self, rx_certify: Receiver<CertifyRequestChannelMessage>, rx_cancel: Receiver<CancelRequestChannelMessage>) -> Result<(), AgentError> {
+    pub fn start<TCertifyRx, TCancelRx, TDecisionTx, TDecisionRx>(
+        &self,
+        rx_certify: TCertifyRx,
+        rx_cancel: TCancelRx,
+        tx_decision: TDecisionTx,
+        rx_decision: TDecisionRx,
+        publisher: Arc<Box<PublisherType>>,
+        consumer: Arc<Box<ConsumerType>>,
+    ) -> Result<(), AgentError>
+    where
+        TCertifyRx: crate::mpsc::core::Receiver<Data=CertifyRequestChannelMessage> + 'static,
+        TCancelRx: crate::mpsc::core::Receiver<Data=CancelRequestChannelMessage> + 'static,
+        TDecisionTx: Sender<Data=DecisionMessage> + 'static,
+        TDecisionRx: crate::mpsc::core::Receiver<Data=DecisionMessage> + 'static
+    {
         let agent_config = self.agent_config.clone();
-        let kafka_config = self.kafka_config.clone().expect("Kafka config is required");
-
-        // channel to exchange decision messages between StateManager and DecisionReaderService
-        let (tx_decision, rx_decision) = mpsc::channel::<DecisionMessage>(self.agent_config.buffer_size);
-
-        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config.clone()).await?;
-
         log::info!("Publisher and Consumer are ready.");
 
         let mc = Arc::clone(&self.metrics_client);
@@ -70,7 +77,10 @@ impl TalosAgentImpl {
     }
 
     /// Spawn the task which hosts DecisionReaderService.
-    fn start_reading_decisions(&self, tx_decision: Sender<DecisionMessage>, consumer: Arc<Box<ConsumerType>>) {
+    fn start_reading_decisions<TDecisionTx>(&self, tx_decision: TDecisionTx, consumer: Arc<Box<ConsumerType>>)
+    where
+        TDecisionTx: crate::mpsc::core::Sender<Data=DecisionMessage> + 'static
+    {
         let consumer_ref = Arc::clone(&consumer);
         tokio::spawn(async move {
             let decision_reader = DecisionReaderService::new(consumer_ref, tx_decision);
@@ -80,16 +90,21 @@ impl TalosAgentImpl {
 }
 
 #[async_trait]
-impl TalosAgent for TalosAgentImpl {
+impl <TCancel> TalosAgent for TalosAgentImpl<TCancel>
+where
+    TCancel: Sender<Data=CancelRequestChannelMessage>
+{
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
-        let (tx, mut rx) = mpsc::channel::<CertificationResponse>(1);
+        let (tx_ch, rx_ch) = mpsc::channel::<CertificationResponse>(1);
+        let tx = SenderWrapper { tx: tx_ch };
+        let mut rx = ReceiverWrapper { rx: rx_ch };
 
         if let Some(mc) = self.metrics_client.as_ref() {
             mc.new_event(EventName::Started, request.candidate.xid.clone());
         }
 
-        let m = CertifyRequestChannelMessage::new(&request, &tx);
-        let to_state_manager = self.tx_certify.clone();
+        let m = CertifyRequestChannelMessage::new(&request, Arc::new(Box::new(tx)));
+        let to_state_manager = Arc::clone(&self.tx_certify);
 
         let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timout_ms));
 

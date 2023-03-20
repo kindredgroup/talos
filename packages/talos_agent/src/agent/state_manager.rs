@@ -6,17 +6,17 @@ use crate::metrics::model::EventName;
 use multimap::MultiMap;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::mpsc::{Receiver, Sender};
+use crate::mpsc::core::{Receiver, Sender};
 
 /// Structure represents client who sent the certification request.
 struct WaitingClient {
     /// Time when certification request received.
     received_at: u64,
-    tx_sender: Sender<CertificationResponse>,
+    tx_sender: Arc<Box<dyn Sender<Data=CertificationResponse>>>,
 }
 
 impl WaitingClient {
-    pub fn new(tx_sender: Sender<CertificationResponse>) -> Self {
+    pub fn new(tx_sender: Arc<Box<dyn Sender<Data=CertificationResponse>>>) -> Self {
         WaitingClient {
             received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
             tx_sender,
@@ -39,13 +39,18 @@ impl StateManager {
         StateManager { agent_config, metrics_client }
     }
 
-    pub async fn run(
+    pub async fn run<TCertifyRx, TCancelRx, TDecisionRx>(
         &self,
-        mut rx_certify: Receiver<CertifyRequestChannelMessage>,
-        mut rx_cancel: Receiver<CancelRequestChannelMessage>,
-        mut rx_decision: Receiver<DecisionMessage>,
+        mut rx_certify: TCertifyRx,
+        mut rx_cancel: TCancelRx,
+        mut rx_decision: TDecisionRx,
         publisher: Arc<Box<PublisherType>>,
-    ) {
+    )
+    where
+        TCertifyRx: Receiver<Data=CertifyRequestChannelMessage> + 'static,
+        TCancelRx: Receiver<Data=CancelRequestChannelMessage> + 'static,
+        TDecisionRx: Receiver<Data=DecisionMessage>,
+    {
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
         loop {
             let mc = Arc::clone(&self.metrics_client);
@@ -71,10 +76,11 @@ impl StateManager {
         &self,
         opt_candidate: Option<CertifyRequestChannelMessage>,
         publisher: Arc<Box<PublisherType>>,
-        state: &mut MultiMap<String, WaitingClient>,
+        state: &mut MultiMap<String, WaitingClient>
     ) {
         if let Some(request_msg) = opt_candidate {
-            state.insert(request_msg.request.candidate.xid.clone(), WaitingClient::new(request_msg.tx_answer));
+            let wc = WaitingClient::new(Arc::clone(&request_msg.tx_answer));
+            state.insert(request_msg.request.candidate.xid.clone(), wc);
 
             let msg = CandidateMessage::new(
                 self.agent_config.agent.clone(),

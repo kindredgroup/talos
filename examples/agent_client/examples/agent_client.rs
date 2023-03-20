@@ -5,10 +5,16 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use talos_agent::agent::errors::AgentError;
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgentBuilder, TalosAgentType, TalosType};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosType};
 use time::OffsetDateTime;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
+use talos_agent::agent::core::TalosAgentImpl;
+use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use talos_agent::messaging::api::DecisionMessage;
+use talos_agent::messaging::kafka::KafkaInitializer;
+use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
 ///
 /// The sample usage of talos agent library
@@ -80,15 +86,42 @@ fn name_rate(v: Duration) -> String {
     }
 }
 
-async fn make_agent() -> Box<TalosAgentType> {
+async fn make_agent() -> impl TalosAgent
+{
     let (cfg_agent, cfg_kafka) = make_configs();
 
-    TalosAgentBuilder::new(cfg_agent)
-        .with_kafka(cfg_kafka)
-        .with_metrics()
-        .build()
-        .await
-        .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent.\nReason: {}", e)))
+    // TalosAgentBuilder::new(cfg_agent)
+    //     .with_kafka(cfg_kafka)
+    //     .with_metrics()
+    //     .build()
+    //     .await
+    //     .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent.\nReason: {}", e)))
+
+    let (tx_certify_ch, rx_certify_ch) = mpsc::channel::<CertifyRequestChannelMessage>(cfg_agent.buffer_size);
+    let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
+    let rx_certify = ReceiverWrapper::<CertifyRequestChannelMessage> { rx: rx_certify_ch };
+
+    let (tx_decision_ch, rx_decision_ch) = mpsc::channel::<DecisionMessage>(cfg_agent.buffer_size);
+    let tx_decision = SenderWrapper::<DecisionMessage> { tx: tx_decision_ch };
+    let rx_decision = ReceiverWrapper::<DecisionMessage> { rx: rx_decision_ch };
+
+    let (tx_cancel_ch, rx_cancel_ch) = mpsc::channel::<CancelRequestChannelMessage>(cfg_agent.buffer_size);
+    let tx_cancel = SenderWrapper::<CancelRequestChannelMessage> { tx: tx_cancel_ch };
+    let rx_cancel = ReceiverWrapper::<CancelRequestChannelMessage> { rx: rx_cancel_ch };
+
+    let (publisher, consumer) = KafkaInitializer::connect(cfg_agent.agent.clone(), cfg_kafka).await.expect("Cannot connect to kafka...");
+
+    let agent = TalosAgentImpl::new(
+        cfg_agent.clone(),
+        Arc::new(Box::new(tx_certify)),
+        tx_cancel,
+        None,
+        Arc::new(None)
+    );
+
+    agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer).expect("unable to start agent");
+
+    agent
 }
 
 #[tokio::main]

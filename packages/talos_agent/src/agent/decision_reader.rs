@@ -1,15 +1,18 @@
 use crate::messaging::api::{ConsumerType, DecisionMessage};
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
+use crate::mpsc::core::Sender;
 
-pub struct DecisionReaderService {
+pub struct DecisionReaderService<S: Sender<Data=DecisionMessage>> {
     consumer: Arc<Box<ConsumerType>>,
-    tx_decision: Sender<DecisionMessage>,
+    tx_decision: S,
 }
 
-impl DecisionReaderService {
-    pub fn new(consumer: Arc<Box<ConsumerType>>, tx_decision: Sender<DecisionMessage>) -> Self {
-        DecisionReaderService { consumer, tx_decision }
+impl <S: Sender<Data=DecisionMessage>> DecisionReaderService<S> {
+    pub fn new(consumer: Arc<Box<ConsumerType>>, tx_decision: S) -> Self {
+        DecisionReaderService {
+            consumer,
+            tx_decision
+        }
     }
 
     pub async fn run(&self) {
