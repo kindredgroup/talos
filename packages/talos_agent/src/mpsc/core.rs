@@ -1,5 +1,6 @@
-use std::fmt::Debug;
 use async_trait::async_trait;
+use std::fmt::Debug;
+
 use tokio::sync::mpsc::error::SendError;
 
 #[async_trait]
@@ -21,7 +22,7 @@ pub struct SenderWrapper<T: Send + Sync + Clone + Debug> {
 }
 
 #[async_trait]
-impl <T: Send + Sync + Clone + Debug> Sender for SenderWrapper<T> {
+impl<T: Send + Sync + Clone + Debug> Sender for SenderWrapper<T> {
     type Data = T;
     async fn send(&self, value: T) -> Result<(), SendError<T>> {
         self.tx.send(value).await
@@ -33,7 +34,7 @@ pub struct ReceiverWrapper<T: Send> {
 }
 
 #[async_trait]
-impl <T: Send> Receiver for ReceiverWrapper<T> {
+impl<T: Send> Receiver for ReceiverWrapper<T> {
     type Data = T;
     async fn recv(&mut self) -> Option<T> {
         self.rx.recv().await

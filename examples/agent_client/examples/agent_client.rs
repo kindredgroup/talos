@@ -4,21 +4,20 @@ use rdkafka::config::RDKafkaLogLevel;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use talos_agent::agent::errors::AgentError;
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosType};
-use time::OffsetDateTime;
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use uuid::Uuid;
 use talos_agent::agent::core::TalosAgentImpl;
+use talos_agent::agent::errors::AgentError;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosType};
 use talos_agent::messaging::api::DecisionMessage;
 use talos_agent::messaging::kafka::KafkaInitializer;
-use talos_agent::metrics;
 use talos_agent::metrics::client::MetricsClient;
 use talos_agent::metrics::core::Metrics;
 use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
+use time::OffsetDateTime;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use uuid::Uuid;
 
 ///
 /// The sample usage of talos agent library
@@ -91,8 +90,7 @@ fn name_rate(v: Duration) -> String {
     }
 }
 
-async fn make_agent() -> impl TalosAgent
-{
+async fn make_agent() -> impl TalosAgent {
     let (cfg_agent, cfg_kafka) = make_configs();
 
     let (tx_certify_ch, rx_certify_ch) = mpsc::channel::<CertifyRequestChannelMessage>(cfg_agent.buffer_size);
@@ -107,17 +105,21 @@ async fn make_agent() -> impl TalosAgent
     let tx_cancel = SenderWrapper::<CancelRequestChannelMessage> { tx: tx_cancel_ch };
     let rx_cancel = ReceiverWrapper::<CancelRequestChannelMessage> { rx: rx_cancel_ch };
 
-    let (publisher, consumer) = KafkaInitializer::connect(cfg_agent.agent.clone(), cfg_kafka).await.expect("Cannot connect to kafka...");
+    let (publisher, consumer) = KafkaInitializer::connect(cfg_agent.agent.clone(), cfg_kafka)
+        .await
+        .expect("Cannot connect to kafka...");
 
     let metrics: Option<Metrics>;
     let metrics_client: Option<Box<MetricsClient<SenderWrapper<Signal>>>>;
     if WITH_METRICS {
-        let server = metrics::core::Metrics::new();
+        let server = Metrics::new();
 
         let (tx_ch, rx_ch) = mpsc::channel::<Signal>(100_000);
-        server.run(ReceiverWrapper{ rx: rx_ch });
+        server.run(ReceiverWrapper { rx: rx_ch });
 
-        let client = MetricsClient { tx_destination: SenderWrapper::<Signal> { tx: tx_ch } };
+        let client = MetricsClient {
+            tx_destination: SenderWrapper::<Signal> { tx: tx_ch },
+        };
 
         metrics_client = Some(Box::new(client));
         metrics = Some(server);
@@ -135,10 +137,12 @@ async fn make_agent() -> impl TalosAgent
         || {
             let (tx_ch, rx_ch) = mpsc::channel::<CertificationResponse>(1);
             (SenderWrapper { tx: tx_ch }, ReceiverWrapper { rx: rx_ch })
-        }
+        },
     );
 
-    agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer).expect("unable to start agent");
+    agent
+        .start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer)
+        .expect("unable to start agent");
     agent
 }
 
@@ -174,9 +178,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             skip -= 1
         }
         let ac = Arc::clone(&agent);
-        let task = tokio::spawn(async move {
-            ac.certify(make_candidate(Uuid::new_v4().to_string())).await
-        });
+        let task = tokio::spawn(async move { ac.certify(make_candidate(Uuid::new_v4().to_string())).await });
         tasks.push(task);
 
         let p = i + 1;

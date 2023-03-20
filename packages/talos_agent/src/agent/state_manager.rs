@@ -3,20 +3,20 @@ use crate::api::{AgentConfig, CertificationResponse};
 use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
 use crate::metrics::client::MetricsClient;
 use crate::metrics::model::{EventName, Signal};
+use crate::mpsc::core::{Receiver, Sender};
 use multimap::MultiMap;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use crate::mpsc::core::{Receiver, Sender};
 
 /// Structure represents client who sent the certification request.
 struct WaitingClient {
     /// Time when certification request received.
     received_at: u64,
-    tx_sender: Arc<Box<dyn Sender<Data=CertificationResponse>>>,
+    tx_sender: Arc<Box<dyn Sender<Data = CertificationResponse>>>,
 }
 
 impl WaitingClient {
-    pub fn new(tx_sender: Arc<Box<dyn Sender<Data=CertificationResponse>>>) -> Self {
+    pub fn new(tx_sender: Arc<Box<dyn Sender<Data = CertificationResponse>>>) -> Self {
         WaitingClient {
             received_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
             tx_sender,
@@ -29,12 +29,12 @@ impl WaitingClient {
     }
 }
 
-pub struct StateManager<TSignalTx: Sender<Data=Signal>> {
+pub struct StateManager<TSignalTx: Sender<Data = Signal>> {
     agent_config: AgentConfig,
     metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
 }
 
-impl <TSignalTx: Sender<Data=Signal> + 'static> StateManager<TSignalTx> {
+impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     pub fn new(agent_config: AgentConfig, metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>) -> StateManager<TSignalTx> {
         StateManager { agent_config, metrics_client }
     }
@@ -45,11 +45,10 @@ impl <TSignalTx: Sender<Data=Signal> + 'static> StateManager<TSignalTx> {
         mut rx_cancel: TCancelRx,
         mut rx_decision: TDecisionRx,
         publisher: Arc<Box<PublisherType>>,
-    )
-    where
-        TCertifyRx: Receiver<Data=CertifyRequestChannelMessage> + 'static,
-        TCancelRx: Receiver<Data=CancelRequestChannelMessage> + 'static,
-        TDecisionRx: Receiver<Data=DecisionMessage>,
+    ) where
+        TCertifyRx: Receiver<Data = CertifyRequestChannelMessage> + 'static,
+        TCancelRx: Receiver<Data = CancelRequestChannelMessage> + 'static,
+        TDecisionRx: Receiver<Data = DecisionMessage>,
     {
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
         loop {
@@ -76,7 +75,7 @@ impl <TSignalTx: Sender<Data=Signal> + 'static> StateManager<TSignalTx> {
         &self,
         opt_candidate: Option<CertifyRequestChannelMessage>,
         publisher: Arc<Box<PublisherType>>,
-        state: &mut MultiMap<String, WaitingClient>
+        state: &mut MultiMap<String, WaitingClient>,
     ) {
         if let Some(request_msg) = opt_candidate {
             let wc = WaitingClient::new(Arc::clone(&request_msg.tx_answer));
@@ -158,8 +157,12 @@ impl <TSignalTx: Sender<Data=Signal> + 'static> StateManager<TSignalTx> {
 
             if let Some(mc) = metrics_client.as_ref() {
                 mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0)).await.unwrap();
-                mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at).await.unwrap();
-                mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at).await.unwrap();
+                mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
+                    .await
+                    .unwrap();
+                mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at)
+                    .await
+                    .unwrap();
             }
         }
     }

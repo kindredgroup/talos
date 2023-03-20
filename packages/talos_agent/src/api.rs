@@ -1,6 +1,6 @@
 use crate::agent::errors::AgentError;
-use crate::messaging::api::{Decision};
-use crate::metrics::model::{MetricsReport};
+use crate::messaging::api::Decision;
+use crate::metrics::model::MetricsReport;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
 use std::time::Duration;

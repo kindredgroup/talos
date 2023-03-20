@@ -99,7 +99,7 @@ impl Metrics {
     }
 
     /// Launches background task which collects and stores incoming signals
-    pub fn run<TSignalRx: crate::mpsc::core::Receiver<Data=Signal> + 'static>(&self, mut rx_destination: TSignalRx) {
+    pub fn run<TSignalRx: crate::mpsc::core::Receiver<Data = Signal> + 'static>(&self, mut rx_destination: TSignalRx) {
         let state = Arc::clone(&self.state);
         tokio::spawn(async move {
             loop {
