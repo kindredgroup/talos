@@ -2,7 +2,7 @@ use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMess
 use crate::api::{AgentConfig, CertificationResponse};
 use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
 use crate::metrics::client::MetricsClient;
-use crate::metrics::model::EventName;
+use crate::metrics::model::{EventName, Signal};
 use multimap::MultiMap;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -29,13 +29,13 @@ impl WaitingClient {
     }
 }
 
-pub struct StateManager {
+pub struct StateManager<TSignalTx: Sender<Data=Signal>> {
     agent_config: AgentConfig,
-    metrics_client: Arc<Option<Box<MetricsClient>>>,
+    metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
 }
 
-impl StateManager {
-    pub fn new(agent_config: AgentConfig, metrics_client: Arc<Option<Box<MetricsClient>>>) -> StateManager {
+impl <TSignalTx: Sender<Data=Signal> + 'static> StateManager<TSignalTx> {
+    pub fn new(agent_config: AgentConfig, metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>) -> StateManager<TSignalTx> {
         StateManager { agent_config, metrics_client }
     }
 
@@ -98,7 +98,7 @@ impl StateManager {
             tokio::spawn(async move {
                 publisher_ref.send_message(key, msg).await.unwrap();
                 if let Some(mc) = metrics.as_ref() {
-                    mc.new_event(EventName::CandidatePublished, xid.clone());
+                    mc.new_event(EventName::CandidatePublished, xid.clone()).await.unwrap();
                 }
             });
         }
@@ -109,7 +109,7 @@ impl StateManager {
     async fn handle_decision(
         opt_decision: Option<DecisionMessage>,
         state: &mut MultiMap<String, WaitingClient>,
-        metrics_client: Arc<Option<Box<MetricsClient>>>,
+        metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
         if let Some(message) = opt_decision {
             let xid = &message.xid;
@@ -131,7 +131,7 @@ impl StateManager {
         decision: Decision,
         decided_at: Option<u64>,
         clients: Option<&Vec<WaitingClient>>,
-        metrics_client: Arc<Option<Box<MetricsClient>>>,
+        metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
         if clients.is_none() {
             log::warn!("There are no waiting clients for the candidate '{}'", xid);
@@ -157,9 +157,9 @@ impl StateManager {
             waiting_client.notify(response.clone(), error_message).await;
 
             if let Some(mc) = metrics_client.as_ref() {
-                mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0));
-                mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at);
-                mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at);
+                mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0)).await.unwrap();
+                mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at).await.unwrap();
+                mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at).await.unwrap();
             }
         }
     }

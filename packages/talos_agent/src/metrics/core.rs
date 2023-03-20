@@ -3,7 +3,6 @@ use crate::metrics::model::{EventMetadata, EventName, MetricsReport, Signal};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc::Receiver;
 
 /// The internal Metrics service responsible for collecting and accumulating runtime events
 pub struct Metrics {
@@ -100,7 +99,7 @@ impl Metrics {
     }
 
     /// Launches background task which collects and stores incoming signals
-    pub fn run(&self, mut rx_destination: Receiver<Signal>) {
+    pub fn run<TSignalRx: crate::mpsc::core::Receiver<Data=Signal> + 'static>(&self, mut rx_destination: TSignalRx) {
         let state = Arc::clone(&self.state);
         tokio::spawn(async move {
             loop {

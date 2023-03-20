@@ -14,18 +14,23 @@ use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use talos_agent::messaging::api::DecisionMessage;
 use talos_agent::messaging::kafka::KafkaInitializer;
+use talos_agent::metrics;
+use talos_agent::metrics::client::MetricsClient;
+use talos_agent::metrics::core::Metrics;
+use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
 ///
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 1000;
+const BATCH_SIZE: i32 = 200_000;
 const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
-const TARGET_RATE: f64 = 500_f64;
+const TARGET_RATE: f64 = 50_000_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
+const WITH_METRICS: bool = false;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
@@ -90,13 +95,6 @@ async fn make_agent() -> impl TalosAgent
 {
     let (cfg_agent, cfg_kafka) = make_configs();
 
-    // TalosAgentBuilder::new(cfg_agent)
-    //     .with_kafka(cfg_kafka)
-    //     .with_metrics()
-    //     .build()
-    //     .await
-    //     .unwrap_or_else(|e| panic!("{}", format!("Unable to build agent.\nReason: {}", e)))
-
     let (tx_certify_ch, rx_certify_ch) = mpsc::channel::<CertifyRequestChannelMessage>(cfg_agent.buffer_size);
     let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
     let rx_certify = ReceiverWrapper::<CertifyRequestChannelMessage> { rx: rx_certify_ch };
@@ -111,16 +109,36 @@ async fn make_agent() -> impl TalosAgent
 
     let (publisher, consumer) = KafkaInitializer::connect(cfg_agent.agent.clone(), cfg_kafka).await.expect("Cannot connect to kafka...");
 
+    let metrics: Option<Metrics>;
+    let metrics_client: Option<Box<MetricsClient<SenderWrapper<Signal>>>>;
+    if WITH_METRICS {
+        let server = metrics::core::Metrics::new();
+
+        let (tx_ch, rx_ch) = mpsc::channel::<Signal>(100_000);
+        server.run(ReceiverWrapper{ rx: rx_ch });
+
+        let client = MetricsClient { tx_destination: SenderWrapper::<Signal> { tx: tx_ch } };
+
+        metrics_client = Some(Box::new(client));
+        metrics = Some(server);
+    } else {
+        metrics = None;
+        metrics_client = None;
+    }
+
     let agent = TalosAgentImpl::new(
         cfg_agent.clone(),
         Arc::new(Box::new(tx_certify)),
         tx_cancel,
-        None,
-        Arc::new(None)
+        metrics,
+        Arc::new(metrics_client),
+        || {
+            let (tx_ch, rx_ch) = mpsc::channel::<CertificationResponse>(1);
+            (SenderWrapper { tx: tx_ch }, ReceiverWrapper { rx: rx_ch })
+        }
     );
 
     agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer).expect("unable to start agent");
-
     agent
 }
 
@@ -156,7 +174,9 @@ async fn certify(batch_size: i32) -> Result<(), String> {
             skip -= 1
         }
         let ac = Arc::clone(&agent);
-        let task = tokio::spawn(async move { ac.certify(make_candidate(Uuid::new_v4().to_string())).await });
+        let task = tokio::spawn(async move {
+            ac.certify(make_candidate(Uuid::new_v4().to_string())).await
+        });
         tasks.push(task);
 
         let p = i + 1;
