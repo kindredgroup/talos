@@ -72,6 +72,8 @@ mod tests {
 
     #[tokio::test]
     async fn should_consume_and_forward() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
@@ -118,6 +120,8 @@ mod tests {
 
     #[tokio::test]
     async fn should_stop_reading_when_destination_is_closed() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
@@ -168,6 +172,8 @@ mod tests {
 
     #[tokio::test]
     async fn should_keep_reading_when_received_error() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 

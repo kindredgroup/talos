@@ -16,19 +16,6 @@ impl<TSignalTx: crate::mpsc::core::Sender<Data = Signal> + 'static> MetricsClien
 
     /// Makes an instance of new event with the given timestamp and transmits it to metrics system
     pub async fn new_event_at(&self, name: EventName, id: String, time: u64) -> Result<u64, SendError<Signal>> {
-        // let tx = self.tx_destination.clone();
-        // tokio::spawn(async move {
-        //     let event = Event {
-        //         event_name: name,
-        //         time,
-        //         id: id.clone(),
-        //     };
-        //
-        //     match tx.send(Signal::Start { time, event }).await {
-        //         Ok(()) => Ok(time),
-        //         Err(e) => Err(e),
-        //     }
-        // })
         let event = Event {
             event_name: name,
             time,
