@@ -1,4 +1,3 @@
-use std::error::Error;
 use strum::Display;
 use thiserror::Error as ThisError;
 
@@ -15,7 +14,7 @@ pub enum MessagingErrorKind {
 pub struct MessagingError {
     pub kind: MessagingErrorKind,
     pub reason: String,
-    pub cause: Option<Box<dyn Error + Send>>,
+    pub cause: Option<String>,
 }
 
 impl From<String> for MessagingError {
@@ -29,7 +28,7 @@ impl From<String> for MessagingError {
 }
 
 impl MessagingError {
-    pub fn new_consuming(cause: Box<dyn Error + Send>) -> Self {
+    pub fn new_consuming(cause: String) -> Self {
         MessagingError {
             kind: MessagingErrorKind::Consuming,
             reason: "Cannot read message".to_string(),
@@ -37,7 +36,7 @@ impl MessagingError {
         }
     }
 
-    pub fn new_publishing(reason: String, cause: Box<dyn Error + Send>) -> Self {
+    pub fn new_publishing(reason: String, cause: String) -> Self {
         MessagingError {
             kind: MessagingErrorKind::Publishing,
             reason,
@@ -45,7 +44,7 @@ impl MessagingError {
         }
     }
 
-    pub fn new_corrupted_payload(reason: String, cause: Box<dyn Error + Send>) -> Self {
+    pub fn new_corrupted_payload(reason: String, cause: String) -> Self {
         MessagingError {
             kind: MessagingErrorKind::CorruptedPayload,
             reason,

@@ -1,7 +1,6 @@
 use crate::agent::errors::AgentErrorKind::{CertificationTimout, Messaging};
 use crate::agent::model::CertifyRequestChannelMessage;
 use crate::messaging::errors::MessagingError;
-use std::error::Error;
 use strum::Display;
 use thiserror::Error as ThisError;
 use tokio::sync::mpsc::error::SendError;
@@ -19,7 +18,7 @@ pub enum AgentErrorKind {
 pub struct AgentError {
     pub kind: AgentErrorKind,
     pub reason: String,
-    pub cause: Option<Box<dyn Error + Send>>,
+    pub cause: Option<String>,
 }
 
 impl AgentError {
@@ -37,7 +36,7 @@ impl From<MessagingError> for AgentError {
         AgentError {
             kind: Messaging,
             reason: e.to_string(),
-            cause: e.cause,
+            cause: None,
         }
     }
 }
@@ -46,10 +45,10 @@ impl From<SendError<CertifyRequestChannelMessage>> for AgentError {
     fn from(e: SendError<CertifyRequestChannelMessage>) -> Self {
         AgentError {
             kind: AgentErrorKind::Certification {
-                xid: e.0.request.candidate.xid.clone(),
+                xid: e.0.request.candidate.xid,
             },
             reason: "Outgoing channel is closed".to_string(),
-            cause: Some(Box::new(e)),
+            cause: None,
         }
     }
 }

@@ -13,14 +13,14 @@ app_name=talos
 export CARGO_INCREMENTAL="0"
 export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"
 
-excludes="talos_agent"
+excludes="none"
 
 echo "Compiling $app_name"
 cargo +nightly build
 
 echo "Testing $app_name"
 export LLVM_PROFILE_FILE="${app_name}-%p-%m.profraw"
-cargo +nightly test --tests # don't run doctests
+cargo +nightly test --tests -p talos_agent # don't run doctests
 
 rm ccov.zip 2> /dev/null || true
 zip -0 ccov.zip `find . \( -name "*.gc*" \) -print | grep -v ${excludes}`

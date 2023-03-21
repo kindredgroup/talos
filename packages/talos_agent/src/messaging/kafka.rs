@@ -26,7 +26,7 @@ impl From<KafkaError> for MessagingError {
         MessagingError {
             kind: MessagingErrorKind::Generic,
             reason: format!("Kafka error.\nReason: {}", e),
-            cause: Some(Box::new(e)),
+            cause: Some(e.to_string()),
         }
     }
 }
@@ -90,7 +90,7 @@ impl Publisher for KafkaPublisher {
             }
             Err((e, _)) => {
                 error!("KafkaPublisher.send_message(): Error publishing xid: {}, error: {}", message.xid, e);
-                Err(MessagingError::new_publishing(format!("Cannot publish into topic: {}", topic), Box::new(e)))
+                Err(MessagingError::new_publishing(format!("Cannot publish into topic: {}", topic), e.to_string()))
             }
         };
     }
@@ -201,11 +201,11 @@ impl KafkaConsumer {
 
     fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, MessagingError> {
         let json_as_text =
-            raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), Box::new(utf_error)))?;
+            raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
 
         // convert JSON text into DecisionMessage
         serde_json::from_str::<DecisionMessage>(json_as_text)
-            .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), Box::new(json_error)))
+            .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))
     }
 
     fn parse_payload_as_candidate(
@@ -214,11 +214,11 @@ impl KafkaConsumer {
         decided_at: Option<u64>,
     ) -> Result<DecisionMessage, MessagingError> {
         let json_as_text =
-            raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), Box::new(utf_error)))?;
+            raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
 
         // convert JSON text into DecisionMessage
         serde_json::from_str::<CandidateMessage>(json_as_text)
-            .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), Box::new(json_error)))
+            .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))
             .map(|candidate| DecisionMessage {
                 xid: candidate.xid,
                 agent: candidate.agent,
@@ -239,7 +239,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             .consumer
             .recv()
             .await
-            .map_err(|kafka_error| MessagingError::new_consuming(Box::new(kafka_error)));
+            .map_err(|kafka_error| MessagingError::new_consuming(kafka_error.to_string()));
 
         if let Err(e) = rslt_received {
             return Some(Err(e));

@@ -3,7 +3,7 @@ use crate::mpsc::core::Sender;
 use std::sync::Arc;
 
 // Sent by agent to state manager
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct CertifyRequestChannelMessage {
     pub request: CertificationRequest,
     pub tx_answer: Arc<Box<dyn Sender<Data = CertificationResponse>>>,
