@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -93,6 +93,7 @@ impl SystemService for MessageReceiverService {
                 Err(consumer_error) => {
                     match &consumer_error.kind {
                         MessageReceiverErrorKind::SubscribeError => {
+                            error!("{:?} ", consumer_error.to_string());
                             // *** Shutdown the current service and return the error
                             self.shutdown_service().await;
                             return Err(Box::new(consumer_error.into()))
@@ -100,7 +101,7 @@ impl SystemService for MessageReceiverService {
                         // These are should log and but not stop the system.
                         _ => {
                             warn!("{:?} ", consumer_error.to_string());
-                            }
+                        }
                     }
                 },
             }

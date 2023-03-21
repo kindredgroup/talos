@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{debug, info};
+use log::{debug, error, info, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use tokio::sync::mpsc;
@@ -78,7 +78,7 @@ impl CertifierService {
     /// * Certify the message.
     /// * Create the DecisionMessage from the certification outcome.
     ///
-    pub(crate) fn process_candidate_message_outcome(&mut self, message: &CandidateMessage) -> ServiceResult<DecisionMessage> {
+    pub(crate) fn process_candidate(&mut self, message: &CandidateMessage) -> Result<DecisionMessage, CertificationError> {
         debug!("[Process Candidate message] Version {} ", message.version);
 
         // Insert into Suffix
@@ -97,23 +97,7 @@ impl CertifierService {
         Ok(DecisionMessage::new(message, conflict_candidate, outcome, suffix_head))
     }
 
-    pub(crate) async fn process_candidate(&mut self, message: &CandidateMessage) -> ServiceResult {
-        let decision_message = self.process_candidate_message_outcome(message)?;
-
-        self.decision_outbox_tx
-            .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
-            .await
-            .map_err(|e| SystemServiceError {
-                kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                data: Some(format!("{:?}", decision_message)),
-                reason: e.to_string(),
-                service: "Certifier Service".to_string(),
-            })?;
-
-        Ok(())
-    }
-
-    pub(crate) async fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> ServiceResult {
+    pub(crate) fn process_decision(&mut self, decision_version: &u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
         // update the decision in suffix
         debug!(
             "[Process Decision message] Version {} and Decision Message {:?} ",
@@ -132,7 +116,7 @@ impl CertifierService {
 
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             self.suffix
-                .update_decision_suffix_item(candidate_version, decision_version)
+                .update_decision_suffix_item(candidate_version, *decision_version)
                 .map_err(CertificationError::SuffixError)?;
 
             // check if all prioir items are decided.
@@ -140,7 +124,7 @@ impl CertifierService {
             let all_decided = self.suffix.are_prior_items_decided(candidate_version);
 
             if all_decided {
-                self.suffix.update_prune_index(Some(candidate_version_index.unwrap()));
+                self.suffix.update_prune_index(candidate_version_index);
             }
 
             // prune suffix if required?
@@ -159,10 +143,52 @@ impl CertifierService {
             if all_decided {
                 debug!("Prior items decided if condition with dv={}", decision_message.version);
 
-                self.commit_offset
-                    .store(candidate_version.try_into().unwrap(), std::sync::atomic::Ordering::Relaxed);
+                self.commit_offset.store(candidate_version as i64, std::sync::atomic::Ordering::Relaxed);
             }
         }
+
+        Ok(())
+    }
+
+    pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage>) -> ServiceResult<()> {
+        if let Err(certification_error) = match channel_message {
+            Some(ChannelMessage::Candidate(message)) => {
+                let res = self.process_candidate(message);
+
+                if let Ok(decision_message) = res {
+                    Ok(self
+                        .decision_outbox_tx
+                        .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
+                        .await
+                        .map_err(|e| SystemServiceError {
+                            kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
+                            data: Some(format!("{:?}", decision_message)),
+                            reason: e.to_string(),
+                            service: "Certifier Service".to_string(),
+                        })?)
+                } else {
+                    Err(res.unwrap_err())
+                }
+            }
+
+            Some(ChannelMessage::Decision(version, decision_message)) => self.process_decision(version, decision_message),
+
+            None => Ok(()),
+            // _ => (),
+        } {
+            // Ignore errors not required to cause the app to shutdown.
+            match &certification_error {
+                CertificationError::SuffixError(..) => {
+                    warn!("{:?} ", certification_error.to_string());
+                }
+                _ => {
+                    // *** Shutdown the current service and return the error
+                    error!("{:?} ", certification_error.to_string());
+                    self.shutdown_service().await;
+                    return Err(certification_error.into());
+                }
+            }
+        };
 
         Ok(())
     }
@@ -195,19 +221,7 @@ impl SystemService for CertifierService {
         // while !self.is_shutdown() {
         tokio::select! {
            channel_msg =  self.message_channel_rx.recv() =>  {
-                match channel_msg {
-                    Some(ChannelMessage::Candidate( message)) => {
-                         self.process_candidate(&message).await?
-
-                    },
-
-                    Some(ChannelMessage::Decision(version, decision_message)) => {
-                        self.process_decision(version, &decision_message).await?
-                    },
-
-                    None => (),
-                    // _ => (),
-                }
+                self.process_message(&channel_msg).await?
             }
             // ** Received System Messages (shutdown/healthcheck).
             msg = system_channel_rx.recv() => {

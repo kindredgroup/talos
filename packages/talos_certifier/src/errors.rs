@@ -63,19 +63,6 @@ pub struct SystemServiceError {
     pub service: String,
 }
 
-impl From<CommonError> for SystemServiceError {
-    fn from(inner: CommonError) -> Self {
-        match inner {
-            CommonError::ParseError { data, reason } => SystemServiceError {
-                kind: SystemServiceErrorKind::ParseError,
-                reason,
-                data: Some(data),
-                service: "Service Info to be mapped".to_string(),
-            },
-        }
-    }
-}
-
 impl From<DecisionOutBoxServiceError> for Box<SystemServiceError> {
     fn from(inner: DecisionOutBoxServiceError) -> Self {
         match inner {
@@ -145,11 +132,6 @@ impl From<MessageReceiverError> for SystemServiceError {
                 data: msg_rx_error.data,
                 service: "Message Receiver Servicer".to_string(),
             },
-            // MessageReceiverErrorKind::IncorrectData => todo!(),
-            // MessageReceiverErrorKind::VersionZero => todo!(),
-            // MessageReceiverErrorKind::SaveVersion => todo!(),
-            // MessageReceiverErrorKind::SubscribeError => todo!(),
-            // MessageReceiverErrorKind::CommitError => todo!(),
         }
     }
 }
