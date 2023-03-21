@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::errors::SystemServiceError;
 
-use super::common::SharedPortTraits;
+use super::{common::SharedPortTraits, errors::MessageReceiverError};
 
 // The trait that should be implemented by any adapter that will read the message
 // and pass to the domain.
@@ -11,7 +11,7 @@ use super::common::SharedPortTraits;
 pub trait MessageReciever: SharedPortTraits {
     type Message;
 
-    async fn consume_message(&mut self) -> Result<Option<Self::Message>, SystemServiceError>;
+    async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
     async fn subscribe(&self) -> Result<(), SystemServiceError>;
     async fn commit(&self, vers: u64) -> Result<(), SystemServiceError>;
     async fn unsubscribe(&self);

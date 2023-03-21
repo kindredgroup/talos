@@ -26,7 +26,7 @@ pub enum DecisionOutBoxServiceError {
 
 #[derive(Debug, ThisError)]
 pub enum CommonError {
-    #[error("Error deserializing \ndata={data} \nreason={reason}")]
+    #[error("Parse Error input={data} with reason={reason}")]
     ParseError { data: String, reason: String },
 }
 

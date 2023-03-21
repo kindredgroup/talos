@@ -4,13 +4,13 @@ use std::{
 };
 
 use async_trait::async_trait;
-use log::{debug, error, info};
+use log::{debug, info, warn};
 use tokio::sync::mpsc;
 
 use crate::{
     core::{ServiceResult, System, SystemService},
     errors::{SystemErrorType, SystemServiceError, SystemServiceErrorKind},
-    ports::MessageReciever,
+    ports::{errors::MessageReceiverErrorKind, MessageReciever},
     ChannelMessage, SystemMessage,
 };
 
@@ -51,7 +51,7 @@ impl SystemService for MessageReceiverService {
     //** Initiate Shutdown
 
     async fn shutdown_service(&mut self) {
-        debug!("Recevier Service shutting down");
+        debug!("Receiver Service shutting down");
         self.receiver.shutdown().await;
         self.system.is_shutdown = true;
         info!("Receiver Service shutdown completed!");
@@ -92,22 +92,15 @@ impl SystemService for MessageReceiverService {
                 }
                 Err(consumer_error) => {
                     match &consumer_error.kind {
-                        SystemServiceErrorKind::ParseError => {
-                            error!("Parse error {:?} ",  consumer_error);
-                            // self.shutdown_service().await;
-                            // return Err(consumer_error)
+                        MessageReceiverErrorKind::SubscribeError => {
+                            // *** Shutdown the current service and return the error
+                            self.shutdown_service().await;
+                            return Err(Box::new(consumer_error.into()))
                         },
+                        // These are should log and but not stop the system.
                         _ => {
-                                // *** Shutdown the current service and return the error
-                                self.shutdown_service().await;
-                                return Err(Box::new(consumer_error))
+                            warn!("{:?} ", consumer_error.to_string());
                             }
-                        // talos_core::errors::SystemServiceErrorKind::DBError => todo!(),
-                        // talos_core::errors::SystemServiceErrorKind::CertifierError => todo!(),
-                        // talos_core::errors::SystemServiceErrorKind::SystemError => todo!(),
-                        // talos_core::errors::SystemServiceErrorKind::MessageReceiverError(_) => todo!(),
-                        // talos_core::errors::SystemServiceErrorKind::MessagePublishError => todo!(),
-                        // talos_core::errors::SystemServiceErrorKind::SomeError => todo!(),
                     }
                 },
             }

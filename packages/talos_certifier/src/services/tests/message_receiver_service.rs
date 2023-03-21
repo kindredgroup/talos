@@ -7,7 +7,7 @@ use crate::{
     core::{System, SystemService},
     errors::SystemServiceError,
     model::CandidateMessage,
-    ports::{common::SharedPortTraits, MessageReciever},
+    ports::{common::SharedPortTraits, errors::MessageReceiverError, MessageReciever},
     services::MessageReceiverService,
     ChannelMessage,
 };
@@ -21,7 +21,7 @@ struct MockReciever {
 impl MessageReciever for MockReciever {
     type Message = ChannelMessage;
 
-    async fn consume_message(&mut self) -> Result<Option<Self::Message>, SystemServiceError> {
+    async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let msg = self.consumer.recv().await.unwrap();
 
         let vers = match &msg {
