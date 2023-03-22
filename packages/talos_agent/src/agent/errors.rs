@@ -1,4 +1,4 @@
-use crate::agent::errors::AgentErrorKind::{CertificationTimout, Messaging};
+use crate::agent::errors::AgentErrorKind::{CertificationTimeout, Messaging};
 use crate::agent::model::CertifyRequestChannelMessage;
 use crate::messaging::errors::MessagingError;
 use strum::Display;
@@ -8,7 +8,7 @@ use tokio::sync::mpsc::error::SendError;
 #[derive(Debug, Display, PartialEq)]
 pub enum AgentErrorKind {
     Certification { xid: String },
-    CertificationTimout { xid: String, elapsed_ms: u128 },
+    CertificationTimeout { xid: String, elapsed_ms: u128 },
     Messaging,
     Internal,
 }
@@ -24,7 +24,7 @@ pub struct AgentError {
 impl AgentError {
     pub fn new_certify_timout(xid: String, elapsed_ms: u128) -> AgentError {
         AgentError {
-            kind: CertificationTimout { xid, elapsed_ms },
+            kind: CertificationTimeout { xid, elapsed_ms },
             reason: "Timeout".to_string(),
             cause: None,
         }
@@ -84,7 +84,7 @@ mod tests {
         let agent_error = AgentError::new_certify_timout("xid".to_string(), 111);
         assert_eq!(
             agent_error.kind,
-            CertificationTimout {
+            CertificationTimeout {
                 xid: "xid".to_string(),
                 elapsed_ms: 111,
             }
