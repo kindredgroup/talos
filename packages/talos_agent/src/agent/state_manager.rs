@@ -114,6 +114,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
         if let Some(message) = opt_decision {
+            log::info!("handle_decision() with message");
             let xid = &message.xid;
             Self::reply_to_agent(xid, message.decision, message.decided_at, state.get_vec(&message.xid), metrics_client).await;
             state.remove(xid);
@@ -140,6 +141,8 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             return;
         }
 
+        log::info!("reply_to_agent() there are waiting clients ...");
+
         let waiting_clients = clients.unwrap();
         let decision_received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
         let count = waiting_clients.len();
@@ -156,9 +159,11 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 xid, client_nr, count,
             );
 
+            log::info!("reply_to_agent() notifying client ...");
             waiting_client.notify(response.clone(), error_message).await;
 
             if let Some(mc) = metrics_client.as_ref() {
+                log::info!("reply_to_agent() emitting metrics ...");
                 mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0)).await.unwrap();
                 mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
                     .await
@@ -234,11 +239,12 @@ mod tests_waiting_client {
 mod tests {
     use super::*;
     use crate::api::{CandidateData, CertificationRequest};
+    use crate::messaging::api::Decision::Committed;
     use crate::messaging::api::{PublishResponse, Publisher};
     use crate::messaging::errors::MessagingError;
     use async_trait::async_trait;
     use log::LevelFilter;
-    use mockall::mock;
+    use mockall::{mock, Sequence};
     use std::time::Duration;
     use tokio::sync::mpsc::error::SendError;
 
@@ -280,13 +286,13 @@ mod tests {
         }
     }
 
-    fn make_candidate_request(tx_answer: MockNoopSender) -> CertifyRequestChannelMessage {
+    fn make_candidate_request(xid: String, tx_answer: MockNoopSender) -> CertifyRequestChannelMessage {
         CertifyRequestChannelMessage {
             request: CertificationRequest {
                 message_key: String::from("some key"),
                 timeout: Some(Duration::from_secs(1)),
                 candidate: CandidateData {
-                    xid: String::from("xid1"),
+                    xid,
                     readset: vec![String::from("v1")],
                     readvers: vec![1_u64],
                     snapshot: 1_u64,
@@ -294,6 +300,50 @@ mod tests {
                 },
             },
             tx_answer: Arc::new(Box::new(tx_answer)),
+        }
+    }
+
+    fn ensure_publisher_is_invoked(cfg_copy: AgentConfig, publisher: &mut MockNoopPublisher) {
+        publisher
+            .expect_send_message()
+            .withf(move |param_key, param_msg| {
+                param_key == "some key"
+                    && param_msg.xid == *"xid1"
+                    && param_msg.agent == cfg_copy.agent
+                    && param_msg.cohort == cfg_copy.cohort
+                    && param_msg.readset == vec![String::from("v1")]
+                    && param_msg.snapshot == 1
+                    && param_msg.readvers == vec![1_u64]
+                    && param_msg.writeset == Vec::<String>::new()
+            })
+            .once()
+            .returning(move |_, _| Ok(PublishResponse { partition: 0, offset: 100 }));
+    }
+
+    fn new_client(tx: MockNoopSender) -> WaitingClient {
+        WaitingClient::new(Arc::new(Box::new(tx)))
+    }
+
+    fn new_client_with_time(tx: MockNoopSender, time: u64) -> WaitingClient {
+        WaitingClient {
+            received_at: time,
+            tx_sender: Arc::new(Box::new(tx)),
+        }
+    }
+
+    fn expect_event_at_time(param_event: &Signal, event_name: EventName, expected_time: u64) -> bool {
+        if let Signal::Start { time, event } = param_event {
+            event.event_name == event_name && *time == expected_time
+        } else {
+            false
+        }
+    }
+
+    fn expect_event_after_time(param_event: &Signal, event_name: EventName, expected_time: u64) -> bool {
+        if let Signal::Start { time, event } = param_event {
+            event.event_name == event_name && *time > expected_time
+        } else {
+            false
         }
     }
 
@@ -311,30 +361,24 @@ mod tests {
         let mut tx_answer = MockNoopSender::new();
         tx_answer.expect_send().never();
 
-        let req_candidate = make_candidate_request(tx_answer);
-
         let mut publisher = MockNoopPublisher::new();
-        publisher
-            .expect_send_message()
-            .withf(move |param_key, param_msg| {
-                param_key == "some key"
-                    && param_msg.xid == *"xid1"
-                    && param_msg.agent == cfg_copy.agent
-                    && param_msg.cohort == cfg_copy.cohort
-                    && param_msg.readset == vec![String::from("v1")]
-                    && param_msg.snapshot == 1
-                    && param_msg.readvers == vec![1_u64]
-                    && param_msg.writeset == Vec::<String>::new()
-            })
-            .once()
-            .returning(move |_, _| Ok(PublishResponse { partition: 0, offset: 100 }));
+        ensure_publisher_is_invoked(cfg_copy, &mut publisher);
 
         let mut state = MultiMap::<String, WaitingClient>::new();
-        let result = manager.handle_candidate(Some(req_candidate), Arc::new(Box::new(publisher)), &mut state).await;
+
+        let xid = "xid1";
+        let result = manager
+            .handle_candidate(
+                Some(make_candidate_request(xid.to_string(), tx_answer)),
+                Arc::new(Box::new(publisher)),
+                &mut state,
+            )
+            .await;
 
         assert!(result.is_some());
         let handle = result.unwrap().await;
         assert!(handle.is_ok());
+        assert!(state.get(xid).is_some());
     }
 
     #[tokio::test]
@@ -342,19 +386,12 @@ mod tests {
         let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
 
         let cfg = make_config();
-
         let cfg_copy = cfg.clone();
 
         let mut tx_metrics = MockNoopMetricsSender::new();
         tx_metrics
             .expect_send()
-            .withf(move |param_event| {
-                if let Signal::Start { time, event } = param_event {
-                    event.event_name == EventName::CandidatePublished && *time > 0
-                } else {
-                    false
-                }
-            })
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublished, 0))
             .once()
             .returning(move |_| Ok(()));
 
@@ -365,30 +402,24 @@ mod tests {
         let mut tx_answer = MockNoopSender::new();
         tx_answer.expect_send().never();
 
-        let req_candidate = make_candidate_request(tx_answer);
-
         let mut publisher = MockNoopPublisher::new();
-        publisher
-            .expect_send_message()
-            .withf(move |param_key, param_msg| {
-                param_key == "some key"
-                    && param_msg.xid == *"xid1"
-                    && param_msg.agent == cfg_copy.agent
-                    && param_msg.cohort == cfg_copy.cohort
-                    && param_msg.readset == vec![String::from("v1")]
-                    && param_msg.snapshot == 1
-                    && param_msg.readvers == vec![1_u64]
-                    && param_msg.writeset == Vec::<String>::new()
-            })
-            .once()
-            .returning(move |_, _| Ok(PublishResponse { partition: 0, offset: 100 }));
+        ensure_publisher_is_invoked(cfg_copy, &mut publisher);
 
         let mut state = MultiMap::<String, WaitingClient>::new();
-        let result = manager.handle_candidate(Some(req_candidate), Arc::new(Box::new(publisher)), &mut state).await;
+
+        let xid = "xid1";
+        let result = manager
+            .handle_candidate(
+                Some(make_candidate_request(xid.to_string(), tx_answer)),
+                Arc::new(Box::new(publisher)),
+                &mut state,
+            )
+            .await;
 
         assert!(result.is_some());
         let handle = result.unwrap().await;
         assert!(handle.is_ok());
+        assert!(state.get(xid).is_some());
     }
 
     #[tokio::test]
@@ -396,11 +427,9 @@ mod tests {
         // No publishing to kafka if there is no request received
         let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
 
-        let cfg = make_config();
-
         let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
 
-        let manager = StateManager::new(cfg, Arc::new(metrics_client));
+        let manager = StateManager::new(make_config(), Arc::new(metrics_client));
 
         let mut tx_answer = MockNoopSender::new();
         tx_answer.expect_send().never();
@@ -411,5 +440,149 @@ mod tests {
         let mut state = MultiMap::<String, WaitingClient>::new();
         let result = manager.handle_candidate(None, Arc::new(Box::new(publisher)), &mut state).await;
         assert!(result.is_none());
+        assert_eq!(state.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn handle_decision_should_notify_clients() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
+        let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
+        let cfg = make_config();
+
+        let xid1 = "xid1";
+        let xid2 = "xid2";
+
+        // Client 1 and 3 are waiting for the answer of our transaction and should be notified,
+        // while client 2 is waiting for another transaction, hence should not be notified.
+
+        let mut tx_answer_for_client1 = MockNoopSender::new();
+        let mut tx_answer_for_client2 = MockNoopSender::new();
+        let mut tx_answer_for_client3 = MockNoopSender::new();
+
+        tx_answer_for_client2.expect_send().never();
+        tx_answer_for_client1
+            .expect_send()
+            .withf(move |param| param.xid == *"xid1")
+            .once()
+            .returning(move |_| Ok(()));
+        tx_answer_for_client3
+            .expect_send()
+            .withf(move |param| param.xid == *"xid1")
+            .once()
+            .returning(move |_| Ok(()));
+
+        let mut state = MultiMap::<String, WaitingClient>::new();
+        let client1 = new_client(tx_answer_for_client1);
+        let client2 = new_client(tx_answer_for_client2);
+        let client3 = new_client(tx_answer_for_client3);
+
+        state.insert(xid1.to_string(), client1);
+        state.insert(xid2.to_string(), client2);
+        state.insert(xid1.to_string(), client3);
+
+        let decision = DecisionMessage {
+            xid: xid1.to_string(),
+            agent: cfg.agent.to_string(),
+            cohort: cfg.cohort.to_string(),
+            decision: Committed,
+            suffix_start: 2,
+            version: 2,
+            safepoint: None,
+            decided_at: Some(999),
+        };
+
+        assert_eq!(state.len(), 2);
+        StateManager::handle_decision(Some(decision), &mut state, Arc::new(metrics_client)).await;
+        assert_eq!(state.len(), 1);
+        assert!(state.get(xid1).is_none());
+        assert!(state.get(xid2).is_some());
+    }
+
+    #[tokio::test]
+    async fn handle_decision_should_not_panic_if_clients_are_waiting() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
+        let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
+        let cfg = make_config();
+
+        let mut tx_for_client = MockNoopSender::new();
+        tx_for_client.expect_send().never();
+
+        let mut state = MultiMap::<String, WaitingClient>::new();
+        let decision = DecisionMessage {
+            xid: "xid1".to_string(),
+            agent: cfg.agent.to_string(),
+            cohort: cfg.cohort.to_string(),
+            decision: Committed,
+            suffix_start: 2,
+            version: 2,
+            safepoint: None,
+            decided_at: Some(999),
+        };
+
+        assert!(state.is_empty());
+        StateManager::handle_decision(Some(decision), &mut state, Arc::new(metrics_client)).await;
+        assert!(state.is_empty());
+    }
+
+    #[tokio::test]
+    async fn handle_decision_should_emit_metrics() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
+        // time when event was decided (sent by Talos)
+        let candidate_time_at = 888;
+        let decided_at = 999;
+
+        let mut seq = Sequence::new();
+        let mut tx_metrics = MockNoopMetricsSender::new();
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::Decided, decided_at))
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceived, candidate_time_at))
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::DecisionReceived, 0))
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(()));
+
+        let metrics_client = Some(Box::new(MetricsClient { tx_destination: tx_metrics }));
+
+        let mut tx_client = MockNoopSender::new();
+        tx_client
+            .expect_send()
+            .withf(move |param| param.xid == *"xid1")
+            .once()
+            .returning(move |_| Ok(()));
+
+        let mut state = MultiMap::<String, WaitingClient>::new();
+        state.insert("xid1".to_string(), new_client_with_time(tx_client, candidate_time_at));
+
+        let cfg = make_config();
+        let decision = DecisionMessage {
+            xid: "xid1".to_string(),
+            agent: cfg.agent.to_string(),
+            cohort: cfg.cohort.to_string(),
+            decision: Committed,
+            suffix_start: 2,
+            version: 2,
+            safepoint: None,
+            decided_at: Some(decided_at),
+        };
+
+        assert_eq!(state.len(), 1);
+        StateManager::handle_decision(Some(decision), &mut state, Arc::new(metrics_client)).await;
+        assert!(state.is_empty());
     }
 }
