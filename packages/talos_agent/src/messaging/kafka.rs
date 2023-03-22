@@ -1,23 +1,37 @@
 use crate::api::{KafkaConfig, TalosType};
 use crate::messaging::api::{
-    CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE,
+    CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
+    HEADER_MESSAGE_TYPE,
 };
+use crate::messaging::errors::{MessagingError, MessagingErrorKind};
 use async_trait::async_trait;
-use log::debug;
-use log::error;
+use log::{debug, error, info, warn};
 use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
+use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
 use rdkafka::{ClientConfig, ClientContext, Message, Offset, TopicPartitionList};
 use std::collections::HashMap;
 use std::str::Utf8Error;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{str, thread};
 use time::OffsetDateTime;
 
-/// The implementation of publisher which communicates with kafka brokers.
+/// The Kafka error into generic custom messaging error type
 
+impl From<KafkaError> for MessagingError {
+    fn from(e: KafkaError) -> Self {
+        MessagingError {
+            kind: MessagingErrorKind::Generic,
+            reason: format!("Kafka error.\nReason: {}", e),
+            cause: Some(Box::new(e)),
+        }
+    }
+}
+
+/// The implementation of publisher which communicates with kafka brokers.
 pub struct KafkaPublisher {
     agent: String,
     config: KafkaConfig,
@@ -25,29 +39,30 @@ pub struct KafkaPublisher {
 }
 
 impl KafkaPublisher {
-    pub fn new(agent: String, config: &KafkaConfig) -> KafkaPublisher {
-        Self {
+    pub fn new(agent: String, config: &KafkaConfig) -> Result<KafkaPublisher, MessagingError> {
+        Ok(Self {
             agent,
             config: config.clone(),
-            producer: Self::create_producer(config),
-        }
+            producer: Self::create_producer(config)?,
+        })
     }
 
-    fn create_producer(kafka: &KafkaConfig) -> FutureProducer {
+    fn create_producer(kafka: &KafkaConfig) -> Result<FutureProducer, KafkaError> {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
             .set("queue.buffering.max.messages", "1000000")
+            .set("topic.metadata.refresh.interval.ms", "4")
             .set_log_level(kafka.log_level);
 
         setup_kafka_auth(&mut cfg, kafka);
-        cfg.create().expect("Unable to create kafka producer")
+        cfg.create()
     }
 }
 
 #[async_trait]
 impl Publisher for KafkaPublisher {
-    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, String> {
+    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
         debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
 
         let type_value = TalosMessageType::Candidate.to_string();
@@ -61,7 +76,8 @@ impl Publisher for KafkaPublisher {
         };
         let payload = serde_json::to_string(&message).unwrap();
 
-        let data = FutureRecord::to(self.config.certification_topic.as_str())
+        let topic = self.config.certification_topic.clone();
+        let data = FutureRecord::to(topic.as_str())
             .key(&key)
             .payload(&payload)
             .headers(OwnedHeaders::new().insert(h_type).insert(h_agent_id));
@@ -74,7 +90,7 @@ impl Publisher for KafkaPublisher {
             }
             Err((e, _)) => {
                 error!("KafkaPublisher.send_message(): Error publishing xid: {}, error: {}", message.xid, e);
-                Err(e.to_string())
+                Err(MessagingError::new_publishing(format!("Cannot publish into topic: {}", topic), Box::new(e)))
             }
         };
     }
@@ -97,28 +113,22 @@ impl ConsumerContext for KafkaConsumerContext {
 
     #[allow(clippy::needless_lifetimes)]
     fn post_rebalance<'a>(&self, _rebalance: &Rebalance<'a>) {
-        log::info!("[{}] post_rebalance()", thread::current().name().unwrap_or("-"));
+        info!("[{}] post_rebalance()", thread::current().name().unwrap_or("-"));
     }
 }
 
 impl KafkaConsumer {
-    pub fn new(agent: String, config: &KafkaConfig) -> Self {
-        KafkaConsumer {
+    pub fn new(agent: String, config: &KafkaConfig) -> Result<Self, MessagingError> {
+        let consumer = Self::create_consumer(config)?;
+
+        Ok(KafkaConsumer {
             agent,
             config: config.clone(),
-            consumer: Self::create_consumer(config),
-        }
+            consumer,
+        })
     }
 
-    pub fn new_subscribed(agent_id: String, config: &KafkaConfig) -> Result<Box<ConsumerType>, String> {
-        let kc = KafkaConsumer::new(agent_id, config);
-        match kc.subscribe() {
-            Ok(()) => Ok(Box::new(kc)),
-            Err(e) => Err(e),
-        }
-    }
-
-    fn create_consumer(kafka: &KafkaConfig) -> StreamConsumer<KafkaConsumerContext> {
+    fn create_consumer(kafka: &KafkaConfig) -> Result<StreamConsumer<KafkaConsumerContext>, KafkaError> {
         let mut cfg = ClientConfig::new();
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("group.id", &kafka.group_id)
@@ -130,42 +140,33 @@ impl KafkaConsumer {
 
         setup_kafka_auth(&mut cfg, kafka);
 
-        match cfg.create_with_context(KafkaConsumerContext {}) {
-            Ok(v) => v,
-            Err(e) => {
-                panic!("Cannot create consumer instance. {}", e)
-            }
-        }
+        cfg.create_with_context(KafkaConsumerContext {})
     }
 
-    pub fn subscribe(&self) -> Result<(), String> {
+    pub fn subscribe(&self) -> Result<(), KafkaError> {
         let topic = self.config.certification_topic.as_str();
         let partition = 0_i32;
 
         let mut partition_list = TopicPartitionList::new();
         partition_list.add_partition(topic, partition);
         // This line is required for seek operation to be successful.
-        partition_list.set_partition_offset(topic, partition, Offset::End).unwrap();
+        partition_list.set_partition_offset(topic, partition, Offset::End)?;
 
-        let rslt_assign = self.consumer.assign(&partition_list);
-        rslt_assign.map_err(|e| format!("Error invoking assign('{}', {}. Error: {})", topic, partition, e))?;
+        log::info!("Assigning partition list to consumer: {:?}", partition_list);
+        self.consumer.assign(&partition_list)?;
 
-        let offset = self
-            .get_offset(partition, Duration::from_secs(5))
-            .map_err(|e| format!("Error fetching offset of partition {}. Error: {})", partition, e))?;
+        log::info!("Fetching offset for partition: {}", partition);
+        let offset = self.get_offset(partition, Duration::from_secs(5))?;
 
         log::info!("Seeking on partition {} to offset: {:?}", partition, offset);
-        self.consumer
-            .seek(topic, partition, offset, Duration::from_secs(5))
-            .map_err(|e| format!("Error when seeking to offset {:?}. Error: {}", offset, e))
+        self.consumer.seek(topic, partition, offset, Duration::from_secs(5))?;
+
+        Ok(())
     }
 
-    fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, String> {
+    fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, KafkaError> {
         let topic = self.config.certification_topic.as_str();
-        let (_low, high) = self
-            .consumer
-            .fetch_watermarks(topic, partition, timeout)
-            .map_err(|e| format!("Error when fetching watermarks of partition {}. Error: {}", partition, e))?;
+        let (_low, high) = self.consumer.fetch_watermarks(topic, partition, timeout)?;
 
         Ok(Offset::Offset(high))
     }
@@ -175,7 +176,7 @@ impl KafkaConsumer {
         message_type: &TalosMessageType,
         payload_view: &Option<Result<&str, Utf8Error>>,
         decided_at: Option<u64>,
-    ) -> Option<Result<DecisionMessage, String>> {
+    ) -> Option<Result<DecisionMessage, MessagingError>> {
         match message_type {
             TalosMessageType::Candidate => match talos_type {
                 TalosType::External => None,
@@ -198,115 +199,103 @@ impl KafkaConsumer {
         }
     }
 
-    fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, String> {
-        match raw_payload {
-            Err(payload_read_error) => {
-                error!("Unable to read kafka message payload: {}", payload_read_error);
-                Err(payload_read_error.to_string())
-            }
+    fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, MessagingError> {
+        let json_as_text =
+            raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), Box::new(utf_error)))?;
 
-            Ok(json) => {
-                // convert JSON text into DecisionMessage
-                serde_json::from_str::<DecisionMessage>(json).map_err(|json_error| {
-                    error!("Unable to parse JSON into DecisionMessage: {}", json_error);
-                    json_error.to_string()
-                })
-            }
-        }
+        // convert JSON text into DecisionMessage
+        serde_json::from_str::<DecisionMessage>(json_as_text)
+            .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), Box::new(json_error)))
     }
 
-    fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision, decided_at: Option<u64>) -> Result<DecisionMessage, String> {
-        match raw_payload {
-            Err(payload_read_error) => {
-                error!("Unable to read kafka message payload: {}", payload_read_error);
-                Err(payload_read_error.to_string())
-            }
+    fn parse_payload_as_candidate(
+        raw_payload: &Result<&str, Utf8Error>,
+        decision: Decision,
+        decided_at: Option<u64>,
+    ) -> Result<DecisionMessage, MessagingError> {
+        let json_as_text =
+            raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), Box::new(utf_error)))?;
 
-            Ok(json) => {
-                // convert JSON text into DecisionMessage
-                serde_json::from_str::<CandidateMessage>(json)
-                    .map_err(|json_error| {
-                        error!("Unable to parse JSON into DecisionMessage: {}", json_error);
-                        json_error.to_string()
-                    })
-                    .map(|candidate| DecisionMessage {
-                        xid: candidate.xid,
-                        agent: candidate.agent,
-                        cohort: candidate.cohort,
-                        decision,
-                        suffix_start: 0,
-                        version: 0,
-                        safepoint: None,
-                        decided_at,
-                    })
-            }
-        }
+        // convert JSON text into DecisionMessage
+        serde_json::from_str::<CandidateMessage>(json_as_text)
+            .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), Box::new(json_error)))
+            .map(|candidate| DecisionMessage {
+                xid: candidate.xid,
+                agent: candidate.agent,
+                cohort: candidate.cohort,
+                decision,
+                suffix_start: 0,
+                version: 0,
+                safepoint: None,
+                decided_at,
+            })
     }
 }
 
 #[async_trait]
 impl crate::messaging::api::Consumer for KafkaConsumer {
-    async fn receive_message(&self) -> Option<Result<DecisionMessage, String>> {
-        match self.consumer.recv().await {
-            Err(kafka_error) => {
-                error!("KafkaConsumer.receive_message(): error: {:?}", kafka_error);
-                Some(Err(kafka_error.to_string()))
-            }
+    async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>> {
+        let rslt_received = self
+            .consumer
+            .recv()
+            .await
+            .map_err(|kafka_error| MessagingError::new_consuming(Box::new(kafka_error)));
 
-            Ok(received) => {
-                // Extract headers
-                let headers = match received.headers() {
-                    Some(bh) => {
-                        let mut headers = HashMap::<String, String>::new();
-                        for header in bh.iter() {
-                            if let Some(v) = header.value {
-                                headers.insert(header.key.to_string(), String::from_utf8_lossy(v).to_string());
-                            }
-                        }
+        if let Err(e) = rslt_received {
+            return Some(Err(e));
+        }
 
-                        headers
+        let received = rslt_received.unwrap();
+
+        // Extract headers
+        let headers = match received.headers() {
+            Some(bh) => {
+                let mut headers = HashMap::<String, String>::new();
+                for header in bh.iter() {
+                    if let Some(v) = header.value {
+                        headers.insert(header.key.to_string(), String::from_utf8_lossy(v).to_string());
                     }
-                    _ => HashMap::<String, String>::new(),
-                };
-
-                // Extract agent id from headers
-                // todo: See KDT-26
-                let is_id_matching = match headers.get(HEADER_AGENT_ID) {
-                    Some(value) => value == self.agent.as_str(),
-                    None => false,
-                };
-
-                if !is_id_matching {
-                    return None;
                 }
 
-                // Extract message type from headers
-                let parsed_type = headers.get(HEADER_MESSAGE_TYPE).and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
-                    Ok(parsed_type) => Some(parsed_type),
-                    Err(parse_error) => {
-                        error!(
-                            "KafkaConsumer.receive_message(): Unknown header value messageType='{}', skipping this message: {}. Error: {}",
-                            raw,
-                            received.offset(),
-                            parse_error
-                        );
-                        None
-                    }
-                });
-
-                let decided_at = headers.get("decisionTime").and_then(|raw_value| match raw_value.as_str().parse::<u64>() {
-                    Ok(parsed) => Some(parsed),
-                    Err(e) => {
-                        log::warn!("Unable to parse decisionTime from this value '{}'. Error: {:?}", raw_value, e);
-                        None
-                    }
-                });
-
-                parsed_type.and_then(|message_type| {
-                    KafkaConsumer::deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>(), decided_at)
-                })
+                headers
             }
+            _ => HashMap::<String, String>::new(),
+        };
+
+        // Extract agent id from headers
+        let is_id_matching = match headers.get(HEADER_AGENT_ID) {
+            Some(value) => value == self.agent.as_str(),
+            None => false,
+        };
+
+        if !is_id_matching {
+            return None;
         }
+
+        // Extract message type from headers
+        let parsed_type = headers.get(HEADER_MESSAGE_TYPE).and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
+            Ok(parsed_type) => Some(parsed_type),
+            Err(parse_error) => {
+                warn!(
+                    "KafkaConsumer.receive_message(): Unknown header value messageType='{}', skipping this message: {}. Error: {}",
+                    raw,
+                    received.offset(),
+                    parse_error
+                );
+                None
+            }
+        });
+
+        let decided_at = headers.get("decisionTime").and_then(|raw_value| match raw_value.as_str().parse::<u64>() {
+            Ok(parsed) => Some(parsed),
+            Err(e) => {
+                warn!("Unable to parse decisionTime from this value '{}'. Error: {:?}", raw_value, e);
+                None
+            }
+        });
+
+        parsed_type
+            .and_then(|message_type| KafkaConsumer::deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>(), decided_at))
     }
 }
 
@@ -319,5 +308,22 @@ fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
             .set("sasl.mechanisms", config.sasl_mechanisms.clone().unwrap_or_else(|| "SCRAM-SHA-512".to_string()))
             .set("sasl.username", username)
             .set("sasl.password", config.password.clone().unwrap_or_default());
+    }
+}
+
+/// Sets up connectivity to kafka broker.
+pub struct KafkaInitializer {}
+
+impl KafkaInitializer {
+    /// Creates new instances of initialised and fully connected publisher and consumer
+    pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), MessagingError> {
+        let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config)?;
+        let kafka_consumer = KafkaConsumer::new(agent, &kafka_config)?;
+        kafka_consumer.subscribe()?;
+
+        let consumer: Arc<Box<ConsumerType>> = Arc::new(Box::new(kafka_consumer));
+        let publisher: Arc<Box<PublisherType>> = Arc::new(Box::new(kafka_publisher));
+
+        Ok((publisher, consumer))
     }
 }

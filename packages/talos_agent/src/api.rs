@@ -1,15 +1,15 @@
-use crate::agent::TalosAgentImpl;
-use crate::agentv2::agent_v2::TalosAgentImplV2;
-use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
-use crate::messaging::api::{Decision, PublisherType};
-use crate::messaging::kafka::KafkaPublisher;
+use crate::agent::core::TalosAgentImpl;
+use crate::agent::errors::AgentError;
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use crate::messaging::api::Decision;
+use crate::metrics;
+use crate::metrics::client::MetricsClient;
+use crate::metrics::model::{MetricsReport, Signal};
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
-
-pub const TRACK_PUBLISH_LATENCY: bool = false;
+use tokio::sync::mpsc;
 
 ///
 /// Data structures and interfaces exposed to agent client
@@ -38,10 +38,6 @@ pub struct CertificationRequest {
 pub struct CertificationResponse {
     pub xid: String,
     pub decision: Decision,
-    pub send_started_at: u64,
-    pub received_at: u64,
-    pub decided_at: u64,
-    pub decision_buffered_at: u64,
 }
 
 #[derive(Clone)]
@@ -83,7 +79,8 @@ pub struct KafkaConfig {
 /// The agent interface exposed to the client
 #[async_trait]
 pub trait TalosAgent {
-    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, String>;
+    async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError>;
+    fn collect_metrics(&self) -> Option<MetricsReport>;
 }
 
 pub type TalosAgentType = dyn TalosAgent + Send + Sync;
@@ -101,11 +98,16 @@ pub enum TalosIntegrationType {
 pub struct TalosAgentBuilder {
     config: AgentConfig,
     kafka_config: Option<KafkaConfig>,
+    add_metrics: bool,
 }
 
 impl TalosAgentBuilder {
     pub fn new(config: AgentConfig) -> TalosAgentBuilder {
-        Self { config, kafka_config: None }
+        Self {
+            config,
+            kafka_config: None,
+            add_metrics: false,
+        }
     }
 
     /// When agent is built it will be connected to external kafka broker.
@@ -114,23 +116,40 @@ impl TalosAgentBuilder {
         self
     }
 
-    /// Build agent instance implemented using shared state between threads.
-    pub fn build(&self) -> Result<Box<TalosAgentType>, String> {
-        let config = &self.kafka_config.clone().expect("Kafka configuration is required");
-        let publisher: Box<PublisherType> = Box::new(KafkaPublisher::new(self.config.agent.clone(), config));
-        let agent = TalosAgentImpl::new(self.config.clone(), self.kafka_config.clone(), publisher);
-        agent.start().unwrap_or_else(|e| panic!("{}", format!("Unable to start agent {}", e)));
-
-        Ok(Box::new(agent))
+    pub fn with_metrics(&mut self) -> &mut Self {
+        self.add_metrics = true;
+        self
     }
 
     /// Build agent instance implemented using actor model.
-    pub async fn build_v2(&self, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> Result<Box<TalosAgentType>, String> {
-        let (tx_certify, rx_certify) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
-        let (tx_cancel, rx_cancel) = tokio::sync::mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
-        let agent = TalosAgentImplV2::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel);
-        agent.start(rx_certify, rx_cancel, publish_times).await;
+    pub async fn build(&self) -> Result<Box<TalosAgentType>, AgentError> {
+        let (tx_certify, rx_certify) = mpsc::channel::<CertifyRequestChannelMessage>(self.config.buffer_size);
+        let (tx_cancel, rx_cancel) = mpsc::channel::<CancelRequestChannelMessage>(self.config.buffer_size);
 
-        Ok(Box::new(agent))
+        if self.add_metrics {
+            let metrics = metrics::core::Metrics::new();
+
+            let (tx, rx) = mpsc::channel::<Signal>(100_000);
+            metrics.run(rx);
+
+            let metrics_client = Box::new(MetricsClient { tx_destination: tx.clone() });
+
+            let agent = TalosAgentImpl::new(
+                self.config.clone(),
+                self.kafka_config.clone(),
+                tx_certify,
+                tx_cancel,
+                Some(metrics),
+                Arc::new(Some(metrics_client)),
+            );
+            agent.start(rx_certify, rx_cancel).await?;
+
+            Ok(Box::new(agent))
+        } else {
+            let agent = TalosAgentImpl::new(self.config.clone(), self.kafka_config.clone(), tx_certify, tx_cancel, None, Arc::new(None));
+            agent.start(rx_certify, rx_cancel).await?;
+
+            Ok(Box::new(agent))
+        }
     }
 }

@@ -1,15 +1,12 @@
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use crate::api::{AgentConfig, CertificationResponse};
+use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
+use crate::metrics::client::MetricsClient;
+use crate::metrics::model::EventName;
 use multimap::MultiMap;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
-
-use crate::agentv2::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
-
-use crate::api::{AgentConfig, CertificationResponse, KafkaConfig, TRACK_PUBLISH_LATENCY};
-use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
-
-use crate::messaging::kafka::KafkaPublisher;
 
 /// Structure represents client who sent the certification request.
 struct WaitingClient {
@@ -34,17 +31,12 @@ impl WaitingClient {
 
 pub struct StateManager {
     agent_config: AgentConfig,
-    kafka_config: KafkaConfig,
-    publish_times: Arc<Mutex<HashMap<String, u64>>>,
+    metrics_client: Arc<Option<Box<MetricsClient>>>,
 }
 
 impl StateManager {
-    pub fn new(agent_config: AgentConfig, kafka_config: KafkaConfig, publish_times: Arc<Mutex<HashMap<String, u64>>>) -> StateManager {
-        StateManager {
-            agent_config,
-            kafka_config,
-            publish_times,
-        }
+    pub fn new(agent_config: AgentConfig, metrics_client: Arc<Option<Box<MetricsClient>>>) -> StateManager {
+        StateManager { agent_config, metrics_client }
     }
 
     pub async fn run(
@@ -52,14 +44,11 @@ impl StateManager {
         mut rx_certify: Receiver<CertifyRequestChannelMessage>,
         mut rx_cancel: Receiver<CancelRequestChannelMessage>,
         mut rx_decision: Receiver<DecisionMessage>,
+        publisher: Arc<Box<PublisherType>>,
     ) {
-        let config = self.kafka_config.clone();
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
-
-        let publisher: Arc<Box<PublisherType>> = Arc::new(Box::new(KafkaPublisher::new(self.agent_config.agent.clone(), &config)));
-        log::info!("Created kafka publisher");
-
         loop {
+            let mc = Arc::clone(&self.metrics_client);
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
                     self.handle_candidate(rslt_request_msg, publisher.clone(), &mut state).await;
@@ -70,7 +59,7 @@ impl StateManager {
                 }
 
                 rslt_decision_msg = rx_decision.recv() => {
-                    Self::handle_decision(rslt_decision_msg, &mut state).await;
+                    Self::handle_decision(rslt_decision_msg, &mut state, mc).await;
                 }
             }
         }
@@ -96,19 +85,14 @@ impl StateManager {
             let publisher_ref = Arc::clone(&publisher);
             let key = request_msg.request.message_key;
             let xid = msg.xid.clone();
-            let times = Arc::clone(&self.publish_times);
+            let metrics = Arc::clone(&self.metrics_client);
+
+            // Fire and forget, errors will show up in the log,
+            // while corresponding requests will timeout.
             tokio::spawn(async move {
                 publisher_ref.send_message(key, msg).await.unwrap();
-                if TRACK_PUBLISH_LATENCY {
-                    let published_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
-                    match times.lock() {
-                        Ok(mut map) => {
-                            map.insert(xid, published_at);
-                        }
-                        Err(e) => {
-                            log::error!("Unable to insert publish time for xid: {}. {:?}", xid, e.to_string());
-                        }
-                    }
+                if let Some(mc) = metrics.as_ref() {
+                    mc.new_event(EventName::CandidatePublished, xid.clone());
                 }
             });
         }
@@ -116,10 +100,14 @@ impl StateManager {
 
     /// Passes decision to agent.
     /// Removes internal state for this XID.
-    async fn handle_decision(opt_decision: Option<DecisionMessage>, state: &mut MultiMap<String, WaitingClient>) {
+    async fn handle_decision(
+        opt_decision: Option<DecisionMessage>,
+        state: &mut MultiMap<String, WaitingClient>,
+        metrics_client: Arc<Option<Box<MetricsClient>>>,
+    ) {
         if let Some(message) = opt_decision {
             let xid = &message.xid;
-            Self::reply_to_agent(xid, message.decision, message.decided_at, state.get_vec(&message.xid)).await;
+            Self::reply_to_agent(xid, message.decision, message.decided_at, state.get_vec(&message.xid), metrics_client).await;
             state.remove(xid);
         }
     }
@@ -132,34 +120,41 @@ impl StateManager {
         }
     }
 
-    async fn reply_to_agent(xid: &str, decision: Decision, decided_at: Option<u64>, clients: Option<&Vec<WaitingClient>>) {
-        match clients {
-            Some(waiting_clients) => {
-                let count = waiting_clients.len();
-                let mut client_nr = 0;
-                for waiting_client in waiting_clients {
-                    client_nr += 1;
-                    let response = CertificationResponse {
-                        xid: xid.to_string(),
-                        decision: decision.clone(),
-                        send_started_at: waiting_client.received_at,
-                        decided_at: decided_at.unwrap_or(0),
-                        decision_buffered_at: OffsetDateTime::now_utc().unix_timestamp_nanos() as u64,
-                        received_at: 0,
-                    };
+    async fn reply_to_agent(
+        xid: &str,
+        decision: Decision,
+        decided_at: Option<u64>,
+        clients: Option<&Vec<WaitingClient>>,
+        metrics_client: Arc<Option<Box<MetricsClient>>>,
+    ) {
+        if clients.is_none() {
+            log::warn!("There are no waiting clients for the candidate '{}'", xid);
+            return;
+        }
 
-                    let error_message = format!(
-                        "Error processing XID: {}. Unable to send response {} of {} to waiting client.",
-                        xid, client_nr, count,
-                    );
+        let waiting_clients = clients.unwrap();
+        let decision_received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+        let count = waiting_clients.len();
+        let mut client_nr = 0;
+        for waiting_client in waiting_clients {
+            client_nr += 1;
+            let response = CertificationResponse {
+                xid: xid.to_string(),
+                decision: decision.clone(),
+            };
 
-                    waiting_client.notify(response.clone(), error_message).await;
-                }
+            let error_message = format!(
+                "Error processing XID: {}. Unable to send response {} of {} to waiting client.",
+                xid, client_nr, count,
+            );
+
+            waiting_client.notify(response.clone(), error_message).await;
+
+            if let Some(mc) = metrics_client.as_ref() {
+                mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0));
+                mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at);
+                mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at);
             }
-
-            None => {
-                log::warn!("There are no waiting clients for the candidate '{}'", xid);
-            }
-        };
+        }
     }
 }

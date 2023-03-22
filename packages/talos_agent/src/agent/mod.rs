@@ -1,4 +1,5 @@
-pub mod agent_v2;
+pub mod core;
 mod decision_reader;
+pub mod errors;
 pub mod model;
 mod state_manager;
