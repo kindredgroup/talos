@@ -153,6 +153,6 @@ where
     }
 
     fn collect_metrics(&self) -> Option<MetricsReport> {
-        self.metrics.as_ref().map(|m| m.collect())
+        self.metrics.as_ref().and_then(|m| m.collect())
     }
 }
