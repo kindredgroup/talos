@@ -41,6 +41,7 @@ enum ReaderError {
     ConsumerError,
 }
 
+// $coverage:ignore-start
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,3 +224,4 @@ mod tests {
         }
     }
 }
+// $coverage:ignore-end

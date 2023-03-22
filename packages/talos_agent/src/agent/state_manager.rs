@@ -40,6 +40,8 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         StateManager { agent_config, metrics_client }
     }
 
+    // $coverage:ignore-start
+    // Ignored from coverage because of infinite loop, which just delegates calls to handlers. Handlers are covered separately.
     pub async fn run<TCertifyRx, TCancelRx, TDecisionRx>(
         &self,
         mut rx_certify: TCertifyRx,
@@ -69,6 +71,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             }
         }
     }
+    // $coverage:ignore-end
 
     /// Passes candidate to kafka publisher and records it in the internal state.
     /// The publishing action is done asynchronously.
@@ -176,6 +179,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     }
 }
 
+// $coverage:ignore-start
 #[cfg(test)]
 mod tests_waiting_client {
     use super::*;
@@ -287,8 +291,8 @@ mod tests {
     }
 
     fn make_candidate_request(xid: String, tx_answer: MockNoopSender) -> CertifyRequestChannelMessage {
-        CertifyRequestChannelMessage {
-            request: CertificationRequest {
+        CertifyRequestChannelMessage::new(
+            &CertificationRequest {
                 message_key: String::from("some key"),
                 timeout: Some(Duration::from_secs(1)),
                 candidate: CandidateData {
@@ -299,8 +303,8 @@ mod tests {
                     writeset: Vec::<String>::new(),
                 },
             },
-            tx_answer: Arc::new(Box::new(tx_answer)),
-        }
+            Arc::new(Box::new(tx_answer)),
+        )
     }
 
     fn ensure_publisher_is_invoked(cfg_copy: AgentConfig, publisher: &mut MockNoopPublisher) {
@@ -369,7 +373,7 @@ mod tests {
         let xid = "xid1";
         let result = manager
             .handle_candidate(
-                Some(make_candidate_request(xid.to_string(), tx_answer)),
+                Some(make_candidate_request(xid.to_string(), tx_answer).clone()),
                 Arc::new(Box::new(publisher)),
                 &mut state,
             )
@@ -585,4 +589,35 @@ mod tests {
         StateManager::handle_decision(Some(decision), &mut state, Arc::new(metrics_client)).await;
         assert!(state.is_empty());
     }
+
+    #[tokio::test]
+    async fn handle_cancellation_should_clean_state() {
+        let mut state = MultiMap::new();
+        state.insert("xid1".to_string(), new_client(MockNoopSender::new()));
+        state.insert("xid2".to_string(), new_client(MockNoopSender::new()));
+
+        let cancel_req = CancelRequestChannelMessage {
+            request: CertificationRequest {
+                message_key: "some-key".to_string(),
+                timeout: Some(Duration::from_secs(1)),
+                candidate: CandidateData {
+                    xid: "xid1".to_string(),
+                    readset: Vec::<String>::new(),
+                    readvers: Vec::<u64>::new(),
+                    snapshot: 0,
+                    writeset: Vec::<String>::new(),
+                },
+            },
+        };
+
+        let copy = cancel_req.clone();
+        format!("debug and clone coverage: {:?}", copy);
+
+        StateManager::<MockNoopMetricsSender>::handle_cancellation(Some(cancel_req), &mut state);
+
+        assert!(state.get("xid1").is_none());
+        assert!(state.get("xid2").is_some());
+        assert_eq!(state.get_vec("xid2").unwrap().len(), 1);
+    }
 }
+// $coverage:ignore-end
