@@ -7,7 +7,7 @@ use rdkafka::{
     Message, TopicPartitionList,
 };
 use talos_certifier::{
-    core::{MessageVariant, SystemMonitorMessage},
+    core::MessageVariant,
     errors::SystemServiceError,
     model::{CandidateMessage, DecisionMessage},
     ports::{
@@ -17,11 +17,10 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
-use tokio::sync::mpsc;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
-use super::{config::KafkaConfig, contexts::TalosKafkaConsumerContext, utils};
+use super::{config::KafkaConfig, utils};
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]

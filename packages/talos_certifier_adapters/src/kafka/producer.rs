@@ -2,22 +2,20 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use log::debug;
-use rdkafka::producer::{BaseRecord, ThreadedProducer};
+use rdkafka::producer::{BaseRecord, DefaultProducerContext, ThreadedProducer};
 use talos_certifier::{
-    core::SystemMonitorMessage,
     errors::SystemServiceError,
     ports::{common::SharedPortTraits, errors::MessagePublishError, MessagePublisher},
 };
-use tokio::sync::mpsc;
 
 use crate::kafka::utils::build_kafka_headers;
 
-use super::{config::KafkaConfig, contexts::TalosKafkaProducerContext};
+use super::config::KafkaConfig;
 
 // Kafka Producer
 // #[derive(Clone)]
 pub struct KafkaProducer {
-    producer: ThreadedProducer<TalosKafkaProducerContext>,
+    producer: ThreadedProducer<DefaultProducerContext>,
     topic: String,
 }
 
