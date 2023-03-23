@@ -66,11 +66,9 @@ async fn test_consume_message() {
     };
 
     let (system_notifier, _system_rx) = broadcast::channel(10);
-    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
-        monitor_tx,
         is_shutdown: false,
     };
 
@@ -115,11 +113,9 @@ async fn test_consume_message_error() {
     };
 
     let (system_notifier, _system_rx) = broadcast::channel(10);
-    let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
         system_notifier,
-        monitor_tx,
         is_shutdown: false,
     };
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());

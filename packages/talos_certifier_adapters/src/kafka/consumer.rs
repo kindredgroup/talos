@@ -3,11 +3,11 @@ use std::time::Duration;
 use async_trait::async_trait;
 use log::{debug, info};
 use rdkafka::{
-    consumer::{Consumer, StreamConsumer},
+    consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
 };
 use talos_certifier::{
-    core::{MessageVariant, SystemMonitorMessage},
+    core::MessageVariant,
     errors::SystemServiceError,
     model::{CandidateMessage, DecisionMessage},
     ports::{
@@ -17,25 +17,22 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
-use tokio::sync::mpsc;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
-use super::{config::KafkaConfig, contexts::TalosKafkaConsumerContext, utils};
+use super::{config::KafkaConfig, utils};
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
 pub struct KafkaConsumer {
-    pub consumer: StreamConsumer<TalosKafkaConsumerContext>,
+    pub consumer: StreamConsumer<DefaultConsumerContext>,
     pub topic: String,
     pub tpl: TopicPartitionList,
 }
 
 impl KafkaConsumer {
-    pub fn new(config: &KafkaConfig, monitor_tx: mpsc::Sender<SystemMonitorMessage>) -> Self {
-        let context = TalosKafkaConsumerContext { channel: monitor_tx };
-
-        let consumer = config.build_consumer_config().create_with_context(context).expect("Failed to create consumer");
+    pub fn new(config: &KafkaConfig) -> Self {
+        let consumer = config.build_consumer_config().create().expect("Failed to create consumer");
 
         let topic = config.topic.clone();
         Self {

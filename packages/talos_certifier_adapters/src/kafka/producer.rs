@@ -2,31 +2,26 @@ use std::collections::HashMap;
 
 use async_trait::async_trait;
 use log::debug;
-use rdkafka::producer::{BaseRecord, ThreadedProducer};
+use rdkafka::producer::{BaseRecord, DefaultProducerContext, ThreadedProducer};
 use talos_certifier::{
-    core::SystemMonitorMessage,
     errors::SystemServiceError,
     ports::{common::SharedPortTraits, errors::MessagePublishError, MessagePublisher},
 };
-use tokio::sync::mpsc;
 
 use crate::kafka::utils::build_kafka_headers;
 
-use super::{config::KafkaConfig, contexts::TalosKafkaProducerContext};
+use super::config::KafkaConfig;
 
 // Kafka Producer
 // #[derive(Clone)]
 pub struct KafkaProducer {
-    producer: ThreadedProducer<TalosKafkaProducerContext>,
+    producer: ThreadedProducer<DefaultProducerContext>,
     topic: String,
 }
 
 impl KafkaProducer {
-    pub fn new(config: &KafkaConfig, monitor_tx: mpsc::Sender<SystemMonitorMessage>) -> Self {
-        let context = TalosKafkaProducerContext { channel: monitor_tx };
-
-        let producer: ThreadedProducer<TalosKafkaProducerContext> =
-            config.build_producer_config().create_with_context(context).expect("Failed to create producer");
+    pub fn new(config: &KafkaConfig) -> Self {
+        let producer: ThreadedProducer<DefaultProducerContext> = config.build_producer_config().create().expect("Failed to create producer");
         let topic = config.topic.to_owned();
 
         Self { producer, topic }
