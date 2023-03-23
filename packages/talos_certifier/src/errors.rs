@@ -54,7 +54,7 @@ pub enum SystemServiceErrorKind {
     MessagePublishError,
 }
 
-#[derive(Debug, ThisError, Clone)]
+#[derive(Debug, ThisError, PartialEq, Clone)]
 #[error("error on service={service} kind={kind:?} \n reason={reason} \n data={data:?}")]
 pub struct SystemServiceError {
     pub kind: SystemServiceErrorKind,

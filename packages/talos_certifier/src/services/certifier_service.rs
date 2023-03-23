@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use tokio::sync::mpsc;
@@ -13,7 +13,7 @@ use crate::{
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
     errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
     model::{CandidateMessage, DecisionMessage},
-    Certifier, ChannelMessage, SystemMessage,
+    Certifier, ChannelMessage,
 };
 
 /// Certifier service configuration
@@ -150,25 +150,21 @@ impl CertifierService {
         Ok(())
     }
 
-    pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage>) -> ServiceResult<()> {
+    pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage>) -> ServiceResult {
         if let Err(certification_error) = match channel_message {
             Some(ChannelMessage::Candidate(message)) => {
-                let res = self.process_candidate(message);
+                let decision_message = self.process_candidate(message)?;
 
-                if let Ok(decision_message) = res {
-                    Ok(self
-                        .decision_outbox_tx
-                        .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
-                        .await
-                        .map_err(|e| SystemServiceError {
-                            kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                            data: Some(format!("{:?}", decision_message)),
-                            reason: e.to_string(),
-                            service: "Certifier Service".to_string(),
-                        })?)
-                } else {
-                    Err(res.unwrap_err())
-                }
+                Ok(self
+                    .decision_outbox_tx
+                    .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
+                    .await
+                    .map_err(|e| SystemServiceError {
+                        kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
+                        data: Some(format!("{:?}", decision_message)),
+                        reason: e.to_string(),
+                        service: "Certifier Service".to_string(),
+                    })?)
             }
 
             Some(ChannelMessage::Decision(version, decision_message)) => self.process_decision(version, decision_message),
@@ -184,7 +180,6 @@ impl CertifierService {
                 _ => {
                     // *** Shutdown the current service and return the error
                     error!("{:?} ", certification_error.to_string());
-                    self.shutdown_service().await;
                     return Err(certification_error.into());
                 }
             }
@@ -196,55 +191,8 @@ impl CertifierService {
 
 #[async_trait]
 impl SystemService for CertifierService {
-    async fn shutdown_service(&mut self) {
-        debug!("Shutting down Certifier!!!");
-
-        self.system.is_shutdown = true;
-        // drop(self.decision_publisher);
-        info!("Certifier Service shutdown completed!");
-    }
-    fn is_shutdown(&self) -> bool {
-        self.system.is_shutdown
-    }
-
-    async fn update_shutdown_flag(&mut self, flag: bool) {
-        info!("flag {}", flag);
-        self.system.is_shutdown = flag;
-    }
-    async fn health_check(&self) -> bool {
-        true
-    }
-
     async fn run(&mut self) -> ServiceResult {
-        let mut system_channel_rx = self.system.system_notifier.subscribe();
-
-        // while !self.is_shutdown() {
-        tokio::select! {
-           channel_msg =  self.message_channel_rx.recv() =>  {
-                self.process_message(&channel_msg).await?
-            }
-            // ** Received System Messages (shutdown/healthcheck).
-            msg = system_channel_rx.recv() => {
-                    let message = msg.unwrap();
-
-                    match message {
-                        SystemMessage::Shutdown => {
-                            info!("[CERTIFIER] Shutdown received");
-                            self.shutdown_service().await;
-                        },
-                        SystemMessage::HealthCheck => {
-                            // info!("Health Check message received <3 <3 <3");
-                            let is_healthy = self.health_check().await;
-                            self.system.system_notifier.send(SystemMessage::HealthCheckStatus { service: "CERTIFIER_SERVICE", healthy: is_healthy },).unwrap();
-                        },
-                        _ => ()
-                }
-
-            }
-
-
-        }
-
-        Ok(())
+        let channel_msg = self.message_channel_rx.recv().await;
+        Ok(self.process_message(&channel_msg).await?)
     }
 }

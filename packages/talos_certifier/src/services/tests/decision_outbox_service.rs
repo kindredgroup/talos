@@ -12,6 +12,7 @@ use crate::{
         errors::{DecisionStoreError, DecisionStoreErrorKind},
         DecisionStore, MessagePublisher,
     },
+    SystemMessage,
 };
 use async_trait::async_trait;
 use tokio::{
@@ -263,7 +264,7 @@ async fn test_capture_child_thread_dberror() {
     };
     let mock_decision_publisher = MockDecisionPublisher {};
 
-    let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (system_notifier, mut system_rx) = broadcast::channel(10);
     let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
@@ -302,11 +303,8 @@ async fn test_capture_child_thread_dberror() {
     });
 
     let _result = dob_svc.run().await;
-    let result = dob_svc.run().await;
 
-    assert!(result.is_err());
-
-    if let Err(error) = result {
+    if let Ok(SystemMessage::ShutdownWithError(error)) = system_rx.recv().await {
         assert!(error.kind == SystemServiceErrorKind::DBError);
     }
 }
@@ -347,7 +345,7 @@ async fn test_capture_child_thread_publish_error() {
     };
     let mock_decision_publisher = MockDecisionPublisherWithError {};
 
-    let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (system_notifier, mut system_rx) = broadcast::channel(10);
     let (monitor_tx, _monitor_rx) = mpsc::channel(2_000);
 
     let system = System {
@@ -386,11 +384,8 @@ async fn test_capture_child_thread_publish_error() {
     });
 
     let _ = dob_svc.run().await;
-    let result = dob_svc.run().await;
 
-    assert!(result.is_err());
-
-    if let Err(error) = result {
+    if let Ok(SystemMessage::ShutdownWithError(error)) = system_rx.recv().await {
         assert!(error.kind == SystemServiceErrorKind::MessagePublishError);
     }
 }

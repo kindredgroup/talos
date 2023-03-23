@@ -5,7 +5,7 @@ use std::sync::{
 
 use crate::{core::ServiceResult, SystemMessage};
 use futures_util::future::join_all;
-use log::error;
+use log::{error, info};
 
 use crate::core::{System, SystemService};
 
@@ -60,26 +60,43 @@ pub struct TalosCertifierService {
 impl TalosCertifierService {
     pub async fn run(self) -> ServiceResult {
         let service_handle = self.services.into_iter().map(|mut service| {
-            let shutdown_notifier_cloned = self.system.system_notifier.clone();
-            let shutdown_flag = Arc::clone(&self.shutdown_flag);
-            tokio::spawn(async move {
-                let mut result: ServiceResult = Ok(());
-                while !shutdown_flag.load(Ordering::Relaxed) {
-                    if let Err(service_error) = service.run().await {
-                        // error!("\n {:?} \n\n More info: {:?} \n", *service_error, service_error);
-                        // let talos_error: TalosError = service_error.into();
-                        // if let TalosError::SystemError(_) | TalosError::DBError { .. } = service_error {
-                        //     let _ = shutdown_notifier_cloned.send(SystemMessage::Shutdown);
-                        // }
-                        error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
+            tokio::spawn({
+                let shutdown_notifier_cloned = self.system.system_notifier.clone();
+                let mut shutdown_receiver = shutdown_notifier_cloned.subscribe();
+                let shutdown_flag = Arc::clone(&self.shutdown_flag);
 
-                        let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                async move {
+                    let mut result: ServiceResult = Ok(());
+                    while !shutdown_flag.load(Ordering::Relaxed) {
+                        tokio::select! {
+                            svc_result = service.run() => {
+                                if let Err(service_error) = svc_result {
+                                    error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
+                                    shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
+                                };
+                            },
+                            msg = shutdown_receiver.recv() => {
+                                let message = msg.unwrap();
 
-                        result = Err(service_error);
-                        shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
-                    };
+                                match message {
+                                    SystemMessage::Shutdown => {
+                                        info!("Shutdown received");
+                                        let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                                    },
+                                    SystemMessage::ShutdownWithError(service_error) => {
+                                        info!("Shutdown received due to error");
+                                        let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                                         result = Err(service_error);
+                                    },
+
+                                    _ => ()
+                                }
+
+                            }
+                        }
+                    }
+                    result
                 }
-                result
             })
         });
 

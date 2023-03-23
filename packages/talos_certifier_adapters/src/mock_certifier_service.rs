@@ -24,16 +24,6 @@ impl SharedPortTraits for MockCertifierService {
 
 #[async_trait]
 impl SystemService for MockCertifierService {
-    async fn shutdown_service(&mut self) {}
-    fn is_shutdown(&self) -> bool {
-        false
-    }
-
-    async fn update_shutdown_flag(&mut self, _flag: bool) {}
-    async fn health_check(&self) -> bool {
-        true
-    }
-
     async fn run(&mut self) -> ServiceResult {
         // while !self.is_shutdown() {
         tokio::select! {
