@@ -23,11 +23,11 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 200_000;
+const BATCH_SIZE: i32 = 10;
 const TALOS_TYPE: TalosType = TalosType::InProcessMock;
 const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
-const TARGET_RATE: f64 = 50_000_f64;
+const TARGET_RATE: f64 = 500_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
 const WITH_METRICS: bool = true;
 
