@@ -1,7 +1,7 @@
 use strum::Display;
 use thiserror::Error as ThisError;
 
-#[derive(Debug, Display)]
+#[derive(Debug, Display, PartialEq)]
 pub enum MessagingErrorKind {
     Consuming,
     CorruptedPayload,
@@ -52,3 +52,25 @@ impl MessagingError {
         }
     }
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_constructors() {
+        let error = MessagingError::new_consuming("c1".to_string());
+        assert_eq!(error.kind, MessagingErrorKind::Consuming);
+
+        let error = MessagingError::new_corrupted_payload("r1".to_string(), "c1".to_string());
+        assert_eq!(error.kind, MessagingErrorKind::CorruptedPayload);
+
+        let error = MessagingError::new_publishing("r1".to_string(), "c1".to_string());
+        assert_eq!(error.kind, MessagingErrorKind::Publishing);
+
+        let error: MessagingError = "generic".to_string().into();
+        assert_eq!(error.kind, MessagingErrorKind::Generic);
+    }
+}
+// $coverage:ignore-end

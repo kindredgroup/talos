@@ -249,7 +249,6 @@ mod tests {
             .expect_send()
             .withf(move |param| param.request.candidate.xid == *"xid1")
             .once()
-            // .in_sequence(&mut seq)
             .returning(move |_| Ok(()));
 
         tx_cancel.expect_send().never();
@@ -276,6 +275,23 @@ mod tests {
         } else {
             false
         }
+    }
+
+    fn assert_expected_certify_error(result: Result<CertificationResponse, AgentError>) {
+        assert!(result.is_err());
+        let is_error_returned = match result {
+            Err(error) => {
+                if let Certification { xid } = error.kind {
+                    xid == *"xid1"
+                } else {
+                    false
+                }
+            }
+
+            _ => false,
+        };
+
+        assert!(is_error_returned);
     }
 
     #[tokio::test]
@@ -388,20 +404,7 @@ mod tests {
         let agent: Box<dyn TalosAgent> = Box::new(agent_impl);
         let request = sample_request(sample_candidate);
         let result = agent.certify(request).await;
-        assert!(result.is_err());
-        let is_error_returned = match result {
-            Err(error) => {
-                if let Certification { xid } = error.kind {
-                    xid == *"xid1"
-                } else {
-                    false
-                }
-            }
-
-            _ => false,
-        };
-
-        assert!(is_error_returned);
+        assert_expected_certify_error(result);
         assert!(agent.collect_metrics().is_none());
     }
 
@@ -429,20 +432,7 @@ mod tests {
         let agent: Box<dyn TalosAgent> = Box::new(agent_impl);
         let request = sample_request(sample_candidate);
         let result = agent.certify(request).await;
-        assert!(result.is_err());
-        let is_error_returned = match result {
-            Err(error) => {
-                if let Certification { xid } = error.kind {
-                    xid == *"xid1"
-                } else {
-                    false
-                }
-            }
-
-            _ => false,
-        };
-
-        assert!(is_error_returned);
+        assert_expected_certify_error(result);
         assert!(agent.collect_metrics().is_none());
     }
 }
