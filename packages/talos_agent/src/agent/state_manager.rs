@@ -117,7 +117,6 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
         if let Some(message) = opt_decision {
-            log::info!("handle_decision() with message");
             let xid = &message.xid;
             Self::reply_to_agent(xid, message.decision, message.decided_at, state.get_vec(&message.xid), metrics_client).await;
             state.remove(xid);
@@ -144,8 +143,6 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             return;
         }
 
-        log::info!("reply_to_agent() there are waiting clients ...");
-
         let waiting_clients = clients.unwrap();
         let decision_received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
         let count = waiting_clients.len();
@@ -162,11 +159,9 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 xid, client_nr, count,
             );
 
-            log::info!("reply_to_agent() notifying client ...");
             waiting_client.notify(response.clone(), error_message).await;
 
             if let Some(mc) = metrics_client.as_ref() {
-                log::info!("reply_to_agent() emitting metrics ...");
                 mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0)).await.unwrap();
                 mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
                     .await

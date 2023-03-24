@@ -29,7 +29,7 @@ const PROGRESS_EVERY: i32 = 50_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
 const TARGET_RATE: f64 = 50_000_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
-const WITH_METRICS: bool = false;
+const WITH_METRICS: bool = true;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";

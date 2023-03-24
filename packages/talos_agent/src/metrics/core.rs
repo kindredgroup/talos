@@ -41,15 +41,16 @@ impl Metrics {
         let mut times: Vec<Timeline> = Vec::new();
         for (id, events) in data.iter() {
             let started_at = Self::get_time(events, &EventName::Started);
+            if started_at == u64::MAX {
+                // Skip incomplete transaction
+                continue;
+            }
+
             let finished_at = events.get(&EventName::Finished).map(|data| data.event.time).unwrap_or(u64::MAX);
             let candidate_received_at = events.get(&EventName::CandidateReceived).map(|data| data.event.time).unwrap_or(u64::MAX);
             let candidate_published_at = events.get(&EventName::CandidatePublished).map(|data| data.event.time).unwrap_or(u64::MAX);
             let decided_at = events.get(&EventName::Decided).map(|data| data.event.time).unwrap_or(u64::MAX);
             let decision_received_at = events.get(&EventName::DecisionReceived).map(|data| data.event.time).unwrap_or(u64::MAX);
-
-            if started_at == u64::MAX {
-                continue;
-            }
 
             let total = finished_at - started_at;
 
