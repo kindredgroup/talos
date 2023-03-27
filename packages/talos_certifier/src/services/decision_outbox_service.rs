@@ -2,7 +2,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, error};
 
 use tokio::sync::mpsc;
 
@@ -69,13 +69,31 @@ impl DecisionOutboxService {
 
     pub async fn publish_decision(publisher: &Arc<Box<dyn MessagePublisher + Send + Sync>>, decision_message: &DecisionMessage) -> ServiceResult {
         let xid = decision_message.xid.clone();
-        let decision_str = serde_json::to_string(&decision_message).unwrap();
+        let decision_str = serde_json::to_string(&decision_message).map_err(|e| {
+            Box::new(SystemServiceError {
+                kind: SystemServiceErrorKind::ParseError,
+                reason: format!("Error serializing decision message to string - {}", e),
+                data: Some(format!("{:?}", decision_message)),
+                service: "Decision Outbox Service".to_string(),
+            })
+        })?;
 
         let mut decision_publish_header = HashMap::new();
         decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
         decision_publish_header.insert(
             "decisionTime".to_string(),
-            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos().to_string(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| {
+                    Box::new(SystemServiceError {
+                        kind: SystemServiceErrorKind::ParseError,
+                        reason: format!("Error getting current time - {}", e),
+                        data: Some(format!("{:?}", decision_message)),
+                        service: "Decision Outbox Service".to_string(),
+                    })
+                })?
+                .as_nanos()
+                .to_string(),
         );
         decision_publish_header.insert("certAgent".to_string(), decision_message.agent.clone());
 
@@ -106,11 +124,15 @@ impl SystemService for DecisionOutboxService {
                 match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
                     Ok(decision) => {
                         if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision).await {
-                            system.system_notifier.send(SystemMessage::ShutdownWithError(publish_error)).unwrap();
+                            error!(
+                                "Error publishing message for version={} with reason={:?}",
+                                decision.version,
+                                publish_error.to_string()
+                            );
                         }
                     }
-                    Err(error) => {
-                        system.system_notifier.send(SystemMessage::ShutdownWithError(error)).unwrap();
+                    Err(db_error) => {
+                        system.system_notifier.send(SystemMessage::ShutdownWithError(db_error)).unwrap();
                     }
                 };
             });
