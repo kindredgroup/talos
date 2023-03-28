@@ -81,13 +81,15 @@ init.flamegraph:
 ## dev.agent-run-profiler-samply: 🧪 Runs agent with Samply profiler
 dev.agent-run-profiler-samply:
 	$(call pp,run-agent app...)
+	cargo build --example agent_client
 	samply record -o logs/samply-agent.json -s cargo run --example agent_client
-	open https://profiler.firefox.com
+	samply load logs/samply-agent.json
 
 ## dev.agent-run-profiler-flamegraph: 🧪 Runs agent with Flamegraph profiler
 # Add CARGO_PROFILE_RELEASE_DEBUG=true to .env
 dev.agent-run-profiler-flamegraph:
 	$(call pp,run-agent app...)
+	cargo build --example agent_client
 	rm logs/flamegraph-agent.svg | true
 	sudo cargo flamegraph -o logs/flamegraph-agent.svg --open --example agent_client
 
