@@ -23,13 +23,13 @@ use uuid::Uuid;
 /// The sample usage of talos agent library
 ///
 
-const BATCH_SIZE: i32 = 10;
-const TALOS_TYPE: TalosType = TalosType::InProcessMock;
-const PROGRESS_EVERY: i32 = 50_000;
+const BATCH_SIZE: i32 = 10_000;
+const TALOS_TYPE: TalosType = TalosType::External;
+const PROGRESS_EVERY: i32 = 5_000;
 const NANO_IN_SEC: i32 = 1_000_000_000;
 const TARGET_RATE: f64 = 500_f64;
 const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
-const WITH_METRICS: bool = true;
+const WITH_METRICS: bool = false;
 
 fn make_configs() -> (AgentConfig, KafkaConfig) {
     let cohort = "HostForTesting";
@@ -149,6 +149,12 @@ async fn make_agent() -> impl TalosAgent {
 #[tokio::main]
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
+
+    log::info!("started program: {}", std::process::id());
+
+    info!("sleeping for 10 sec");
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    info!("resumed...");
 
     certify(BATCH_SIZE).await
 }
