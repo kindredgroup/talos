@@ -1,19 +1,15 @@
 use std::env::{var, VarError};
 use std::num::ParseIntError;
 use std::string::ToString;
-use std::sync::Mutex;
 
 use rdkafka::config::RDKafkaLogLevel;
 
 use talos_agent::api::{AgentConfig, KafkaConfig, TalosType};
 
-static ENV_LOCK: Mutex<()> = Mutex::new(());
-
 pub struct ConfigLoader {}
 
 impl ConfigLoader {
     fn get_kafka_log_level_from_env() -> Result<RDKafkaLogLevel, String> {
-        let _unused = ENV_LOCK.lock().unwrap();
         match Self::read_var("KAFKA_LOG_LEVEL") {
             Ok(level) => match level.to_lowercase().as_str() {
                 "alert" => Ok(RDKafkaLogLevel::Alert),
@@ -96,8 +92,12 @@ impl ConfigLoader {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::config_loader::ConfigLoader;
     use std::env;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn read_var() {
@@ -140,6 +140,8 @@ mod tests {
 
     #[test]
     fn get_kafka_log_level_from_env() {
+        let _unused = ENV_LOCK.lock().unwrap();
+
         let test_data: Vec<(&str, i32)> = vec![
             ("alert", 1),
             ("critical", 2),
@@ -162,6 +164,7 @@ mod tests {
 
     #[test]
     fn get_kafka_log_level_from_env_should_fail_if_not_set() {
+        let _unused = ENV_LOCK.lock().unwrap();
         env::set_var("KAFKA_LOG_LEVEL", "");
         let result = ConfigLoader::get_kafka_log_level_from_env();
         assert!(result.is_err());
@@ -169,6 +172,8 @@ mod tests {
 
     #[test]
     fn load() {
+        let _unused = ENV_LOCK.lock().unwrap();
+
         env::set_var("AGENT_NAME", "aName");
         env::set_var("COHORT_NAME", "cName");
         env::set_var("AGENT_BUFFER_SIZE", "1");
