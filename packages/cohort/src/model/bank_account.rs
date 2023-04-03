@@ -6,7 +6,7 @@ use rusty_money::{iso, Money};
 
 use crate::model::talos_state::TalosState;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BankAccount {
     pub name: String,
     pub number: String,
@@ -46,4 +46,39 @@ impl Display for BankAccount {
 
 pub fn as_money(amount: String, currency: &Currency) -> Result<Money<Currency>, String> {
     Money::from_str(amount.as_str(), currency).map_err(|e| format!("Cannot create Money instance from {}{}. Error: {}", amount, currency.iso_numeric_code, e))
+}
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use crate::model::bank_account::{as_money, BankAccount};
+    use crate::model::talos_state::TalosState;
+
+    #[test]
+    fn test_model() {
+        assert_eq!(
+            format!(
+                "{}",
+                BankAccount::aud(
+                    "TestBankAccount123456".to_string(),
+                    "123456".to_string(),
+                    "123.45".to_string(),
+                    TalosState { version: 111_u64 },
+                )
+            ),
+            "BankAccount: [name: TestBankAccount123456, number: 123456, balance: $123.45 AUD, talos: TalosState: [version: 111]]",
+        );
+    }
+
+    #[test]
+    fn should_increment_amount() {
+        let mut a = BankAccount::aud(
+            "TestBankAccount123456".to_string(),
+            "123456".to_string(),
+            "123.45".to_string(),
+            TalosState { version: 111_u64 },
+        );
+        a.increment(as_money("100".to_string(), a.balance.currency()).unwrap());
+        assert_eq!(a.balance, as_money("223.45".to_string(), a.balance.currency()).unwrap())
+    }
 }

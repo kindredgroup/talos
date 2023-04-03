@@ -1,4 +1,6 @@
+// $coverage:ignore-start
 use std::fmt;
+// $coverage:ignore-end
 
 use rusty_money::{iso, Money};
 use serde::de::{MapAccess, Visitor};
@@ -30,9 +32,11 @@ impl<'de> Deserialize<'de> for BankAccount {
                 impl<'de> Visitor<'de> for FieldVisitor {
                     type Value = Field;
 
+                    // $coverage:ignore-start
                     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                         formatter.write_str("'name' or 'number' or 'amount' or 'currency' or 'talosState'")
                     }
+                    // $coverage:ignore-end
 
                     fn visit_str<E>(self, value: &str) -> Result<Field, E>
                     where
@@ -58,9 +62,11 @@ impl<'de> Deserialize<'de> for BankAccount {
         impl<'de> Visitor<'de> for BankAccountVisitor {
             type Value = BankAccount;
 
+            // $coverage:ignore-start
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("struct BankAccount")
             }
+            // $coverage:ignore-end
 
             fn visit_map<V>(self, mut map: V) -> Result<BankAccount, V::Error>
             where
@@ -130,3 +136,138 @@ impl<'de> Deserialize<'de> for BankAccount {
         deserializer.deserialize_struct("BankAccount", FIELDS, BankAccountVisitor)
     }
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use crate::model::bank_account::BankAccount;
+    use crate::model::talos_state::TalosState;
+    use rusty_money::FormattableCurrency;
+
+    #[test]
+    fn should_deserialize() {
+        let talos_state = "{'version': 111}";
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD', 'talosState': {}}}",
+            talos_state
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+
+        let account = rslt_account.unwrap();
+        assert_eq!(account.number, "123456");
+        assert_eq!(account.name, "TestBankAccount123456");
+        assert_eq!(account.talos_state.version, 111_u64);
+        assert_eq!(account.balance.amount().to_string(), "123.45");
+        assert_eq!(account.balance.currency().symbol(), "$");
+        assert_eq!(account.balance.currency().iso_alpha_code, "AUD");
+        assert_eq!(
+            account,
+            BankAccount::aud(
+                "TestBankAccount123456".to_string(),
+                "123456".to_string(),
+                "123.45".to_string(),
+                TalosState { version: 111_u64 },
+            )
+        )
+    }
+
+    #[test]
+    fn should_fail_with_missing_fields() {
+        let json = "{{'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD'}}"
+            .to_string()
+            .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+    }
+
+    #[test]
+    fn should_fail_with_duplicated_fields() {
+        let talos_state = "{'version': 111}";
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD', 'talosState': {}}}",
+            talos_state,
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e.to_string().starts_with("duplicate field `name`"));
+        }
+
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'number': '123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD', 'talosState': {}}}",
+            talos_state,
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e.to_string().starts_with("duplicate field `number`"));
+        }
+
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'amount': '123.45', 'currency': 'AUD', 'talosState': {}}}",
+            talos_state,
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e.to_string().starts_with("duplicate field `amount`"));
+        }
+
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD', 'currency': 'AUD', 'talosState': {}}}",
+            talos_state,
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e.to_string().starts_with("duplicate field `currency`"));
+        }
+
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD', 'talosState': {}, 'talosState': {}}}",
+            talos_state, talos_state,
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e.to_string().starts_with("duplicate field `talosState`"));
+        }
+    }
+
+    #[test]
+    fn should_fail_with_extra_field() {
+        let talos_state = "{'version': 111}";
+        let json = format!("{{'name3': 'TestBankAccount123456', 'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUD', 'talosState': {}}}", talos_state).replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e
+                .to_string()
+                .starts_with("unknown field `name3`, expected one of `name`, `number`, `amount`, `currency`, `talosState`"));
+        }
+    }
+
+    #[test]
+    fn should_fail_with_bad_currency() {
+        let talos_state = "{'version': 111}";
+        let json = format!(
+            "{{'name': 'TestBankAccount123456', 'number': '123456', 'amount': '123.45', 'currency': 'AUDD', 'talosState': {}}}",
+            talos_state
+        )
+        .replace('\'', "\"");
+        let rslt_account = serde_json::from_str::<BankAccount>(json.as_str());
+        assert!(rslt_account.is_err());
+        if let Err(e) = rslt_account {
+            assert!(e
+                .to_string()
+                .starts_with("unknown variant `AUDD`, expected `Expected ISO currency, three letters`"));
+        }
+    }
+}
+// $coverage:ignore-end

@@ -183,16 +183,44 @@ impl Cohort {
         let account1 = accounts.get(i).unwrap();
         let amount = rnd.gen_range(1..20).to_string();
         if rnd.gen::<bool>() {
+            // $coverage:ignore-start
             loop {
                 let j = rnd.gen_range(0..accounts.len());
                 if i == j {
                     continue;
                 }
-                let account2 = accounts.get(i).unwrap();
+                let account2 = accounts.get(j).unwrap();
                 break (account1, amount, Some(account2), false);
             }
+            // $coverage:ignore-end
         } else {
             (account1, amount, Option::<&BankAccount>::None, rnd.gen::<bool>())
         }
     }
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use crate::core::Cohort;
+    use crate::model::bank_account::BankAccount;
+    use crate::model::talos_state::TalosState;
+
+    #[test]
+    fn pick() {
+        let list = vec![
+            BankAccount::aud("a1".to_string(), "a1".to_string(), "1".to_string(), TalosState { version: 1 }),
+            BankAccount::aud("a2".to_string(), "a2".to_string(), "2".to_string(), TalosState { version: 2 }),
+            BankAccount::aud("a3".to_string(), "a3".to_string(), "3".to_string(), TalosState { version: 3 }),
+        ];
+
+        let (a1, _, a2, is_deposit) = Cohort::pick(&list);
+        assert!(list.contains(a1));
+        if a2.is_some() {
+            assert!(list.contains(a2.unwrap()));
+            assert_ne!(*a1, *a2.unwrap());
+            assert!(!is_deposit);
+        }
+    }
+}
+// $coverage:ignore-end
