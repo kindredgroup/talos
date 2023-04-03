@@ -126,14 +126,20 @@ run:
 	$(call pp,run app...)
 	cargo run --example certifier_kafka_pg
 
-## run: 🧪 Runs rust app in release mode
+## run.release: 🧪 Runs rust app in release mode
 run.release:
 	$(call pp,run app...)
 	cargo run -r --example certifier_kafka_pg
 
+## run.with_mock_db: 🧪 Runs certifier with mock DB
 run.with_mock_db:
 	$(call pp,run app...)
 	cargo run -r --example certifier_kafka_dbmock
+
+## dev.run_cohort: 🧪 Runs Cohort
+dev.run_cohort:
+	$(call pp,run cohort...)
+	cargo run --bin cohort
 
 ## lint: 🧹 Checks for lint failures on rust
 lint:

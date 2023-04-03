@@ -34,7 +34,7 @@ pub struct CertificationResponse {
     pub decision: Decision,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AgentConfig {
     // must be unique for each instance
     pub agent: String,
@@ -44,14 +44,14 @@ pub struct AgentConfig {
     pub timout_ms: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TalosType {
     External,      // kafka listener and decision publisher is the external process
     InProcessMock, // kafka listener and decision publisher is out internal function
 }
 
 /// Kafka-related configuration
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct KafkaConfig {
     pub brokers: String,
     // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
