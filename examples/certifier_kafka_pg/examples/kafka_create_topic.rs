@@ -4,7 +4,7 @@ use talos_certifier_adapters::kafka::kafka_deploy::{create_topic, KafkaDeployErr
 async fn main() -> Result<(), KafkaDeployError> {
     println!("deploying kafka...");
 
-    let status = create_topic().await?;
+    let status = create_topic(1).await?;
 
     match status {
         KafkaDeployStatus::TopicExists => {
