@@ -23,7 +23,7 @@ impl Display for AccountRef {
     }
 }
 
-#[derive(Display, Clone, Debug)]
+#[derive(Display, Clone, Debug, PartialEq)]
 pub enum AccountOperation {
     Deposit { amount: String, account: AccountRef },
     Transfer { amount: String, from: AccountRef, to: AccountRef },
@@ -32,9 +32,68 @@ pub enum AccountOperation {
     QueryAccount { account: AccountRef },
 }
 
-#[derive(Display, Clone, Debug)]
+#[derive(Display, Clone, Debug, PartialEq)]
 pub enum OperationResponse {
     Success,
     Error(String),
     QueryResult(Option<Vec<BankAccount>>),
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn models() {
+        let acc_ref = AccountRef {
+            number: "1".to_string(),
+            new_version: None,
+        };
+        assert_eq!(
+            acc_ref,
+            AccountRef {
+                number: "1".to_string(),
+                new_version: None,
+            },
+        );
+        assert_ne!(
+            acc_ref,
+            AccountRef {
+                number: "1".to_string(),
+                new_version: Some(1),
+            },
+        );
+        assert_eq!(format!("{}", acc_ref), "AccountRef: [number: 1, new_version: None]".to_string());
+
+        let _ = format!("{:?}", AccountOperation::QueryAccount { account: acc_ref.clone() });
+        let _ = format!("{:?}", AccountOperation::QueryAll);
+        let _ = format!(
+            "{:?}",
+            AccountOperation::Withdraw {
+                amount: "1".to_string(),
+                account: acc_ref.clone(),
+            }
+        );
+        let _ = format!(
+            "{:?}",
+            AccountOperation::Transfer {
+                amount: "1".to_string(),
+                from: acc_ref.clone(),
+                to: acc_ref.clone(),
+            }
+        );
+        let _ = format!(
+            "{:?}",
+            AccountOperation::Deposit {
+                amount: "1".to_string(),
+                account: acc_ref,
+            },
+        );
+
+        let _ = format!("{:?}", OperationResponse::Success);
+        let _ = format!("{:?}", OperationResponse::Error("e".to_string()));
+        let _ = format!("{:?}", OperationResponse::QueryResult(None));
+    }
+}
+// $coverage:ignore-end

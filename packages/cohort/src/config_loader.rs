@@ -179,6 +179,7 @@ mod tests {
         env::set_var("AGENT_BUFFER_SIZE", "1");
         env::set_var("AGENT_TIMEOUT_MS", "2");
 
+        env::set_var("KAFKA_LOG_LEVEL", "info");
         env::set_var("KAFKA_BROKERS", "kBrokers");
         env::set_var("KAFKA_GROUP_ID", "kGroup");
         env::set_var("KAFKA_TOPIC", "kTopic");
@@ -190,8 +191,8 @@ mod tests {
         env::set_var("KAFKA_PASSWORD", "kPwd");
 
         let result = ConfigLoader::load();
-        assert!(result.is_ok());
-        let (a, k) = result.unwrap();
+        let (a, k) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
+
         assert_eq!(a.agent, "aName".to_string());
         assert_eq!(a.cohort, "cName".to_string());
         assert_eq!(a.timout_ms, 2_u64);

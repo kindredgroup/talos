@@ -1,3 +1,4 @@
+// $coverage:ignore-start
 use tokio::signal;
 
 use cohort::config_loader::ConfigLoader;
@@ -29,3 +30,4 @@ async fn main() -> Result<(), String> {
 
     Ok(())
 }
+// $coverage:ignore-end
