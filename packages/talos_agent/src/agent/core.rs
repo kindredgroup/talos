@@ -264,6 +264,7 @@ mod tests {
             Some(CertificationResponse {
                 xid: "xid1".to_string(),
                 decision: Committed,
+                version: 1,
             })
         });
         (tx_response, rx_response)

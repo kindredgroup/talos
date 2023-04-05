@@ -32,6 +32,7 @@ pub struct CertificationRequest {
 pub struct CertificationResponse {
     pub xid: String,
     pub decision: Decision,
+    pub version: u64,
 }
 
 #[derive(Clone)]

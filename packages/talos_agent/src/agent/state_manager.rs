@@ -118,7 +118,15 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     ) {
         if let Some(message) = opt_decision {
             let xid = &message.xid;
-            Self::reply_to_agent(xid, message.decision, message.decided_at, state.get_vec(&message.xid), metrics_client).await;
+            Self::reply_to_agent(
+                xid,
+                message.decision,
+                message.decided_at,
+                message.version,
+                state.get_vec(&message.xid),
+                metrics_client,
+            )
+            .await;
             state.remove(xid);
         }
     }
@@ -135,6 +143,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         xid: &str,
         decision: Decision,
         decided_at: Option<u64>,
+        version: u64,
         clients: Option<&Vec<WaitingClient>>,
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
@@ -152,6 +161,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             let response = CertificationResponse {
                 xid: xid.to_string(),
                 decision: decision.clone(),
+                version,
             };
 
             let error_message = format!(
@@ -205,6 +215,7 @@ mod tests_waiting_client {
         let response = CertificationResponse {
             xid: String::from("xid1"),
             decision: Committed,
+            version: 1,
         };
 
         let client = WaitingClient::new(Arc::new(Box::new(sender)));
@@ -221,6 +232,7 @@ mod tests_waiting_client {
         let response_sample = CertificationResponse {
             xid: String::from("xid1"),
             decision: Committed,
+            version: 1,
         };
 
         let response = response_sample.clone();
