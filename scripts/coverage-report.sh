@@ -13,7 +13,7 @@ app_name=talos
 export CARGO_INCREMENTAL="0"
 export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"
 
-excludes="talos_agent"
+excludes="none"
 
 echo "Compiling $app_name"
 cargo +nightly build

@@ -3,7 +3,6 @@ use crate::metrics::model::{EventMetadata, EventName, MetricsReport, Signal};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::mpsc::Receiver;
 
 /// The internal Metrics service responsible for collecting and accumulating runtime events
 pub struct Metrics {
@@ -29,7 +28,7 @@ impl Metrics {
     }
 
     /// Analyses collected data and produces metrics report.
-    pub fn collect(&self) -> MetricsReport {
+    pub fn collect(&self) -> Option<MetricsReport> {
         let data = self.state.lock().unwrap();
 
         let mut start_max = 0_u64;
@@ -42,6 +41,11 @@ impl Metrics {
         let mut times: Vec<Timeline> = Vec::new();
         for (id, events) in data.iter() {
             let started_at = Self::get_time(events, &EventName::Started);
+            if started_at == u64::MAX {
+                // Skip incomplete transaction
+                continue;
+            }
+
             let finished_at = events.get(&EventName::Finished).map(|data| data.event.time).unwrap_or(u64::MAX);
             let candidate_received_at = events.get(&EventName::CandidateReceived).map(|data| data.event.time).unwrap_or(u64::MAX);
             let candidate_published_at = events.get(&EventName::CandidatePublished).map(|data| data.event.time).unwrap_or(u64::MAX);
@@ -79,10 +83,14 @@ impl Metrics {
             times.push(time);
         }
 
+        if start_min == u64::MAX {
+            return None;
+        }
+
         let count = data.len() as u64;
         let publish_rate = count as f64 / Duration::from_nanos(start_max - start_min).as_secs_f64();
 
-        MetricsReport {
+        Some(MetricsReport {
             times: times.clone(),
             total: PercentileSet::new(&mut times, Timeline::get_total_ms, |i| i.total.as_micros()),
             outbox: PercentileSet::new(&mut times, Timeline::get_outbox_ms, |i| i.outbox.as_micros()),
@@ -96,11 +104,11 @@ impl Metrics {
             certify_min: certify_min_time.unwrap(),
             count,
             publish_rate,
-        }
+        })
     }
 
     /// Launches background task which collects and stores incoming signals
-    pub fn run(&self, mut rx_destination: Receiver<Signal>) {
+    pub fn run<TSignalRx: crate::mpsc::core::Receiver<Data = Signal> + 'static>(&self, mut rx_destination: TSignalRx) {
         let state = Arc::clone(&self.state);
         tokio::spawn(async move {
             loop {
@@ -138,3 +146,100 @@ impl Metrics {
         });
     }
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::model::Event;
+
+    fn new_event(id: &str, name: EventName, time: u64) -> EventMetadata {
+        EventMetadata {
+            event: Event {
+                id: id.to_string(),
+                event_name: name,
+                time,
+            },
+            ended_at: None,
+        }
+    }
+
+    fn insert_event(state: &mut HashMap<String, HashMap<EventName, EventMetadata>>, id: &str, name: EventName, time: u64) {
+        let event = new_event(id, name.clone(), time);
+        if state.contains_key(id) {
+            let _ = state.get_mut(id).unwrap().insert(name, event);
+        } else {
+            let _ = state.insert(id.to_string(), HashMap::from([(name, event)]));
+        }
+    }
+
+    fn nanos(sec: u64) -> u64 {
+        sec * 1_000_000_000
+    }
+
+    fn millis(sec: u64) -> u128 {
+        sec as u128 * 1_000_u128
+    }
+
+    #[test]
+    fn new_should_create_empty_state() {
+        // this is really for coverage
+        let m = Metrics::default();
+        assert!(m.state.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn get_time_should_extract_event_time() {
+        // this is really for coverage
+        let mut events = HashMap::new();
+        events.insert(EventName::Decided, new_event("1", EventName::Decided, 1111));
+        assert_eq!(Metrics::get_time(&events, &EventName::Decided), 1111);
+    }
+
+    #[test]
+    fn should_collect_none_without_start_event() {
+        let mut server = Metrics::default();
+        let mut state = HashMap::new();
+        insert_event(&mut state, "1", EventName::Decided, u64::MAX);
+
+        server.state = Arc::new(Mutex::new(state));
+        let report = server.collect();
+        assert!(report.is_none());
+    }
+
+    #[test]
+    fn collect() {
+        let mut server = Metrics::default();
+        let mut state = HashMap::new();
+        insert_event(&mut state, "1", EventName::Started, nanos(1));
+        insert_event(&mut state, "1", EventName::CandidateReceived, nanos(2));
+        insert_event(&mut state, "1", EventName::CandidatePublished, nanos(3));
+        insert_event(&mut state, "1", EventName::Decided, nanos(4));
+        insert_event(&mut state, "1", EventName::DecisionReceived, nanos(5));
+        insert_event(&mut state, "1", EventName::Finished, nanos(6));
+
+        insert_event(&mut state, "2", EventName::Started, nanos(2));
+        insert_event(&mut state, "2", EventName::CandidateReceived, nanos(3));
+        insert_event(&mut state, "2", EventName::CandidatePublished, nanos(4));
+        insert_event(&mut state, "2", EventName::Decided, nanos(5));
+        insert_event(&mut state, "2", EventName::DecisionReceived, nanos(6));
+        insert_event(&mut state, "2", EventName::Finished, nanos(8));
+
+        server.state = Arc::new(Mutex::new(state));
+        let maybe_report = server.collect();
+        assert!(maybe_report.is_some());
+
+        let report = maybe_report.unwrap();
+        assert_eq!(report.count, 2_u64);
+        assert_eq!(report.times.len(), 2);
+        assert_eq!(report.total.p99.value, 6_000_f32);
+        assert_eq!(report.total.p95.value, 6_000_f32);
+        assert_eq!(report.total.p90.value, 6_000_f32);
+        assert_eq!(report.total.p75.value, 6_000_f32);
+        assert_eq!(report.total.p50.value, 5_000_f32);
+        assert_eq!(report.publish_rate, 2_f64);
+        assert_eq!(report.certify_min.total.as_millis(), millis(5));
+        assert_eq!(report.certify_max.total.as_millis(), millis(6));
+    }
+}
+// $coverage:ignore-end

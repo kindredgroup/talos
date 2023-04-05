@@ -57,8 +57,10 @@ impl Percentile {
                 value: 0_f32,
             }
         } else {
-            let index = cmp::min((((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize, data_set.len() - 1);
-
+            let index = cmp::min(
+                (((data_set.len() * percentage as usize) as f32 / 100.0).ceil()) as usize - 1,
+                data_set.len() - 1,
+            );
             Percentile {
                 percentage,
                 unit: unit.to_string(),
@@ -76,7 +78,10 @@ impl Display for Percentile {
 
 #[derive(Clone, Debug)]
 pub struct PercentileSet {
+    // $coverage:ignore-start
+    // Ignored from coverage because of infinite loop, which just delegates calls to handlers. Handlers are covered separately.
     pub p50: Percentile,
+    // $coverage:ignore-end
     pub p75: Percentile,
     pub p90: Percentile,
     pub p95: Percentile,
@@ -103,3 +108,101 @@ impl PercentileSet {
         PercentileSet { p50, p75, p90, p95, p99 }
     }
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tx(id: String, total_sec: u64) -> Timeline {
+        Timeline {
+            id,
+            started_at: 0,
+            outbox: Duration::from_secs(1),
+            publish: Duration::from_secs(2),
+            candidate_publish_and_decision_time: Duration::from_secs(3),
+            decision_download: Duration::from_secs(4),
+            inbox: Duration::from_secs(5),
+            total: Duration::from_secs(total_sec),
+        }
+    }
+
+    #[test]
+    fn clone_debug() {
+        let p = Percentile {
+            percentage: 50,
+            value: 1.9,
+            unit: "ms".to_string(),
+        };
+
+        let ps = PercentileSet {
+            p50: p.clone(),
+            p75: p.clone(),
+            p90: p.clone(),
+            p95: p.clone(),
+            p99: p,
+        };
+
+        let _ = format!("debug and clone coverage {:?}, p50: {}", ps, ps.p50);
+    }
+
+    #[test]
+    fn compute() {
+        let tx1 = tx("id1".to_string(), 1);
+        let tx2 = tx("id2".to_string(), 2);
+        let tx3 = tx("id3".to_string(), 3);
+        let tx4 = tx("id4".to_string(), 4);
+        let tx5 = tx("id5".to_string(), 5);
+        let tx6 = tx("id6".to_string(), 6);
+        let tx7 = tx("id7".to_string(), 7);
+        let tx8 = tx("id8".to_string(), 8);
+        let tx9 = tx("id9".to_string(), 9);
+        let tx10 = tx("id10".to_string(), 10);
+
+        let data = vec![tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, tx10];
+        assert_eq!(Percentile::compute(&data, 50, "ms", &Timeline::get_total_ms).value, 5_000_f32);
+    }
+
+    #[test]
+    fn empty_data_should_compute_to_zero() {
+        assert_eq!(Percentile::compute(&Vec::<Timeline>::new(), 50, "ms", &Timeline::get_total_ms).value, 0_f32);
+    }
+
+    #[test]
+    fn new_percentile_set() {
+        let tx1 = tx("id1".to_string(), 1);
+        let tx2 = tx("id2".to_string(), 2);
+        let tx3 = tx("id3".to_string(), 3);
+        let tx4 = tx("id4".to_string(), 4);
+        let tx5 = tx("id5".to_string(), 5);
+        let tx6 = tx("id6".to_string(), 6);
+        let tx7 = tx("id7".to_string(), 7);
+        let tx8 = tx("id8".to_string(), 8);
+        let tx9 = tx("id9".to_string(), 9);
+        let tx10 = tx("id10".to_string(), 10);
+
+        let p_set = PercentileSet::new(&mut [tx1, tx3, tx2, tx5, tx4, tx6, tx8, tx7, tx10, tx9], Timeline::get_total_ms, |t| {
+            t.total.as_millis()
+        });
+
+        assert_eq!(p_set.p50.value, 5_000_f32);
+        assert_eq!(p_set.p75.value, 8_000_f32);
+        assert_eq!(p_set.p90.value, 9_000_f32);
+        assert_eq!(p_set.p95.value, 10_000_f32);
+        assert_eq!(p_set.p99.value, 10_000_f32);
+    }
+
+    #[test]
+    fn should_convert_spans_to_ms() {
+        let tx = tx("id1".to_string(), 1);
+
+        assert_eq!(tx.get_total_ms(), 1_000_f32);
+        assert_eq!(tx.get_outbox_ms(), 1_000_f32);
+        assert_eq!(tx.get_publish_ms(), 2_000_f32);
+        assert_eq!(tx.get_candidate_publish_and_decision_time_ms(), 3_000_f32);
+        assert_eq!(tx.get_decision_download_ms(), 4_000_f32);
+        assert_eq!(tx.get_inbox_ms(), 5_000_f32);
+        assert_eq!(tx.get_total_ms(), 1_000_f32);
+    }
+}
+// $coverage:ignore-end

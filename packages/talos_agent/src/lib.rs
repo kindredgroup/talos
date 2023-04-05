@@ -1,4 +1,5 @@
 pub mod agent;
 pub mod api;
-mod messaging;
+pub mod messaging;
 pub mod metrics;
+pub mod mpsc;

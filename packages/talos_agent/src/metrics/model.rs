@@ -2,7 +2,7 @@ use crate::metrics::aggregates::{PercentileSet, Timeline};
 use strum::Display;
 
 /// The trackable event within Talos Agent
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Event {
     pub id: String,
     pub event_name: EventName,
@@ -32,7 +32,7 @@ pub struct EventMetadata {
 }
 
 /// Data sent from metrics client to metrics service
-#[derive(Debug, Clone, Display)]
+#[derive(Debug, Clone, Display, PartialEq)]
 pub enum Signal {
     Start { time: u64, event: Event },
     End { time: u64, id: String, event_name: EventName },
@@ -143,3 +143,93 @@ impl MetricsReport {
         (self.count as f64) / (duration_ms as f64) * 1000.0
     }
 }
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::metrics::model::{Event, EventMetadata, EventName};
+    use std::time::Duration;
+
+    fn tx(id: String, total_sec: u64) -> Timeline {
+        Timeline {
+            id,
+            started_at: 1,
+            outbox: Duration::from_secs(1),
+            publish: Duration::from_secs(2),
+            candidate_publish_and_decision_time: Duration::from_secs(3),
+            decision_download: Duration::from_secs(4),
+            inbox: Duration::from_secs(5),
+            total: Duration::from_secs(total_sec),
+        }
+    }
+
+    fn sample_report() -> MetricsReport {
+        let p_set = PercentileSet::new(&mut [], Timeline::get_total_ms, |t| t.total.as_millis());
+        MetricsReport {
+            times: Vec::<Timeline>::new(),
+            outbox: p_set.clone(),
+            candidate_publish_and_decision_time: p_set.clone(),
+            decision_download: p_set.clone(),
+            inbox: p_set.clone(),
+            total: p_set.clone(),
+            candidate_publish: p_set,
+            certify_min: tx("id1".to_string(), 1),
+            certify_max: tx("id2".to_string(), 2),
+            count: 10,
+            publish_rate: 0.0,
+        }
+    }
+
+    #[test]
+    fn clone_debug() {
+        let event = Event {
+            id: "id".to_string(),
+            event_name: EventName::Started,
+            time: 0,
+        };
+
+        let _ = format!("debug and clone coverage {:?}", event);
+
+        let event_meta = EventMetadata {
+            event: event.clone(),
+            ended_at: None,
+        };
+
+        let event_meta_copy = event_meta;
+        let _ = format!("debug and clone coverage {:?}", event_meta_copy);
+
+        let signal_start = Signal::Start { event: event.clone(), time: 0 };
+        let signal_end = Signal::End {
+            event_name: event.event_name,
+            time: 0,
+            id: "id".to_string(),
+        };
+
+        let all = (signal_start, signal_end);
+        let _ = format!("debug and clone coverage {:?}", all);
+    }
+
+    #[test]
+    fn report_formatting() {
+        let report = sample_report();
+        let _ = format!("debug and clone coverage {:?}", report);
+
+        assert_eq!(report.format_p99(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
+        assert_eq!(report.format_p95(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
+        assert_eq!(report.format_p90(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
+        assert_eq!(report.format_p75(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
+        assert_eq!(report.format_p50(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
+        assert_eq!(report.format_certify_min(), "1000.000: [1000.000, 3000.000, 4000.000, 5000.000] (2000.000)");
+        assert_eq!(report.format_certify_max(), "2000.000: [1000.000, 3000.000, 4000.000, 5000.000] (2000.000)");
+    }
+
+    #[test]
+    fn report_should_compute_rate() {
+        let report = sample_report();
+        let _ = format!("debug and clone coverage {:?}", report);
+
+        assert_eq!(report.get_rate(15_000), 0.6666666666666666);
+    }
+}
+// $coverage:ignore-end

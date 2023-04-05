@@ -8,7 +8,7 @@ pub static HEADER_MESSAGE_TYPE: &str = "messageType";
 pub static HEADER_AGENT_ID: &str = "certAgent";
 
 // This should live in the external shared schema exported by Talos
-#[derive(Debug, EnumString, Display)]
+#[derive(Debug, EnumString, Display, PartialEq)]
 pub enum TalosMessageType {
     Candidate,
     Decision,
@@ -91,3 +91,59 @@ pub trait Consumer {
 }
 
 pub type ConsumerType = dyn Consumer + Sync + Send;
+
+// $coverage:ignore-start
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use log::LevelFilter;
+    use std::str::FromStr;
+
+    #[test]
+    fn new_constructors() {
+        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
+
+        let _ = format!("{:?}", TalosMessageType::Decision);
+        assert_eq!(TalosMessageType::from_str("Decision").unwrap(), TalosMessageType::Decision);
+
+        let message = CandidateMessage::new(
+            "agent".to_string(),
+            "cohort".to_string(),
+            CandidateData {
+                xid: "xid".to_string(),
+                readset: vec!["1".to_string()],
+                readvers: vec![2_u64],
+                snapshot: 1_u64,
+                writeset: vec!["1".to_string()],
+            },
+        );
+
+        let _ = format!("{:?}", message);
+        assert_eq!(message, message.clone());
+
+        let _ = format!("{:?}", Decision::Committed);
+
+        assert!(if let Ok(v) = serde_json::to_string(&Decision::Committed) {
+            v == *"\"committed\""
+        } else {
+            false
+        });
+        assert!(if let Ok(v) = serde_json::from_str::<Decision>("\"committed\"") {
+            v == Decision::Committed
+        } else {
+            false
+        });
+        assert!(if let Ok(v) = serde_json::to_string(&Decision::Aborted) {
+            v == *"\"aborted\""
+        } else {
+            false
+        });
+        assert!(if let Ok(v) = serde_json::from_str::<Decision>("\"aborted\"") {
+            v == Decision::Aborted
+        } else {
+            false
+        });
+        let _ = format!("{:?}", Decision::Aborted.clone());
+    }
+}
+// $coverage:ignore-end
