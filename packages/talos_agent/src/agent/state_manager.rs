@@ -58,7 +58,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             let mc = Arc::clone(&self.metrics_client);
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
-                    self.handle_candidate(rslt_request_msg, publisher.clone(), &mut state).await;
+                    self.handle_candidate(rslt_request_msg, publisher.clone(), &mut state).await.unwrap();
                 }
 
                 rslt_cancel_request_msg = rx_cancel.recv() => {
