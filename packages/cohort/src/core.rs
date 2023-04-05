@@ -8,8 +8,8 @@ use tokio::sync::mpsc::Sender;
 
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
-use talos_agent::api::{AgentConfig, CertificationResponse, KafkaConfig, TalosAgent};
-use talos_agent::messaging::api::DecisionMessage;
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
+use talos_agent::messaging::api::{Decision, DecisionMessage};
 use talos_agent::messaging::kafka::KafkaInitializer;
 use talos_agent::metrics::client::MetricsClient;
 use talos_agent::metrics::core::Metrics;
@@ -21,8 +21,10 @@ use crate::model::bank_account::{as_money, BankAccount};
 use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse};
 use crate::state::state_manager::StateManager;
 
+static mut SNAPSHOT: u64 = 1_u64;
+
 pub struct Cohort {
-    _agent: Box<dyn TalosAgent + Sync + Send>,
+    agent: Box<dyn TalosAgent + Sync + Send>,
     tx_state: Option<Sender<Envelope<AccountOperation, OperationResponse>>>,
 }
 
@@ -66,8 +68,8 @@ impl Cohort {
         Box::new(agent)
     }
 
-    pub fn new(_agent: Box<dyn TalosAgent + Sync + Send>) -> Self {
-        Cohort { _agent, tx_state: None }
+    pub fn new(agent: Box<dyn TalosAgent + Sync + Send>) -> Self {
+        Cohort { agent, tx_state: None }
     }
 
     /** Start generating the workload */
@@ -113,6 +115,8 @@ impl Cohort {
 
         let started_at = OffsetDateTime::now_utc();
         loop {
+            let accounts = Bank::get_accounts(self.get_tx()?).await?;
+
             // pick random bank accounts and amount
             let (account1, amount, account2, is_deposit) = Self::pick(&accounts);
             if account2.is_some() {
@@ -133,14 +137,14 @@ impl Cohort {
                     continue;
                 }
 
-                Bank::transfer(self.get_tx()?, account1, account2.unwrap(), amount).await?;
+                self.transfer(account1, account2.unwrap(), amount).await?;
                 continue;
             }
 
             // single account picked, do deposit or withdrawal
 
             if is_deposit {
-                Bank::deposit(self.get_tx()?, account1, amount).await?;
+                self.deposit(account1, amount).await?;
                 continue;
             }
 
@@ -159,13 +163,13 @@ impl Cohort {
                 continue;
             }
 
-            Bank::withdraw(self.get_tx()?, account1, amount).await?;
+            self.withdraw(account1, amount).await?;
 
             let elapsed = OffsetDateTime::now_utc().sub(started_at).as_seconds_f32();
             if (duration_sec as f32) <= elapsed {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
+            tokio::time::sleep(Duration::from_millis(800)).await;
         }
 
         let accounts = Bank::get_accounts(self.get_tx()?).await?;
@@ -196,6 +200,66 @@ impl Cohort {
         } else {
             (account1, amount, Option::<&BankAccount>::None, rnd.gen::<bool>())
         }
+    }
+
+    async fn deposit(&self, account: &BankAccount, amount: String) -> Result<(), String> {
+        // todo: delegate to agent
+
+        // todo Implement snapshot tracking
+        let snap = unsafe { SNAPSHOT };
+
+        let xid = uuid::Uuid::new_v4().to_string();
+        let cert_req = CertificationRequest {
+            message_key: "cohort-sample".to_string(),
+            candidate: CandidateData {
+                xid: xid.clone(),
+                readset: vec![format!("{}", account.number)],
+                readvers: vec![account.talos_state.version],
+                snapshot: snap,
+                writeset: vec![format!("{}", account.number)],
+            },
+            timeout: Some(Duration::from_secs(10)),
+        };
+
+        let rslt_cert = self.agent.certify(cert_req).await;
+        if let Err(e) = rslt_cert {
+            log::warn!(
+                "Error communicating via agent: {}, xid: {}, operation: 'deposit' {} to {}",
+                e.reason,
+                xid,
+                amount,
+                account,
+            );
+            return Ok(());
+        }
+        let resp = rslt_cert.unwrap();
+        if Decision::Aborted == resp.decision {
+            log::warn!("Aborted by talos: xid: {}, operation: 'deposit' {} to {}", xid, amount, account);
+            return Ok(());
+        }
+        // Talos gave "go ahead"
+        // Todo: extend Agent API response, need to include version returned by Talos
+        // let new_version = Some(resp.version.clone())
+        let new_version = None;
+        Bank::deposit_to(
+            self.get_tx()?,
+            AccountRef {
+                number: account.number.clone(),
+                new_version,
+            },
+            amount,
+        )
+        .await
+    }
+
+    async fn withdraw(&self, account: &BankAccount, amount: String) -> Result<(), String> {
+        // todo: delegate to agent
+        Bank::withdraw(self.get_tx()?, account, amount).await
+    }
+
+    async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
+        // todo: delegate to agent
+        Bank::transfer(self.get_tx()?, from, to, amount).await
     }
 }
 

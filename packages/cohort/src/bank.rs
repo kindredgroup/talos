@@ -59,16 +59,22 @@ impl Bank {
     }
 
     pub async fn deposit(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: &BankAccount, amount: String) -> Result<(), String> {
+        Self::deposit_to(
+            tx_state,
+            AccountRef {
+                number: account.number.clone(),
+                new_version: None,
+            },
+            amount,
+        )
+        .await
+    }
+
+    pub async fn deposit_to(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef, amount: String) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
         let resp = tx_state
             .send(Envelope {
-                data: AccountOperation::Deposit {
-                    account: AccountRef {
-                        number: account.number.clone(),
-                        new_version: None,
-                    },
-                    amount,
-                },
+                data: AccountOperation::Deposit { account, amount },
                 tx_reply: tx,
             })
             .await;
