@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use tokio::sync::mpsc;
@@ -82,7 +82,9 @@ impl CertifierService {
         debug!("[Process Candidate message] Version {} ", message.version);
 
         // Insert into Suffix
-        self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
+        if message.version > 0 {
+            self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
+        }
         let suffix_head = self.suffix.meta.head;
 
         // Get certifier outcome
@@ -113,6 +115,8 @@ impl CertifierService {
         };
 
         let candidate_version_index = self.suffix.index_from_head(candidate_version);
+
+        info!("Suffix with items : {:?}", self.suffix.retrieve_all_some_vec_items());
 
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             self.suffix

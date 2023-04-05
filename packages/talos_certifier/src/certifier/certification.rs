@@ -66,6 +66,14 @@ impl Certifier {
     }
 
     pub(crate) fn certify(&self, suffix_head: u64, certify_tx: &CertifierCandidate) -> CertifyOutcome {
+        // Rule R0: Conditional abort transactions with version 0.
+        if certify_tx.vers == 0 {
+            return CertifyOutcome::Aborted {
+                version: None,
+                discord: Discord::Permissive,
+            };
+        }
+
         // Rule R1: Unconditional commit write-only transactions.
         if certify_tx.readset.is_empty() {
             return CertifyOutcome::Commited { discord: Discord::Assertive };

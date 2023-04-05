@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use log::{debug, info};
+use log::debug;
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -76,12 +76,6 @@ impl MessageReciever for KafkaConsumer {
 
         let offset_i64 = message_received.offset();
         let offset = offset_i64 as u64;
-
-        if offset == 0 {
-            info!("Version zero message will be skipped");
-            //TODO: should return some decision to receiver so that it aborts and notifies the cohorts.
-            return Ok(None);
-        }
 
         let headers = get_message_headers(&message_received).ok_or_else(|| MessageReceiverError {
             kind: MessageReceiverErrorKind::HeaderNotFound,
