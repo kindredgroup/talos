@@ -2,7 +2,6 @@ extern crate core;
 use log::info;
 use rdkafka::config::RDKafkaLogLevel;
 use std::sync::Arc;
-use std::thread;
 use std::time::Duration;
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::errors::AgentError;
@@ -150,6 +149,12 @@ async fn make_agent() -> impl TalosAgent {
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
 
+    log::info!("started program: {}", std::process::id());
+
+    info!("sleeping for 10 sec to allow profiler tool to connect to this process");
+    tokio::time::sleep(Duration::from_secs(10)).await;
+    info!("resumed...");
+
     certify(BATCH_SIZE).await
 }
 
@@ -173,7 +178,7 @@ async fn certify(batch_size: i32) -> Result<(), String> {
     for i in 0..batch_size {
         done += 1;
         if skip == 0 {
-            thread::sleep(delay);
+            tokio::time::sleep(delay).await;
         } else {
             skip -= 1
         }

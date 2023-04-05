@@ -70,6 +70,53 @@ dev.run-agent-client:
 	$(call pp,run-agent app...)
 	cargo run --example agent_client --release
 
+## init.samply: 🧪 Installs Samply profiler
+init.samply:
+	cargo install samply
+
+## init.flamegraph: 🧪 Installs Flamegraph profiler
+init.flamegraph:
+	cargo install flamegraph
+
+## dev.agent-run-profiler-samply: 🧪 Runs agent with Samply profiler
+dev.agent-run-profiler-samply:
+	$(call pp,run-agent app...)
+	cargo build --example agent_client
+	samply record -o logs/samply-agent.json -s cargo run --example agent_client
+	samply load logs/samply-agent.json
+
+## dev.agent-run-profiler-flamegraph: 🧪 Runs agent with Flamegraph profiler
+# Add CARGO_PROFILE_RELEASE_DEBUG=true to .env
+dev.agent-run-profiler-flamegraph:
+	$(call pp,run-agent app...)
+	cargo build --example agent_client
+	rm logs/flamegraph-agent.svg | true
+	sudo cargo flamegraph -o logs/flamegraph-agent.svg --open --example agent_client
+
+## dev.agent-run-profiler-xcode-cpu: 🧪 Runs agent with XCode profiler for Time (CPU) Profiler (OSX only)
+# Make sure XCode is installed
+dev.agent-run-profiler-xcode-cpu:
+	$(call pp,run-agent app...)
+	cargo build --release --example agent_client
+	scripts/sign-binary-for-profiling.sh target/release/examples/agent_client
+	rm -rf logs/agent-*.trace
+	target/release/examples/agent_client &
+	sleep 8
+	xctrace record --template 'Time Profiler' --output logs/agent-time.trace --attach `pgrep agent_client`
+	open logs/agent-cpu.trace
+
+## dev.agent-run-profiler-xcode-mem: 🧪 Runs agent with XCode profiler for Allocations (OSX only)
+# Make sure XCode is installed
+dev.agent-run-profiler-xcode-mem:
+	$(call pp,run-agent app...)
+	cargo build --release --example agent_client
+	scripts/sign-binary-for-profiling.sh target/release/examples/agent_client
+	rm -rf logs/agent-*.trace
+	target/release/examples/agent_client &
+	sleep 8
+	xctrace record --template 'Allocations' --output logs/agent-allocations.trace --attach `pgrep agent_client`
+	open logs/agent-allocations.trace
+
 ## dev.run: 🧪 Runs rust app in watch mode
 dev.run:
 	$(call pp,run app...)
