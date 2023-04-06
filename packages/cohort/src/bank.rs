@@ -58,19 +58,7 @@ impl Bank {
         }
     }
 
-    pub async fn deposit(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: &BankAccount, amount: String) -> Result<(), String> {
-        Self::deposit_to(
-            tx_state,
-            AccountRef {
-                number: account.number.clone(),
-                new_version: None,
-            },
-            amount,
-        )
-        .await
-    }
-
-    pub async fn deposit_to(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef, amount: String) -> Result<(), String> {
+    pub async fn deposit(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef, amount: String) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
         let resp = tx_state
             .send(Envelope {
@@ -94,17 +82,11 @@ impl Bank {
         }
     }
 
-    pub async fn withdraw(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: &BankAccount, amount: String) -> Result<(), String> {
+    pub async fn withdraw(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef, amount: String) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
         let resp = tx_state
             .send(Envelope {
-                data: AccountOperation::Withdraw {
-                    account: AccountRef {
-                        number: account.number.clone(),
-                        new_version: None,
-                    },
-                    amount,
-                },
+                data: AccountOperation::Withdraw { account, amount },
                 tx_reply: tx,
             })
             .await;
@@ -126,24 +108,14 @@ impl Bank {
 
     pub async fn transfer(
         tx_state: Sender<Envelope<AccountOperation, OperationResponse>>,
-        from: &BankAccount,
-        to: &BankAccount,
+        from: AccountRef,
+        to: AccountRef,
         amount: String,
     ) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
         let resp = tx_state
             .send(Envelope {
-                data: AccountOperation::Transfer {
-                    amount,
-                    from: AccountRef {
-                        number: from.number.clone(),
-                        new_version: None,
-                    },
-                    to: AccountRef {
-                        number: to.number.clone(),
-                        new_version: None,
-                    },
-                },
+                data: AccountOperation::Transfer { amount, from, to },
                 tx_reply: tx,
             })
             .await;
@@ -385,14 +357,13 @@ mod tests {
             amount: "10".to_string(),
             account: a12.clone(),
         };
-        let accounts = get_test_accounts();
 
         let (tx, handle) = mock_state_manager(operation, |tx| {
             let _ = tx.send(OperationResponse::Success);
             "Success".to_string()
         })
         .await;
-        let resp = Bank::withdraw(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::withdraw(tx, a12.clone(), "10".to_string()).await;
         assert!(resp.is_ok());
         assert_eq!("Success", handle.await.unwrap());
     }
@@ -408,28 +379,27 @@ mod tests {
             amount: "10".to_string(),
             account: a12.clone(),
         };
-        let accounts = get_test_accounts();
 
-        let resp = Bank::withdraw(mock_with_closed_receiver(), accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::withdraw(mock_with_closed_receiver(), a12.clone(), "10".to_string()).await;
         expect_error(resp, "Internal error requesting bank operation: channel closed");
 
         let (tx, handle) = mock_with_closed_reply_channel(&operation).await;
-        let resp = Bank::withdraw(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::withdraw(tx, a12.clone(), "10".to_string()).await;
         expect_error(resp, "channel closed");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_resp_wrong_account(&operation).await;
-        let resp = Bank::withdraw(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::withdraw(tx, a12.clone(), "10".to_string()).await;
         expect_error(resp, "wrong account");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_response_empty_query(&operation).await;
-        let resp = Bank::withdraw(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::withdraw(tx, a12.clone(), "10".to_string()).await;
         expect_error(resp, "Unexpected response 'QueryResult'");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_response_success(&operation).await;
-        let resp = Bank::withdraw(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::withdraw(tx, a12.clone(), "10".to_string()).await;
         assert!(resp.is_ok());
         assert_eq!("Success", handle.await.unwrap());
     }
@@ -444,14 +414,13 @@ mod tests {
             amount: "10".to_string(),
             account: a12.clone(),
         };
-        let accounts = get_test_accounts();
 
         let (tx, handle) = mock_state_manager(operation, |tx| {
             let _ = tx.send(OperationResponse::Success);
             "Success".to_string()
         })
         .await;
-        let resp = Bank::deposit(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::deposit(tx, a12.clone(), "10".to_string()).await;
         assert!(resp.is_ok());
         assert_eq!("Success", handle.await.unwrap());
     }
@@ -467,28 +436,27 @@ mod tests {
             amount: "10".to_string(),
             account: a12.clone(),
         };
-        let accounts = get_test_accounts();
 
-        let resp = Bank::deposit(mock_with_closed_receiver(), accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::deposit(mock_with_closed_receiver(), a12.clone(), "10".to_string()).await;
         expect_error(resp, "Internal error requesting bank operation: channel closed");
 
         let (tx, handle) = mock_with_closed_reply_channel(&operation).await;
-        let resp = Bank::deposit(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::deposit(tx, a12.clone(), "10".to_string()).await;
         expect_error(resp, "channel closed");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_resp_wrong_account(&operation).await;
-        let resp = Bank::deposit(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::deposit(tx, a12.clone(), "10".to_string()).await;
         expect_error(resp, "wrong account");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_response_empty_query(&operation).await;
-        let resp = Bank::deposit(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::deposit(tx, a12.clone(), "10".to_string()).await;
         expect_error(resp, "Unexpected response 'QueryResult'");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_response_success(&operation).await;
-        let resp = Bank::deposit(tx, accounts.get(1).unwrap(), "10".to_string()).await;
+        let resp = Bank::deposit(tx, a12.clone(), "10".to_string()).await;
         assert!(resp.is_ok());
         assert_eq!("Success", handle.await.unwrap());
     }
@@ -508,16 +476,13 @@ mod tests {
             from: a12.clone(),
             to: a13.clone(),
         };
-        let accounts = get_test_accounts();
-        let from = accounts.get(1).unwrap();
-        let to = accounts.get(2).unwrap();
 
         let (tx, handle) = mock_state_manager(operation, |tx| {
             let _ = tx.send(OperationResponse::Success);
             "Success".to_string()
         })
         .await;
-        let resp = Bank::transfer(tx, from, to, "10".to_string()).await;
+        let resp = Bank::transfer(tx, a12.clone(), a13.clone(), "10".to_string()).await;
         assert!(resp.is_ok());
         assert_eq!("Success", handle.await.unwrap());
     }
@@ -538,30 +503,27 @@ mod tests {
             from: a12.clone(),
             to: a13.clone(),
         };
-        let accounts = get_test_accounts();
-        let from = accounts.get(1).unwrap();
-        let to = accounts.get(2).unwrap();
 
-        let resp = Bank::transfer(mock_with_closed_receiver(), from, to, "10".to_string()).await;
+        let resp = Bank::transfer(mock_with_closed_receiver(), a12.clone(), a13.clone(), "10".to_string()).await;
         expect_error(resp, "Internal error requesting bank operation: channel closed");
 
         let (tx, handle) = mock_with_closed_reply_channel(&operation).await;
-        let resp = Bank::transfer(tx, from, to, "10".to_string()).await;
+        let resp = Bank::transfer(tx, a12.clone(), a13.clone(), "10".to_string()).await;
         expect_error(resp, "channel closed");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_resp_wrong_account(&operation).await;
-        let resp = Bank::transfer(tx, from, to, "10".to_string()).await;
+        let resp = Bank::transfer(tx, a12.clone(), a13.clone(), "10".to_string()).await;
         expect_error(resp, "wrong account");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_response_empty_query(&operation).await;
-        let resp = Bank::transfer(tx, from, to, "10".to_string()).await;
+        let resp = Bank::transfer(tx, a12.clone(), a13.clone(), "10".to_string()).await;
         expect_error(resp, "Unexpected response 'QueryResult'");
         assert_eq!("Success", handle.await.unwrap());
 
         let (tx, handle) = mock_response_success(&operation).await;
-        let resp = Bank::transfer(tx, from, to, "10".to_string()).await;
+        let resp = Bank::transfer(tx, a12.clone(), a13.clone(), "10".to_string()).await;
         assert!(resp.is_ok());
         assert_eq!("Success", handle.await.unwrap());
     }

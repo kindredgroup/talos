@@ -21,7 +21,7 @@ use crate::model::bank_account::{as_money, BankAccount};
 use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse};
 use crate::state::state_manager::StateManager;
 
-static mut SNAPSHOT: u64 = 1_u64;
+static mut SNAPSHOT: u64 = 386_u64;
 
 pub struct Cohort {
     agent: Box<dyn TalosAgent + Sync + Send>,
@@ -132,7 +132,7 @@ impl Cohort {
                 )
                 .await?;
 
-                if balance.lt(&as_money(amount.clone(), account1.balance.currency())?) {
+                if balance < as_money(amount.clone(), account1.balance.currency())? {
                     log::warn!("Cannot transfer {:>2} from {} with balance {}", amount, account1.number, balance);
                     continue;
                 }
@@ -158,7 +158,7 @@ impl Cohort {
             )
             .await?;
 
-            if balance.lt(&as_money(amount.clone(), account1.balance.currency())?) {
+            if balance < as_money(amount.clone(), account1.balance.currency())? {
                 log::warn!("Cannot withdraw {:>2} from {} with balance {}", amount, account1.number, balance);
                 continue;
             }
@@ -203,8 +203,6 @@ impl Cohort {
     }
 
     async fn deposit(&self, account: &BankAccount, amount: String) -> Result<(), String> {
-        // todo: delegate to agent
-
         // todo Implement snapshot tracking
         let snap = unsafe { SNAPSHOT };
 
@@ -213,10 +211,10 @@ impl Cohort {
             message_key: "cohort-sample".to_string(),
             candidate: CandidateData {
                 xid: xid.clone(),
-                readset: vec![format!("{}", account.number)],
+                readset: vec![account.number.to_string()],
                 readvers: vec![account.talos_state.version],
                 snapshot: snap,
-                writeset: vec![format!("{}", account.number)],
+                writeset: vec![account.number.to_string()],
             },
             timeout: Some(Duration::from_secs(10)),
         };
@@ -239,9 +237,9 @@ impl Cohort {
         }
         // Talos gave "go ahead"
         // Todo: extend Agent API response, need to include version returned by Talos
-        // let new_version = Some(resp.version.clone())
-        let new_version = None;
-        Bank::deposit_to(
+        let new_version = Some(resp.version);
+        //let new_version = None;
+        Bank::deposit(
             self.get_tx()?,
             AccountRef {
                 number: account.number.clone(),
@@ -254,12 +252,34 @@ impl Cohort {
 
     async fn withdraw(&self, account: &BankAccount, amount: String) -> Result<(), String> {
         // todo: delegate to agent
-        Bank::withdraw(self.get_tx()?, account, amount).await
+        let new_version = None;
+        Bank::withdraw(
+            self.get_tx()?,
+            AccountRef {
+                number: account.number.clone(),
+                new_version,
+            },
+            amount,
+        )
+        .await
     }
 
     async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
         // todo: delegate to agent
-        Bank::transfer(self.get_tx()?, from, to, amount).await
+        let new_version = None;
+        Bank::transfer(
+            self.get_tx()?,
+            AccountRef {
+                number: from.number.clone(),
+                new_version,
+            },
+            AccountRef {
+                number: to.number.clone(),
+                new_version,
+            },
+            amount,
+        )
+        .await
     }
 }
 

@@ -16,7 +16,7 @@ async fn main() -> Result<(), String> {
         cohort.start().await;
         log::info!("Cohort started...");
 
-        if let Err(e) = cohort.generate_workload(10).await {
+        if let Err(e) = cohort.generate_workload(1).await {
             log::error!("Error when generating a test load: {}", e)
         } else {
             log::info!("No more data to generate...")

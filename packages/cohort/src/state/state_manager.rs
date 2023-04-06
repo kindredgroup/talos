@@ -67,7 +67,7 @@ impl StateManager {
 
     fn deposit(amount: String, account_ref: AccountRef, all_accounts: &mut [BankAccount]) -> OperationResponse {
         if let Ok(account) = Self::find_account(account_ref.clone(), all_accounts) {
-            Self::deposit_to_account(amount, account)
+            Self::deposit_to_account(amount, account, account_ref.new_version)
         } else {
             OperationResponse::Error(format!("No such account {}", account_ref))
         }
@@ -81,12 +81,13 @@ impl StateManager {
         }
     }
 
-    fn deposit_to_account(amount: String, account: &mut BankAccount) -> OperationResponse {
+    fn deposit_to_account(amount: String, account: &mut BankAccount, new_version: Option<u64>) -> OperationResponse {
         match as_money(amount, account.balance.currency()) {
             Ok(amount) => {
-                let a = amount.clone();
-                log::debug!("Deposit {:>8}{} >>> {}", a.amount(), a.currency().iso_alpha_code, account.number);
                 account.increment(amount);
+                if let Some(version) = new_version {
+                    account.talos_state.version = version;
+                }
                 OperationResponse::Success
             }
             Err(e) => OperationResponse::Error(e),
@@ -96,8 +97,6 @@ impl StateManager {
     fn withdraw_from_account(amount: String, account: &mut BankAccount) -> OperationResponse {
         match as_money(amount, account.balance.currency()) {
             Ok(amount) => {
-                let a = amount.clone();
-                log::debug!("Withdraw {:>7}{} <<< {}", a.amount(), a.currency().iso_alpha_code, account.number);
                 account.increment(amount.mul(-1));
                 OperationResponse::Success
             }
