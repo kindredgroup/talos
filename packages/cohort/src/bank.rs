@@ -141,6 +141,7 @@ impl Bank {
 mod tests {
     use super::*;
     use crate::model::talos_state::TalosState;
+    use std::assert_eq;
     use tokio::task::JoinHandle;
 
     fn get_test_accounts() -> Vec<BankAccount> {

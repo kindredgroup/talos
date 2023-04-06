@@ -289,6 +289,7 @@ mod tests {
     use crate::core::Cohort;
     use crate::model::bank_account::BankAccount;
     use crate::model::talos_state::TalosState;
+    use std::{assert_ne, vec};
 
     #[test]
     fn pick() {
