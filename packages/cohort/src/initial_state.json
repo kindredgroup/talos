@@ -1,0 +1,20 @@
+[
+    {
+        "name": "Test Account 1",
+        "number": "00001",
+        "amount": "100",
+        "currency": "AUD",
+        "talosState": {
+            "version": 1
+        }
+    },
+    {
+        "name": "Test Account 2",
+        "number": "00002",
+        "amount": "200",
+        "currency": "AUD",
+        "talosState": {
+            "version": 2
+        }
+    }
+]

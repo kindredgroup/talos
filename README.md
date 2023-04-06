@@ -94,6 +94,7 @@ Once you have checked, tested and linted your code you may create a commit.
 
 ## Usage <a name="usage"></a>
 
-TODO: Document usage
+### Cohort Reference Implementation
+![Cohort architecture](docs/cohort-arch.png)
 
 ## Release Notes <a name="release-notes"></a>
