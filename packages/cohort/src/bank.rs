@@ -10,12 +10,7 @@ pub struct Bank {}
 impl Bank {
     pub async fn get_accounts(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>) -> Result<Vec<BankAccount>, String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
-        let resp = tx_state
-            .send(Envelope {
-                data: AccountOperation::QueryAll,
-                tx_reply: tx,
-            })
-            .await;
+        let resp = tx_state.send(Envelope::new(AccountOperation::QueryAll, tx)).await;
         if let Err(se) = resp {
             return Err(format!("Internal error requesting bank operation: {}", se));
         }
@@ -26,21 +21,17 @@ impl Bank {
         }
 
         match rslt.unwrap() {
-            OperationResponse::Success => Err("Unexpected response 'Success' to QueryAll".to_string()),
             OperationResponse::Error(e) => Err(format!("Error querying bank accounts; {}", e)),
             OperationResponse::QueryResult(None) => Err("No bank accounts found".to_string()),
             OperationResponse::QueryResult(Some(accounts_list)) => Ok(accounts_list),
+            OperationResponse::Success => Err("Unexpected response 'Success' to QueryAll".to_string()),
+            OperationResponse::Snapshot(_) => Err("Unexpected response 'Snapshot' to QueryAll".to_string()),
         }
     }
 
     pub async fn get_balance(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef) -> Result<Money<'static, Currency>, String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
-        let resp = tx_state
-            .send(Envelope {
-                data: AccountOperation::QueryAccount { account },
-                tx_reply: tx,
-            })
-            .await;
+        let resp = tx_state.send(Envelope::new(AccountOperation::QueryAccount { account }, tx)).await;
         if let Err(se) = resp {
             return Err(format!("Internal error requesting bank operation: {}", se));
         }
@@ -51,21 +42,17 @@ impl Bank {
         }
 
         match rslt.unwrap() {
-            OperationResponse::Success => Err("Unexpected response 'Success' to QueryAccount".to_string()),
             OperationResponse::Error(e) => Err(format!("Error querying bank account: {}", e)),
             OperationResponse::QueryResult(None) => Err("Bank account is not found".to_string()),
             OperationResponse::QueryResult(Some(accounts_list)) => Ok(accounts_list.get(0).unwrap().balance.clone()),
+            OperationResponse::Success => Err("Unexpected response 'Success' to QueryAccount".to_string()),
+            OperationResponse::Snapshot(_) => Err("Unexpected response 'Snapshot' to QueryAccount".to_string()),
         }
     }
 
     pub async fn deposit(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef, amount: String) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
-        let resp = tx_state
-            .send(Envelope {
-                data: AccountOperation::Deposit { account, amount },
-                tx_reply: tx,
-            })
-            .await;
+        let resp = tx_state.send(Envelope::new(AccountOperation::Deposit { account, amount }, tx)).await;
 
         if let Err(se) = resp {
             return Err(format!("Internal error requesting bank operation: {}", se));
@@ -79,17 +66,13 @@ impl Bank {
             OperationResponse::Success => Ok(()),
             OperationResponse::Error(e) => Err(format!("Error depositing to bank account: {}", e)),
             OperationResponse::QueryResult(_) => Err("Unexpected response 'QueryResult' to Deposit".to_string()),
+            OperationResponse::Snapshot(_) => Err("Unexpected response 'Snapshot' to Deposit".to_string()),
         }
     }
 
     pub async fn withdraw(tx_state: Sender<Envelope<AccountOperation, OperationResponse>>, account: AccountRef, amount: String) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
-        let resp = tx_state
-            .send(Envelope {
-                data: AccountOperation::Withdraw { account, amount },
-                tx_reply: tx,
-            })
-            .await;
+        let resp = tx_state.send(Envelope::new(AccountOperation::Withdraw { account, amount }, tx)).await;
 
         if let Err(se) = resp {
             return Err(format!("Internal error requesting bank operation: {}", se));
@@ -103,6 +86,7 @@ impl Bank {
             OperationResponse::Success => Ok(()),
             OperationResponse::Error(e) => Err(format!("Error withdrawing from bank account: {}", e)),
             OperationResponse::QueryResult(_) => Err("Unexpected response 'QueryResult' to Withdraw".to_string()),
+            OperationResponse::Snapshot(_) => Err("Unexpected response 'Snapshot' to Withdraw".to_string()),
         }
     }
 
@@ -113,12 +97,7 @@ impl Bank {
         amount: String,
     ) -> Result<(), String> {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
-        let resp = tx_state
-            .send(Envelope {
-                data: AccountOperation::Transfer { amount, from, to },
-                tx_reply: tx,
-            })
-            .await;
+        let resp = tx_state.send(Envelope::new(AccountOperation::Transfer { amount, from, to }, tx)).await;
 
         if let Err(se) = resp {
             return Err(format!("Internal error requesting bank operation: {}", se));
@@ -132,6 +111,7 @@ impl Bank {
             OperationResponse::Success => Ok(()),
             OperationResponse::Error(e) => Err(format!("Error transferring between bank accounts: {}", e)),
             OperationResponse::QueryResult(_) => Err("Unexpected response 'QueryResult' to Transfer".to_string()),
+            OperationResponse::Snapshot(_) => Err("Unexpected response 'Snapshot' to Transfer".to_string()),
         }
     }
 }
@@ -141,8 +121,11 @@ impl Bank {
 mod tests {
     use super::*;
     use crate::model::talos_state::TalosState;
+    use crate::state::test_utils::{
+        expect_error, mock_resp_wrong_account, mock_response_empty_query, mock_response_success, mock_state_manager, mock_with_closed_receiver,
+        mock_with_closed_reply_channel,
+    };
     use std::assert_eq;
-    use tokio::task::JoinHandle;
 
     fn get_test_accounts() -> Vec<BankAccount> {
         vec![
@@ -150,86 +133,6 @@ mod tests {
             BankAccount::aud("a2".to_string(), "a12".to_string(), "102".to_string(), TalosState { version: 1 }),
             BankAccount::aud("a3".to_string(), "a13".to_string(), "103".to_string(), TalosState { version: 1 }),
         ]
-    }
-
-    async fn mock_state_manager<F>(
-        expected_receive: AccountOperation,
-        fn_replier: F,
-    ) -> (Sender<Envelope<AccountOperation, OperationResponse>>, JoinHandle<String>)
-    where
-        F: Fn(tokio::sync::oneshot::Sender<OperationResponse>) -> String + Send + Sync + 'static,
-    {
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<Envelope<AccountOperation, OperationResponse>>(10);
-        let handle = tokio::task::spawn(async move {
-            let data = rx.recv().await;
-            if data.is_none() {
-                return "No data received".to_string();
-            }
-            let envelope = data.unwrap();
-            if envelope.data != expected_receive {
-                return format!("Invalid operation {:?}, ${:?} is expected", envelope.data, expected_receive);
-            }
-
-            fn_replier(envelope.tx_reply)
-        });
-
-        (tx, handle)
-    }
-
-    fn mock_with_closed_receiver() -> Sender<Envelope<AccountOperation, OperationResponse>> {
-        let (tx, rx) = tokio::sync::mpsc::channel::<Envelope<AccountOperation, OperationResponse>>(10);
-        drop(rx);
-        tx
-    }
-
-    async fn mock_response_success(operation: &AccountOperation) -> (Sender<Envelope<AccountOperation, OperationResponse>>, JoinHandle<String>) {
-        let (tx, handle) = mock_state_manager(operation.clone(), |tx| {
-            let _ = tx.send(OperationResponse::Success);
-            "Success".to_string()
-        })
-        .await;
-        (tx, handle)
-    }
-
-    async fn mock_response_empty_query(operation: &AccountOperation) -> (Sender<Envelope<AccountOperation, OperationResponse>>, JoinHandle<String>) {
-        let (tx, handle) = mock_state_manager(operation.clone(), |tx| {
-            let _ = tx.send(OperationResponse::QueryResult(None));
-            "Success".to_string()
-        })
-        .await;
-        (tx, handle)
-    }
-
-    async fn mock_resp_wrong_account(operation: &AccountOperation) -> (Sender<Envelope<AccountOperation, OperationResponse>>, JoinHandle<String>) {
-        let (tx, handle) = mock_state_manager(operation.clone(), |tx| {
-            let _ = tx.send(OperationResponse::Error("wrong account".to_string()));
-            "Success".to_string()
-        })
-        .await;
-        (tx, handle)
-    }
-
-    async fn mock_with_closed_reply_channel(operation: &AccountOperation) -> (Sender<Envelope<AccountOperation, OperationResponse>>, JoinHandle<String>) {
-        let (tx, handle) = mock_state_manager(operation.clone(), |tx| {
-            drop(tx);
-            "Success".to_string()
-        })
-        .await;
-        (tx, handle)
-    }
-
-    fn expect_error<T>(response: Result<T, String>, error: &str) {
-        let expected_error = if let Err(e) = response {
-            if e.contains(error) {
-                true
-            } else {
-                log::info!("Expected: '{}', got: '{}'", error, e);
-                false
-            }
-        } else {
-            false
-        };
-        assert!(expected_error);
     }
 
     #[tokio::test]
@@ -248,8 +151,6 @@ mod tests {
 
     #[tokio::test]
     async fn get_accounts_should_fail() {
-        env_logger::builder().format_timestamp_millis().init();
-
         let operation = AccountOperation::QueryAll;
         // Simulate internal channels are closed
         let (tx, handle) = mock_with_closed_reply_channel(&operation).await;

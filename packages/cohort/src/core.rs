@@ -1,3 +1,5 @@
+// $coverage:ignore-start
+use std::future::Future;
 use std::ops::Sub;
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,10 +20,10 @@ use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
 use crate::bank::Bank;
 use crate::model::bank_account::{as_money, BankAccount};
-use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse};
+use crate::snapshot_api::SnapshotApi;
+use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse, Snapshot};
 use crate::state::state_manager::StateManager;
-
-static mut SNAPSHOT: u64 = 386_u64;
+// $coverage:ignore-end
 
 pub struct Cohort {
     agent: Box<dyn TalosAgent + Sync + Send>,
@@ -29,6 +31,7 @@ pub struct Cohort {
 }
 
 impl Cohort {
+    // $coverage:ignore-start
     pub async fn make_agent(config: AgentConfig, kafka_config: KafkaConfig) -> Box<dyn TalosAgent + Sync + Send> {
         let (tx_certify_ch, rx_certify_ch) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(config.buffer_size);
         let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
@@ -67,11 +70,15 @@ impl Cohort {
 
         Box::new(agent)
     }
+    // $coverage:ignore-end
 
+    // $coverage:ignore-start
     pub fn new(agent: Box<dyn TalosAgent + Sync + Send>) -> Self {
         Cohort { agent, tx_state: None }
     }
+    // $coverage:ignore-end
 
+    // $coverage:ignore-start
     /** Start generating the workload */
     pub async fn start(&mut self) {
         log::info!("---------------------");
@@ -79,8 +86,7 @@ impl Cohort {
         self.tx_state = Some(tx_state);
 
         tokio::spawn(async move {
-            let initial_state = include_str!("initial_state.json");
-            let accounts: Vec<BankAccount> = serde_json::from_str(initial_state)
+            let accounts: Vec<BankAccount> = serde_json::from_str(include_str!("initial_state_accounts.json"))
                 .map_err(|e| {
                     log::error!("Unable to read initial data: {}", e);
                 })
@@ -91,11 +97,20 @@ impl Cohort {
                 log::info!("{}", a);
             }
 
-            let mut state_manager = StateManager { accounts };
+            let snapshot: Snapshot = serde_json::from_str(include_str!("initial_state_snapshot.json"))
+                .map_err(|e| {
+                    log::error!("Unable to read initial data: {}", e);
+                })
+                .unwrap();
+
+            // todo: load snapshot value
+            let mut state_manager = StateManager { accounts, snapshot };
             state_manager.run(rx_state).await;
         });
     }
+    // $coverage:ignore-end
 
+    // $coverage:ignore-start
     fn get_tx(&self) -> Result<Sender<Envelope<AccountOperation, OperationResponse>>, String> {
         if self.tx_state.is_none() {
             Err("Cohort is not initialised! Call ::start()".to_string())
@@ -103,7 +118,9 @@ impl Cohort {
             Ok(self.tx_state.clone().unwrap())
         }
     }
+    // $coverage:ignore-end
 
+    // $coverage:ignore-start
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
         let accounts = Bank::get_accounts(self.get_tx()?).await?;
         log::info!("Current state of bank accounts is");
@@ -169,7 +186,7 @@ impl Cohort {
             if (duration_sec as f32) <= elapsed {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(800)).await;
+            tokio::time::sleep(Duration::from_millis(5)).await;
         }
 
         let accounts = Bank::get_accounts(self.get_tx()?).await?;
@@ -180,6 +197,7 @@ impl Cohort {
 
         Ok(())
     }
+    // $coverage:ignore-end
 
     fn pick(accounts: &Vec<BankAccount>) -> (&BankAccount, String, Option<&BankAccount>, bool) {
         let mut rnd = rand::thread_rng();
@@ -202,9 +220,26 @@ impl Cohort {
         }
     }
 
+    // $coverage:ignore-start
     async fn deposit(&self, account: &BankAccount, amount: String) -> Result<(), String> {
+        self.single_bank_op(account, amount, Bank::deposit).await
+    }
+    // $coverage:ignore-end
+
+    // $coverage:ignore-start
+    async fn withdraw(&self, account: &BankAccount, amount: String) -> Result<(), String> {
+        self.single_bank_op(account, amount, Bank::withdraw).await
+    }
+    // $coverage:ignore-end
+
+    // $coverage:ignore-start
+    async fn single_bank_op<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
+    where
+        F: Fn(Sender<Envelope<AccountOperation, OperationResponse>>, AccountRef, String) -> R,
+        R: Future<Output = Result<(), String>>,
+    {
         // todo Implement snapshot tracking
-        let snap = unsafe { SNAPSHOT };
+        let snapshot = SnapshotApi::query(self.get_tx()?).await?;
 
         let xid = uuid::Uuid::new_v4().to_string();
         let cert_req = CertificationRequest {
@@ -213,7 +248,7 @@ impl Cohort {
                 xid: xid.clone(),
                 readset: vec![account.number.to_string()],
                 readvers: vec![account.talos_state.version],
-                snapshot: snap,
+                snapshot: snapshot.version,
                 writeset: vec![account.number.to_string()],
             },
             timeout: Some(Duration::from_secs(10)),
@@ -235,11 +270,11 @@ impl Cohort {
             log::warn!("Aborted by talos: xid: {}, operation: 'deposit' {} to {}", xid, amount, account);
             return Ok(());
         }
+
         // Talos gave "go ahead"
-        // Todo: extend Agent API response, need to include version returned by Talos
+
         let new_version = Some(resp.version);
-        //let new_version = None;
-        Bank::deposit(
+        let response = op_impl(
             self.get_tx()?,
             AccountRef {
                 number: account.number.clone(),
@@ -247,40 +282,71 @@ impl Cohort {
             },
             amount,
         )
-        .await
-    }
+        .await;
 
-    async fn withdraw(&self, account: &BankAccount, amount: String) -> Result<(), String> {
-        // todo: delegate to agent
-        let new_version = None;
-        Bank::withdraw(
-            self.get_tx()?,
-            AccountRef {
-                number: account.number.clone(),
-                new_version,
-            },
-            amount,
-        )
-        .await
-    }
+        SnapshotApi::update(self.get_tx()?, resp.version).await?;
 
+        response
+    }
+    // $coverage:ignore-end
+
+    // $coverage:ignore-start
     async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
-        // todo: delegate to agent
-        let new_version = None;
-        Bank::transfer(
+        // todo Implement snapshot tracking
+        let snapshot = SnapshotApi::query(self.get_tx()?).await?;
+
+        let xid = uuid::Uuid::new_v4().to_string();
+        let cert_req = CertificationRequest {
+            message_key: "cohort-sample".to_string(),
+            candidate: CandidateData {
+                xid: xid.clone(),
+                readset: vec![from.number.to_string(), to.number.to_string()],
+                readvers: vec![from.talos_state.version, to.talos_state.version],
+                snapshot: snapshot.version,
+                writeset: vec![from.number.to_string(), to.number.to_string()],
+            },
+            timeout: Some(Duration::from_secs(10)),
+        };
+
+        let rslt_cert = self.agent.certify(cert_req).await;
+        if let Err(e) = rslt_cert {
+            log::warn!(
+                "Error communicating via agent: {}, xid: {}, operation: 'transfer' {} from {} to {}",
+                e.reason,
+                xid,
+                amount,
+                from,
+                to,
+            );
+            return Ok(());
+        }
+        let resp = rslt_cert.unwrap();
+        if Decision::Aborted == resp.decision {
+            log::warn!("Aborted by talos: xid: {}, operation: 'transfer' {} from {} to {}", xid, amount, from, to);
+            return Ok(());
+        }
+
+        // Talos gave "go ahead"
+
+        let response = Bank::transfer(
             self.get_tx()?,
             AccountRef {
                 number: from.number.clone(),
-                new_version,
+                new_version: Some(resp.version),
             },
             AccountRef {
                 number: to.number.clone(),
-                new_version,
+                new_version: Some(resp.version),
             },
             amount,
         )
-        .await
+        .await;
+
+        SnapshotApi::update(self.get_tx()?, resp.version).await?;
+
+        response
     }
+    // $coverage:ignore-end
 }
 
 // $coverage:ignore-start

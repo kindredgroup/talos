@@ -14,7 +14,7 @@
         "amount": "200",
         "currency": "AUD",
         "talosState": {
-            "version": 2
+            "version": 1
         }
     }
 ]

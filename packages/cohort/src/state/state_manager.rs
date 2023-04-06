@@ -1,12 +1,11 @@
-use std::ops::Mul;
-
 use tokio::sync::mpsc::Receiver;
 
 use crate::model::bank_account::{as_money, BankAccount};
-use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse};
+use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse, Snapshot};
 
 pub struct StateManager {
     pub accounts: Vec<BankAccount>,
+    pub snapshot: Snapshot,
 }
 
 impl StateManager {
@@ -50,6 +49,13 @@ impl StateManager {
                     OperationResponse::Success
                 }
             }
+
+            AccountOperation::QuerySnapshot => OperationResponse::Snapshot(self.snapshot.clone()),
+
+            AccountOperation::UpdateSnapshot(new_version) => {
+                self.snapshot.version = new_version;
+                OperationResponse::Success
+            }
         };
 
         request.tx_reply.send(answer).unwrap();
@@ -75,7 +81,7 @@ impl StateManager {
 
     fn withdraw(amount: String, account_ref: AccountRef, all_accounts: &mut [BankAccount]) -> OperationResponse {
         if let Ok(account) = Self::find_account(account_ref.clone(), all_accounts) {
-            Self::withdraw_from_account(amount, account)
+            Self::withdraw_from_account(amount, account, account_ref.new_version)
         } else {
             OperationResponse::Error(format!("No such account {}", account_ref))
         }
@@ -94,10 +100,13 @@ impl StateManager {
         }
     }
 
-    fn withdraw_from_account(amount: String, account: &mut BankAccount) -> OperationResponse {
+    fn withdraw_from_account(amount: String, account: &mut BankAccount, new_version: Option<u64>) -> OperationResponse {
         match as_money(amount, account.balance.currency()) {
             Ok(amount) => {
-                account.increment(amount.mul(-1));
+                account.increment(amount * -1);
+                if let Some(version) = new_version {
+                    account.talos_state.version = version;
+                }
                 OperationResponse::Success
             }
             Err(e) => OperationResponse::Error(e),
@@ -127,12 +136,15 @@ mod tests {
     }
 
     fn get_fixture() -> StateManager {
-        StateManager { accounts: get_test_accounts() }
+        StateManager {
+            accounts: get_test_accounts(),
+            snapshot: Snapshot::from(1),
+        }
     }
 
     async fn send(state_manager: &mut StateManager, req: AccountOperation) -> OperationResponse {
         let (tx, rx) = tokio::sync::oneshot::channel::<OperationResponse>();
-        let req = Envelope { data: req, tx_reply: tx };
+        let req = Envelope::new(req, tx);
         state_manager.handle(req).await;
         rx.await.unwrap()
     }
@@ -184,13 +196,14 @@ mod tests {
         let mut list = get_test_accounts();
         let a12 = AccountRef {
             number: "a12".to_string(),
-            new_version: None,
+            new_version: Some(10),
         };
         let result = StateManager::deposit("10".to_string(), a12.clone(), &mut list);
 
         assert_eq!(result, OperationResponse::Success);
         assert_eq!(list.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
         assert_eq!(list.get(1).unwrap().balance.amount().to_string(), "112.00".to_string());
+        assert_eq!(list.get(1).unwrap().talos_state.version, 10);
         assert_eq!(list.get(2).unwrap().balance.amount().to_string(), "103.00".to_string());
 
         let result = StateManager::deposit("10".to_string(), get_bad_account(), &mut list);
@@ -214,7 +227,7 @@ mod tests {
         let mut list = get_test_accounts();
         let a12 = AccountRef {
             number: "a12".to_string(),
-            new_version: None,
+            new_version: Some(10),
         };
 
         let result = StateManager::withdraw("10".to_string(), a12.clone(), &mut list);
@@ -222,6 +235,7 @@ mod tests {
         assert_eq!(result, OperationResponse::Success);
         assert_eq!(list.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
         assert_eq!(list.get(1).unwrap().balance.amount().to_string(), "92.00".to_string());
+        assert_eq!(list.get(1).unwrap().talos_state.version, 10);
         assert_eq!(list.get(2).unwrap().balance.amount().to_string(), "103.00".to_string());
 
         let result = StateManager::withdraw("10".to_string(), get_bad_account(), &mut list);
@@ -245,7 +259,7 @@ mod tests {
         let mut state_manager = get_fixture();
         let a12 = AccountRef {
             number: "a12".to_string(),
-            new_version: None,
+            new_version: Some(10),
         };
 
         let _ = send(
@@ -258,8 +272,11 @@ mod tests {
         .await;
 
         assert_eq!(state_manager.accounts.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
+        assert_eq!(state_manager.accounts.get(0).unwrap().talos_state.version, 1);
         assert_eq!(state_manager.accounts.get(1).unwrap().balance.amount().to_string(), "112.00".to_string());
+        assert_eq!(state_manager.accounts.get(1).unwrap().talos_state.version, 10);
         assert_eq!(state_manager.accounts.get(2).unwrap().balance.amount().to_string(), "103.00".to_string());
+        assert_eq!(state_manager.accounts.get(2).unwrap().talos_state.version, 1);
     }
 
     #[tokio::test]
@@ -267,7 +284,7 @@ mod tests {
         let mut state_manager = get_fixture();
         let a12 = AccountRef {
             number: "a12".to_string(),
-            new_version: None,
+            new_version: Some(10),
         };
 
         let _ = send(
@@ -280,8 +297,11 @@ mod tests {
         .await;
 
         assert_eq!(state_manager.accounts.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
+        assert_eq!(state_manager.accounts.get(0).unwrap().talos_state.version, 1);
         assert_eq!(state_manager.accounts.get(1).unwrap().balance.amount().to_string(), "92.00".to_string());
+        assert_eq!(state_manager.accounts.get(1).unwrap().talos_state.version, 10);
         assert_eq!(state_manager.accounts.get(2).unwrap().balance.amount().to_string(), "103.00".to_string());
+        assert_eq!(state_manager.accounts.get(2).unwrap().talos_state.version, 1);
     }
 
     #[tokio::test]
@@ -289,18 +309,21 @@ mod tests {
         let mut state_manager = get_fixture();
         let a12 = AccountRef {
             number: "a12".to_string(),
-            new_version: None,
+            new_version: Some(10),
         };
         let a13 = AccountRef {
             number: "a13".to_string(),
-            new_version: None,
+            new_version: Some(10),
         };
 
         let _ = transfer(&mut state_manager, "10", a12.clone(), a13.clone()).await;
 
         assert_eq!(state_manager.accounts.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
+        assert_eq!(state_manager.accounts.get(0).unwrap().talos_state.version, 1);
         assert_eq!(state_manager.accounts.get(1).unwrap().balance.amount().to_string(), "92.00".to_string());
+        assert_eq!(state_manager.accounts.get(1).unwrap().talos_state.version, 10);
         assert_eq!(state_manager.accounts.get(2).unwrap().balance.amount().to_string(), "113.00".to_string());
+        assert_eq!(state_manager.accounts.get(2).unwrap().talos_state.version, 10);
 
         // Lets fail due to garbage money
         expect_transfer_error(&mut state_manager, "_", a12.clone(), a13.clone(), "Cannot create Money instance").await;
@@ -357,6 +380,27 @@ mod tests {
         };
 
         assert!(expected_resp);
+    }
+
+    #[tokio::test]
+    async fn async_query_snapshot() {
+        let mut state_manager = get_fixture();
+        let resp = send(&mut state_manager, AccountOperation::QuerySnapshot).await;
+        let expected_resp = if let OperationResponse::Snapshot(data) = resp {
+            assert_eq!(data.version, 1);
+            true
+        } else {
+            false
+        };
+
+        assert!(expected_resp);
+    }
+
+    #[tokio::test]
+    async fn async_update_snapshot() {
+        let mut state_manager = get_fixture();
+        let _ = send(&mut state_manager, AccountOperation::UpdateSnapshot(11)).await;
+        assert_eq!(state_manager.snapshot.version, 11);
     }
 }
 // $coverage:ignore-end

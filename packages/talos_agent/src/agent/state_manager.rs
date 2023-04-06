@@ -190,7 +190,6 @@ mod tests_waiting_client {
     use super::*;
     use crate::messaging::api::Decision::Committed;
     use async_trait::async_trait;
-    use log::LevelFilter;
     use mockall::mock;
     use tokio::sync::mpsc::error::SendError;
 
@@ -206,8 +205,6 @@ mod tests_waiting_client {
 
     #[tokio::test]
     async fn notify_should_forward_to_channel() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let mut sender = MockNoopSender::new();
 
         sender.expect_send().withf(move |param| param.xid == *"xid1").once().returning(move |_| Ok(()));
@@ -225,8 +222,6 @@ mod tests_waiting_client {
 
     #[tokio::test]
     async fn notify_should_not_panic_on_channel_error() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let mut sender = MockNoopSender::new();
 
         let response_sample = CertificationResponse {
@@ -254,7 +249,6 @@ mod tests {
     use crate::messaging::api::{PublishResponse, Publisher};
     use crate::messaging::errors::MessagingError;
     use async_trait::async_trait;
-    use log::LevelFilter;
     use mockall::{mock, Sequence};
     use std::time::Duration;
     use tokio::sync::mpsc::error::SendError;
@@ -360,8 +354,6 @@ mod tests {
 
     #[tokio::test]
     async fn handle_candidate_should_publish() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let cfg = make_config();
 
         let cfg_copy = cfg.clone();
@@ -394,8 +386,6 @@ mod tests {
 
     #[tokio::test]
     async fn handle_candidate_should_emit_metrics() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let cfg = make_config();
         let cfg_copy = cfg.clone();
 
@@ -436,8 +426,6 @@ mod tests {
     #[tokio::test]
     async fn handle_candidate_should_not_publish() {
         // No publishing to kafka if there is no request received
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
 
         let manager = StateManager::new(make_config(), Arc::new(metrics_client));
@@ -456,8 +444,6 @@ mod tests {
 
     #[tokio::test]
     async fn handle_decision_should_notify_clients() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
         let cfg = make_config();
 
@@ -512,8 +498,6 @@ mod tests {
 
     #[tokio::test]
     async fn handle_decision_should_not_panic_if_clients_are_waiting() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
         let cfg = make_config();
 
@@ -539,8 +523,6 @@ mod tests {
 
     #[tokio::test]
     async fn handle_decision_should_emit_metrics() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         // time when event was decided (sent by Talos)
         let candidate_time_at = 888;
         let decided_at = 999;
