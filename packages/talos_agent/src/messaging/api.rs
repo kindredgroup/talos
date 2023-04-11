@@ -8,7 +8,7 @@ pub static HEADER_MESSAGE_TYPE: &str = "messageType";
 pub static HEADER_AGENT_ID: &str = "certAgent";
 
 // This should live in the external shared schema exported by Talos
-#[derive(Debug, EnumString, Display, PartialEq)]
+#[derive(Debug, EnumString, Display, Eq, PartialEq)]
 pub enum TalosMessageType {
     Candidate,
     Decision,

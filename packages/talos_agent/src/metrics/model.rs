@@ -2,7 +2,7 @@ use crate::metrics::aggregates::{PercentileSet, Timeline};
 use strum::Display;
 
 /// The trackable event within Talos Agent
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Event {
     pub id: String,
     pub event_name: EventName,
@@ -32,7 +32,7 @@ pub struct EventMetadata {
 }
 
 /// Data sent from metrics client to metrics service
-#[derive(Debug, Clone, Display, PartialEq)]
+#[derive(Debug, Clone, Display, Eq, PartialEq)]
 pub enum Signal {
     Start { time: u64, event: Event },
     End { time: u64, id: String, event_name: EventName },

@@ -6,7 +6,7 @@ use rusty_money::{iso, Money};
 
 use crate::model::talos_state::TalosState;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BankAccount {
     pub name: String,
     pub number: String,

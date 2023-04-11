@@ -1,7 +1,7 @@
 use strum::Display;
 use thiserror::Error as ThisError;
 
-#[derive(Debug, Display, PartialEq)]
+#[derive(Debug, Display, Eq, PartialEq)]
 pub enum MessagingErrorKind {
     Consuming,
     CorruptedPayload,

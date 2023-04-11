@@ -5,7 +5,7 @@ use strum::Display;
 use thiserror::Error as ThisError;
 use tokio::sync::mpsc::error::SendError;
 
-#[derive(Debug, Display, PartialEq)]
+#[derive(Debug, Display, Eq, PartialEq)]
 pub enum AgentErrorKind {
     Certification { xid: String },
     CertificationTimeout { xid: String, elapsed_ms: u128 },

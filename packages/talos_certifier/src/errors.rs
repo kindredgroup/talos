@@ -62,14 +62,14 @@ pub enum HealthCheckServiceError {
     SystemError(SystemError),
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum SystemErrorType {
     Channel,
     HealthCheck,
     Generic,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub enum SystemServiceErrorKind {
     ParseError,
     DBError,

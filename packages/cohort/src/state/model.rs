@@ -23,7 +23,7 @@ impl Display for AccountRef {
     }
 }
 
-#[derive(Display, Clone, Debug, PartialEq)]
+#[derive(Display, Clone, Debug, Eq, PartialEq)]
 pub enum AccountOperation {
     Deposit { amount: String, account: AccountRef },
     Transfer { amount: String, from: AccountRef, to: AccountRef },
@@ -32,7 +32,7 @@ pub enum AccountOperation {
     QueryAccount { account: AccountRef },
 }
 
-#[derive(Display, Clone, Debug, PartialEq)]
+#[derive(Display, Clone, Debug, Eq, PartialEq)]
 pub enum OperationResponse {
     Success,
     Error(String),

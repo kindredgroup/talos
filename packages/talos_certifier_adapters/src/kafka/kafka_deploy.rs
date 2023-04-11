@@ -23,7 +23,7 @@ pub enum KafkaDeployError {
     KafkaError(#[from] KafkaError),
 }
 
-pub async fn create_topic(num_of_partitions: i32) -> Result<KafkaDeployStatus, KafkaDeployError> {
+pub async fn create_topic(num_of_partitions: i32, retention_bytes: &str) -> Result<KafkaDeployStatus, KafkaDeployError> {
     let kafka_config = KafkaConfig::from_env();
     println!("kafka configs received from env... {kafka_config:#?}");
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create()?;
@@ -42,7 +42,8 @@ pub async fn create_topic(num_of_partitions: i32) -> Result<KafkaDeployStatus, K
             name: &kafka_certification_topic,
             num_partitions: 1,
             replication: TopicReplication::Fixed(num_of_partitions),
-            config: vec![("message.timestamp.type", "LogAppendTime")],
+
+            config: vec![("message.timestamp.type", "LogAppendTime"), ("retention.bytes", retention_bytes)],
         };
 
         let opts = AdminOptions::new().operation_timeout(Some(timeout));

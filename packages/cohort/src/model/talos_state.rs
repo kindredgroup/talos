@@ -5,7 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Clone, Eq, PartialEq)]
 pub struct TalosState {
     pub version: u64,
 }
