@@ -1,5 +1,3 @@
-use std::num::TryFromIntError;
-
 use crate::errors::SuffixError;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -54,7 +52,7 @@ pub struct SuffixMeta {
     pub min_size_after_prune: Option<usize>,
 }
 
-type SuffixItemType<T> = T;
+pub type SuffixItemType<T> = T;
 
 pub trait SuffixTrait<T> {
     fn get(&mut self, version: u64) -> SuffixResult<Option<SuffixItem<T>>>;
@@ -63,13 +61,5 @@ pub trait SuffixTrait<T> {
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>>;
     fn remove(&mut self, version: u64) -> SuffixResult<()>;
 }
-
-pub fn convert_u64_to_usize(value: u64) -> Result<usize, TryFromIntError> {
-    value.try_into()
-}
-
-// pub fn convert_usize_to_u64(value: usize) -> Result<u64, TryFromIntError> {
-//     value.try_into()
-// }
 
 pub type SuffixResult<T> = Result<T, SuffixError>;

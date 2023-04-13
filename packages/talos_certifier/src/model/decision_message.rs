@@ -93,6 +93,23 @@ pub struct DecisionMessage {
     // pub processing_time: u16
 }
 
+pub trait DecisionMessageTrait {
+    fn get_candidate_version(&self) -> u64;
+    fn get_safepoint(&self) -> Option<u64>;
+}
+
+impl DecisionMessageTrait for DecisionMessage {
+    fn get_candidate_version(&self) -> u64 {
+        match self.duplicate_version {
+            Some(ver) => ver,
+            None => self.version,
+        }
+    }
+    fn get_safepoint(&self) -> Option<u64> {
+        self.safepoint
+    }
+}
+
 impl DecisionMessage {
     pub fn new(candidate_message: &CandidateMessage, conflict_candidate: Option<CandidateMessage>, outcome: Outcome, suffix_start: u64) -> Self {
         let CandidateMessage {
