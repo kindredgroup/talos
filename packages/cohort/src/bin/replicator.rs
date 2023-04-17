@@ -1,8 +1,8 @@
-use cohort::replicator::{core::CandidateMessage, kafak_consumer::KafkaConsumer, replicator_service::Replicator, suffix::ReplicatorSuffix};
+use cohort::replicator::{core::CandidateMessage, kafak_consumer::KafkaConsumer, replicator_service::Replicator};
 use log::info;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConfig;
-use talos_suffix::core::SuffixConfig;
+use talos_suffix::{core::SuffixConfig, Suffix};
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +23,7 @@ async fn main() {
         prune_start_threshold: None,
         min_size_after_prune: None,
     };
-    let suffix: ReplicatorSuffix<CandidateMessage> = ReplicatorSuffix::with_config(suffix_config);
+    let suffix: Suffix<CandidateMessage> = Suffix::with_config(suffix_config);
 
     let mut replicator = Replicator::new(kafka_consumer, suffix);
     replicator.run().await;

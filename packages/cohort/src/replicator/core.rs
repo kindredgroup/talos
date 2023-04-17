@@ -22,6 +22,19 @@ pub enum DecisionOutcome {
     Undecided,
 }
 
+// #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+// pub enum SuffixItemReplicationState {
+//     Ready,
+//     Picked,
+//     Complete,
+// }
+
+// impl Default for SuffixItemReplicationState {
+//     fn default() -> Self {
+//         SuffixItemReplicationState::Ready
+//     }
+// }
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StateMapItem {
     pub action: String,
@@ -47,6 +60,8 @@ pub struct CandidateMessage {
     #[serde(skip_deserializing)]
     pub decision_outcome: Option<DecisionOutcome>,
 
+    // #[serde(default = "SuffixItemReplicationState::default")]
+    // pub replication_state: SuffixItemReplicationState,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<Vec<HashMap<String, Value>>>,
 }

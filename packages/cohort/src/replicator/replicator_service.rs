@@ -6,7 +6,7 @@ use super::{
     core::{CandidateMessage, ReceiverMessage},
     suffix::SuffixDecisionTrait,
 };
-use log::info;
+use log::{info, warn};
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever};
 use talos_suffix::{SuffixItem, SuffixTrait};
 
@@ -42,7 +42,11 @@ where
                         match msg {
                             // 2.1 For CM - Install messages on the version
                             ReceiverMessage::Candidate(version, message) => {
-                                self.suffix.insert(version, message).unwrap();
+                                if version > 0 {
+                                    self.suffix.insert(version, message).unwrap();
+                                } else {
+                                    warn!("Version 0 will not be inserted into suffix.")
+                                }
                                 // info!("Suffix Messages for {version}={:?}", self.suffix.get(version));
                             },
                             // 2.2 For DM - Update the decision with outcome + safepoint.
@@ -75,6 +79,8 @@ where
                 //      (e) Finally send it to the state manager to do the updates.
                 _ = interval.tick() => {
                     if let Some(batch) = self.suffix.get_message_batch() {
+
+                        //TODO: Get the current snapshot from db.
                         let current_snapshot: u64 = 3;
                         let mut new_snapshot = 0; // initialise with old snapshot value.
                         if let Some(last_message) = batch.last() {
@@ -82,6 +88,7 @@ where
                         }
 
                         info!("Suffix Messages batch={:?} and new snapshot={new_snapshot}", batch.len());
+
 
                         // Filtering out messages that are not applicable.
                         let filtered_message_batch = batch.into_iter()
@@ -106,12 +113,14 @@ where
                             info!("Statemap_Batch={statemap_batch:?} ");
 
                             // Filter out actions not required by cohort
+
                             // Send to state manager
+                            //  * What happens if update fails?
+                            //  ** If retry also fails?
+
+                            // 4. Mark the versions completed to be vaccuumed later (clean up/remove).
                     }
-
                 }
-
-                // 4. Mark the versions completed to be vaccuumed later (clean up/remove).
             }
         }
     }
