@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
-use deadpool_postgres::{Config, ManagerConfig, Object, Pool, Runtime};
+use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolError, Runtime};
+use log::warn;
 use serde_json::{json, Value};
 use talos_certifier::{
     model::DecisionMessage,
@@ -45,6 +48,26 @@ impl Pg {
 
         Ok(client)
     }
+
+    pub async fn get_client_with_retry(&self) -> Result<Object, PgError> {
+        let mut interval = tokio::time::interval(Duration::from_millis(5_000));
+
+        loop {
+            let result = self.pool.get().await;
+
+            match result {
+                Ok(pool_object) => return Ok(pool_object),
+                Err(pool_error) => match pool_error {
+                    PoolError::Backend(_) | PoolError::Timeout(_) => {
+                        interval.tick().await;
+                        warn!("Error retreiving pool object, retrying...");
+                        continue;
+                    }
+                    _ => return Err(PgError::GetClientFromPool(pool_error)),
+                },
+            };
+        }
+    }
 }
 
 #[async_trait]
@@ -52,7 +75,7 @@ impl DecisionStore for Pg {
     type Decision = DecisionMessage;
 
     async fn get_decision(&self, key: String) -> Result<Option<Self::Decision>, DecisionStoreError> {
-        let client = self.get_client().await.map_err(|e| DecisionStoreError {
+        let client = self.get_client_with_retry().await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::ClientError,
             reason: e.to_string(),
             data: None,
@@ -79,23 +102,24 @@ impl DecisionStore for Pg {
     }
 
     async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
-        let client = self.get_client().await.map_err(|e| DecisionStoreError {
+        let client = self.get_client_with_retry().await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::ClientError,
             reason: e.to_string(),
             data: None,
         })?;
+
         let key_uuid = get_uuid_key(&key)?;
 
         let stmt = client
             .prepare_cached(
                 "WITH ins AS (
-                    INSERT INTO xdb(xid, decision) 
+                    INSERT INTO xdb(xid, decision)
                     VALUES ($1, $2)
-                    ON CONFLICT DO NOTHING 
+                    ON CONFLICT DO NOTHING
                     RETURNING xid, decision
                 )
                 SELECT * from ins
-                UNION 
+                UNION
                 SELECT xid, decision from xdb where xid = $1",
             )
             .await

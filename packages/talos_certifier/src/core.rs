@@ -20,21 +20,20 @@ pub enum MessageVariant {
     Decision,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 
 pub enum SystemMessage {
     Shutdown,
-    SaveState(u64),
+    ShutdownWithError(Box<SystemServiceError>),
     HealthCheck,
     HealthCheckStatus { service: &'static str, healthy: bool },
 }
 
-pub type ServiceResult<T = ()> = Result<T, SystemServiceError>;
+pub type ServiceResult<T = ()> = Result<T, Box<SystemServiceError>>;
 
 #[derive(Debug)]
 pub enum DecisionOutboxChannelMessage {
     Decision(DecisionMessage),
-    OutboundServiceError(SystemServiceError),
 }
 
 #[derive(Debug, Clone)]
@@ -45,9 +44,5 @@ pub struct System {
 
 #[async_trait]
 pub trait SystemService {
-    async fn shutdown_service(&mut self);
-    fn is_shutdown(&self) -> bool;
-    async fn update_shutdown_flag(&mut self, flag: bool);
-    async fn health_check(&self) -> bool;
-    async fn run(&mut self) -> Result<(), SystemServiceError>;
+    async fn run(&mut self) -> ServiceResult;
 }

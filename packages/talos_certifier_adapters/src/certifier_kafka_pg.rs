@@ -55,6 +55,8 @@ pub async fn certifier_with_kafka_pg(
     };
 
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);
+
+    /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
     let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config);

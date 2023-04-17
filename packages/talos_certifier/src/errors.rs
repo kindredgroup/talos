@@ -1,32 +1,7 @@
 use talos_suffix::errors::SuffixError;
 use thiserror::Error as ThisError;
-use tokio::sync::{broadcast, mpsc};
 
-use crate::{
-    ports::errors::{DecisionStoreError, DecisionStoreErrorKind, MessagePublishError, MessageReceiverError, MessageReceiverErrorKind},
-    ChannelMessage, SystemMessage,
-};
-
-// Different possible errors
-// System Errors
-//  - Channel Error
-//  - Health Check Error
-// Domain Error
-//  - Certification Error
-// Infrastructure/Adapters Error
-//  - MessagingInboundError
-//  - MessagingOutboundError
-//  - DBError
-
-#[derive(Debug, ThisError)]
-pub enum SystemError {
-    // #[error("| SYSTEM_ERROR | Health Check Error: {0}")]
-    // HealthCheck(String),
-    #[error("| SYSTEM_ERROR | Error sending message over system broadcast channel ")]
-    SendSystemMessage(#[source] broadcast::error::SendError<SystemMessage>),
-    #[error("| SYSTEM_ERROR | Error sending message over channel ")]
-    ServiceChannelSendMessage(#[source] Box<mpsc::error::SendError<ChannelMessage>>),
-}
+use crate::ports::errors::{DecisionStoreError, DecisionStoreErrorKind, MessagePublishError, MessageReceiverError, MessageReceiverErrorKind};
 
 #[derive(Debug, ThisError)]
 
@@ -51,15 +26,14 @@ pub enum DecisionOutBoxServiceError {
 
 #[derive(Debug, ThisError)]
 pub enum CommonError {
-    #[error("Error deserializing \ndata={data} \nreason={reason}")]
+    #[error("Parse Error input={data} with reason={reason}")]
     ParseError { data: String, reason: String },
 }
 
-#[derive(Debug, ThisError)]
-
-pub enum HealthCheckServiceError {
-    #[error(transparent)]
-    SystemError(SystemError),
+#[derive(Debug, PartialEq, Clone)]
+pub struct AdapterFailureError {
+    pub adapter_name: String,
+    pub reason: String,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -67,6 +41,7 @@ pub enum SystemErrorType {
     Channel,
     HealthCheck,
     Generic,
+    AdapterFailure(AdapterFailureError),
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -79,7 +54,7 @@ pub enum SystemServiceErrorKind {
     MessagePublishError,
 }
 
-#[derive(Debug, ThisError, Clone)]
+#[derive(Debug, ThisError, PartialEq, Clone)]
 #[error("error on service={service} kind={kind:?} \n reason={reason} \n data={data:?}")]
 pub struct SystemServiceError {
     pub kind: SystemServiceErrorKind,
@@ -88,86 +63,57 @@ pub struct SystemServiceError {
     pub service: String,
 }
 
-impl From<CommonError> for SystemServiceError {
-    fn from(inner: CommonError) -> Self {
-        match inner {
-            CommonError::ParseError { data, reason } => SystemServiceError {
-                kind: SystemServiceErrorKind::ParseError,
-                reason,
-                data: Some(data),
-                service: "Service Info to be mapped".to_string(),
-            },
-        }
-    }
-}
-
-impl From<DecisionOutBoxServiceError> for SystemServiceError {
+impl From<DecisionOutBoxServiceError> for Box<SystemServiceError> {
     fn from(inner: DecisionOutBoxServiceError) -> Self {
         match inner {
             DecisionOutBoxServiceError::XDBError(dberror) => {
                 if dberror.kind == DecisionStoreErrorKind::ParseError {
-                    SystemServiceError {
+                    Box::new(SystemServiceError {
                         kind: SystemServiceErrorKind::ParseError,
                         reason: dberror.reason,
                         data: dberror.data,
                         service: "DecisionOutBoxService".to_string(),
-                    }
+                    })
                 } else {
-                    SystemServiceError {
+                    Box::new(SystemServiceError {
                         kind: SystemServiceErrorKind::DBError,
                         reason: dberror.reason,
                         data: dberror.data,
                         service: "DecisionOutBoxService".to_string(),
-                    }
+                    })
                 }
             }
-            DecisionOutBoxServiceError::PublishError(pub_error) => SystemServiceError {
+            DecisionOutBoxServiceError::PublishError(pub_error) => Box::new(SystemServiceError {
                 kind: SystemServiceErrorKind::MessagePublishError,
                 reason: pub_error.reason,
                 data: pub_error.data,
                 service: "DecisionOutBoxService".to_string(),
-            },
+            }),
         }
     }
 }
 
-impl From<CertificationError> for SystemServiceError {
+impl From<CertificationError> for Box<SystemServiceError> {
     fn from(certifier_error: CertificationError) -> Self {
         match &certifier_error {
-            CertificationError::SuffixError(SuffixError::VersionToIndexConversionError(v)) => SystemServiceError {
+            CertificationError::SuffixError(SuffixError::VersionToIndexConversionError(v)) => Box::new(SystemServiceError {
                 kind: SystemServiceErrorKind::CertifierError,
                 reason: certifier_error.to_string(),
                 data: Some(v.to_string()),
                 service: "CertifierService".to_string(),
-            },
-            CertificationError::SuffixError(_) => SystemServiceError {
+            }),
+            CertificationError::SuffixError(_) => Box::new(SystemServiceError {
                 kind: SystemServiceErrorKind::CertifierError,
                 reason: certifier_error.to_string(),
                 data: None,
                 service: "CertifierService".to_string(),
-            },
-            CertificationError::Validation { .. } => SystemServiceError {
+            }),
+            CertificationError::Validation { .. } => Box::new(SystemServiceError {
                 kind: SystemServiceErrorKind::CertifierError,
                 reason: certifier_error.to_string(),
                 data: None,
                 service: "CertifierService".to_string(),
-            },
-        }
-        // SystemServiceError {
-        //     kind: SystemServiceErrorKind::CertifierError,
-        //     reason: certifier_error.to_string(),
-        //     data: None,
-        //     service: "CertifierService".to_string(),
-        // }
-    }
-}
-impl From<HealthCheckServiceError> for SystemServiceError {
-    fn from(_hc_error: HealthCheckServiceError) -> Self {
-        SystemServiceError {
-            kind: SystemServiceErrorKind::SystemError(SystemErrorType::HealthCheck),
-            reason: "Health check error".to_string(),
-            data: None,
-            service: "HealthCheckService".to_string(),
+            }),
         }
     }
 }
@@ -186,11 +132,6 @@ impl From<MessageReceiverError> for SystemServiceError {
                 data: msg_rx_error.data,
                 service: "Message Receiver Servicer".to_string(),
             },
-            // MessageReceiverErrorKind::IncorrectData => todo!(),
-            // MessageReceiverErrorKind::VersionZero => todo!(),
-            // MessageReceiverErrorKind::SaveVersion => todo!(),
-            // MessageReceiverErrorKind::SubscribeError => todo!(),
-            // MessageReceiverErrorKind::CommitError => todo!(),
         }
     }
 }
