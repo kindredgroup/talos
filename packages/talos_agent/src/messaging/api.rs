@@ -96,13 +96,10 @@ pub type ConsumerType = dyn Consumer + Sync + Send;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use log::LevelFilter;
     use std::str::FromStr;
 
     #[test]
     fn new_constructors() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Trace).format_timestamp_millis().try_init();
-
         let _ = format!("{:?}", TalosMessageType::Decision);
         assert_eq!(TalosMessageType::from_str("Decision").unwrap(), TalosMessageType::Decision);
 

@@ -61,7 +61,6 @@ mod tests {
     use crate::messaging::errors::MessagingErrorKind;
     use crate::mpsc::core::Sender;
     use async_trait::async_trait;
-    use log::LevelFilter;
     use mockall::mock;
     use std::sync::Arc;
     use std::time::Duration;
@@ -79,8 +78,6 @@ mod tests {
 
     #[test]
     fn new_certify_timout() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Debug).format_timestamp_millis().try_init();
-
         let agent_error = AgentError::new_certify_timout("xid".to_string(), 111);
         assert_eq!(
             agent_error.kind,
@@ -94,8 +91,6 @@ mod tests {
 
     #[test]
     fn convert_from_send_error() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Debug).format_timestamp_millis().try_init();
-
         let send_error = SendError(CertifyRequestChannelMessage::new(
             &CertificationRequest {
                 message_key: "key1".to_string(),
@@ -118,8 +113,6 @@ mod tests {
 
     #[test]
     fn convert_from_messaging_error() {
-        let _ = env_logger::builder().filter_level(LevelFilter::Debug).format_timestamp_millis().try_init();
-
         let messaging_error = MessagingError {
             kind: MessagingErrorKind::Generic,
             reason: "some reason...".to_string(),
