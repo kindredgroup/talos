@@ -1,4 +1,5 @@
 pub mod core;
-pub mod kafak_consumer;
+pub mod kafka_consumer;
 pub mod replicator_service;
 pub mod suffix;
+pub mod utils;

@@ -1,4 +1,4 @@
-use cohort::replicator::{core::CandidateMessage, kafak_consumer::KafkaConsumer, replicator_service::Replicator};
+use cohort::replicator::{core::CandidateMessage, kafka_consumer::KafkaConsumer, replicator_service::Replicator};
 use log::info;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConfig;
