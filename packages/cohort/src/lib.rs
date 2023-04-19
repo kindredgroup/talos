@@ -1,4 +1,4 @@
-pub mod bank;
+pub mod bank_api;
 pub mod config_loader;
 pub mod core;
 pub mod model;

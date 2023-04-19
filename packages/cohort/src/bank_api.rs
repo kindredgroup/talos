@@ -9,30 +9,30 @@ use crate::state::model::AccountRef;
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::Database;
 
-pub struct Bank {}
+pub struct BankApi {}
 
-impl Bank {
+impl BankApi {
     pub async fn get_accounts(db: Arc<Database>) -> Result<Vec<BankAccount>, String> {
-        let rslt = Database::query(&db.pool.get().await.unwrap(), "SELECT data FROM bank_accounts", &[]).await;
-        let list: Vec<BankAccount> = rslt.iter().map(DataStore::account_from_row).collect::<Vec<BankAccount>>();
+        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
         Ok(list)
     }
 
     pub async fn get_balance(db: Arc<Database>, account: AccountRef) -> Result<Money<'static, Currency>, String> {
-        let rslt = Database::query_opt(
-            &db.pool.get().await.unwrap(),
-            "SELECT data FROM bank_accounts WHERE number = $1",
-            &[&account.number],
-        )
-        .await;
+        let rslt = db
+            .query_opt(
+                "SELECT data FROM bank_accounts WHERE number = $1",
+                &[&account.number],
+                DataStore::account_from_row,
+            )
+            .await;
+
         match rslt {
-            Some(account) => Ok(DataStore::account_from_row(&account).balance),
+            Some(account) => Ok(account.balance),
             None => Err(format!("There is no bank account with number: {}", account.number)),
         }
     }
 
     pub async fn deposit(db: Arc<Database>, account_ref: AccountRef, amount: String) -> Result<(), String> {
-        let client = db.pool.get().await.unwrap();
         if let Some(new_version) = account_ref.new_version {
             let sql = r#"
                 UPDATE bank_accounts SET data = data ||
@@ -43,7 +43,8 @@ impl Bank {
                 WHERE "number" = $3
                 RETURNING data
             "#;
-            Database::query_one(&client, sql, &[&amount, &(new_version as i64), &account_ref.number]).await;
+            db.query_one(sql, &[&amount, &(new_version as i64), &account_ref.number], DataStore::account_from_row)
+                .await;
         } else {
             let sql = r#"
                 UPDATE bank_accounts SET data = data ||
@@ -53,7 +54,7 @@ impl Bank {
                 WHERE "number" = $2
                 RETURNING data
             "#;
-            Database::query_one(&client, sql, &[&amount, &account_ref.number]).await;
+            db.query_one(sql, &[&amount, &account_ref.number], DataStore::account_from_row).await;
         }
 
         Ok(())

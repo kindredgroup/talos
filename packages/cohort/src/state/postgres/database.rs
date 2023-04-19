@@ -13,6 +13,11 @@ pub struct Database {
 }
 
 impl Database {
+    async fn get(&self) -> Object {
+        let client = self.pool.get().await.unwrap();
+        client
+    }
+
     pub async fn init_db(cfg: DatabaseConfig) -> Arc<Database> {
         let mut config = Config::new();
         config.dbname = Some(cfg.database);
@@ -35,18 +40,23 @@ impl Database {
         Arc::new(Database { pool })
     }
 
-    pub async fn query_one(client: &Object, sql: &str, params: &[&(dyn ToSql + Sync)]) -> Row {
+    pub async fn query_one<T>(&self, sql: &str, params: &[&(dyn ToSql + Sync)], fn_converter: fn(&Row) -> T) -> T {
+        let client = self.get().await;
         let stm = client.prepare(sql).await.unwrap();
-        client.query_one(&stm, params).await.unwrap()
+        fn_converter(&client.query_one(&stm, params).await.unwrap())
     }
 
-    pub async fn query_opt(client: &Object, sql: &str, params: &[&(dyn ToSql + Sync)]) -> Option<Row> {
+    pub async fn query_opt<T>(&self, sql: &str, params: &[&(dyn ToSql + Sync)], fn_converter: fn(&Row) -> T) -> Option<T> {
+        let client = self.get().await;
         let stm = client.prepare(sql).await.unwrap();
-        client.query_opt(&stm, params).await.unwrap()
+        let result = client.query_opt(&stm, params).await.unwrap();
+        result.map(|r| fn_converter(&r))
     }
 
-    pub async fn query(client: &Object, sql: &str, params: &[&(dyn ToSql + Sync)]) -> Vec<Row> {
+    pub async fn query<T>(&self, sql: &str, fn_converter: fn(&Row) -> T) -> Vec<T> {
+        let client = self.get().await;
         let stm = client.prepare(sql).await.unwrap();
-        client.query(&stm, params).await.unwrap()
+        let result = client.query(&stm, &[]).await.unwrap();
+        result.iter().map(fn_converter).collect::<Vec<T>>()
     }
 }

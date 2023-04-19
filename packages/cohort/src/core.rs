@@ -17,11 +17,10 @@ use talos_agent::metrics::core::Metrics;
 use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
-use crate::bank::Bank;
+use crate::bank_api::BankApi;
 use crate::model::bank_account::{as_money, BankAccount};
 use crate::snapshot_api::SnapshotApi;
-use crate::state::model::{AccountRef, Snapshot};
-use crate::state::postgres::data_store::DataStore;
+use crate::state::model::AccountRef;
 use crate::state::postgres::database::Database;
 
 // $coverage:ignore-end
@@ -80,52 +79,12 @@ impl Cohort {
     // $coverage:ignore-end
 
     // $coverage:ignore-start
-    /** Start generating the workload */
-    pub async fn start(&mut self) {
-        log::info!("---------------------");
-
-        let db_ref = Arc::clone(&self.database);
-        tokio::spawn(async move {
-            let accounts: Vec<BankAccount> = serde_json::from_str(include_str!("initial_state_accounts.json"))
-                .map_err(|e| {
-                    log::error!("Unable to read initial data: {}", e);
-                })
-                .unwrap();
-
-            let snapshot: Snapshot = serde_json::from_str(include_str!("initial_state_snapshot.json"))
-                .map_err(|e| {
-                    log::error!("Unable to read initial data: {}", e);
-                })
-                .unwrap();
-
-            log::info!("----------------------------------");
-            log::info!("Initial state is loaded from files");
-            for a in accounts.iter() {
-                log::info!("{}", a);
-            }
-            log::info!("{}", snapshot);
-
-            // Init database ...
-            let updated_accounts = DataStore::prefill_accounts(Arc::clone(&db_ref), accounts.clone()).await.unwrap();
-            let updated_snapshot = DataStore::prefill_snapshot(Arc::clone(&db_ref), snapshot.clone()).await.unwrap();
-
-            log::info!("----------------------------------");
-            log::info!("Current initial state");
-            for a in updated_accounts.iter() {
-                log::info!("{}", a);
-            }
-            log::info!("{}", updated_snapshot);
-        });
-    }
-    // $coverage:ignore-end
-
-    // $coverage:ignore-start
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
         log::info!("Generating test load for {}s", duration_sec);
 
         let started_at = OffsetDateTime::now_utc();
         loop {
-            let accounts = Bank::get_accounts(Arc::clone(&self.database)).await?;
+            let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
 
             // pick random bank accounts and amount
             let (account1, amount, account2, is_deposit) = Self::pick(&accounts);
@@ -133,7 +92,7 @@ impl Cohort {
                 // two accounts picked, do transfer...
 
                 // Cohort should do local validation before attempting to alter internal state
-                let balance = Bank::get_balance(
+                let balance = BankApi::get_balance(
                     Arc::clone(&self.database),
                     AccountRef {
                         number: account1.number.clone(),
@@ -159,7 +118,7 @@ impl Cohort {
             }
 
             // Cohort should do local validation before attempting to alter internal state
-            let balance = Bank::get_balance(
+            let balance = BankApi::get_balance(
                 Arc::clone(&self.database),
                 AccountRef {
                     number: account1.number.clone(),
@@ -182,7 +141,7 @@ impl Cohort {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
 
-        let accounts = Bank::get_accounts(Arc::clone(&self.database)).await?;
+        let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
         log::info!("New state of bank accounts is");
         for a in accounts.iter() {
             log::info!("{}", a);
@@ -215,13 +174,13 @@ impl Cohort {
 
     // $coverage:ignore-start
     async fn deposit(&self, account: &BankAccount, amount: String) -> Result<(), String> {
-        self.single_bank_op(account, amount, Bank::deposit).await
+        self.single_bank_op(account, amount, BankApi::deposit).await
     }
     // $coverage:ignore-end
 
     // $coverage:ignore-start
     async fn withdraw(&self, account: &BankAccount, amount: String) -> Result<(), String> {
-        self.single_bank_op(account, amount, Bank::withdraw).await
+        self.single_bank_op(account, amount, BankApi::withdraw).await
     }
     // $coverage:ignore-end
 
@@ -321,7 +280,7 @@ impl Cohort {
 
         // Talos gave "go ahead"
 
-        let response = Bank::transfer(
+        let response = BankApi::transfer(
             Arc::clone(&self.database),
             AccountRef {
                 number: from.number.clone(),
