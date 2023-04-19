@@ -46,7 +46,7 @@ pub async fn create_database(pg_config: PgConfig) -> Result<(), tokio_postgres::
 }
 
 pub async fn run_migration(pg_config: PgConfig, runner: Runner) -> Result<(), Box<dyn std::error::Error + Send + Sync + 'static>> {
-    println!("Running DB sql...");
+    println!("Running DB migrations...");
     let (mut client, con) = tokio_postgres::connect(pg_config.get_database_connection_string().as_str(), tokio_postgres::NoTls).await?;
 
     tokio::spawn(async move {
@@ -59,7 +59,7 @@ pub async fn run_migration(pg_config: PgConfig, runner: Runner) -> Result<(), Bo
     for migration in migration_report.applied_migrations() {
         println!("Migration Applied -  Name: {}, Version: {}", migration.name(), migration.version());
     }
-    println!("DB sql finished!");
+    println!("DB migrations finished!");
 
     Ok(())
 }
