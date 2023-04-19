@@ -1,6 +1,5 @@
 // $coverage:ignore-start
 use std::fmt;
-// $coverage:ignore-end
 
 use rusty_money::{iso, Money};
 use serde::de::{MapAccess, Visitor};
@@ -8,6 +7,8 @@ use serde::{de, Deserialize, Deserializer};
 
 use crate::model::bank_account::BankAccount;
 use crate::model::talos_state::TalosState;
+
+// $coverage:ignore-end
 
 impl<'de> Deserialize<'de> for BankAccount {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -140,9 +141,10 @@ impl<'de> Deserialize<'de> for BankAccount {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
+    use rusty_money::FormattableCurrency;
+
     use crate::model::bank_account::BankAccount;
     use crate::model::talos_state::TalosState;
-    use rusty_money::FormattableCurrency;
 
     #[test]
     fn should_deserialize() {

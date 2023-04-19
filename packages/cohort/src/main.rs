@@ -1,17 +1,21 @@
 // $coverage:ignore-start
+use std::sync::Arc;
 use tokio::signal;
 
 use cohort::config_loader::ConfigLoader;
 use cohort::core::Cohort;
+use cohort::state::postgres::database::Database;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
 
-    let (cfg_agent, cfg_kafka) = ConfigLoader::load()?;
+    let (cfg_agent, cfg_kafka, cfg_db) = ConfigLoader::load()?;
     tokio::spawn(async move {
-        let agent = Cohort::make_agent(cfg_agent, cfg_kafka).await;
-        let mut cohort = Cohort::new(agent);
+        let agent = Cohort::init_agent(cfg_agent, cfg_kafka).await;
+
+        let database = Database::init_db(cfg_db).await;
+        let mut cohort = Cohort::new(agent, Arc::clone(&database));
 
         cohort.start().await;
         log::info!("Cohort started...");

@@ -22,17 +22,20 @@ use crate::bank::Bank;
 use crate::model::bank_account::{as_money, BankAccount};
 use crate::snapshot_api::SnapshotApi;
 use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse, Snapshot};
+use crate::state::postgres::data_store::DataStore;
+use crate::state::postgres::database::Database;
 use crate::state::state_manager::StateManager;
 // $coverage:ignore-end
 
 pub struct Cohort {
     agent: Box<dyn TalosAgent + Sync + Send>,
     tx_state: Option<Sender<Envelope<AccountOperation, OperationResponse>>>,
+    database: Arc<Database>,
 }
 
 impl Cohort {
     // $coverage:ignore-start
-    pub async fn make_agent(config: AgentConfig, kafka_config: KafkaConfig) -> Box<dyn TalosAgent + Sync + Send> {
+    pub async fn init_agent(config: AgentConfig, kafka_config: KafkaConfig) -> Box<dyn TalosAgent + Sync + Send> {
         let (tx_certify_ch, rx_certify_ch) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(config.buffer_size);
         let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
         let rx_certify = ReceiverWrapper::<CertifyRequestChannelMessage> { rx: rx_certify_ch };
@@ -73,8 +76,12 @@ impl Cohort {
     // $coverage:ignore-end
 
     // $coverage:ignore-start
-    pub fn new(agent: Box<dyn TalosAgent + Sync + Send>) -> Self {
-        Cohort { agent, tx_state: None }
+    pub fn new(agent: Box<dyn TalosAgent + Sync + Send>, database: Arc<Database>) -> Self {
+        Cohort {
+            agent,
+            tx_state: None,
+            database,
+        }
     }
     // $coverage:ignore-end
 
@@ -85,6 +92,7 @@ impl Cohort {
         let (tx_state, rx_state) = tokio::sync::mpsc::channel::<Envelope<AccountOperation, OperationResponse>>(10_000);
         self.tx_state = Some(tx_state);
 
+        let db_ref = Arc::clone(&self.database);
         tokio::spawn(async move {
             let accounts: Vec<BankAccount> = serde_json::from_str(include_str!("initial_state_accounts.json"))
                 .map_err(|e| {
@@ -92,19 +100,32 @@ impl Cohort {
                 })
                 .unwrap();
 
-            log::info!("Loaded initial state");
-            for a in accounts.iter() {
-                log::info!("{}", a);
-            }
-
             let snapshot: Snapshot = serde_json::from_str(include_str!("initial_state_snapshot.json"))
                 .map_err(|e| {
                     log::error!("Unable to read initial data: {}", e);
                 })
                 .unwrap();
 
+            log::info!("----------------------------------");
+            log::info!("Initial state is loaded from files");
+            for a in accounts.iter() {
+                log::info!("{}", a);
+            }
+            log::info!("{}", snapshot);
+
+            // Init database ...
+            let updated_accounts = DataStore::prefill_accounts(Arc::clone(&db_ref), accounts.clone()).await.unwrap();
+            let updated_snapshot = DataStore::prefill_snapshot(Arc::clone(&db_ref), snapshot.clone()).await.unwrap();
+
+            log::info!("----------------------------------");
+            log::info!("Current initial state");
+            for a in updated_accounts.iter() {
+                log::info!("{}", a);
+            }
+            log::info!("{}", updated_snapshot);
+
             // todo: load snapshot value
-            let mut state_manager = StateManager { accounts, snapshot };
+            let mut state_manager = StateManager { database: db_ref };
             state_manager.run(rx_state).await;
         });
     }
@@ -122,12 +143,6 @@ impl Cohort {
 
     // $coverage:ignore-start
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
-        let accounts = Bank::get_accounts(self.get_tx()?).await?;
-        log::info!("Current state of bank accounts is");
-        for a in accounts.iter() {
-            log::info!("{}", a);
-        }
-
         log::info!("Generating test load for {}s", duration_sec);
 
         let started_at = OffsetDateTime::now_utc();

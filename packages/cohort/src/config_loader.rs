@@ -6,6 +6,8 @@ use rdkafka::config::RDKafkaLogLevel;
 
 use talos_agent::api::{AgentConfig, KafkaConfig, TalosType};
 
+use crate::state::postgres::database_config::DatabaseConfig;
+
 pub struct ConfigLoader {}
 
 impl ConfigLoader {
@@ -62,7 +64,7 @@ impl ConfigLoader {
         }
     }
 
-    pub fn load() -> Result<(AgentConfig, KafkaConfig), String> {
+    pub fn load() -> Result<(AgentConfig, KafkaConfig, DatabaseConfig), String> {
         let cfg_agent = AgentConfig {
             agent: Self::read_var("AGENT_NAME").unwrap(),
             cohort: Self::read_var("COHORT_NAME").unwrap(),
@@ -84,18 +86,31 @@ impl ConfigLoader {
             password: Self::read_var_optional("KAFKA_PASSWORD")?,
         };
 
-        log::info!("Configs:\n\t{:?}\n\t{:?}", cfg_agent, cfg_kafka);
-        Ok((cfg_agent, cfg_kafka))
+        let cfg_db = Self::load_db_config()?;
+        log::info!("Configs:\n\t{:?}\n\t{:?}\n\t{:?}", cfg_agent, cfg_kafka, cfg_db);
+        Ok((cfg_agent, cfg_kafka, cfg_db))
+    }
+
+    pub fn load_db_config() -> Result<DatabaseConfig, String> {
+        Ok(DatabaseConfig {
+            user: Self::read_var("COHORT_PG_USER")?,
+            password: Self::read_var("COHORT_PG_PASSWORD")?,
+            host: Self::read_var("COHORT_PG_HOST")?,
+            port: Self::read_var("COHORT_PG_PORT")?,
+            database: Self::read_var("COHORT_PG_DATABASE")?,
+        })
     }
 }
 
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::config_loader::ConfigLoader;
     use std::env;
     use std::sync::Mutex;
+
+    use crate::config_loader::ConfigLoader;
+
+    use super::*;
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
@@ -191,7 +206,7 @@ mod tests {
         env::set_var("KAFKA_PASSWORD", "kPwd");
 
         let result = ConfigLoader::load();
-        let (a, k) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
+        let (a, k, d) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
 
         assert_eq!(a.agent, "aName".to_string());
         assert_eq!(a.cohort, "cName".to_string());
@@ -214,7 +229,7 @@ mod tests {
 
         let result = ConfigLoader::load();
         assert!(result.is_ok());
-        let (_, k) = result.unwrap();
+        let (_, k, _) = result.unwrap();
         assert_eq!(k.sasl_mechanisms, None);
         assert_eq!(k.username, None);
         assert_eq!(k.password, None);

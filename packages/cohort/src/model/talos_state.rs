@@ -3,9 +3,9 @@ use std::fmt;
 // $coverage:ignore-end
 use std::fmt::{Display, Formatter};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct TalosState {
     pub version: u64,
 }

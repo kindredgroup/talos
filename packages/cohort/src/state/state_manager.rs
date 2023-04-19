@@ -1,11 +1,15 @@
+use std::sync::Arc;
+
+use rusty_money::iso;
 use tokio::sync::mpsc::Receiver;
 
-use crate::model::bank_account::{as_money, BankAccount};
-use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse, Snapshot};
+use crate::model::bank_account::as_money;
+use crate::state::model::{AccountOperation, Envelope, OperationResponse};
+use crate::state::postgres::data_store::DataStore;
+use crate::state::postgres::database::Database;
 
 pub struct StateManager {
-    pub accounts: Vec<BankAccount>,
-    pub snapshot: Snapshot,
+    pub database: Arc<Database>,
 }
 
 impl StateManager {
@@ -25,100 +29,76 @@ impl StateManager {
 
     async fn handle(&mut self, request: Envelope<AccountOperation, OperationResponse>) {
         let answer = match request.data {
-            AccountOperation::QueryAll => OperationResponse::QueryResult(Some(self.accounts.clone())),
+            AccountOperation::QueryAll => {
+                let accounts = DataStore::get_accounts(Arc::clone(&self.database)).await.unwrap();
+                OperationResponse::QueryResult(Some(accounts))
+            }
 
             AccountOperation::QueryAccount { account: account_ref } => {
-                let account = self.accounts.iter().find(|a| a.number == account_ref.number);
+                let account = DataStore::get_account(Arc::clone(&self.database), account_ref.number).await.unwrap();
                 if account.is_none() {
                     OperationResponse::QueryResult(None)
                 } else {
-                    OperationResponse::QueryResult(Some(vec![account.unwrap().clone()]))
+                    OperationResponse::QueryResult(Some(vec![account.unwrap()]))
                 }
             }
 
-            AccountOperation::Deposit { amount, account: account_ref } => Self::deposit(amount, account_ref, &mut self.accounts),
+            AccountOperation::Deposit { amount, account: account_ref } => match as_money(amount, iso::find("AUD").unwrap()) {
+                Ok(amount) => {
+                    if let Err(e) = DataStore::deposit(Arc::clone(&self.database), &amount.amount().to_string(), account_ref).await {
+                        OperationResponse::Error(e)
+                    } else {
+                        OperationResponse::Success
+                    }
+                }
+                Err(e) => OperationResponse::Error(e),
+            },
 
-            AccountOperation::Withdraw { amount, account: account_ref } => Self::withdraw(amount, account_ref, &mut self.accounts),
+            AccountOperation::Withdraw { amount, account: account_ref } => match as_money(amount, iso::find("AUD").unwrap()) {
+                Ok(amount) => {
+                    if let Err(e) = DataStore::withdraw(Arc::clone(&self.database), &amount.amount().to_string(), account_ref).await {
+                        OperationResponse::Error(e)
+                    } else {
+                        OperationResponse::Success
+                    }
+                }
+                Err(e) => OperationResponse::Error(e),
+            },
 
             AccountOperation::Transfer { amount, from, to } => {
-                if let OperationResponse::Error(e) = Self::deposit(amount.clone(), to.clone(), &mut self.accounts) {
-                    OperationResponse::Error(format!("Unable to deposit {} to {}. Error: {}", amount, to, e))
-                } else if let OperationResponse::Error(e) = Self::withdraw(amount.clone(), from.clone(), &mut self.accounts) {
-                    OperationResponse::Error(format!("Unable to withdraw {} from {}. Error: {}", amount, from, e))
+                if let Err(e) = DataStore::transfer(Arc::clone(&self.database), &amount, from.clone(), to.clone()).await {
+                    OperationResponse::Error(format!("Unable to transfer {} from {} to {}. Error: {}", amount, from, to, e))
                 } else {
                     OperationResponse::Success
                 }
             }
 
-            AccountOperation::QuerySnapshot => OperationResponse::Snapshot(self.snapshot.clone()),
+            AccountOperation::QuerySnapshot => match DataStore::get_snapshot(Arc::clone(&self.database)).await {
+                Ok(snapshot) => OperationResponse::Snapshot(snapshot),
+                Err(e) => OperationResponse::Error(e),
+            },
 
             AccountOperation::UpdateSnapshot(new_version) => {
-                self.snapshot.version = new_version;
-                OperationResponse::Success
+                if let Err(e) = DataStore::update_snapshot(Arc::clone(&self.database), new_version).await {
+                    OperationResponse::Error(e)
+                } else {
+                    OperationResponse::Success
+                }
             }
         };
 
         request.tx_reply.send(answer).unwrap();
-    }
-
-    fn find_account(account_ref: AccountRef, all_accounts: &mut [BankAccount]) -> Result<&mut BankAccount, String> {
-        for account in &mut all_accounts.iter_mut() {
-            if account.number == account_ref.number {
-                return Ok(account);
-            }
-        }
-
-        Err(format!("No such account {}", account_ref))
-    }
-
-    fn deposit(amount: String, account_ref: AccountRef, all_accounts: &mut [BankAccount]) -> OperationResponse {
-        if let Ok(account) = Self::find_account(account_ref.clone(), all_accounts) {
-            Self::deposit_to_account(amount, account, account_ref.new_version)
-        } else {
-            OperationResponse::Error(format!("No such account {}", account_ref))
-        }
-    }
-
-    fn withdraw(amount: String, account_ref: AccountRef, all_accounts: &mut [BankAccount]) -> OperationResponse {
-        if let Ok(account) = Self::find_account(account_ref.clone(), all_accounts) {
-            Self::withdraw_from_account(amount, account, account_ref.new_version)
-        } else {
-            OperationResponse::Error(format!("No such account {}", account_ref))
-        }
-    }
-
-    fn deposit_to_account(amount: String, account: &mut BankAccount, new_version: Option<u64>) -> OperationResponse {
-        match as_money(amount, account.balance.currency()) {
-            Ok(amount) => {
-                account.increment(amount);
-                if let Some(version) = new_version {
-                    account.talos_state.version = version;
-                }
-                OperationResponse::Success
-            }
-            Err(e) => OperationResponse::Error(e),
-        }
-    }
-
-    fn withdraw_from_account(amount: String, account: &mut BankAccount, new_version: Option<u64>) -> OperationResponse {
-        match as_money(amount, account.balance.currency()) {
-            Ok(amount) => {
-                account.increment(amount * -1);
-                if let Some(version) = new_version {
-                    account.talos_state.version = version;
-                }
-                OperationResponse::Success
-            }
-            Err(e) => OperationResponse::Error(e),
-        }
     }
 }
 
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::model::bank_account::BankAccount;
     use crate::model::talos_state::TalosState;
+    use crate::state::model::AccountRef;
+
+    use super::*;
 
     fn get_bad_account() -> AccountRef {
         AccountRef {
@@ -136,10 +116,7 @@ mod tests {
     }
 
     fn get_fixture() -> StateManager {
-        StateManager {
-            accounts: get_test_accounts(),
-            snapshot: Snapshot::from(1),
-        }
+        StateManager {}
     }
 
     async fn send(state_manager: &mut StateManager, req: AccountOperation) -> OperationResponse {
@@ -169,88 +146,6 @@ mod tests {
         } else {
             false
         };
-        assert!(expected_error_raised);
-    }
-
-    #[test]
-    fn find_account() {
-        let mut list = get_test_accounts();
-        let result = StateManager::find_account(
-            AccountRef {
-                number: "a12".to_string(),
-                new_version: None,
-            },
-            &mut list,
-        );
-
-        assert!(result.is_ok());
-        let result = StateManager::find_account(get_bad_account(), &mut list);
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert_eq!(e, "No such account AccountRef: [number: _, new_version: None]");
-        }
-    }
-
-    #[test]
-    fn deposit() {
-        let mut list = get_test_accounts();
-        let a12 = AccountRef {
-            number: "a12".to_string(),
-            new_version: Some(10),
-        };
-        let result = StateManager::deposit("10".to_string(), a12.clone(), &mut list);
-
-        assert_eq!(result, OperationResponse::Success);
-        assert_eq!(list.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
-        assert_eq!(list.get(1).unwrap().balance.amount().to_string(), "112.00".to_string());
-        assert_eq!(list.get(1).unwrap().talos_state.version, 10);
-        assert_eq!(list.get(2).unwrap().balance.amount().to_string(), "103.00".to_string());
-
-        let result = StateManager::deposit("10".to_string(), get_bad_account(), &mut list);
-        assert_eq!(
-            result,
-            OperationResponse::Error("No such account AccountRef: [number: _, new_version: None]".to_string())
-        );
-
-        let result = StateManager::deposit("_".to_string(), a12, &mut list);
-        let expected_error_raised = if let OperationResponse::Error(e) = result {
-            e.starts_with("Cannot create Money instance")
-        } else {
-            false
-        };
-
-        assert!(expected_error_raised);
-    }
-
-    #[test]
-    fn withdraw() {
-        let mut list = get_test_accounts();
-        let a12 = AccountRef {
-            number: "a12".to_string(),
-            new_version: Some(10),
-        };
-
-        let result = StateManager::withdraw("10".to_string(), a12.clone(), &mut list);
-
-        assert_eq!(result, OperationResponse::Success);
-        assert_eq!(list.get(0).unwrap().balance.amount().to_string(), "101.00".to_string());
-        assert_eq!(list.get(1).unwrap().balance.amount().to_string(), "92.00".to_string());
-        assert_eq!(list.get(1).unwrap().talos_state.version, 10);
-        assert_eq!(list.get(2).unwrap().balance.amount().to_string(), "103.00".to_string());
-
-        let result = StateManager::withdraw("10".to_string(), get_bad_account(), &mut list);
-        assert_eq!(
-            result,
-            OperationResponse::Error("No such account AccountRef: [number: _, new_version: None]".to_string())
-        );
-
-        let result = StateManager::withdraw("_".to_string(), a12, &mut list);
-        let expected_error_raised = if let OperationResponse::Error(e) = result {
-            e.starts_with("Cannot create Money instance")
-        } else {
-            false
-        };
-
         assert!(expected_error_raised);
     }
 
