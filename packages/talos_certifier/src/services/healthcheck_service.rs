@@ -1,6 +1,5 @@
 use crate::{
-    core::{System, SystemService},
-    errors::SystemServiceError,
+    core::{ServiceResult, System, SystemService},
     healthcheck::{self, HealthChecks},
     SystemMessage,
 };
@@ -25,25 +24,7 @@ impl HealthCheckService {
 
 #[async_trait]
 impl SystemService for HealthCheckService {
-    //** Initiate Shutdown
-    async fn shutdown_service(&mut self) {
-        debug!("Healthcheck Service shutting down");
-        self.system.is_shutdown = true;
-        info!("Health Service shutdown completed!");
-    }
-
-    fn is_shutdown(&self) -> bool {
-        self.system.is_shutdown
-    }
-
-    async fn update_shutdown_flag(&mut self, flag: bool) {
-        self.system.is_shutdown = flag;
-    }
-    async fn health_check(&self) -> bool {
-        true
-    }
-
-    async fn run(&mut self) -> Result<(), SystemServiceError> {
+    async fn run(&mut self) -> ServiceResult {
         const DURATION_BETWEEN_CHECKS: Duration = Duration::from_secs(10);
 
         let mut system_channel_rx = self.system.system_notifier.subscribe();

@@ -1,9 +1,9 @@
-use std::{num::TryFromIntError, time::Duration};
+use std::time::Duration;
 
 use async_trait::async_trait;
-use log::{debug, info};
+use log::debug;
 use rdkafka::{
-    consumer::{Consumer, StreamConsumer},
+    consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
 };
 use talos_certifier::{
@@ -25,14 +25,13 @@ use super::{config::KafkaConfig, utils};
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
 pub struct KafkaConsumer {
-    pub consumer: StreamConsumer,
+    pub consumer: StreamConsumer<DefaultConsumerContext>,
     pub topic: String,
     pub tpl: TopicPartitionList,
 }
 
 impl KafkaConsumer {
     pub fn new(config: &KafkaConfig) -> Self {
-        //TODO :Error handling to be improved.
         let consumer = config.build_consumer_config().create().expect("Failed to create consumer");
 
         let topic = config.topic.clone();
@@ -65,54 +64,64 @@ impl KafkaConsumer {
 impl MessageReciever for KafkaConsumer {
     type Message = ChannelMessage;
 
-    async fn consume_message(&mut self) -> Result<Option<Self::Message>, SystemServiceError> {
+    async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let message_received = self.consumer.recv().await.map_err(|e| MessageReceiverError {
             kind: MessageReceiverErrorKind::ReceiveError,
+            version: None,
             reason: e.to_string(),
             data: None,
         })?;
 
         let partition = message_received.partition();
 
+        let offset_i64 = message_received.offset();
+        let offset = offset_i64 as u64;
+
         let headers = get_message_headers(&message_received).ok_or_else(|| MessageReceiverError {
-            kind: MessageReceiverErrorKind::IncorrectData,
-            reason: "Header not found".to_owned(),
+            kind: MessageReceiverErrorKind::HeaderNotFound,
+            version: Some(offset),
+            reason: format!("Header not found for version={offset}"),
             data: Some("messageType".to_owned()),
         })?;
 
-        let offset_i64 = message_received.offset();
-        let offset: u64 = offset_i64.try_into().map_err(|err: TryFromIntError| MessageReceiverError {
-            kind: MessageReceiverErrorKind::ParseError,
-            reason: format!("Error converting offset error={}", err),
-            data: Some(format!("{}", offset_i64)),
-        })?;
-
-        if offset == 0 {
-            info!("Version zero message will be skipped");
-            return Ok(None);
-        }
-
         let message_type = headers.get("messageType").ok_or_else(|| MessageReceiverError {
-            kind: MessageReceiverErrorKind::IncorrectData,
-            reason: "Header not found".to_owned(),
+            kind: MessageReceiverErrorKind::HeaderNotFound,
+            version: Some(offset),
+            reason: format!("Header not found for version={offset}"),
             data: Some("messageType".to_owned()),
         })?;
 
         let raw_payload = message_received.payload().ok_or(MessageReceiverError {
             kind: MessageReceiverErrorKind::IncorrectData,
-            reason: "Empty payload".to_owned(),
+            version: Some(offset),
+            reason: format!("Empty payload for version={offset}"),
             data: None,
         })?;
 
-        let channel_msg = match utils::parse_message_variant(message_type)? {
+        let channel_msg = match utils::parse_message_variant(message_type).map_err(|e| MessageReceiverError {
+            kind: MessageReceiverErrorKind::ParseError,
+            version: Some(offset),
+            reason: e.to_string(),
+            data: Some(message_type.to_string()),
+        })? {
             MessageVariant::Candidate => {
-                let mut msg: CandidateMessage = utils::parse_kafka_payload(raw_payload)?;
+                let mut msg: CandidateMessage = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
+                    kind: MessageReceiverErrorKind::ParseError,
+                    version: Some(offset),
+                    reason: e.to_string(),
+                    data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
+                })?;
                 msg.version = offset;
 
                 ChannelMessage::Candidate(msg)
             }
             MessageVariant::Decision => {
-                let msg: DecisionMessage = utils::parse_kafka_payload(raw_payload)?;
+                let msg: DecisionMessage = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
+                    kind: MessageReceiverErrorKind::ParseError,
+                    version: Some(offset),
+                    reason: e.to_string(),
+                    data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
+                })?;
 
                 debug!("Decision received and the offset is {} !!!! ", offset);
 
@@ -121,8 +130,9 @@ impl MessageReciever for KafkaConsumer {
         };
         self.store_offsets(partition, offset_i64).map_err(|err| MessageReceiverError {
             kind: MessageReceiverErrorKind::SaveVersion,
+            version: Some(offset),
             reason: err.to_string(),
-            data: Some(format!("{}", offset_i64)),
+            data: Some(format!("{}", offset)),
         })?;
 
         Ok(Some(channel_msg))
@@ -131,6 +141,7 @@ impl MessageReciever for KafkaConsumer {
     async fn subscribe(&self) -> Result<(), SystemServiceError> {
         self.consumer.subscribe(&[&self.topic]).map_err(|err| MessageReceiverError {
             kind: MessageReceiverErrorKind::SubscribeError,
+            version: None,
             reason: err.to_string(),
             data: Some(self.topic.to_owned()),
         })?;
@@ -147,6 +158,7 @@ impl MessageReciever for KafkaConsumer {
             .commit(&self.tpl, rdkafka::consumer::CommitMode::Sync)
             .map_err(|err| MessageReceiverError {
                 kind: MessageReceiverErrorKind::CommitError,
+                version: Some(vers),
                 reason: err.to_string(),
                 data: Some(format!("{}", vers_i64)),
             })?;

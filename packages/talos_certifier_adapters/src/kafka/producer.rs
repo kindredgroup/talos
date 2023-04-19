@@ -21,7 +21,7 @@ pub struct KafkaProducer {
 
 impl KafkaProducer {
     pub fn new(config: &KafkaConfig) -> Self {
-        let producer = config.build_producer_config().create().expect("Failed to create producer");
+        let producer: ThreadedProducer<DefaultProducerContext> = config.build_producer_config().create().expect("Failed to create producer");
         let topic = config.topic.to_owned();
 
         Self { producer, topic }

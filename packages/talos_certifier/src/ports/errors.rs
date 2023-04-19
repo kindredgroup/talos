@@ -16,7 +16,7 @@ pub enum DecisionStoreErrorKind {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, ThisError)]
-#[error("(Decision Store Error kind={kind:?} reason={reason} data={data:?} ")]
+#[error("Decision Store Error kind={kind:?} reason={reason} data={data:?} ")]
 pub struct DecisionStoreError {
     pub kind: DecisionStoreErrorKind,
     pub reason: String,
@@ -24,7 +24,7 @@ pub struct DecisionStoreError {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, ThisError)]
-#[error("(Message Publish Error reason={reason} data={data:?} ")]
+#[error("Message Publish Error reason={reason} data={data:?} ")]
 pub struct MessagePublishError {
     pub reason: String,
     pub data: Option<String>,
@@ -32,25 +32,20 @@ pub struct MessagePublishError {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum MessageReceiverErrorKind {
-    // #[error("Error receiving message")]
-    ReceiveError,
-    // #[error("Incorrect message received")]
+    HeaderNotFound,
     IncorrectData,
-    // #[error("Version 0 is just a placeholder and will not be used in certification")]
-    VersionZero,
-    // #[error("Error parsing ")]
     ParseError,
-    // #[error("Error saving version number")]
+    ReceiveError,
+    VersionZero,
     SaveVersion,
-    // #[error("Error Subscribing")]
     SubscribeError,
-    // #[error("Error Commiting")]
     CommitError,
 }
 #[derive(Debug, Clone, Eq, PartialEq, ThisError)]
-#[error("(Message Publish Error reason={reason} data={data:?} ")]
+#[error("Message Receiver Error for version={version:?} with reason={reason} and data={data:?} ")]
 pub struct MessageReceiverError {
     pub kind: MessageReceiverErrorKind,
+    pub version: Option<u64>,
     pub reason: String,
     pub data: Option<String>,
 }

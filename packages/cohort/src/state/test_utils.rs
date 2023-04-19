@@ -1,4 +1,5 @@
 // $coverage:ignore-start
+
 pub fn expect_error<T>(response: Result<T, String>, error: &str) {
     let expected_error = if let Err(e) = response {
         if e.contains(error) {

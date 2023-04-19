@@ -14,7 +14,7 @@ use super::utils::generate_certifier_sets_from_suffix;
 #[test]
 fn test_certify_rule_1() {
     let certify_tx = CertifierCandidate {
-        vers: 0,
+        vers: 1,
         snapshot: 0,
         readvers: vec![],
         readset: vec![],

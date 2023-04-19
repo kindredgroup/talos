@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use talos_certifier::core::{DecisionOutboxChannelMessage, SystemService};
+use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemService};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
 use talos_certifier::model::{Decision, DecisionMessage};
 use talos_certifier::ports::common::SharedPortTraits;
@@ -24,17 +24,7 @@ impl SharedPortTraits for MockCertifierService {
 
 #[async_trait]
 impl SystemService for MockCertifierService {
-    async fn shutdown_service(&mut self) {}
-    fn is_shutdown(&self) -> bool {
-        false
-    }
-
-    async fn update_shutdown_flag(&mut self, _flag: bool) {}
-    async fn health_check(&self) -> bool {
-        true
-    }
-
-    async fn run(&mut self) -> Result<(), SystemServiceError> {
+    async fn run(&mut self) -> ServiceResult {
         // while !self.is_shutdown() {
         tokio::select! {
            channel_msg =  self.message_channel_rx.recv() =>  {

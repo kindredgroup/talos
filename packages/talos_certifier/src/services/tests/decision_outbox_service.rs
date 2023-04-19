@@ -12,6 +12,7 @@ use crate::{
         errors::{DecisionStoreError, DecisionStoreErrorKind},
         DecisionStore, MessagePublisher,
     },
+    SystemMessage,
 };
 use async_trait::async_trait;
 use tokio::{
@@ -259,7 +260,7 @@ async fn test_capture_child_thread_dberror() {
     };
     let mock_decision_publisher = MockDecisionPublisher {};
 
-    let (system_notifier, _system_rx) = broadcast::channel(10);
+    let (system_notifier, mut system_rx) = broadcast::channel(10);
 
     let system = System {
         system_notifier,
@@ -296,11 +297,8 @@ async fn test_capture_child_thread_dberror() {
     });
 
     let _result = dob_svc.run().await;
-    let result = dob_svc.run().await;
 
-    assert!(result.is_err());
-
-    if let Err(error) = result {
+    if let Ok(SystemMessage::ShutdownWithError(error)) = system_rx.recv().await {
         assert!(error.kind == SystemServiceErrorKind::DBError);
     }
 }
@@ -331,58 +329,102 @@ impl SharedPortTraits for MockDecisionPublisherWithError {
     }
 }
 #[tokio::test]
-async fn test_capture_child_thread_publish_error() {
-    let (do_channel_tx, do_channel_rx) = mpsc::channel(2);
-
-    let decision_message = Arc::new(Mutex::new(None));
-
-    let mock_decision_store = MockDecisionStore {
-        decision_message: Arc::clone(&decision_message),
-    };
+async fn test_capture_publish_error() {
     let mock_decision_publisher = MockDecisionPublisherWithError {};
 
-    let (system_notifier, _system_rx) = broadcast::channel(10);
-
-    let system = System {
-        system_notifier,
-        is_shutdown: false,
+    let decision_message = DecisionMessage {
+        xid: "test-xid-1".to_owned(),
+        agent: "test-agent-1".to_owned(),
+        cohort: "test-cohort-1".to_owned(),
+        decision: Decision::Committed,
+        suffix_start: 2,
+        version: 4,
+        duplicate_version: None,
+        safepoint: Some(3),
+        conflicts: None,
     };
 
-    //clones
-    let do_channel_tx_clone = do_channel_tx.clone();
+    if let Err(publish_error) = DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message).await {
+        assert!(publish_error.kind == SystemServiceErrorKind::MessagePublishError);
+    }
+}
 
-    let mut dob_svc = DecisionOutboxService::new(
-        do_channel_tx,
-        do_channel_rx,
-        Arc::new(Box::new(mock_decision_store)),
-        Arc::new(Box::new(mock_decision_publisher)),
-        system,
-    );
+#[derive(Debug, Clone)]
+struct MockDecisionStoreHashMap {
+    decision_message: Arc<Mutex<HashMap<String, DecisionMessage>>>,
+}
 
-    // sending a decision into decision outbox service
-    tokio::spawn(async move {
-        do_channel_tx_clone
-            .send(crate::core::DecisionOutboxChannelMessage::Decision(DecisionMessage {
-                xid: "test-xid-1".to_owned(),
-                agent: "test-agent-1".to_owned(),
-                cohort: "test-cohort-1".to_owned(),
-                decision: Decision::Committed,
-                suffix_start: 2,
-                version: 4,
-                duplicate_version: None,
-                safepoint: Some(3),
-                conflicts: None,
-            }))
-            .await
-            .unwrap();
+#[async_trait]
+impl DecisionStore for MockDecisionStoreHashMap {
+    type Decision = DecisionMessage;
+
+    async fn get_decision(&self, key: String) -> Result<Option<Self::Decision>, DecisionStoreError> {
+        let decision_store = self.decision_message.lock().unwrap();
+        let decision = decision_store.get(&key);
+        Ok(decision.cloned())
+    }
+
+    async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
+        let mut decision_store = self.decision_message.lock().unwrap();
+
+        match decision_store.insert(key, decision.clone()) {
+            Some(decision_old) => Ok(decision_old),
+            _ => Ok(decision),
+        }
+    }
+}
+
+#[async_trait]
+impl SharedPortTraits for MockDecisionStoreHashMap {
+    async fn is_healthy(&self) -> bool {
+        true
+    }
+    async fn shutdown(&self) -> bool {
+        false
+    }
+}
+#[tokio::test]
+async fn test_duplicate_version_found_in_db() {
+    let mock_db: Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync> = Box::new(MockDecisionStoreHashMap {
+        decision_message: Arc::new(Mutex::new(HashMap::new())),
     });
 
-    let _ = dob_svc.run().await;
-    let result = dob_svc.run().await;
+    let datastore = Arc::new(mock_db);
 
-    assert!(result.is_err());
+    let decision_message = DecisionMessage {
+        xid: "test-xid-1".to_owned(),
+        agent: "test-agent-1".to_owned(),
+        cohort: "test-cohort-1".to_owned(),
+        decision: Decision::Committed,
+        suffix_start: 2,
+        version: 4,
+        duplicate_version: None,
+        safepoint: Some(3),
+        conflicts: None,
+    };
 
-    if let Err(error) = result {
-        assert!(error.kind == SystemServiceErrorKind::MessagePublishError);
-    }
+    let result_first_decision = DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await;
+
+    assert!(result_first_decision.is_ok());
+
+    let decision_message_duplicate_same_xid = DecisionMessage {
+        xid: "test-xid-1".to_owned(),
+        agent: "test-agent-2".to_owned(),
+        cohort: "test-cohort-1".to_owned(),
+        decision: Decision::Committed,
+        suffix_start: 5,
+        version: 8,
+        duplicate_version: None,
+        safepoint: Some(3),
+        conflicts: None,
+    };
+    let result_duplicate_decision = DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message_duplicate_same_xid).await;
+
+    assert!(result_duplicate_decision.is_ok());
+
+    let first_msg = result_first_decision.unwrap();
+    let duplicate_msg = result_duplicate_decision.unwrap();
+
+    assert_eq!(first_msg.version, 4);
+    assert_eq!(first_msg.version, duplicate_msg.version);
 }
