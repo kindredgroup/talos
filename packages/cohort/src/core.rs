@@ -6,7 +6,6 @@ use std::time::Duration;
 
 use rand::Rng;
 use time::OffsetDateTime;
-use tokio::sync::mpsc::Sender;
 
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
@@ -21,15 +20,14 @@ use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 use crate::bank::Bank;
 use crate::model::bank_account::{as_money, BankAccount};
 use crate::snapshot_api::SnapshotApi;
-use crate::state::model::{AccountOperation, AccountRef, Envelope, OperationResponse, Snapshot};
+use crate::state::model::{AccountRef, Snapshot};
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::Database;
-use crate::state::state_manager::StateManager;
+
 // $coverage:ignore-end
 
 pub struct Cohort {
     agent: Box<dyn TalosAgent + Sync + Send>,
-    tx_state: Option<Sender<Envelope<AccountOperation, OperationResponse>>>,
     database: Arc<Database>,
 }
 
@@ -77,11 +75,7 @@ impl Cohort {
 
     // $coverage:ignore-start
     pub fn new(agent: Box<dyn TalosAgent + Sync + Send>, database: Arc<Database>) -> Self {
-        Cohort {
-            agent,
-            tx_state: None,
-            database,
-        }
+        Cohort { agent, database }
     }
     // $coverage:ignore-end
 
@@ -89,8 +83,6 @@ impl Cohort {
     /** Start generating the workload */
     pub async fn start(&mut self) {
         log::info!("---------------------");
-        let (tx_state, rx_state) = tokio::sync::mpsc::channel::<Envelope<AccountOperation, OperationResponse>>(10_000);
-        self.tx_state = Some(tx_state);
 
         let db_ref = Arc::clone(&self.database);
         tokio::spawn(async move {
@@ -123,21 +115,7 @@ impl Cohort {
                 log::info!("{}", a);
             }
             log::info!("{}", updated_snapshot);
-
-            // todo: load snapshot value
-            let mut state_manager = StateManager { database: db_ref };
-            state_manager.run(rx_state).await;
         });
-    }
-    // $coverage:ignore-end
-
-    // $coverage:ignore-start
-    fn get_tx(&self) -> Result<Sender<Envelope<AccountOperation, OperationResponse>>, String> {
-        if self.tx_state.is_none() {
-            Err("Cohort is not initialised! Call ::start()".to_string())
-        } else {
-            Ok(self.tx_state.clone().unwrap())
-        }
     }
     // $coverage:ignore-end
 
@@ -147,7 +125,7 @@ impl Cohort {
 
         let started_at = OffsetDateTime::now_utc();
         loop {
-            let accounts = Bank::get_accounts(self.get_tx()?).await?;
+            let accounts = Bank::get_accounts(Arc::clone(&self.database)).await?;
 
             // pick random bank accounts and amount
             let (account1, amount, account2, is_deposit) = Self::pick(&accounts);
@@ -156,7 +134,7 @@ impl Cohort {
 
                 // Cohort should do local validation before attempting to alter internal state
                 let balance = Bank::get_balance(
-                    self.get_tx()?,
+                    Arc::clone(&self.database),
                     AccountRef {
                         number: account1.number.clone(),
                         new_version: None,
@@ -182,7 +160,7 @@ impl Cohort {
 
             // Cohort should do local validation before attempting to alter internal state
             let balance = Bank::get_balance(
-                self.get_tx()?,
+                Arc::clone(&self.database),
                 AccountRef {
                     number: account1.number.clone(),
                     new_version: None,
@@ -204,7 +182,7 @@ impl Cohort {
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
 
-        let accounts = Bank::get_accounts(self.get_tx()?).await?;
+        let accounts = Bank::get_accounts(Arc::clone(&self.database)).await?;
         log::info!("New state of bank accounts is");
         for a in accounts.iter() {
             log::info!("{}", a);
@@ -250,11 +228,11 @@ impl Cohort {
     // $coverage:ignore-start
     async fn single_bank_op<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
     where
-        F: Fn(Sender<Envelope<AccountOperation, OperationResponse>>, AccountRef, String) -> R,
+        F: Fn(Arc<Database>, AccountRef, String) -> R,
         R: Future<Output = Result<(), String>>,
     {
         // todo Implement snapshot tracking
-        let snapshot = SnapshotApi::query(self.get_tx()?).await?;
+        let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
 
         let xid = uuid::Uuid::new_v4().to_string();
         let cert_req = CertificationRequest {
@@ -290,7 +268,7 @@ impl Cohort {
 
         let new_version = Some(resp.version);
         let response = op_impl(
-            self.get_tx()?,
+            Arc::clone(&self.database),
             AccountRef {
                 number: account.number.clone(),
                 new_version,
@@ -299,7 +277,7 @@ impl Cohort {
         )
         .await;
 
-        SnapshotApi::update(self.get_tx()?, resp.version).await?;
+        SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
         response
     }
@@ -308,7 +286,7 @@ impl Cohort {
     // $coverage:ignore-start
     async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
         // todo Implement snapshot tracking
-        let snapshot = SnapshotApi::query(self.get_tx()?).await?;
+        let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
 
         let xid = uuid::Uuid::new_v4().to_string();
         let cert_req = CertificationRequest {
@@ -344,7 +322,7 @@ impl Cohort {
         // Talos gave "go ahead"
 
         let response = Bank::transfer(
-            self.get_tx()?,
+            Arc::clone(&self.database),
             AccountRef {
                 number: from.number.clone(),
                 new_version: Some(resp.version),
@@ -357,7 +335,7 @@ impl Cohort {
         )
         .await;
 
-        SnapshotApi::update(self.get_tx()?, resp.version).await?;
+        SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
         response
     }
@@ -367,10 +345,11 @@ impl Cohort {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
+    use std::{assert_ne, vec};
+
     use crate::core::Cohort;
     use crate::model::bank_account::BankAccount;
     use crate::model::talos_state::TalosState;
-    use std::{assert_ne, vec};
 
     #[test]
     fn pick() {

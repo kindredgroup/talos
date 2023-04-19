@@ -206,7 +206,7 @@ mod tests {
         env::set_var("KAFKA_PASSWORD", "kPwd");
 
         let result = ConfigLoader::load();
-        let (a, k, d) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
+        let (a, k, _) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
 
         assert_eq!(a.agent, "aName".to_string());
         assert_eq!(a.cohort, "cName".to_string());
