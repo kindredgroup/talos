@@ -1,8 +1,16 @@
-use cohort::replicator::{core::CandidateMessage, kafka_consumer::KafkaConsumer, replicator_service::Replicator};
+use cohort::replicator::{
+    core::{ReplicatorCandidate, StatemapItem},
+    replicator_service::{run_talos_replicator, Replicator},
+};
 use log::info;
 use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::KafkaConfig;
+use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};
+
+fn statemap_install_handler(sm: Vec<StatemapItem>) -> bool {
+    info!("Printing the length of statemaps ... {}", sm.len());
+    true
+}
 
 #[tokio::main]
 async fn main() {
@@ -23,9 +31,10 @@ async fn main() {
         prune_start_threshold: None,
         min_size_after_prune: None,
     };
-    let suffix: Suffix<CandidateMessage> = Suffix::with_config(suffix_config);
+    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
 
     let mut replicator = Replicator::new(kafka_consumer, suffix);
-    replicator.run().await;
     info!("Replicator starting...");
+
+    run_talos_replicator(&mut replicator, statemap_install_handler).await;
 }

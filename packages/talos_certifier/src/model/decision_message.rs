@@ -96,6 +96,7 @@ pub struct DecisionMessage {
 pub trait DecisionMessageTrait {
     fn get_candidate_version(&self) -> u64;
     fn get_safepoint(&self) -> Option<u64>;
+    fn get_decision(&self) -> &Decision;
 }
 
 impl DecisionMessageTrait for DecisionMessage {
@@ -107,6 +108,9 @@ impl DecisionMessageTrait for DecisionMessage {
     }
     fn get_safepoint(&self) -> Option<u64> {
         self.safepoint
+    }
+    fn get_decision(&self) -> &Decision {
+        &self.decision
     }
 }
 

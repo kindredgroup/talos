@@ -59,6 +59,7 @@ pub trait SuffixTrait<T> {
     fn insert(&mut self, version: u64, message: SuffixItemType<T>) -> SuffixResult<()>;
     fn update_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>>;
+    fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>>;
     fn remove(&mut self, version: u64) -> SuffixResult<()>;
 }
 

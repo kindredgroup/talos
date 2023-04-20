@@ -1,9 +1,20 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::certifier::CertifierCandidate;
 
 use super::delivery_order::DeliveryOrder;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CandidateDecisionOutcome {
+    // #[serde(rename = "committed")]
+    Committed,
+    // #[serde(rename = "aborted")]
+    Aborted,
+    Timedout,
+    Undecided,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "_typ")]
@@ -25,6 +36,16 @@ pub struct CandidateMessage {
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_commit: Option<HashMap<String, Vec<DeliveryOrder>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statemap: Option<Vec<HashMap<String, Value>>>,
+    // #[serde(skip_deserializing)]
+    // pub safepoint: Option<u64>,
+
+    // #[serde(skip_deserializing)]
+    // pub decision_outcome: Option<CandidateDecisionOutcome>,
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // pub statemap: Option<Vec<HashMap<String, Value>>>,
 }
 
 pub trait CandidateReadWriteSet {
