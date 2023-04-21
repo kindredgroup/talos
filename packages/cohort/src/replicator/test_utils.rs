@@ -46,7 +46,7 @@ where
     statemap_item
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub(crate) struct BankStatemapTestCandidate {
     pub safepoint: Option<u64>,
 
@@ -55,20 +55,15 @@ pub(crate) struct BankStatemapTestCandidate {
     pub statemap: Option<Vec<HashMap<String, Value>>>,
 }
 
-impl Default for BankStatemapTestCandidate {
-    fn default() -> Self {
-        Self {
+impl BankStatemapTestCandidate {
+    pub(crate) fn create_with_statemap(statemap_count: u32) -> Self {
+        let item = Self {
             safepoint: Default::default(),
             decision_outcome: Default::default(),
-            statemap: Some(vec![generate_test_statemap("transfer", generate_bank_transfer_statemap_value)]),
-        }
-    }
-}
+            statemap: Default::default(),
+        };
 
-impl BankStatemapTestCandidate {
-    pub(crate) fn set_statemap(mut self, statemap: Option<Vec<HashMap<String, Value>>>) -> Self {
-        self.statemap = statemap;
-        self
+        item.generate_bank_transfers_statemap(statemap_count)
     }
 
     pub(crate) fn set_safepoint(mut self, safepoint: Option<u64>) -> Self {
@@ -77,11 +72,9 @@ impl BankStatemapTestCandidate {
     }
 
     pub(crate) fn generate_bank_transfers_statemap(mut self, count: u32) -> Self {
-        // self.statemap = Some(vec![]);
-
         let statemap = (0..count).map(|_| generate_test_statemap("transfer", generate_bank_transfer_statemap_value));
 
-        self.statemap = Some(statemap.collect());
+        self.statemap = if count > 0 { Some(statemap.collect()) } else { None };
         self
     }
 }
