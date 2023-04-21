@@ -5,6 +5,7 @@ use super::core::{ReplicatorSuffixItemTrait, StatemapItem};
 pub fn get_filtered_batch<'a, T: ReplicatorSuffixItemTrait + 'a>(messages: impl Iterator<Item = &'a SuffixItem<T>>) -> impl Iterator<Item = &'a SuffixItem<T>> {
     messages
         .into_iter()
+        .take_while(|&m| m.is_decided)
         .filter(|&m| m.item.get_safepoint().is_some()) // select only the messages that have safepoint i.e committed messages
         .filter(|&m| m.item.get_statemap().is_some()) // select only the messages that have statemap.
 }
@@ -26,72 +27,109 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(mes
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
-    use serde::{Deserialize, Serialize};
-    use serde_json::Value;
-    use talos_certifier::model::CandidateDecisionOutcome;
-    use talos_suffix::SuffixItem;
+    use crate::replicator::test_utils::{build_test_suffix_item, BankStatemapTestCandidate};
 
-    use crate::replicator::core::ReplicatorSuffixItemTrait;
-
-    use super::get_filtered_batch;
-
-    #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-    struct TestCandidate {
-        #[serde(skip_deserializing)]
-        pub safepoint: Option<u64>,
-
-        #[serde(skip_deserializing)]
-        pub decision_outcome: Option<CandidateDecisionOutcome>,
-
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub statemap: Option<Vec<HashMap<String, Value>>>,
-    }
-
-    impl ReplicatorSuffixItemTrait for TestCandidate {
-        fn get_safepoint(&self) -> &Option<u64> {
-            &self.safepoint
-        }
-
-        fn get_statemap(&self) -> &Option<Vec<HashMap<String, Value>>> {
-            &self.statemap
-        }
-
-        fn set_safepoint(&mut self, safepoint: Option<u64>) {
-            self.safepoint = safepoint
-        }
-
-        fn set_decision_outcome(&mut self, decision_outcome: Option<talos_certifier::model::CandidateDecisionOutcome>) {
-            self.decision_outcome = decision_outcome
-        }
-    }
+    use super::{get_filtered_batch, get_statemap_from_suffix_items};
 
     #[test]
     fn test_get_filtered_batch_all_pass() {
-        let value = serde_json::from_str(
-            r#"{
-             "s": {}
-            }"#,
-        )
-        .unwrap();
+        //Test data
+        let item1 = build_test_suffix_item(10, Some(11), BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        let item2 = build_test_suffix_item(12, Some(15), BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        let item3 = build_test_suffix_item(13, Some(14), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let item4 = build_test_suffix_item(16, Some(18), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let item5 = build_test_suffix_item(17, Some(20), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let suffix_item = vec![&item1, &item2, &item3, &item4, &item5];
 
-        let mut statemap_item = HashMap::new();
-        statemap_item.insert("k".to_owned(), value);
+        let result = get_filtered_batch(suffix_item.into_iter());
 
-        let suffix_item = SuffixItem {
-            item: TestCandidate {
-                safepoint: Some(1),
-                decision_outcome: None,
-                statemap: Some(vec![statemap_item]),
-            },
-            item_ver: 2,
-            decision_ver: None,
-            is_decided: false,
-        };
+        assert_eq!(result.count(), 5);
+    }
 
-        let result = get_filtered_batch(vec![&suffix_item].into_iter());
+    #[test]
+    fn test_get_filtered_batch_stop_on_undecided() {
+        //Test data
+        let item1 = build_test_suffix_item(10, Some(11), BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        // Undecided item.
+        let item2 = build_test_suffix_item(12, None, BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        let item3 = build_test_suffix_item(13, Some(14), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let suffix_item = vec![&item1, &item2, &item3];
+
+        let result = get_filtered_batch(suffix_item.into_iter());
 
         assert_eq!(result.count(), 1);
     }
+
+    #[test]
+    fn test_get_filtered_batch_remove_items_no_safepoint() {
+        //Test data
+        let item1 = build_test_suffix_item(10, Some(11), BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        let item2 = build_test_suffix_item(12, Some(15), BankStatemapTestCandidate::default()); // This item should be removed as safepoint is None
+        let item3 = build_test_suffix_item(13, Some(14), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let suffix_item = vec![&item1, &item2, &item3];
+
+        let mut result = get_filtered_batch(suffix_item.into_iter());
+
+        assert_eq!(result.next().unwrap().item_ver, 10);
+        assert_eq!(result.next().unwrap().item_ver, 13);
+        assert!(result.next().is_none());
+    }
+
+    #[test]
+    fn test_get_filtered_batch_remove_items_no_statemap() {
+        //Test data
+
+        // item1 doesn't have statemap, and therefore shouldn't be in the result
+        let item1 = build_test_suffix_item(10, Some(11), BankStatemapTestCandidate::default().set_safepoint(Some(1)).set_statemap(None));
+        let item2 = build_test_suffix_item(12, Some(15), BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        let item3 = build_test_suffix_item(13, Some(14), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let item4 = build_test_suffix_item(16, Some(18), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let suffix_item = vec![&item1, &item2, &item3, &item4];
+
+        let mut result = get_filtered_batch(suffix_item.into_iter());
+
+        assert_eq!(result.next().unwrap().item_ver, 12);
+        assert_eq!(result.last().unwrap().item_ver, 16);
+    }
+    #[test]
+    fn test_get_all_statemap_from_suffix_items() {
+        //Test data
+
+        // item1 doesn't have statemap, and therefore shouldn't be in the result
+        let item1 = build_test_suffix_item(
+            10,
+            Some(11),
+            BankStatemapTestCandidate::default().set_safepoint(Some(1)).generate_bank_transfers_statemap(3),
+        );
+        let item2 = build_test_suffix_item(12, Some(15), BankStatemapTestCandidate::default().set_safepoint(Some(1)));
+        let item3 = build_test_suffix_item(
+            13,
+            Some(14),
+            BankStatemapTestCandidate::default().set_safepoint(Some(2)).generate_bank_transfers_statemap(5),
+        );
+        let item4 = build_test_suffix_item(16, Some(18), BankStatemapTestCandidate::default().set_safepoint(Some(2)));
+        let suffix_item = vec![&item1, &item2, &item3, &item4];
+
+        let result = get_filtered_batch(suffix_item.into_iter());
+
+        let state_map_batch = get_statemap_from_suffix_items(result);
+        assert_eq!(state_map_batch.len(), 10);
+        assert_eq!(state_map_batch[0].version, 10);
+        assert_eq!(state_map_batch[2].version, 10);
+        assert_eq!(state_map_batch[3].version, 12);
+        assert_eq!(state_map_batch.last().unwrap().version, 16);
+    }
+
+    // #[test]
+    // fn test_get_filtered_batch_bad_data(){}
+
+    // #[test]
+    // fn test_get_statemap_from_suffix_items_no_statemaps() {}
+
+    // #[test]
+    // fn test_get_statemap_from_suffix_items_bad_statemap_shape() {}
+
+    // #[test]
+    // fn test_get_statemap_from_suffix_items_bad_statemap_shape() {}
 }
