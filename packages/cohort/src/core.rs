@@ -17,7 +17,7 @@ use talos_agent::metrics::core::Metrics;
 use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
-use crate::bank_api::BankApi;
+use crate::bank_api::{AccountUpdate, BankApi, Transfer};
 use crate::model::bank_account::{as_money, BankAccount};
 use crate::snapshot_api::SnapshotApi;
 use crate::state::model::AccountRef;
@@ -79,6 +79,80 @@ impl Cohort {
     // $coverage:ignore-end
 
     // $coverage:ignore-start
+    pub async fn execute_batch_workload(&self) -> Result<(), String> {
+        let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
+        let account1 = accounts.iter().find(|a| a.number == "00001").unwrap();
+        let account2 = accounts.iter().find(|a| a.number == "00002").unwrap();
+
+        let version = account1.talos_state.version + 1;
+
+        let mut batch1: Vec<AccountUpdate> = vec![];
+        let mut batch2: Vec<Transfer> = vec![];
+
+        batch1.push(AccountUpdate::withdraw(
+            AccountRef::new("00001".to_string(), None),
+            account1.balance.amount().to_string(),
+            version,
+            false,
+        ));
+        batch1.push(AccountUpdate::withdraw(
+            AccountRef::new("00002".to_string(), None),
+            account2.balance.amount().to_string(),
+            version,
+            false,
+        ));
+        batch1.push(AccountUpdate::deposit(
+            AccountRef::new("00001".to_string(), None),
+            "50".to_string(),
+            version,
+            false,
+        ));
+        batch1.push(AccountUpdate::deposit(
+            AccountRef::new("00002".to_string(), None),
+            "50".to_string(),
+            version,
+            false,
+        ));
+        let result = self.database.batch(batch1).await;
+        if result.is_ok() {
+            log::info!("Successfully completed batch of deposits!");
+        }
+
+        batch2.push(Transfer::new(
+            AccountRef::new("00001".to_string(), None),
+            AccountRef::new("00002".to_string(), None),
+            "10.51".to_string(),
+            version,
+            false,
+        ));
+        batch2.push(Transfer::new(
+            AccountRef::new("00001".to_string(), None),
+            AccountRef::new("00002".to_string(), None),
+            "0.49".to_string(),
+            version,
+            false,
+        ));
+        batch2.push(Transfer::new(
+            AccountRef::new("00002".to_string(), None),
+            AccountRef::new("00001".to_string(), None),
+            "1.01".to_string(),
+            version,
+            true,
+        ));
+        let result = self.database.batch(batch2).await;
+        if result.is_ok() {
+            log::info!("Successfully completed batch of transfers!");
+        }
+
+        let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
+        log::info!("New state of bank accounts is");
+        for a in accounts.iter() {
+            log::info!("{}", a);
+        }
+
+        result
+    }
+
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
         log::info!("Generating test load for {}s", duration_sec);
 
@@ -113,7 +187,7 @@ impl Cohort {
             // single account picked, do deposit or withdrawal
 
             if is_deposit {
-                self.deposit(account1, amount).await?;
+                self.do_bank(account1, amount, BankApi::deposit).await?;
                 continue;
             }
 
@@ -132,7 +206,7 @@ impl Cohort {
                 continue;
             }
 
-            self.withdraw(account1, amount).await?;
+            self.do_bank(account1, amount, BankApi::withdraw).await?;
 
             let elapsed = OffsetDateTime::now_utc().sub(started_at).as_seconds_f32();
             if (duration_sec as f32) <= elapsed {
@@ -173,24 +247,11 @@ impl Cohort {
     }
 
     // $coverage:ignore-start
-    async fn deposit(&self, account: &BankAccount, amount: String) -> Result<(), String> {
-        self.single_bank_op(account, amount, BankApi::deposit).await
-    }
-    // $coverage:ignore-end
-
-    // $coverage:ignore-start
-    async fn withdraw(&self, account: &BankAccount, amount: String) -> Result<(), String> {
-        self.single_bank_op(account, amount, BankApi::withdraw).await
-    }
-    // $coverage:ignore-end
-
-    // $coverage:ignore-start
-    async fn single_bank_op<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
+    async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
     where
-        F: Fn(Arc<Database>, AccountRef, String) -> R,
+        F: Fn(Arc<Database>, AccountRef, String, u64) -> R,
         R: Future<Output = Result<(), String>>,
     {
-        // todo Implement snapshot tracking
         let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
 
         let xid = uuid::Uuid::new_v4().to_string();
@@ -225,16 +286,7 @@ impl Cohort {
 
         // Talos gave "go ahead"
 
-        let new_version = Some(resp.version);
-        let response = op_impl(
-            Arc::clone(&self.database),
-            AccountRef {
-                number: account.number.clone(),
-                new_version,
-            },
-            amount,
-        )
-        .await;
+        let response = op_impl(Arc::clone(&self.database), AccountRef::new(account.number.clone(), None), amount, resp.version).await;
 
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
@@ -282,15 +334,10 @@ impl Cohort {
 
         let response = BankApi::transfer(
             Arc::clone(&self.database),
-            AccountRef {
-                number: from.number.clone(),
-                new_version: Some(resp.version),
-            },
-            AccountRef {
-                number: to.number.clone(),
-                new_version: Some(resp.version),
-            },
+            AccountRef::new(from.number.clone(), None),
+            AccountRef::new(to.number.clone(), None),
             amount,
+            resp.version,
         )
         .await;
 

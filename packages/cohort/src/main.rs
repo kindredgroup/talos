@@ -17,13 +17,13 @@ async fn main() -> Result<(), String> {
     tokio::spawn(async move {
         let agent = Cohort::init_agent(cfg_agent, cfg_kafka).await;
 
-        let database = Database::init_db(cfg_db).await;
+        let database = Database::init_db(cfg_db.clone()).await;
         let cohort = Cohort::new(agent, Arc::clone(&database));
 
         prefill_db(database).await;
         log::info!("Cohort started...");
 
-        if let Err(e) = cohort.generate_workload(10).await {
+        if let Err(e) = cohort.execute_batch_workload().await {
             log::error!("Error when generating a test load: {}", e)
         } else {
             log::info!("No more data to generate...")

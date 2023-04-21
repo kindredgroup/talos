@@ -8,6 +8,12 @@ pub struct AccountRef {
     pub new_version: Option<u64>,
 }
 
+impl AccountRef {
+    pub fn new(number: String, new_version: Option<u64>) -> Self {
+        Self { number, new_version }
+    }
+}
+
 impl Display for AccountRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "AccountRef: [number: {}, new_version: {:?}]", self.number, self.new_version)

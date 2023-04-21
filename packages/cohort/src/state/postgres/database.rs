@@ -1,12 +1,21 @@
+use async_trait::async_trait;
+use std::fmt::Display;
 use std::sync::Arc;
 
-use deadpool_postgres::{Config, ManagerConfig, Object, Pool, Runtime};
+use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, Runtime};
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{NoTls, Row};
 
 use crate::state::postgres::database_config::DatabaseConfig;
 
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
+
+#[async_trait]
+pub trait Action: Display {
+    async fn execute<T>(&self, client: &T) -> Result<(), String>
+    where
+        T: GenericClient + Sync;
+}
 
 pub struct Database {
     pub pool: Pool,
@@ -18,7 +27,7 @@ impl Database {
         client
     }
 
-    pub async fn init_db(cfg: DatabaseConfig) -> Arc<Database> {
+    pub async fn init_db(cfg: DatabaseConfig) -> Arc<Self> {
         let mut config = Config::new();
         config.dbname = Some(cfg.database);
         config.user = Some(cfg.user);
@@ -58,5 +67,27 @@ impl Database {
         let stm = client.prepare(sql).await.unwrap();
         let result = client.query(&stm, &[]).await.unwrap();
         result.iter().map(fn_converter).collect::<Vec<T>>()
+    }
+
+    pub async fn batch<T>(&self, batch: Vec<T>) -> Result<(), String>
+    where
+        T: Action,
+    {
+        let mut client = self.pool.get().await.unwrap();
+        let tx = client.transaction().await.unwrap();
+        for action in batch.iter() {
+            if let Err(action_error) = action.execute(&tx).await {
+                return if let Err(tx_error) = tx.rollback().await {
+                    Err(format!(
+                        "Cannot rollback failed action: {}. Error: {}, Rollback error: {}",
+                        action, action_error, tx_error,
+                    ))
+                } else {
+                    Err(format!("Cannot execute action: {}. Error: {}", action, action_error))
+                };
+            }
+        }
+
+        tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))
     }
 }
