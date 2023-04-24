@@ -96,7 +96,7 @@ where
             talos_certifier::model::Decision::Aborted => Some(CandidateDecisionOutcome::Aborted),
         };
         self.suffix.update_decision(version, decision_version).unwrap();
-        self.suffix.set_decision(version, decision_outcome);
+        self.suffix.set_decision_outcome(version, decision_outcome);
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
     }
 

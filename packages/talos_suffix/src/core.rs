@@ -35,7 +35,7 @@ impl Default for SuffixConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct SuffixMeta {
     /// The version which is the head of the suffix
     pub head: u64,

@@ -1,3 +1,4 @@
+// $coverage:ignore-start
 use std::{fmt::Debug, time::Duration};
 
 use super::{
@@ -65,3 +66,4 @@ where
         }
     }
 }
+// $coverage:ignore-end
