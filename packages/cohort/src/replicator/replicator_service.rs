@@ -1,81 +1,11 @@
-use std::{fmt::Debug, marker::PhantomData, time::Duration};
-
-use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
+use std::{fmt::Debug, time::Duration};
 
 use super::{
-    core::{ReplicatorCandidate, ReplicatorSuffixItemTrait, StatemapItem},
+    core::{Replicator, ReplicatorCandidate, StatemapItem},
     suffix::ReplicatorSuffixTrait,
 };
-use log::{info, warn};
-use talos_certifier::{
-    model::{CandidateDecisionOutcome, DecisionMessageTrait},
-    ports::MessageReciever,
-    ChannelMessage,
-};
-
-pub struct Replicator<T, S, M>
-where
-    T: ReplicatorSuffixItemTrait,
-    S: ReplicatorSuffixTrait<T> + Debug,
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync,
-{
-    receiver: M,
-    suffix: S,
-    _phantom: PhantomData<T>,
-}
-
-impl<T, S, M> Replicator<T, S, M>
-where
-    T: ReplicatorSuffixItemTrait,
-    S: ReplicatorSuffixTrait<T> + Debug,
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync,
-{
-    pub fn new(receiver: M, suffix: S) -> Self {
-        Replicator {
-            receiver,
-            suffix,
-            _phantom: PhantomData,
-        }
-    }
-
-    pub(crate) async fn process_consumer_message(&mut self, version: u64, message: T) {
-        if version > 0 {
-            self.suffix.insert(version, message).unwrap();
-        } else {
-            warn!("Version 0 will not be inserted into suffix.")
-        }
-    }
-
-    pub(crate) async fn process_decision_message<D: DecisionMessageTrait>(&mut self, decision_version: u64, decision_message: D) {
-        let version = decision_message.get_candidate_version();
-
-        let decision_outcome = match decision_message.get_decision() {
-            talos_certifier::model::Decision::Committed => Some(CandidateDecisionOutcome::Committed),
-            talos_certifier::model::Decision::Aborted => Some(CandidateDecisionOutcome::Aborted),
-        };
-        self.suffix.update_decision(version, decision_version).unwrap();
-        self.suffix.set_decision(version, decision_outcome);
-        self.suffix.set_safepoint(version, decision_message.get_safepoint());
-    }
-
-    pub(crate) fn generate_statemap_batch(&self) -> Option<(Vec<StatemapItem>, u64)> {
-        let Some(batch) = self.suffix.get_message_batch() else {
-            return None;
-        };
-
-        // Filtering out messages that are not applicable.
-        let filtered_message_batch = get_filtered_batch(batch.iter().copied()); //.collect::<Vec<&SuffixItem<CandidateMessage>>>();
-
-        // Create the statemap batch
-        let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
-
-        info!("Statemap_Batch={statemap_batch:#?} ");
-
-        let last_item = batch.iter().last();
-        let last_item_vers = last_item.unwrap().item_ver;
-        Some((statemap_batch, last_item_vers))
-    }
-}
+use log::info;
+use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
 pub async fn run_talos_replicator<S, M, F>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, install_statemaps: F)
 where

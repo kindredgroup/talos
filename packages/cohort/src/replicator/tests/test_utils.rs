@@ -1,3 +1,6 @@
+// $coverage:ignore-start
+// helper functions for testing. Not required for coverage.
+
 use rand::{seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -5,7 +8,7 @@ use std::collections::HashMap;
 use talos_certifier::model::CandidateDecisionOutcome;
 use talos_suffix::SuffixItem;
 
-use super::core::ReplicatorSuffixItemTrait;
+use crate::replicator::suffix::ReplicatorSuffixItemTrait;
 
 fn generate_bank_transfer_statemap_value() -> Value {
     let accounts_vec = (0..10).collect::<Vec<u32>>();
@@ -105,3 +108,5 @@ pub(crate) fn build_test_suffix_item<T: ReplicatorSuffixItemTrait>(version: u64,
         is_decided: decision_ver.is_some(),
     }
 }
+
+// $coverage:ignore-end

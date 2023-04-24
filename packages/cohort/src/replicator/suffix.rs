@@ -1,10 +1,16 @@
-use std::fmt::Debug;
+use std::{collections::HashMap, fmt::Debug};
 
 use log::warn;
+use serde_json::Value;
 use talos_certifier::model::CandidateDecisionOutcome;
 use talos_suffix::{Suffix, SuffixItem, SuffixTrait};
 
-use super::core::ReplicatorSuffixItemTrait;
+pub trait ReplicatorSuffixItemTrait {
+    fn get_safepoint(&self) -> &Option<u64>;
+    fn get_statemap(&self) -> &Option<Vec<HashMap<String, Value>>>;
+    fn set_safepoint(&mut self, safepoint: Option<u64>);
+    fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>);
+}
 
 pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     fn set_decision(&mut self, version: u64, decision_outcome: Option<CandidateDecisionOutcome>);

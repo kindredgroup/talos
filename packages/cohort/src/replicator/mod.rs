@@ -4,4 +4,4 @@ pub mod suffix;
 pub mod utils;
 
 #[cfg(test)]
-pub mod test_utils;
+pub mod tests;

@@ -1,6 +1,6 @@
 use cohort::replicator::{
-    core::{ReplicatorCandidate, StatemapItem},
-    replicator_service::{run_talos_replicator, Replicator},
+    core::{Replicator, ReplicatorCandidate, StatemapItem},
+    replicator_service::run_talos_replicator,
 };
 use log::info;
 use talos_certifier::ports::MessageReciever;
