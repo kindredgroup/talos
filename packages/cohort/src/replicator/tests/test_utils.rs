@@ -5,10 +5,9 @@ use rand::{seq::SliceRandom, thread_rng};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use talos_certifier::model::CandidateDecisionOutcome;
 use talos_suffix::SuffixItem;
 
-use crate::replicator::suffix::ReplicatorSuffixItemTrait;
+use crate::replicator::{core::CandidateDecisionOutcome, suffix::ReplicatorSuffixItemTrait};
 
 fn generate_bank_transfer_statemap_value() -> Value {
     let accounts_vec = (0..10).collect::<Vec<u32>>();
@@ -95,7 +94,7 @@ impl ReplicatorSuffixItemTrait for BankStatemapTestCandidate {
         self.safepoint = safepoint
     }
 
-    fn set_decision_outcome(&mut self, decision_outcome: Option<talos_certifier::model::CandidateDecisionOutcome>) {
+    fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>) {
         self.decision_outcome = decision_outcome
     }
 }

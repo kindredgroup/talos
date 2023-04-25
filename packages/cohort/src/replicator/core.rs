@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, marker::PhantomData};
 use talos_certifier::{
-    model::{CandidateDecisionOutcome, CandidateMessage, DecisionMessageTrait},
+    model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
     ChannelMessage,
 };
@@ -11,6 +11,14 @@ use talos_certifier::{
 use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
 
 use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CandidateDecisionOutcome {
+    Committed,
+    Aborted,
+    Timedout,
+    Undecided,
+}
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct StatemapItem {

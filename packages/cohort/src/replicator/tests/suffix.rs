@@ -3,12 +3,15 @@ use std::collections::{HashMap, VecDeque};
 use serde_json::Value;
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 
-use crate::replicator::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
+use crate::replicator::{
+    core::CandidateDecisionOutcome,
+    suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
+};
 
 #[derive(Debug, Default, PartialEq, Clone)]
 struct TestReplicatorSuffixItem {
     safepoint: Option<u64>,
-    decision: Option<talos_certifier::model::CandidateDecisionOutcome>,
+    decision: Option<CandidateDecisionOutcome>,
     statemap: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
 }
 
@@ -25,7 +28,7 @@ impl ReplicatorSuffixItemTrait for TestReplicatorSuffixItem {
         self.safepoint = safepoint
     }
 
-    fn set_decision_outcome(&mut self, decision_outcome: Option<talos_certifier::model::CandidateDecisionOutcome>) {
+    fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>) {
         self.decision = decision_outcome
     }
 }
@@ -50,7 +53,7 @@ fn test_replicator_suffix_item() {
 
     // test - decision_outcome
     assert!(suffix_item.decision.is_none());
-    suffix_item.set_decision_outcome(Some(talos_certifier::model::CandidateDecisionOutcome::Committed));
+    suffix_item.set_decision_outcome(Some(CandidateDecisionOutcome::Committed));
 }
 
 #[test]
@@ -74,18 +77,15 @@ fn test_replicator_suffix() {
 
     // Nothing happens for version 50 updates as the item doesn't exist.
     suffix.set_safepoint(50, Some(2));
-    suffix.set_decision_outcome(50, Some(talos_certifier::model::CandidateDecisionOutcome::Committed));
+    suffix.set_decision_outcome(50, Some(CandidateDecisionOutcome::Committed));
 
     //add safepoint and decision for version 3
     suffix.set_safepoint(3, Some(2));
-    suffix.set_decision_outcome(3, Some(talos_certifier::model::CandidateDecisionOutcome::Committed));
+    suffix.set_decision_outcome(3, Some(CandidateDecisionOutcome::Committed));
 
     let item_at_version3 = suffix.get(3).unwrap().unwrap();
     assert_eq!(item_at_version3.item.safepoint.unwrap(), 2);
-    assert_eq!(
-        item_at_version3.item.decision.unwrap(),
-        talos_certifier::model::CandidateDecisionOutcome::Committed
-    );
+    assert_eq!(item_at_version3.item.decision.unwrap(), CandidateDecisionOutcome::Committed);
     suffix.update_decision(3, 10).unwrap();
     // Message batch will be one as only version 3's decision is recorded..
     assert_eq!(suffix.get_message_batch().unwrap().len(), 1);

@@ -6,16 +6,6 @@ use crate::certifier::CertifierCandidate;
 
 use super::delivery_order::DeliveryOrder;
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum CandidateDecisionOutcome {
-    // #[serde(rename = "committed")]
-    Committed,
-    // #[serde(rename = "aborted")]
-    Aborted,
-    Timedout,
-    Undecided,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "_typ")]
 pub struct CandidateMessage {

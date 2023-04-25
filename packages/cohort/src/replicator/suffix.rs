@@ -2,8 +2,9 @@ use std::{collections::HashMap, fmt::Debug};
 
 use log::warn;
 use serde_json::Value;
-use talos_certifier::model::CandidateDecisionOutcome;
 use talos_suffix::{Suffix, SuffixItem, SuffixTrait};
+
+use super::core::CandidateDecisionOutcome;
 
 pub trait ReplicatorSuffixItemTrait {
     fn get_safepoint(&self) -> &Option<u64>;
