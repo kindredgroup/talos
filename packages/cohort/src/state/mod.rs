@@ -1,4 +1,4 @@
 pub mod model;
-pub mod state_manager;
+pub mod postgres;
 #[cfg(test)]
 pub mod test_utils;

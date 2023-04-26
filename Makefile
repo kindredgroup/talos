@@ -43,10 +43,20 @@ pg.create:
 	$(call pp,creating database...)
 	cargo run --example pg_create_database
 
-## pg.migrate: 🥁 Run migrations on database
+## pg.migrate: 🥁 Run sql on database
 pg.migrate:
 	$(call pp,running migrations on database...)
 	cargo run --example pg_migrations
+
+## pg.create_cohort: 🥁 Create database for cohort and applies DB sql
+pg.create_cohort:
+	$(call pp,creating database for cohort...)
+	cargo run --package cohort --bin run_db_migrations create-db migrate-db
+
+## pg.migrate_cohort: 🥁 Run sql on database for cohort
+pg.migrate_cohort:
+	$(call pp,running migrations on database for cohort...)
+	cargo run --package cohort --bin run_db_migrations
 
 # TEST / DEPLOY ###################################################################################
 
