@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use std::fmt::Display;
+use std::future::Future;
 use std::sync::Arc;
 
 use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, Runtime};
@@ -74,17 +75,43 @@ impl Database {
     {
         let mut client = self.pool.get().await.unwrap();
         let tx = client.transaction().await.unwrap();
+
+        let mut batch_async: Vec<Box<dyn Future<Output=Result<(), String>> + Sync + Send>> = Vec::new();
+
         for action in batch.iter() {
-            if let Err(action_error) = action.execute(&tx).await {
-                return if let Err(tx_error) = tx.rollback().await {
+            let future = action.execute(&tx);
+            batch_async.push(Box::new(future));
+            //
+            // if let Err(action_error) = action.execute(&tx).await {
+            //     return if let Err(tx_error) = tx.rollback().await {
+            //         Err(format!(
+            //             "Cannot rollback failed action: {}. Error: {}, Rollback error: {}",
+            //             action, action_error, tx_error,
+            //         ))
+            //     } else {
+            //         Err(format!("Cannot execute action: {}. Error: {}", action, action_error))
+            //     };
+            // }
+        }
+
+        let results: Vec<Result<(), String>> = futures::future::join_all(batch_async).await;
+        for r in results.iter() {
+            let finish_result = if let Err(action_error) = r {
+                if let Err(tx_error) = tx.rollback().await {
                     Err(format!(
-                        "Cannot rollback failed action: {}. Error: {}, Rollback error: {}",
-                        action, action_error, tx_error,
+                        "Cannot rollback failed action. Error: {}, Rollback error: {}",
+                        action_error, tx_error,
                     ))
                 } else {
-                    Err(format!("Cannot execute action: {}. Error: {}", action, action_error))
-                };
-            }
+                    Err(format!("Cannot execute action. Error: {}", action_error))
+                }
+            } else {
+                Ok(())
+            };
+
+            // In case of rollback this will break the loop and exit the whole top level function,
+            // in case of success, the loop continues
+            let _ = finish_result?;
         }
 
         tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))
