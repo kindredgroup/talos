@@ -125,7 +125,7 @@ impl Action for AccountUpdate {
     {
         let params: &[&(dyn ToSql + Sync)] = &[&self.amount, &(self.new_version as i64), &self.account.number];
 
-        let statement = client.prepare(Self::sql(self.update_version)).await.unwrap();
+        let statement = client.prepare_cached(Self::sql(self.update_version)).await.unwrap();
         let rslt = client.execute(&statement, params).await;
 
         match rslt {
