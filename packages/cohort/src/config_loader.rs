@@ -205,6 +205,12 @@ mod tests {
         env::set_var("KAFKA_USERNAME", "kUser");
         env::set_var("KAFKA_PASSWORD", "kPwd");
 
+        env::set_var("COHORT_PG_USER", "testPgUser");
+        env::set_var("COHORT_PG_PASSWORD", "***");
+        env::set_var("COHORT_PG_HOST", "some host");
+        env::set_var("COHORT_PG_PORT", "0");
+        env::set_var("COHORT_PG_DATABASE", "not-existing");
+
         let result = ConfigLoader::load();
         let (a, k, _) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
 

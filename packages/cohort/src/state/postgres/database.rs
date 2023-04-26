@@ -23,8 +23,7 @@ pub struct Database {
 
 impl Database {
     async fn get(&self) -> Object {
-        let client = self.pool.get().await.unwrap();
-        client
+        self.pool.get().await.unwrap()
     }
 
     pub async fn init_db(cfg: DatabaseConfig) -> Arc<Self> {
