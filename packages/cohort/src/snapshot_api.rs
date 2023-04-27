@@ -18,22 +18,21 @@ impl SnapshotApi {
         Ok(result)
     }
 
-    pub async fn update(db: Arc<Database>, new_version: u64) -> Result<(), String> {
+    pub async fn update(db: Arc<Database>, new_version: u64) -> Result<u64, String> {
         let updated = db
-            .query_opt(
-                r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1 RETURNING "version""#,
+            .execute(
+                r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1"#,
                 &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID],
-                |_| (),
             )
             .await;
 
-        if updated.is_none() {
+        if updated == 0 {
             return Err(format!(
                 "Could not set 'cohort_snapshot.version' to '{}'. The current version has moved ahead",
                 new_version,
             ));
         }
 
-        Ok(())
+        Ok(updated)
     }
 }

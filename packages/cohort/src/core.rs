@@ -139,18 +139,20 @@ impl Cohort {
             version,
             true,
         ));
-        let result = self.database.batch(batch2).await;
-        if result.is_ok() {
-            log::info!("Successfully completed batch of transfers!");
-        }
 
-        let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
-        log::info!("New state of bank accounts is");
-        for a in accounts.iter() {
-            log::info!("{}", a);
-        }
+        match self.database.batch(batch2).await {
+            Ok(affected_rows) => {
+                log::info!("Successfully completed batch of transfers! Updated: {} rows", affected_rows);
+                let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
+                log::info!("New state of bank accounts is");
+                for a in accounts.iter() {
+                    log::info!("{}", a);
+                }
 
-        result
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
@@ -250,7 +252,7 @@ impl Cohort {
     async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
     where
         F: Fn(Arc<Database>, AccountRef, String, u64) -> R,
-        R: Future<Output = Result<(), String>>,
+        R: Future<Output = Result<u64, String>>,
     {
         let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
 
@@ -286,11 +288,11 @@ impl Cohort {
 
         // Talos gave "go ahead"
 
-        let response = op_impl(Arc::clone(&self.database), AccountRef::new(account.number.clone(), None), amount, resp.version).await;
+        op_impl(Arc::clone(&self.database), AccountRef::new(account.number.clone(), None), amount, resp.version).await?;
 
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
-        response
+        Ok(())
     }
     // $coverage:ignore-end
 
@@ -332,18 +334,18 @@ impl Cohort {
 
         // Talos gave "go ahead"
 
-        let response = BankApi::transfer(
+        BankApi::transfer(
             Arc::clone(&self.database),
             AccountRef::new(from.number.clone(), None),
             AccountRef::new(to.number.clone(), None),
             amount,
             resp.version,
         )
-        .await;
+        .await?;
 
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
-        response
+        Ok(())
     }
     // $coverage:ignore-end
 }
