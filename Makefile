@@ -151,6 +151,11 @@ dev.run_cohort:
 	$(call pp,run cohort...)
 	cargo run --bin cohort
 
+## dev.run_replicator: 🧪 Runs replicator
+dev.run_replicator:
+	$(call pp,run replicator...)
+	cargo run --bin replicator
+
 ## lint: 🧹 Checks for lint failures on rust
 lint:
 	$(call pp,lint rust...)

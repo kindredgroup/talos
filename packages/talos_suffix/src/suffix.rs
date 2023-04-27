@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use log::{debug, info};
+use log::{debug, info, warn};
 
 use crate::{
     core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
@@ -289,7 +289,7 @@ where
         let k = self.retrieve_all_some_vec_items();
         info!("Items before pruning are \n{k:?}");
 
-        let drained_entries = self.messages.drain(..index).collect();
+        let drained_entries = self.messages.drain(..=index).collect();
 
         self.update_prune_index(None);
 
@@ -303,6 +303,16 @@ where
         // }
 
         Ok(drained_entries)
+    }
+
+    fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
+        if let Some(index) = self.index_from_head(version) {
+            info!("Index send for pruning is {index} for version={version}");
+            return self.prune_till_index(index);
+        } else {
+            warn!("Unable to prune as index not found for version {version}.")
+        }
+        Ok(vec![])
     }
 
     fn remove(&mut self, version: u64) -> SuffixResult<()> {

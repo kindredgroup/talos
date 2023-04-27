@@ -19,11 +19,16 @@ rdkafka-sys =       { version = "4.3.0" }
 refinery =          { version = "0.8.7", features = ["tokio-postgres"] }
 rusty-money =       { version = "0.4.1" }
 strum =             { version = "0.24", features = ["derive"] }
-talos_agent =       { path = "../talos_agent" }
 thiserror =         { version = "1.0.31" }
 time =              { version = "0.3.17" }
 tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
 uuid =              { version = "1.2.2", features = ["v4"] }
+
+# local package dependecies
+talos_agent =   { path = "../talos_agent" }
+talos_certifier_adapters =   { path = "../talos_certifier_adapters" }
+talos_certifier =   { path = "../talos_certifier" }
+talos_suffix =   { path = "../talos_suffix" }
 
 [dev-dependencies]
 mockall =       { version = "0.11.3" }

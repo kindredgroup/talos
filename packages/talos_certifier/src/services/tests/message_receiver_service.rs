@@ -88,6 +88,7 @@ async fn test_consume_message() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         }))
         .await
         .unwrap();
@@ -134,6 +135,7 @@ async fn test_consume_message_error() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         }))
         .await
         .unwrap();

@@ -1,5 +1,3 @@
-use std::num::TryFromIntError;
-
 use crate::errors::SuffixError;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -37,7 +35,7 @@ impl Default for SuffixConfig {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct SuffixMeta {
     /// The version which is the head of the suffix
     pub head: u64,
@@ -54,22 +52,15 @@ pub struct SuffixMeta {
     pub min_size_after_prune: Option<usize>,
 }
 
-type SuffixItemType<T> = T;
+pub type SuffixItemType<T> = T;
 
 pub trait SuffixTrait<T> {
     fn get(&mut self, version: u64) -> SuffixResult<Option<SuffixItem<T>>>;
     fn insert(&mut self, version: u64, message: SuffixItemType<T>) -> SuffixResult<()>;
     fn update_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>>;
+    fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>>;
     fn remove(&mut self, version: u64) -> SuffixResult<()>;
 }
-
-pub fn convert_u64_to_usize(value: u64) -> Result<usize, TryFromIntError> {
-    value.try_into()
-}
-
-// pub fn convert_usize_to_u64(value: usize) -> Result<u64, TryFromIntError> {
-//     value.try_into()
-// }
 
 pub type SuffixResult<T> = Result<T, SuffixError>;
