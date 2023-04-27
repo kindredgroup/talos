@@ -286,20 +286,22 @@ where
         info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
         // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
-        let k = self.retrieve_all_some_vec_items();
-        info!("Items before pruning are \n{k:?}");
+        // let k = self.retrieve_all_some_vec_items();
+        // info!("Items before pruning are \n{k:?}");
 
         let drained_entries = self.messages.drain(..=index).collect();
 
         self.update_prune_index(None);
 
-        if let Some(Some(s_item)) = self.messages.front() {
+        if let Some(Some(s_item)) = self.messages.iter().find(|m| m.is_some()) {
             self.update_head(s_item.item_ver);
+        } else {
+            self.update_head(0)
         }
 
-        info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
-        let k = self.retrieve_all_some_vec_items();
-        info!("Items after pruning are \n{k:?}");
+        // info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        // let k = self.retrieve_all_some_vec_items();
+        // info!("Items after pruning are \n{k:?}");
         // }
 
         Ok(drained_entries)
