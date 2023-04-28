@@ -113,7 +113,7 @@ impl Cohort {
             version,
             false,
         ));
-        let result = self.database.batch(batch1).await;
+        let result = self.database.batch(batch1, None).await;
         if result.is_ok() {
             log::info!("Successfully completed batch of deposits!");
         }
@@ -140,7 +140,7 @@ impl Cohort {
             true,
         ));
 
-        match self.database.batch(batch2).await {
+        match self.database.batch(batch2, Some(version)).await {
             Ok(affected_rows) => {
                 log::info!("Successfully completed batch of transfers! Updated: {} rows", affected_rows);
                 let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;

@@ -8,6 +8,7 @@ use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, Runt
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{NoTls, Row};
 
+use crate::snapshot_api::SnapshotApi;
 use crate::state::postgres::database_config::DatabaseConfig;
 
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
@@ -77,10 +78,18 @@ impl Database {
         client.execute(&stm, params).await.unwrap()
     }
 
-    pub async fn batch<T>(&self, batch: Vec<T>) -> Result<u64, String>
+    pub async fn batch<T>(&self, batch: Vec<T>, snapshot: Option<u64>) -> Result<u64, String>
     where
         T: Action,
     {
+        // We attempt to execute all actions in this batch and then track how many DB rows where affected.
+        // If there were no rows updated in DB then we treat this as error.
+        // In case of batch execution produced an error we rollback.
+        // If rollback fails we return error describing both - the reson for batch execution error and the reason for rollback error.
+        // If successfull we check whether snapshot update is required.
+        // Then we udpate snapshot and commit. Or we update snapshot, fail and rollback.
+        // The error handling of commit is the same as for rollabck error.
+
         let mut client = self.pool.get().await.unwrap();
         let tx = client.transaction().await.unwrap();
 
@@ -99,7 +108,7 @@ impl Database {
                     tx_error.unwrap_err(),
                 ))
             } else {
-                Err(format!("Cannot execute action. Error: {:?}", action_error))
+                Err(format!("Cannot execute batch. Error: {:?}. Rollback.", action_error))
             }
         } else {
             let mut affected_rows = 0_u64;
@@ -107,9 +116,42 @@ impl Database {
                 affected_rows += c;
             }
 
-            tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
+            if affected_rows == 0 {
+                // still fail here
+                let tx_error = tx.rollback().await.map_err(|e| e.to_string());
+                if tx_error.is_err() {
+                    Err(format!(
+                        "Cannot rollback failed action. Error: No rows where updated. Rollback error: {}",
+                        tx_error.unwrap_err(),
+                    ))
+                } else {
+                    Err("Cannot execute action. Error: No rows where updated".to_string())
+                }
+            } else {
+                if let Some(new_version) = snapshot {
+                    let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
+                    if let Ok(rows) = snapshot_update_result {
+                        affected_rows += rows;
+                    } else {
+                        let snapshot_error = snapshot_update_result.unwrap_err();
+                        // there was an error updating snapshot, we need to rollabck the whole batch
+                        let tx_error = tx.rollback().await.map_err(|e| e.to_string());
+                        return if tx_error.is_err() {
+                            Err(format!(
+                                "Cannot rollback after snapshot failed to update. Error: {}. Rollback error: {}",
+                                snapshot_error,
+                                tx_error.unwrap_err(),
+                            ))
+                        } else {
+                            Err(format!("Cannot update snapshot. Error: {}. Rollback", snapshot_error))
+                        };
+                    }
+                }
 
-            Ok(affected_rows)
+                tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
+
+                Ok(affected_rows)
+            }
         }
     }
 }
