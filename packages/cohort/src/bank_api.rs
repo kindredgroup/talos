@@ -36,21 +36,21 @@ impl BankApi {
         }
     }
 
-    pub async fn deposit(db: Arc<Database>, account_ref: AccountRef, amount: String, new_version: u64) -> Result<(), String> {
+    pub async fn deposit(db: Arc<Database>, account_ref: AccountRef, amount: String, new_version: u64) -> Result<u64, String> {
         AccountUpdate::deposit(account_ref, amount, new_version, true)
             .execute(&db.pool.get().await.unwrap())
             .await
     }
 
-    pub async fn withdraw(db: Arc<Database>, account_ref: AccountRef, amount: String, new_version: u64) -> Result<(), String> {
+    pub async fn withdraw(db: Arc<Database>, account_ref: AccountRef, amount: String, new_version: u64) -> Result<u64, String> {
         Self::deposit(db, account_ref, format!("-{}", amount), new_version).await
     }
 
-    pub async fn transfer(db: Arc<Database>, from: AccountRef, to: AccountRef, amount: String, new_version: u64) -> Result<(), String> {
+    pub async fn transfer(db: Arc<Database>, from: AccountRef, to: AccountRef, amount: String, new_version: u64) -> Result<u64, String> {
         Self::transfer_one(db, Transfer::new(from, to, amount, new_version, true)).await
     }
 
-    pub async fn transfer_one(db: Arc<Database>, action: Transfer) -> Result<(), String> {
+    pub async fn transfer_one(db: Arc<Database>, action: Transfer) -> Result<u64, String> {
         action.execute(&db.pool.get().await.unwrap()).await
     }
 }
@@ -104,14 +104,12 @@ impl AccountUpdate {
                 'talosState', jsonb_build_object('version', ($2)::BIGINT)
             )
             WHERE "number" = $3 AND (data->'talosState'->'version')::BIGINT < ($2)::BIGINT
-            RETURNING data
         "#
         } else {
             r#"
             UPDATE bank_accounts SET data = data ||
             jsonb_build_object('amount', ((data->>'amount')::DECIMAL + (($1)::TEXT)::DECIMAL)::TEXT)
             WHERE "number" = $3 AND (data->'talosState'->'version')::BIGINT < ($2)::BIGINT
-            RETURNING data
         "#
         }
     }
@@ -119,19 +117,14 @@ impl AccountUpdate {
 
 #[async_trait]
 impl Action for AccountUpdate {
-    async fn execute<T>(&self, client: &T) -> Result<(), String>
+    async fn execute<T>(&self, client: &T) -> Result<u64, String>
     where
         T: GenericClient + Sync,
     {
         let params: &[&(dyn ToSql + Sync)] = &[&self.amount, &(self.new_version as i64), &self.account.number];
 
         let statement = client.prepare_cached(Self::sql(self.update_version)).await.unwrap();
-        let rslt = client.execute(&statement, params).await;
-
-        match rslt {
-            Err(e) => Err(e.to_string()),
-            Ok(_) => Ok(()),
-        }
+        client.execute(&statement, params).await.map_err(|e| e.to_string())
     }
 }
 
@@ -164,20 +157,20 @@ impl Transfer {
     fn sql(update_version: bool) -> &'static str {
         if update_version {
             r#"
-            UPDATE bank_accounts SET data =
+            UPDATE bank_accounts SET data = COALESCE(
                 CASE
                     WHEN "number" = ($2)::TEXT AND (data->'talosState'->>'version')::BIGINT < ($3)::BIGINT THEN data || jsonb_build_object('amount', ((data->>'amount')::DECIMAL - (($1)::TEXT)::DECIMAL)::TEXT, 'talosState', jsonb_build_object('version', ($3)::BIGINT))
                     WHEN "number" = ($4)::TEXT AND (data->'talosState'->>'version')::BIGINT < ($5)::BIGINT THEN data || jsonb_build_object('amount', ((data->>'amount')::DECIMAL + (($1)::TEXT)::DECIMAL)::TEXT, 'talosState', jsonb_build_object('version', ($5)::BIGINT))
-                END
+                END, data)
             WHERE "number" in(($2)::TEXT, ($4)::TEXT)
         "#
         } else {
             r#"
-            UPDATE bank_accounts SET data =
+            UPDATE bank_accounts SET data = COALESCE(
                 CASE
                     WHEN "number" = ($2)::TEXT AND (data->'talosState'->>'version')::BIGINT < ($3)::BIGINT THEN data || jsonb_build_object('amount', ((data->>'amount')::DECIMAL - (($1)::TEXT)::DECIMAL)::TEXT)
                     WHEN "number" = ($4)::TEXT AND (data->'talosState'->>'version')::BIGINT < ($5)::BIGINT THEN data || jsonb_build_object('amount', ((data->>'amount')::DECIMAL + (($1)::TEXT)::DECIMAL)::TEXT)
-                END
+                END, data)
             WHERE "number" in(($2)::TEXT, ($4)::TEXT)
         "#
         }
@@ -186,7 +179,7 @@ impl Transfer {
 
 #[async_trait]
 impl Action for Transfer {
-    async fn execute<T>(&self, client: &T) -> Result<(), String>
+    async fn execute<T>(&self, client: &T) -> Result<u64, String>
     where
         T: GenericClient + Sync,
     {
@@ -198,12 +191,7 @@ impl Action for Transfer {
             &(self.new_version as i64),
         ];
 
-        let statement = client.prepare(Self::sql(self.update_version)).await.unwrap();
-        let rslt = client.execute(&statement, params).await;
-
-        match rslt {
-            Err(e) => Err(e.to_string()),
-            Ok(_) => Ok(()),
-        }
+        let statement = client.prepare_cached(Self::sql(self.update_version)).await.unwrap();
+        client.execute(&statement, params).await.map_err(|e| e.to_string())
     }
 }

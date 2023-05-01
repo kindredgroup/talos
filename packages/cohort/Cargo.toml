@@ -12,6 +12,7 @@ serde_json =        { workspace = true }
 tokio =             { workspace = true, features = ["full"] }
 
 deadpool-postgres = { version = "0.10" }
+futures =           { version = "0.3.28" }
 multimap =          { version = "0.9.0" }
 rand =              { version = "0.8.5" }
 rdkafka =           { version = "0.29.0", features = ["sasl"] }
