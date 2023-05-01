@@ -75,7 +75,7 @@ impl SnapshotApi {
 
         let poll_handle: JoinHandle<Result<(), String>> = tokio::spawn(async move {
             let db = Arc::clone(&db);
-            return loop {
+            loop {
                 let is_timed_out = OffsetDateTime::now_utc().unix_timestamp() >= timeout_at;
                 if is_timed_out {
                     break Err(format!("Timeout afeter: {}s", timeout_at));
@@ -86,7 +86,7 @@ impl SnapshotApi {
                 }
 
                 tokio::time::sleep(poll_frequency).await;
-            };
+            }
         });
 
         poll_handle.await.map_err(|e| e.to_string())?
