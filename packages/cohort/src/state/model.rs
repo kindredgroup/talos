@@ -25,6 +25,12 @@ pub struct Snapshot {
     pub version: u64,
 }
 
+impl Snapshot {
+    pub fn is_safe_for(snapshot: Snapshot, safepoint: u64) -> bool {
+        snapshot.version >= safepoint
+    }
+}
+
 impl Display for Snapshot {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Snapshot: [version: {:?}]", self.version)

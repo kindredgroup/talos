@@ -272,7 +272,7 @@ impl Cohort {
         let rslt_cert = self.agent.certify(cert_req).await;
         if let Err(e) = rslt_cert {
             log::warn!(
-                "Error communicating via agent: {}, xid: {}, operation: 'deposit' {} to {}",
+                "Error communicating via agent: {}, xid: {}, operation: 'deposit/withdraw' {} to {}",
                 e.reason,
                 xid,
                 amount,
@@ -288,8 +288,16 @@ impl Cohort {
 
         // Talos gave "go ahead"
 
+        // Check safepoint condition before installing ...
+
+        let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
+        SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
+
+        // install
+
         op_impl(Arc::clone(&self.database), AccountRef::new(account.number.clone(), None), amount, resp.version).await?;
 
+        // TODO: this should be done by replicator
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
         Ok(())
@@ -332,17 +340,23 @@ impl Cohort {
             return Ok(());
         }
 
-        // Talos gave "go ahead"
+        // Check safepoint condition before installing ...
+
+        let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
+        SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
+
+        // install
 
         BankApi::transfer(
             Arc::clone(&self.database),
             AccountRef::new(from.number.clone(), None),
             AccountRef::new(to.number.clone(), None),
-            amount,
+            amount.clone(),
             resp.version,
         )
         .await?;
 
+        // TODO: this should be done by replicator
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
         Ok(())

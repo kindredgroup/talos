@@ -265,6 +265,7 @@ mod tests {
                 xid: "xid1".to_string(),
                 decision: Committed,
                 version: 1,
+                safepoint: None,
             })
         });
         (tx_response, rx_response)
