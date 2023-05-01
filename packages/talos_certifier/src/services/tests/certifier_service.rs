@@ -67,6 +67,7 @@ async fn test_certification_rule_2() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -83,6 +84,7 @@ async fn test_certification_rule_2() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -135,6 +137,7 @@ async fn test_error_in_processing_candidate_message_certifying() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -184,6 +187,7 @@ async fn test_certification_process_decision() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -237,6 +241,9 @@ async fn test_certification_process_decision_incorrect_version() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            // safepoint: None,
+            // decision_outcome: None,
+            statemap: None,
         },
     )
     .await;
@@ -305,6 +312,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -323,6 +331,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -341,6 +350,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -359,6 +369,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -377,6 +388,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -498,6 +510,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;
@@ -516,6 +529,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
             on_commit: None,
+            statemap: None,
         },
     )
     .await;

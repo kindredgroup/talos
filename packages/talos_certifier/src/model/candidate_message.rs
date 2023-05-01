@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 
 use crate::certifier::CertifierCandidate;
@@ -25,6 +26,16 @@ pub struct CandidateMessage {
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_commit: Option<HashMap<String, Vec<DeliveryOrder>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statemap: Option<Vec<HashMap<String, Value>>>,
+    // #[serde(skip_deserializing)]
+    // pub safepoint: Option<u64>,
+
+    // #[serde(skip_deserializing)]
+    // pub decision_outcome: Option<CandidateDecisionOutcome>,
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // pub statemap: Option<Vec<HashMap<String, Value>>>,
 }
 
 pub trait CandidateReadWriteSet {
