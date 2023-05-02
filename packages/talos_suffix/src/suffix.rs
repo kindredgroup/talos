@@ -261,6 +261,7 @@ where
     fn update_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         // When Certifier is catching up with messages ignore the messages which are prior to the head
         if version < self.meta.head {
+            warn!("Version {version} is below the suffix head {}. Skipping updates", self.meta.head);
             return Ok(());
         }
 

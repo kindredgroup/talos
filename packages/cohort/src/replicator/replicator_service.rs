@@ -47,8 +47,9 @@ where
             //      (c) Send it to the state manager to do the updates.
             _ = interval.tick() => {
 
-                if let Some((statemap_batch, _last_item_vers)) = replicator.generate_statemap_batch() {
+                if let Some(statemap_batch) = replicator.generate_statemap_batch() {
 
+                    let version = statemap_batch.iter().last().unwrap().version;
                     // Call fn to install statemaps in batch amd update the snapshot
                     let result = install_statemaps(statemap_batch).await;
 
@@ -56,12 +57,20 @@ where
                     if let Ok(res) = result {
                         if res {
 
-                            //  4.1 Remove the versions
-                            //  4.2 Update the head
-                            //  4.3 Update the prune head
-                            // let _prune_result = replicator.suffix.prune_till_version(last_item_vers);
-                            //5. commit the version after pruning is successful
-                          //   replicator.receiver.commit(last_item_vers).await.unwrap();
+                            // Mark the suffix item as installed.
+                            replicator.suffix.set_item_installed(version);
+                            // if all prior items are installed, then update the prune vers
+                            replicator.suffix.update_prune_index(version);
+
+                            // TODO-REPLICATOR:- Commit the Kafka offset.
+                            // commit the item
+                            // replicator.receiver.commit(version).await.unwrap();
+
+                            // TODO-REPLICATOR:- Prune records.
+                            // At set interval or size, prune the suffix?
+                            //  Prune the suffix.
+                            //  Update head
+
                         }
 
                     }

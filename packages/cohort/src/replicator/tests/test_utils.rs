@@ -51,10 +51,9 @@ where
 #[derive(Debug, Default, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub(crate) struct BankStatemapTestCandidate {
     pub safepoint: Option<u64>,
-
     pub decision_outcome: Option<CandidateDecisionOutcome>,
-
     pub statemap: Option<Vec<HashMap<String, Value>>>,
+    pub is_installed: bool,
 }
 
 impl BankStatemapTestCandidate {
@@ -63,6 +62,7 @@ impl BankStatemapTestCandidate {
             safepoint: Default::default(),
             decision_outcome: Default::default(),
             statemap: Default::default(),
+            is_installed: false,
         };
 
         item.generate_bank_transfers_statemap(statemap_count)
@@ -96,6 +96,14 @@ impl ReplicatorSuffixItemTrait for BankStatemapTestCandidate {
 
     fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>) {
         self.decision_outcome = decision_outcome
+    }
+
+    fn set_suffix_item_installed(&mut self) {
+        self.is_installed = true
+    }
+
+    fn is_installed(&self) -> bool {
+        self.is_installed
     }
 }
 

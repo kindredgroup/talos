@@ -13,6 +13,7 @@ struct TestReplicatorSuffixItem {
     safepoint: Option<u64>,
     decision: Option<CandidateDecisionOutcome>,
     statemap: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
+    is_installed: bool,
 }
 
 impl ReplicatorSuffixItemTrait for TestReplicatorSuffixItem {
@@ -30,6 +31,13 @@ impl ReplicatorSuffixItemTrait for TestReplicatorSuffixItem {
 
     fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>) {
         self.decision = decision_outcome
+    }
+    fn set_suffix_item_installed(&mut self) {
+        self.is_installed = true
+    }
+
+    fn is_installed(&self) -> bool {
+        self.is_installed
     }
 }
 
@@ -73,7 +81,7 @@ fn test_replicator_suffix() {
     suffix.insert(8, TestReplicatorSuffixItem::default()).unwrap();
 
     // Message batch is empty as the decision is not added.
-    assert!(suffix.get_message_batch().is_none());
+    assert_eq!(suffix.get_message_batch(Some(5)), None);
 
     // Nothing happens for version 50 updates as the item doesn't exist.
     suffix.set_safepoint(50, Some(2));
@@ -88,14 +96,14 @@ fn test_replicator_suffix() {
     assert_eq!(item_at_version3.item.decision.unwrap(), CandidateDecisionOutcome::Committed);
     suffix.update_decision(3, 10).unwrap();
     // Message batch will be one as only version 3's decision is recorded..
-    assert_eq!(suffix.get_message_batch().unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch(Some(5)).unwrap().len(), 1);
 
     suffix.update_decision(4, 12).unwrap();
     // Message batch will still be 1 as there was no version 1 inserted.
     // So the decision will be discarded
-    assert_eq!(suffix.get_message_batch().unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch(Some(4)).unwrap().len(), 1);
 
     suffix.update_decision(5, 19).unwrap();
     // Message batch will be 2
-    assert_eq!(suffix.get_message_batch().unwrap().len(), 2);
+    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 2);
 }
