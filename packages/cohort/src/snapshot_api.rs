@@ -1,6 +1,9 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use deadpool_postgres::GenericClient;
+use time::OffsetDateTime;
+use tokio::task::JoinHandle;
 
 use crate::state::model::Snapshot;
 use crate::state::postgres::data_store::DataStore;
@@ -57,5 +60,42 @@ impl SnapshotApi {
         }
 
         Ok(affected_rows)
+    }
+
+    pub async fn await_until_safe(db: Arc<Database>, safepoint: u64) -> Result<(), String> {
+        // quick path...
+        let safe_now = Self::is_safe_to_proceed(Arc::clone(&db), safepoint).await?;
+        if safe_now {
+            return Ok(());
+        }
+
+        // long path...
+        let timeout_at = OffsetDateTime::now_utc().unix_timestamp() + 10;
+        let poll_frequency = Duration::from_secs(1);
+
+        let poll_handle: JoinHandle<Result<(), String>> = tokio::spawn(async move {
+            let db = Arc::clone(&db);
+            loop {
+                let is_timed_out = OffsetDateTime::now_utc().unix_timestamp() >= timeout_at;
+                if is_timed_out {
+                    break Err(format!("Timeout afeter: {}s", timeout_at));
+                }
+
+                if Self::is_safe_to_proceed(Arc::clone(&db), safepoint).await? {
+                    break Ok(());
+                }
+
+                tokio::time::sleep(poll_frequency).await;
+            }
+        });
+
+        poll_handle.await.map_err(|e| e.to_string())?
+    }
+
+    async fn is_safe_to_proceed(db: Arc<Database>, safepoint: u64) -> Result<bool, String> {
+        match SnapshotApi::query(db).await {
+            Err(e) => Err(format!("Unable to read snapshot, please retry... {}", e)),
+            Ok(snapshot) => Ok(Snapshot::is_safe_for(snapshot, safepoint)),
+        }
     }
 }

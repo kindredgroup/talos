@@ -33,6 +33,7 @@ pub struct CertificationResponse {
     pub xid: String,
     pub decision: Decision,
     pub version: u64,
+    pub safepoint: Option<u64>,
 }
 
 #[derive(Clone, Debug)]

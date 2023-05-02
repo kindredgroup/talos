@@ -47,7 +47,15 @@ impl BankApi {
     }
 
     pub async fn transfer(db: Arc<Database>, from: AccountRef, to: AccountRef, amount: String, new_version: u64) -> Result<u64, String> {
-        Self::transfer_one(db, Transfer::new(from, to, amount, new_version, true)).await
+        let affected_rows = Self::transfer_one(db, Transfer::new(from.clone(), to.clone(), amount.clone(), new_version, true)).await?;
+        if affected_rows != 2 {
+            Err(format!(
+                "Unable to transfer ${} from '{}' to '{}'. Error: affected rows({}) != 2",
+                amount, from, to, affected_rows,
+            ))
+        } else {
+            Ok(affected_rows)
+        }
     }
 
     pub async fn transfer_one(db: Arc<Database>, action: Transfer) -> Result<u64, String> {

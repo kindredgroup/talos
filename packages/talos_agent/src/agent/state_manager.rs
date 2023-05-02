@@ -123,6 +123,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 message.decision,
                 message.decided_at,
                 message.version,
+                message.safepoint,
                 state.get_vec(&message.xid),
                 metrics_client,
             )
@@ -144,6 +145,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         decision: Decision,
         decided_at: Option<u64>,
         version: u64,
+        safepoint: Option<u64>,
         clients: Option<&Vec<WaitingClient>>,
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
@@ -162,6 +164,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 xid: xid.to_string(),
                 decision: decision.clone(),
                 version,
+                safepoint,
             };
 
             let error_message = format!(
@@ -213,6 +216,7 @@ mod tests_waiting_client {
             xid: String::from("xid1"),
             decision: Committed,
             version: 1,
+            safepoint: None,
         };
 
         let client = WaitingClient::new(Arc::new(Box::new(sender)));
@@ -228,6 +232,7 @@ mod tests_waiting_client {
             xid: String::from("xid1"),
             decision: Committed,
             version: 1,
+            safepoint: None,
         };
 
         let response = response_sample.clone();
