@@ -33,64 +33,37 @@ impl BatchExecutor {
         }
 
         let action_result = futures::future::try_join_all(batch_async).await;
-
         if action_result.is_err() {
-            let action_error = action_result.unwrap_err();
-            let tx_error = tx.rollback().await.map_err(|e| e.to_string());
+            return Err(Self::handle_rollback(tx.rollback().await, action_result.unwrap_err()));
+        }
 
-            if tx_error.is_err() {
-                Err(format!(
-                    "Cannot rollback failed action. Error: {:?}, Rollback error: {}",
-                    action_error,
-                    tx_error.unwrap_err(),
-                ))
+        let mut affected_rows = 0_u64;
+        // filter out empty Option elements, here flatten() = filter(Option::is_some).map(Option::unwrap)
+        for c in action_result.unwrap().iter().flatten() {
+            affected_rows += c;
+        }
+
+        if affected_rows == 0 {
+            // still fail here
+            return Err(Self::handle_rollback(tx.rollback().await, "No rows where updated".to_string()));
+        }
+
+        if let Some(new_version) = snapshot {
+            let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
+            if let Ok(rows) = snapshot_update_result {
+                affected_rows += rows;
             } else {
-                Err(format!("Cannot execute batch. Error: {:?}. Rollback.", action_error))
-            }
-        } else {
-            let mut affected_rows = 0_u64;
-            // filter out empty Option elements, here flatten() = filter(Option::is_some).map(Option::unwrap)
-            for c in action_result.unwrap().iter().flatten() {
-                affected_rows += c;
-            }
-
-            if affected_rows == 0 {
-                // still fail here
-                let tx_error = tx.rollback().await.map_err(|e| e.to_string());
-                if tx_error.is_err() {
-                    Err(format!(
-                        "Cannot rollback failed action. Error: No rows where updated. Rollback error: {}",
-                        tx_error.unwrap_err(),
-                    ))
-                } else {
-                    Err("Cannot execute action. Error: No rows where updated".to_string())
-                }
-            } else {
-                //
-                if let Some(new_version) = snapshot {
-                    let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
-                    if let Ok(rows) = snapshot_update_result {
-                        affected_rows += rows;
-                    } else {
-                        let snapshot_error = snapshot_update_result.unwrap_err();
-                        // there was an error updating snapshot, we need to rollabck the whole batch
-                        let tx_error = tx.rollback().await.map_err(|e| e.to_string());
-                        return if tx_error.is_err() {
-                            Err(format!(
-                                "Cannot rollback after snapshot failed to update. Error: {}. Rollback error: {}",
-                                snapshot_error,
-                                tx_error.unwrap_err(),
-                            ))
-                        } else {
-                            Err(format!("Cannot update snapshot. Error: {}. Rollback", snapshot_error))
-                        };
-                    }
-                }
-
-                tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
-                Ok(affected_rows)
+                // there was an error updating snapshot, we need to rollabck the whole batch
+                let snapshot_error = snapshot_update_result.unwrap_err();
+                return Err(Self::handle_rollback(
+                    tx.rollback().await,
+                    format!("Snpshot update error: '{}'", snapshot_error),
+                ));
             }
         }
+
+        tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
+        Ok(affected_rows)
     }
 
     async fn execute_item<T>(item: &StatemapItem, client: &T, update_item_version: bool) -> Result<Option<u64>, String>
@@ -128,5 +101,13 @@ impl BatchExecutor {
         };
 
         Ok(action_outcome)
+    }
+
+    fn handle_rollback(tx_res: Result<(), tokio_postgres::Error>, context_error: String) -> String {
+        if let Err(tx_error) = tx_res {
+            format!("Cannot rollback failed action. Error: ${:?}. Rollback error: {}", context_error, tx_error)
+        } else {
+            format!("Cannot execute action. Error: ${:?}", context_error)
+        }
     }
 }
