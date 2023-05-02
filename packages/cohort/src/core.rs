@@ -17,11 +17,13 @@ use talos_agent::metrics::core::Metrics;
 use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
-use crate::bank_api::{AccountUpdate, BankApi, Transfer};
+use crate::bank_api::BankApi;
 use crate::model::bank_account::{as_money, BankAccount};
+use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
-use crate::state::model::AccountRef;
+use crate::state::model::{AccountUpdateRequest, BusinessActionType, TransferRequest};
 use crate::state::postgres::database::Database;
+use crate::tx_batch_executor::BatchExecutor;
 
 // $coverage:ignore-end
 
@@ -86,63 +88,47 @@ impl Cohort {
 
         let version = account1.talos_state.version + 1;
 
-        let mut batch1: Vec<AccountUpdate> = vec![];
-        let mut batch2: Vec<Transfer> = vec![];
+        let batch: Vec<StatemapItem> = vec![
+            StatemapItem::new(
+                BusinessActionType::WITHDRAW.to_string(),
+                version,
+                AccountUpdateRequest::new("00001".to_string(), account1.balance.amount().to_string()).json(),
+            ),
+            StatemapItem::new(
+                BusinessActionType::WITHDRAW.to_string(),
+                version,
+                AccountUpdateRequest::new("00002".to_string(), account2.balance.amount().to_string()).json(),
+            ),
+            StatemapItem::new(
+                BusinessActionType::DEPOSIT.to_string(),
+                version,
+                AccountUpdateRequest::new("00001".to_string(), "50".to_string()).json(),
+            ),
+            StatemapItem::new(
+                BusinessActionType::DEPOSIT.to_string(),
+                version,
+                AccountUpdateRequest::new("00002".to_string(), "50".to_string()).json(),
+            ),
+            StatemapItem::new(
+                BusinessActionType::TRANSFER.to_string(),
+                version,
+                TransferRequest::new("00001".to_string(), "00002".to_string(), "10.51".to_string()).json(),
+            ),
+            StatemapItem::new(
+                BusinessActionType::TRANSFER.to_string(),
+                version,
+                TransferRequest::new("00001".to_string(), "00002".to_string(), "0.49".to_string()).json(),
+            ),
+            StatemapItem::new(
+                BusinessActionType::TRANSFER.to_string(),
+                version,
+                TransferRequest::new("00002".to_string(), "00001".to_string(), "1.01".to_string()).json(),
+            ),
+        ];
 
-        batch1.push(AccountUpdate::withdraw(
-            AccountRef::new("00001".to_string(), None),
-            account1.balance.amount().to_string(),
-            version,
-            false,
-        ));
-        batch1.push(AccountUpdate::withdraw(
-            AccountRef::new("00002".to_string(), None),
-            account2.balance.amount().to_string(),
-            version,
-            false,
-        ));
-        batch1.push(AccountUpdate::deposit(
-            AccountRef::new("00001".to_string(), None),
-            "50".to_string(),
-            version,
-            false,
-        ));
-        batch1.push(AccountUpdate::deposit(
-            AccountRef::new("00002".to_string(), None),
-            "50".to_string(),
-            version,
-            false,
-        ));
-        let result = self.database.batch(batch1, None).await;
-        if result.is_ok() {
-            log::info!("Successfully completed batch of deposits!");
-        }
-
-        batch2.push(Transfer::new(
-            AccountRef::new("00001".to_string(), None),
-            AccountRef::new("00002".to_string(), None),
-            "10.51".to_string(),
-            version,
-            false,
-        ));
-        batch2.push(Transfer::new(
-            AccountRef::new("00001".to_string(), None),
-            AccountRef::new("00002".to_string(), None),
-            "0.49".to_string(),
-            version,
-            false,
-        ));
-        batch2.push(Transfer::new(
-            AccountRef::new("00002".to_string(), None),
-            AccountRef::new("00001".to_string(), None),
-            "1.01".to_string(),
-            version,
-            true,
-        ));
-
-        match self.database.batch(batch2, Some(version)).await {
+        match BatchExecutor::execute(&self.database, batch, Some(version)).await {
             Ok(affected_rows) => {
-                log::info!("Successfully completed batch of transfers! Updated: {} rows", affected_rows);
+                log::info!("Successfully completed batch of transactions! Updated: {} rows", affected_rows);
                 let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
                 log::info!("New state of bank accounts is");
                 for a in accounts.iter() {
@@ -168,14 +154,7 @@ impl Cohort {
                 // two accounts picked, do transfer...
 
                 // Cohort should do local validation before attempting to alter internal state
-                let balance = BankApi::get_balance(
-                    Arc::clone(&self.database),
-                    AccountRef {
-                        number: account1.number.clone(),
-                        new_version: None,
-                    },
-                )
-                .await?;
+                let balance = BankApi::get_balance(Arc::clone(&self.database), account1.number.clone()).await?;
 
                 if balance < as_money(amount.clone(), account1.balance.currency())? {
                     log::warn!("Cannot transfer {:>2} from {} with balance {}", amount, account1.number, balance);
@@ -194,14 +173,7 @@ impl Cohort {
             }
 
             // Cohort should do local validation before attempting to alter internal state
-            let balance = BankApi::get_balance(
-                Arc::clone(&self.database),
-                AccountRef {
-                    number: account1.number.clone(),
-                    new_version: None,
-                },
-            )
-            .await?;
+            let balance = BankApi::get_balance(Arc::clone(&self.database), account1.number.clone()).await?;
 
             if balance < as_money(amount.clone(), account1.balance.currency())? {
                 log::warn!("Cannot withdraw {:>2} from {} with balance {}", amount, account1.number, balance);
@@ -251,7 +223,7 @@ impl Cohort {
     // $coverage:ignore-start
     async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
     where
-        F: Fn(Arc<Database>, AccountRef, String, u64) -> R,
+        F: Fn(Arc<Database>, AccountUpdateRequest, u64) -> R,
         R: Future<Output = Result<u64, String>>,
     {
         let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
@@ -295,7 +267,12 @@ impl Cohort {
 
         // install
 
-        op_impl(Arc::clone(&self.database), AccountRef::new(account.number.clone(), None), amount, resp.version).await?;
+        op_impl(
+            Arc::clone(&self.database),
+            AccountUpdateRequest::new(account.number.clone(), amount),
+            resp.version,
+        )
+        .await?;
 
         // TODO: this should be done by replicator
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
@@ -347,14 +324,7 @@ impl Cohort {
 
         // install
 
-        BankApi::transfer(
-            Arc::clone(&self.database),
-            AccountRef::new(from.number.clone(), None),
-            AccountRef::new(to.number.clone(), None),
-            amount.clone(),
-            resp.version,
-        )
-        .await?;
+        BankApi::transfer(Arc::clone(&self.database), from.number.clone(), to.number.clone(), amount.clone(), resp.version).await?;
 
         // TODO: this should be done by replicator
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;

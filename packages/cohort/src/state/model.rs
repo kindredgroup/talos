@@ -1,24 +1,10 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use strum::{Display, EnumString};
+
 use std::fmt;
 use std::fmt::{Display, Formatter};
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone)]
-pub struct AccountRef {
-    pub number: String,
-    pub new_version: Option<u64>,
-}
-
-impl AccountRef {
-    pub fn new(number: String, new_version: Option<u64>) -> Self {
-        Self { number, new_version }
-    }
-}
-
-impl Display for AccountRef {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "AccountRef: [number: {}, new_version: {:?}]", self.number, self.new_version)
-    }
-}
 
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Deserialize)]
 pub struct Snapshot {
@@ -43,6 +29,46 @@ impl From<u64> for Snapshot {
     }
 }
 
+#[derive(Display, Debug, Deserialize, EnumString)]
+pub enum BusinessActionType {
+    TRANSFER,
+    DEPOSIT,
+    WITHDRAW,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct TransferRequest {
+    pub from: String,
+    pub to: String,
+    pub amount: String,
+}
+
+impl TransferRequest {
+    pub fn new(from: String, to: String, amount: String) -> Self {
+        Self { from, to, amount }
+    }
+
+    pub fn json(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AccountUpdateRequest {
+    pub account: String,
+    pub amount: String,
+}
+
+impl AccountUpdateRequest {
+    pub fn new(account: String, amount: String) -> Self {
+        Self { account, amount }
+    }
+
+    pub fn json(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
+}
+
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
@@ -50,26 +76,6 @@ mod tests {
 
     #[test]
     fn models() {
-        let acc_ref = AccountRef {
-            number: "1".to_string(),
-            new_version: None,
-        };
-        assert_eq!(
-            acc_ref,
-            AccountRef {
-                number: "1".to_string(),
-                new_version: None,
-            },
-        );
-        assert_ne!(
-            acc_ref,
-            AccountRef {
-                number: "1".to_string(),
-                new_version: Some(1),
-            },
-        );
-        assert_eq!(format!("{}", acc_ref), "AccountRef: [number: 1, new_version: None]".to_string());
-
         assert_eq!(Snapshot { version: 1 }, Snapshot::from(1));
         assert_ne!(Snapshot { version: 2 }, Snapshot::from(1));
 

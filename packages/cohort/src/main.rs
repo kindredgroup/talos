@@ -23,7 +23,8 @@ async fn main() -> Result<(), String> {
         prefill_db(database).await;
         log::info!("Cohort started...");
 
-        if let Err(e) = cohort.generate_workload(2).await {
+        // if let Err(e) = cohort.generate_workload(2).await {
+        if let Err(e) = cohort.execute_batch_workload().await {
             log::error!("Error when generating a test load: {}", e)
         } else {
             log::info!("No more data to generate...")
