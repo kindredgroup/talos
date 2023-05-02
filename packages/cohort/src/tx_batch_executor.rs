@@ -24,11 +24,11 @@ impl BatchExecutor {
         let mut client = db.pool.get().await.unwrap();
         let tx = client.transaction().await.unwrap();
 
-        let mut batch_async: Vec<BoxFuture<Result<u64, String>>> = Vec::new();
+        let mut batch_async: Vec<BoxFuture<Result<Option<u64>, String>>> = Vec::new();
         let last_item_nr = batch.len() - 1;
         for (index, item) in batch.iter().enumerate() {
             let update_version = index == last_item_nr;
-            let pinned_box: BoxFuture<Result<u64, String>> = Box::pin(Self::execute_item(item, &tx, update_version));
+            let pinned_box: BoxFuture<Result<Option<u64>, String>> = Box::pin(Self::execute_item(item, &tx, update_version));
             batch_async.push(pinned_box);
         }
 
@@ -49,7 +49,8 @@ impl BatchExecutor {
             }
         } else {
             let mut affected_rows = 0_u64;
-            for c in action_result.unwrap().iter() {
+            // filter out empty Option elements, here flatten() = filter(Option::is_some).map(Option::unwrap)
+            for c in action_result.unwrap().iter().flatten() {
                 affected_rows += c;
             }
 
@@ -92,29 +93,40 @@ impl BatchExecutor {
         }
     }
 
-    async fn execute_item<T>(item: &StatemapItem, client: &T, update_item_version: bool) -> Result<u64, String>
+    async fn execute_item<T>(item: &StatemapItem, client: &T, update_item_version: bool) -> Result<Option<u64>, String>
     where
         T: GenericClient + Sync,
     {
         // TODO: Do not fail on unknown actions, print warning
-        let action_type: BusinessActionType = BusinessActionType::from_str(&item.action)
-            .map_err(|e| format!("Unable to parse BusinessActionType. UnknownValue: {}. Error: {}", &item.action, e))
-            .unwrap();
-        match action_type {
+
+        let rslt_parse_type = BusinessActionType::from_str(&item.action);
+        if let Err(e) = rslt_parse_type {
+            // This case is expected on the cohort where some business actions are not implemented.
+            // Another way to implement this is to create custom to/from string for BusinessActionType and
+            // map unkown values into "catch all" enum option "BusinessActionType::UNIMPLEMENTED(raw: String)".
+            log::warn!("Unknown action type in statemap item: '{}'. Skipping with parser error: {}", item.action, e);
+            return Ok(None);
+        }
+
+        let action_outcome = match rslt_parse_type.unwrap() {
             BusinessActionType::TRANSFER => {
                 let data: TransferRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Transfer::new(data.from, data.to, data.amount, item.version, update_item_version)
-                    .execute(client)
-                    .await
+                Some(
+                    Transfer::new(data.from, data.to, data.amount, item.version, update_item_version)
+                        .execute(client)
+                        .await?,
+                )
             }
             BusinessActionType::DEPOSIT => {
                 let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                AccountUpdate::deposit(data, item.version, update_item_version).execute(client).await
+                Some(AccountUpdate::deposit(data, item.version, update_item_version).execute(client).await?)
             }
             BusinessActionType::WITHDRAW => {
                 let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                AccountUpdate::withdraw(data, item.version, update_item_version).execute(client).await
+                Some(AccountUpdate::withdraw(data, item.version, update_item_version).execute(client).await?)
             }
-        }
+        };
+
+        Ok(action_outcome)
     }
 }
