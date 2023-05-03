@@ -1,4 +1,6 @@
+// $coverage:ignore-start
 use serde::{Deserialize, Serialize};
+// $coverage:ignore-end
 use serde_json::Value;
 
 use strum::{Display, EnumString};
@@ -29,7 +31,7 @@ impl From<u64> for Snapshot {
     }
 }
 
-#[derive(Display, Debug, Deserialize, EnumString)]
+#[derive(Display, Debug, Deserialize, EnumString, PartialEq, Eq)]
 pub enum BusinessActionType {
     TRANSFER,
     DEPOSIT,
@@ -72,6 +74,8 @@ impl AccountUpdateRequest {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
@@ -88,6 +92,14 @@ mod tests {
             format!("{:?}", TransferRequest::new("a1".into(), "a2".into(), "10".into())),
             r#"TransferRequest { from: "a1", to: "a2", amount: "10" }"#.to_string(),
         );
+
+        assert_eq!(format!("{:?}", BusinessActionType::DEPOSIT), "DEPOSIT".to_string());
+        assert_eq!(format!("{:?}", BusinessActionType::WITHDRAW), "WITHDRAW".to_string());
+        assert_eq!(format!("{:?}", BusinessActionType::TRANSFER), "TRANSFER".to_string());
+
+        assert_eq!(BusinessActionType::from_str("TRANSFER").unwrap(), BusinessActionType::TRANSFER);
+        assert_eq!(BusinessActionType::from_str("WITHDRAW").unwrap(), BusinessActionType::WITHDRAW);
+        assert_eq!(BusinessActionType::from_str("DEPOSIT").unwrap(), BusinessActionType::DEPOSIT);
     }
 
     #[test]
@@ -147,6 +159,15 @@ mod tests {
     fn should_serialize_transfer_request() {
         let rslt = serde_json::to_string(&TransferRequest::new("a1".into(), "a2".into(), "10.0".into())).unwrap();
         assert_eq!(rslt, r#"{"from":"a1","to":"a2","amount":"10.0"}"#);
+    }
+
+    #[test]
+    #[allow(clippy::bool_assert_comparison)]
+    fn when_snapshot_is_behind_safepoint_ist_not_safe() {
+        let safepoint = 2;
+        assert_eq!(Snapshot::is_safe_for(Snapshot { version: 1 }, safepoint), false);
+        assert_eq!(Snapshot::is_safe_for(Snapshot { version: 2 }, safepoint), true);
+        assert_eq!(Snapshot::is_safe_for(Snapshot { version: 3 }, safepoint), true);
     }
 }
 // $coverage:ignore-end

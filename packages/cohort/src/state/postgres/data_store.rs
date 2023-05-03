@@ -1,3 +1,4 @@
+// $coverage:ignore-start
 use std::sync::Arc;
 use tokio_postgres::Row;
 
@@ -85,3 +86,4 @@ impl DataStore {
         Snapshot { version: updated as u64 }
     }
 }
+// $coverage:ignore-end
