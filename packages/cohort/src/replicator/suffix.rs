@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt::Debug, ops::ControlFlow};
 
 use log::warn;
 use serde_json::Value;
-use talos_suffix::{core::SuffixResult, get_nonempty_suffix_items, Suffix, SuffixItem, SuffixTrait};
+use talos_suffix::{
+    core::{SuffixMeta, SuffixResult},
+    get_nonempty_suffix_items, Suffix, SuffixItem, SuffixTrait,
+};
 
 use super::core::CandidateDecisionOutcome;
 
@@ -22,6 +25,7 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn update_prune_index(&mut self, version: u64);
     /// Returns the items from suffix
+    fn get_suffix_meta(&self) -> &SuffixMeta;
     fn get_message_batch(&self, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>>;
 }
 
@@ -98,5 +102,9 @@ where
 
     fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         self.update_decision_suffix_item(version, decision_ver)
+    }
+
+    fn get_suffix_meta(&self) -> &SuffixMeta {
+        &self.meta
     }
 }

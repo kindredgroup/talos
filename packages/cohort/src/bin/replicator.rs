@@ -89,7 +89,7 @@ async fn main() {
     //  c. Create suffix.
     let suffix_config = SuffixConfig {
         capacity: 10,
-        prune_start_threshold: None,
+        prune_start_threshold: Some(2),
         min_size_after_prune: None,
     };
     let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);

@@ -62,15 +62,18 @@ where
                             // if all prior items are installed, then update the prune vers
                             replicator.suffix.update_prune_index(version);
 
-                            // TODO-REPLICATOR:- Commit the Kafka offset.
-                            // commit the item
-                            // replicator.receiver.commit(version).await.unwrap();
 
                             // TODO-REPLICATOR:- Prune records.
                             // At set interval or size, prune the suffix?
                             //  Prune the suffix.
                             //  Update head
+                            if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                                replicator.suffix.prune_till_version(version).unwrap();
+                            }
 
+                            // TODO-REPLICATOR:- Commit the Kafka offset.
+                            // commit the item
+                            // replicator.receiver.commit(version).await.unwrap();
                         }
 
                     }

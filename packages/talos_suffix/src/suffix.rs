@@ -67,7 +67,7 @@ where
         }
     }
 
-    fn suffix_length(&self) -> usize {
+    pub fn suffix_length(&self) -> usize {
         self.messages.len()
     }
 
@@ -309,9 +309,13 @@ where
     }
 
     fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
+        info!("Suffix before prune.... {}", self.suffix_length());
         if let Some(index) = self.index_from_head(version) {
             info!("Index send for pruning is {index} for version={version}");
-            return self.prune_till_index(index);
+            let prune_result = self.prune_till_index(index);
+            info!("Suffix items pruned.... {prune_result:?}");
+            info!("Suffix after prune.... {}", self.suffix_length());
+            return prune_result;
         } else {
             warn!("Unable to prune as index not found for version {version}.")
         }
