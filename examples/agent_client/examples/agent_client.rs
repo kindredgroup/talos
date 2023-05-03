@@ -64,6 +64,7 @@ fn make_candidate(xid: String) -> CertificationRequest {
         readvers: Vec::new(),
         snapshot: 5,
         writeset: Vec::from(["3".to_string()]),
+        statemap: None,
     };
 
     CertificationRequest {

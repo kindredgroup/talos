@@ -80,13 +80,73 @@ mod tests {
         assert_ne!(Snapshot { version: 2 }, Snapshot::from(1));
 
         assert_eq!(format!("{}", Snapshot::from(1)), "Snapshot: [version: 1]".to_string());
+        assert_eq!(
+            format!("{:?}", AccountUpdateRequest::new("a1".into(), "10".into())),
+            r#"AccountUpdateRequest { account: "a1", amount: "10" }"#.to_string(),
+        );
+        assert_eq!(
+            format!("{:?}", TransferRequest::new("a1".into(), "a2".into(), "10".into())),
+            r#"TransferRequest { from: "a1", to: "a2", amount: "10" }"#.to_string(),
+        );
     }
 
     #[test]
     fn should_deserialize_snapshot() {
-        let rslt_snapshot = serde_json::from_str::<Snapshot>("{ \"version\": 123456 }");
+        let rslt_snapshot = serde_json::from_str::<Snapshot>(r#"{ "version": 123456 }"#);
         let snapshot = rslt_snapshot.unwrap();
         assert_eq!(snapshot.version, 123456);
+    }
+
+    #[test]
+    fn should_deserialize_account_update_request() {
+        let rslt = serde_json::from_str::<AccountUpdateRequest>(r#"{ "account": "a1", "amount": "10.0" }"#).unwrap();
+        assert_eq!(rslt.account, "a1");
+        assert_eq!(rslt.amount, "10.0");
+    }
+
+    #[test]
+    fn json_for_account_update_request() {
+        let json = AccountUpdateRequest::new("a1".into(), "10.0".into()).json();
+
+        assert!(json.get("account").is_some());
+        assert_eq!(json.get("account").unwrap(), "a1");
+
+        assert!(json.get("amount").is_some());
+        assert_eq!(json.get("amount").unwrap(), "10.0");
+    }
+
+    #[test]
+    fn should_serialize_account_update_request() {
+        let rslt = serde_json::to_string(&AccountUpdateRequest::new("a1".into(), "10.0".into())).unwrap();
+        assert_eq!(rslt, r#"{"account":"a1","amount":"10.0"}"#);
+    }
+
+    #[test]
+    fn should_deserialize_transfer_request() {
+        let rslt = serde_json::from_str::<TransferRequest>(r#"{ "from": "a1", "to": "a2", "amount": "10.0" }"#).unwrap();
+        assert_eq!(rslt.from, "a1");
+        assert_eq!(rslt.to, "a2");
+        assert_eq!(rslt.amount, "10.0");
+    }
+
+    #[test]
+    fn json_for_transfer_request() {
+        let json = TransferRequest::new("a1".into(), "a2".into(), "10.0".into()).json();
+
+        assert!(json.get("from").is_some());
+        assert_eq!(json.get("from").unwrap(), "a1");
+
+        assert!(json.get("to").is_some());
+        assert_eq!(json.get("to").unwrap(), "a2");
+
+        assert!(json.get("amount").is_some());
+        assert_eq!(json.get("amount").unwrap(), "10.0");
+    }
+
+    #[test]
+    fn should_serialize_transfer_request() {
+        let rslt = serde_json::to_string(&TransferRequest::new("a1".into(), "a2".into(), "10.0".into())).unwrap();
+        assert_eq!(rslt, r#"{"from":"a1","to":"a2","amount":"10.0"}"#);
     }
 }
 // $coverage:ignore-end

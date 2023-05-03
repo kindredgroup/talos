@@ -361,6 +361,7 @@ mod tests_publisher {
             readvers: vec![1_u64],
             snapshot: 2_u64,
             writeset: vec!["1".to_string()],
+            statemap: None,
         })
         .unwrap();
 

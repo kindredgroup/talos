@@ -307,6 +307,7 @@ mod tests {
                     readvers: vec![1_u64],
                     snapshot: 1_u64,
                     writeset: Vec::<String>::new(),
+                    statemap: None,
                 },
             },
             Arc::new(Box::new(tx_answer)),
@@ -600,6 +601,7 @@ mod tests {
                     readvers: Vec::<u64>::new(),
                     snapshot: 0,
                     writeset: Vec::<String>::new(),
+                    statemap: None,
                 },
             },
         };
