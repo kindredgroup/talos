@@ -14,7 +14,7 @@ impl BatchExecutor {
     pub async fn execute(db: &Database, batch: Vec<StatemapItem>, snapshot: Option<u64>) -> Result<u64, String> {
         //
         // We attempt to execute all actions in this batch and then track how many DB rows where affected.
-        // If there were no rows updated in DB then we treat this as error.
+        // If there were no rows updated in DB then we print warning and allow cohort to proceed.
         // In case of batch execution produced an error we rollback.
         // If rollback fails we return error describing both - the reson for batch execution error and the reason for rollback error.
         // If successfull we check whether snapshot update is required.
@@ -43,12 +43,11 @@ impl BatchExecutor {
             affected_rows += c;
         }
 
-        if affected_rows == 0 {
-            // still fail here
-            return Err(Self::handle_rollback(tx.rollback().await, "No rows where updated".to_string()));
-        }
-
         if let Some(new_version) = snapshot {
+            if affected_rows == 0 {
+                log::warn!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
+            }
+
             let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
             if let Ok(rows) = snapshot_update_result {
                 affected_rows += rows;
@@ -60,6 +59,8 @@ impl BatchExecutor {
                     format!("Snpshot update error: '{}'", snapshot_error),
                 ));
             }
+        } else if affected_rows == 0 {
+            log::warn!("No rows were updated when executing batch.");
         }
 
         tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
@@ -70,8 +71,6 @@ impl BatchExecutor {
     where
         T: GenericClient + Sync,
     {
-        // TODO: Do not fail on unknown actions, print warning
-
         let rslt_parse_type = BusinessActionType::from_str(&item.action);
         if let Err(e) = rslt_parse_type {
             // This case is expected on the cohort where some business actions are not implemented.
