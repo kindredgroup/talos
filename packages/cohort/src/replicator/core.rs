@@ -20,11 +20,17 @@ pub enum CandidateDecisionOutcome {
     Undecided,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
 pub struct StatemapItem {
     pub action: String,
     pub version: u64,
     pub payload: Value,
+}
+
+impl StatemapItem {
+    pub fn new(action: String, version: u64, payload: Value) -> Self {
+        StatemapItem { action, version, payload }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
