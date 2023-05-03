@@ -21,12 +21,6 @@ pub trait Action: Display {
         T: GenericClient + Sync;
 }
 
-#[async_trait]
-pub trait StatementsAndParams {
-    async fn statement(&self) -> &'static str;
-    async fn params(&self) -> Vec<Box<dyn ToSql + Sync>>;
-}
-
 pub struct Database {
     pub pool: Pool,
 }

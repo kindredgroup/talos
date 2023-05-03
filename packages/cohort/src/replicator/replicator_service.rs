@@ -48,34 +48,36 @@ where
             _ = interval.tick() => {
 
                 if let Some(statemap_batch) = replicator.generate_statemap_batch() {
+                    if !statemap_batch.is_empty() {
 
-                    let version = statemap_batch.iter().last().unwrap().version;
-                    // Call fn to install statemaps in batch amd update the snapshot
-                    let result = install_statemaps(statemap_batch).await;
+                        info!("Statemap batch in replicator_service is ={statemap_batch:?}");
+                        let version = statemap_batch.iter().last().unwrap().version;
+                        // Call fn to install statemaps in batch amd update the snapshot
+                        let result = install_statemaps(statemap_batch).await;
 
-                    // 4. Remove the versions if installations are complete.
-                    if let Ok(res) = result {
-                        if res {
+                        info!("Installation result ={result:?}");
 
-                            // Mark the suffix item as installed.
-                            replicator.suffix.set_item_installed(version);
-                            // if all prior items are installed, then update the prune vers
-                            replicator.suffix.update_prune_index(version);
+                        // 4. Remove the versions if installations are complete.
+                        if let Ok(res) = result {
+                            if res {
+
+                                // Mark the suffix item as installed.
+                                replicator.suffix.set_item_installed(version);
+                                // if all prior items are installed, then update the prune vers
+                                replicator.suffix.update_prune_index(version);
 
 
-                            // TODO-REPLICATOR:- Prune records.
-                            // At set interval or size, prune the suffix?
-                            //  Prune the suffix.
-                            //  Update head
-                            if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
-                                replicator.suffix.prune_till_version(version).unwrap();
+                                // Prune suffix and update suffix head.
+                                if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                                    replicator.suffix.prune_till_version(version).unwrap();
+                                }
+
+                                // TODO-REPLICATOR:- Commit the Kafka offset.
+                                // commit the offset
+                                // replicator.receiver.commit(version).await.unwrap();
                             }
 
-                            // TODO-REPLICATOR:- Commit the Kafka offset.
-                            // commit the item
-                            // replicator.receiver.commit(version).await.unwrap();
                         }
-
                     }
                 }
             }
