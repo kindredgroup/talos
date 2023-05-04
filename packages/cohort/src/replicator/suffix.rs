@@ -81,7 +81,11 @@ where
         };
 
         get_nonempty_suffix_items(self.messages.iter()) // take only some items in suffix
-            .take_while(|m| m.is_decided) // narrow down to only the ones those are decided.
+            // take items till we find a not decided item.
+            .take_while(|m| m.is_decided)
+            // pick only committed messages.
+            .filter(|m| m.item.get_safepoint().is_some())
+            // pick items not installed.
             .try_for_each(|m| {
                 if !m.item.is_installed() {
                     batch.push(m);

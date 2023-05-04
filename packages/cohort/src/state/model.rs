@@ -31,7 +31,6 @@ impl From<u64> for Snapshot {
 
 #[derive(Display, Debug, Deserialize, EnumString)]
 pub enum BusinessActionType {
-    #[strum(serialize = "transfer")]
     TRANSFER,
     DEPOSIT,
     WITHDRAW,

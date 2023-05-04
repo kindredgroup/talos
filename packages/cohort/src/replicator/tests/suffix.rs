@@ -104,6 +104,19 @@ fn test_replicator_suffix() {
     assert_eq!(suffix.get_message_batch(Some(4)).unwrap().len(), 1);
 
     suffix.update_decision(5, 19).unwrap();
-    // Message batch will be 2
+    // Message batch will be 1 as safepoint is not set for version 4 and version 5
+    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 1);
+
+    //add safepoint and decision for version 8
+    suffix.update_decision(8, 19).unwrap();
+    suffix.set_safepoint(8, Some(2));
+    suffix.set_decision_outcome(8, Some(CandidateDecisionOutcome::Committed));
+    // Message batch will be 1  as version 4 doesn't have a safepoint yet.
     assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 2);
+
+    //add safepoint and decision for version 5
+    suffix.set_safepoint(5, Some(2));
+    suffix.set_decision_outcome(5, Some(CandidateDecisionOutcome::Committed));
+    // Message batch will be 3  as version 3, 4 and 5 has Some safepoint value
+    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 3);
 }

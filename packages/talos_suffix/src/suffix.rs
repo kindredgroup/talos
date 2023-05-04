@@ -315,6 +315,7 @@ where
             let prune_result = self.prune_till_index(index);
             info!("Suffix items pruned.... {prune_result:?}");
             info!("Suffix after prune.... {}", self.suffix_length());
+            info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
             return prune_result;
         } else {
             warn!("Unable to prune as index not found for version {version}.")
