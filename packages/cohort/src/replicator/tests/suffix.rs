@@ -171,4 +171,6 @@ fn test_replicator_suffix_installed() {
     // Mark version 9 as installed.
     suffix.set_item_installed(9);
     assert!(suffix.get_message_batch(Some(1)).is_none());
+
+    assert_eq!(suffix.get_suffix_meta().head, 3);
 }

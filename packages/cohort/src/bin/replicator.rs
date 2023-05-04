@@ -1,3 +1,4 @@
+// $coverage:ignore-start
 use std::{io::Error, sync::Arc};
 
 use cohort::{
@@ -58,3 +59,4 @@ async fn main() {
 
     run_talos_replicator(&mut replicator, installer_callback).await;
 }
+// $coverage:ignore-end
