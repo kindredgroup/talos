@@ -120,3 +120,55 @@ fn test_replicator_suffix() {
     // Message batch will be 3  as version 3, 4 and 5 has Some safepoint value
     assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 3);
 }
+
+#[test]
+fn test_replicator_suffix_installed() {
+    let suffix_messages = VecDeque::new();
+
+    let mut suffix: Suffix<TestReplicatorSuffixItem> = Suffix {
+        meta: SuffixMeta::default(),
+        messages: suffix_messages,
+    };
+
+    assert_eq!(suffix.messages.len(), 0);
+    suffix.insert(3, TestReplicatorSuffixItem::default()).unwrap();
+    suffix.insert(6, TestReplicatorSuffixItem::default()).unwrap();
+    suffix.insert(9, TestReplicatorSuffixItem::default()).unwrap();
+
+    // update decision for version 3
+    suffix.update_suffix_item_decision(3, 19).unwrap();
+    suffix.set_safepoint(3, Some(2));
+    suffix.set_decision_outcome(3, Some(CandidateDecisionOutcome::Committed));
+
+    // Batch returns one item as only version 3 is decided, others haven't got the decisions yet.
+    assert_eq!(suffix.get_message_batch(Some(1)).unwrap().len(), 1);
+    suffix.set_item_installed(3);
+    // Batch returns 0 items as version 3 is already installed, others haven't got the decisions yet.
+    assert!(suffix.get_message_batch(Some(1)).is_none());
+
+    let suffix_item_3 = suffix.get(3).unwrap().unwrap();
+    // confirm version 3 is marked as installed.
+    assert!(suffix_item_3.item.is_installed());
+
+    // update decision for version 9
+    suffix.update_suffix_item_decision(9, 23).unwrap();
+    suffix.set_safepoint(9, Some(2));
+    suffix.set_decision_outcome(9, Some(CandidateDecisionOutcome::Committed));
+    // Batch returns 0, because there is a version in between which is not decided.
+    assert!(suffix.get_message_batch(Some(1)).is_none());
+
+    // update decision for version 6
+    suffix.update_suffix_item_decision(6, 23).unwrap();
+    suffix.set_safepoint(6, None);
+    suffix.set_decision_outcome(6, Some(CandidateDecisionOutcome::Aborted));
+    // Batch returns 1 item (version 9), because version 6 decision is aborted.
+    let batch = suffix.get_message_batch(None).unwrap();
+    assert_eq!(batch.len(), 1);
+
+    // Confirm the batch returned the correct item.
+    assert_eq!(batch.first().unwrap().item_ver, 9);
+
+    // Mark version 9 as installed.
+    suffix.set_item_installed(9);
+    assert!(suffix.get_message_batch(Some(1)).is_none());
+}
