@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use crate::bank_api::{AccountUpdate, Transfer};
+use crate::actions::account_update::AccountUpdate;
+use crate::actions::transfer::Transfer;
 use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
 use crate::state::model::{AccountUpdateRequest, BusinessActionType, TransferRequest};
