@@ -42,14 +42,14 @@ impl BankApi {
 
     pub async fn transfer(db: Arc<Database>, from: String, to: String, amount: String, new_version: u64) -> Result<u64, String> {
         let affected_rows = Self::transfer_one(db, Transfer::new(from.clone(), to.clone(), amount.clone(), new_version)).await?;
-        // TODO, add case when affected_rows = 0, do not fail.
-        if affected_rows != 2 {
+        if affected_rows == 0 || affected_rows == 2 {
+            // If 0 then someone else has installed this already, still a valid state
+            Ok(affected_rows)
+        } else {
             Err(format!(
                 "Unable to transfer ${} from '{}' to '{}'. Error: affected rows({}) != 2",
                 amount, from, to, affected_rows,
             ))
-        } else {
-            Ok(affected_rows)
         }
     }
 
