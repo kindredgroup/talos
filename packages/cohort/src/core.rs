@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 // $coverage:ignore-start
+use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Sub;
 use std::sync::Arc;
@@ -20,13 +20,11 @@ use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
 use crate::bank_api::BankApi;
 use crate::model::bank_account::{as_money, BankAccount};
+use crate::model::requests::{AccountUpdateRequest, BusinessActionType, TransferRequest};
 use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
-use crate::state::model::{AccountUpdateRequest, BusinessActionType, TransferRequest};
 use crate::state::postgres::database::Database;
 use crate::tx_batch_executor::BatchExecutor;
-
-// $coverage:ignore-end
 
 pub struct Cohort {
     agent: Box<dyn TalosAgent + Sync + Send>,
@@ -34,7 +32,6 @@ pub struct Cohort {
 }
 
 impl Cohort {
-    // $coverage:ignore-start
     pub async fn init_agent(config: AgentConfig, kafka_config: KafkaConfig) -> Box<dyn TalosAgent + Sync + Send> {
         let (tx_certify_ch, rx_certify_ch) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(config.buffer_size);
         let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
@@ -73,15 +70,11 @@ impl Cohort {
 
         Box::new(agent)
     }
-    // $coverage:ignore-end
 
-    // $coverage:ignore-start
     pub fn new(agent: Box<dyn TalosAgent + Sync + Send>, database: Arc<Database>) -> Self {
         Cohort { agent, database }
     }
-    // $coverage:ignore-end
 
-    // $coverage:ignore-start
     pub async fn execute_batch_workload(&self) -> Result<(), String> {
         let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
         let account1 = accounts.iter().find(|a| a.number == "00001").unwrap();
@@ -210,7 +203,6 @@ impl Cohort {
 
         Ok(())
     }
-    // $coverage:ignore-end
 
     fn pick(accounts: &Vec<BankAccount>) -> (&BankAccount, String, Option<&BankAccount>, bool) {
         let mut rnd = rand::thread_rng();
@@ -233,7 +225,6 @@ impl Cohort {
         }
     }
 
-    // $coverage:ignore-start
     async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, statemap: StateMap, op_impl: F) -> Result<(), String>
     where
         F: Fn(Arc<Database>, AccountUpdateRequest, u64) -> R,
@@ -293,9 +284,7 @@ impl Cohort {
 
         Ok(())
     }
-    // $coverage:ignore-end
 
-    // $coverage:ignore-start
     async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
         // todo Implement snapshot tracking
         let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
@@ -350,8 +339,8 @@ impl Cohort {
 
         Ok(())
     }
-    // $coverage:ignore-end
 }
+// $coverage:ignore-end
 
 // $coverage:ignore-start
 #[cfg(test)]

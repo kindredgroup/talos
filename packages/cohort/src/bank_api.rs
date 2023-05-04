@@ -6,7 +6,7 @@ use rusty_money::Money;
 use crate::actions::account_update::AccountUpdate;
 use crate::actions::transfer::Transfer;
 use crate::model::bank_account::BankAccount;
-use crate::state::model::AccountUpdateRequest;
+use crate::model::requests::AccountUpdateRequest;
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::{Action, Database};
 

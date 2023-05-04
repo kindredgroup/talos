@@ -5,7 +5,8 @@ use std::fmt::{Display, Formatter};
 use deadpool_postgres::GenericClient;
 use tokio_postgres::types::ToSql;
 
-use crate::state::{model::AccountUpdateRequest, postgres::database::Action};
+use crate::model::requests::AccountUpdateRequest;
+use crate::state::postgres::database::Action;
 
 #[derive(Debug)]
 pub struct AccountUpdate {
