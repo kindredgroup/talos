@@ -5,25 +5,24 @@ use async_trait::async_trait;
 use deadpool_postgres::GenericClient;
 use tokio_postgres::types::ToSql;
 
+use crate::model::requests::TransferRequest;
 use crate::state::postgres::database::Action;
 
 #[derive(Debug)]
 pub struct Transfer {
-    pub from: String,
-    pub to: String,
-    pub amount: String,
+    pub data: TransferRequest,
     pub new_version: u64,
 }
 
 impl Display for Transfer {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Transfer: [from: {}, to: {}, amount: {}]", self.from, self.to, self.amount)
+        write!(f, "Transfer: [from: {}, to: {}, amount: {}]", self.data.from, self.data.to, self.data.amount)
     }
 }
 
 impl Transfer {
-    pub fn new(from: String, to: String, amount: String, new_version: u64) -> Transfer {
-        Transfer { from, to, amount, new_version }
+    pub fn new(data: TransferRequest, new_version: u64) -> Transfer {
+        Transfer { data, new_version }
     }
 
     fn sql() -> &'static str {
@@ -44,7 +43,13 @@ impl Action for Transfer {
     where
         T: GenericClient + Sync,
     {
-        let params: &[&(dyn ToSql + Sync)] = &[&self.amount, &self.from, &(self.new_version as i64), &self.to, &(self.new_version as i64)];
+        let params: &[&(dyn ToSql + Sync)] = &[
+            &self.data.amount,
+            &self.data.from,
+            &(self.new_version as i64),
+            &self.data.to,
+            &(self.new_version as i64),
+        ];
 
         let statement = client.prepare_cached(Self::sql()).await.unwrap();
         client.execute(&statement, params).await.map_err(|e| e.to_string())

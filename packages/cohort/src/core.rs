@@ -332,7 +332,12 @@ impl Cohort {
 
         // install
 
-        BankApi::transfer(Arc::clone(&self.database), from.number.clone(), to.number.clone(), amount.clone(), resp.version).await?;
+        BankApi::transfer(
+            Arc::clone(&self.database),
+            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
+            resp.version,
+        )
+        .await?;
 
         // TODO: this should be done by replicator
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;

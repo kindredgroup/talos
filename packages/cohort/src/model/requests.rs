@@ -12,7 +12,7 @@ pub enum BusinessActionType {
     WITHDRAW,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct TransferRequest {
     pub from: String,
     pub to: String,

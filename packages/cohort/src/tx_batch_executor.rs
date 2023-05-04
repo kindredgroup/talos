@@ -82,7 +82,7 @@ impl BatchExecutor {
         let action_outcome = match rslt_parse_type.unwrap() {
             BusinessActionType::TRANSFER => {
                 let data: TransferRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(Transfer::new(data.from, data.to, data.amount, item.version).execute(client).await?)
+                Some(Transfer::new(data, item.version).execute(client).await?)
             }
             BusinessActionType::DEPOSIT => {
                 let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;

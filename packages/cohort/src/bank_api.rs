@@ -6,7 +6,7 @@ use rusty_money::Money;
 use crate::actions::account_update::AccountUpdate;
 use crate::actions::transfer::Transfer;
 use crate::model::bank_account::BankAccount;
-use crate::model::requests::AccountUpdateRequest;
+use crate::model::requests::{AccountUpdateRequest, TransferRequest};
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::{Action, Database};
 
@@ -37,15 +37,15 @@ impl BankApi {
         Self::deposit(db, data, new_version).await
     }
 
-    pub async fn transfer(db: Arc<Database>, from: String, to: String, amount: String, new_version: u64) -> Result<u64, String> {
-        let affected_rows = Self::transfer_one(db, Transfer::new(from.clone(), to.clone(), amount.clone(), new_version)).await?;
+    pub async fn transfer(db: Arc<Database>, data: TransferRequest, new_version: u64) -> Result<u64, String> {
+        let affected_rows = Self::transfer_one(db, Transfer::new(data.clone(), new_version)).await?;
         if affected_rows == 0 || affected_rows == 2 {
             // If 0 then someone else has installed this already, still a valid state
             Ok(affected_rows)
         } else {
             Err(format!(
                 "Unable to transfer ${} from '{}' to '{}'. Error: affected rows({}) != 2",
-                amount, from, to, affected_rows,
+                data.from, data.to, data.amount, affected_rows,
             ))
         }
     }
