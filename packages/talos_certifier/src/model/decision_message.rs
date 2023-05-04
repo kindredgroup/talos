@@ -97,6 +97,7 @@ pub trait DecisionMessageTrait {
     fn get_candidate_version(&self) -> u64;
     fn get_safepoint(&self) -> Option<u64>;
     fn get_decision(&self) -> &Decision;
+    fn is_duplicate(&self) -> bool;
 }
 
 impl DecisionMessageTrait for DecisionMessage {
@@ -111,6 +112,10 @@ impl DecisionMessageTrait for DecisionMessage {
     }
     fn get_decision(&self) -> &Decision {
         &self.decision
+    }
+
+    fn is_duplicate(&self) -> bool {
+        self.duplicate_version.is_some()
     }
 }
 

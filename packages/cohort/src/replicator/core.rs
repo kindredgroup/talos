@@ -74,7 +74,6 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
     fn set_suffix_item_installed(&mut self) {
         self.is_installed = true
     }
-
     fn is_installed(&self) -> bool {
         self.is_installed
     }
@@ -123,6 +122,12 @@ where
         self.suffix.update_suffix_item_decision(version, decision_version).unwrap();
         self.suffix.set_decision_outcome(version, decision_outcome);
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
+
+        // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
+        //TODO-REPLICATOR: Confirm this in test.
+        if decision_message.is_duplicate() {
+            self.suffix.set_item_installed(version);
+        }
     }
 
     pub(crate) fn generate_statemap_batch(&self) -> Option<Vec<StatemapItem>> {
