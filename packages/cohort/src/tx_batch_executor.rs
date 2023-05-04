@@ -25,10 +25,8 @@ impl BatchExecutor {
         let tx = client.transaction().await.unwrap();
 
         let mut batch_async: Vec<BoxFuture<Result<Option<u64>, String>>> = Vec::new();
-        let last_item_nr = batch.len() - 1;
-        for (index, item) in batch.iter().enumerate() {
-            let update_version = index == last_item_nr;
-            let pinned_box: BoxFuture<Result<Option<u64>, String>> = Box::pin(Self::execute_item(item, &tx, update_version));
+        for item in batch.iter() {
+            let pinned_box: BoxFuture<Result<Option<u64>, String>> = Box::pin(Self::execute_item(item, &tx));
             batch_async.push(pinned_box);
         }
 
@@ -67,7 +65,7 @@ impl BatchExecutor {
         Ok(affected_rows)
     }
 
-    async fn execute_item<T>(item: &StatemapItem, client: &T, update_item_version: bool) -> Result<Option<u64>, String>
+    async fn execute_item<T>(item: &StatemapItem, client: &T) -> Result<Option<u64>, String>
     where
         T: GenericClient + Sync,
     {
@@ -83,19 +81,15 @@ impl BatchExecutor {
         let action_outcome = match rslt_parse_type.unwrap() {
             BusinessActionType::TRANSFER => {
                 let data: TransferRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(
-                    Transfer::new(data.from, data.to, data.amount, item.version, update_item_version)
-                        .execute(client)
-                        .await?,
-                )
+                Some(Transfer::new(data.from, data.to, data.amount, item.version).execute(client).await?)
             }
             BusinessActionType::DEPOSIT => {
                 let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(AccountUpdate::deposit(data, item.version, update_item_version).execute(client).await?)
+                Some(AccountUpdate::deposit(data, item.version).execute(client).await?)
             }
             BusinessActionType::WITHDRAW => {
                 let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(AccountUpdate::withdraw(data, item.version, update_item_version).execute(client).await?)
+                Some(AccountUpdate::withdraw(data, item.version).execute(client).await?)
             }
         };
 
