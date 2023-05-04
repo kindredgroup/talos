@@ -5,32 +5,6 @@ use serde_json::Value;
 
 use strum::{Display, EnumString};
 
-use std::fmt;
-use std::fmt::{Display, Formatter};
-
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Deserialize)]
-pub struct Snapshot {
-    pub version: u64,
-}
-
-impl Snapshot {
-    pub fn is_safe_for(snapshot: Snapshot, safepoint: u64) -> bool {
-        snapshot.version >= safepoint
-    }
-}
-
-impl Display for Snapshot {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Snapshot: [version: {:?}]", self.version)
-    }
-}
-
-impl From<u64> for Snapshot {
-    fn from(value: u64) -> Self {
-        Snapshot { version: value }
-    }
-}
-
 #[derive(Display, Debug, Deserialize, EnumString, PartialEq, Eq)]
 pub enum BusinessActionType {
     TRANSFER,
@@ -74,16 +48,11 @@ impl AccountUpdateRequest {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn models() {
-        assert_eq!(Snapshot { version: 1 }, Snapshot::from(1));
-        assert_ne!(Snapshot { version: 2 }, Snapshot::from(1));
-
-        assert_eq!(format!("{}", Snapshot::from(1)), "Snapshot: [version: 1]".to_string());
         assert_eq!(
             format!("{:?}", AccountUpdateRequest::new("a1".into(), "10".into())),
             r#"AccountUpdateRequest { account: "a1", amount: "10" }"#.to_string(),
@@ -100,13 +69,6 @@ mod tests {
         assert_eq!(BusinessActionType::from_str("TRANSFER").unwrap(), BusinessActionType::TRANSFER);
         assert_eq!(BusinessActionType::from_str("WITHDRAW").unwrap(), BusinessActionType::WITHDRAW);
         assert_eq!(BusinessActionType::from_str("DEPOSIT").unwrap(), BusinessActionType::DEPOSIT);
-    }
-
-    #[test]
-    fn should_deserialize_snapshot() {
-        let rslt_snapshot = serde_json::from_str::<Snapshot>(r#"{ "version": 123456 }"#);
-        let snapshot = rslt_snapshot.unwrap();
-        assert_eq!(snapshot.version, 123456);
     }
 
     #[test]
@@ -159,15 +121,6 @@ mod tests {
     fn should_serialize_transfer_request() {
         let rslt = serde_json::to_string(&TransferRequest::new("a1".into(), "a2".into(), "10.0".into())).unwrap();
         assert_eq!(rslt, r#"{"from":"a1","to":"a2","amount":"10.0"}"#);
-    }
-
-    #[test]
-    #[allow(clippy::bool_assert_comparison)]
-    fn when_snapshot_is_behind_safepoint_ist_not_safe() {
-        let safepoint = 2;
-        assert_eq!(Snapshot::is_safe_for(Snapshot { version: 1 }, safepoint), false);
-        assert_eq!(Snapshot::is_safe_for(Snapshot { version: 2 }, safepoint), true);
-        assert_eq!(Snapshot::is_safe_for(Snapshot { version: 3 }, safepoint), true);
     }
 }
 // $coverage:ignore-end
