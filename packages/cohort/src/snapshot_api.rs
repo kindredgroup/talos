@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use deadpool_postgres::GenericClient;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
 use crate::model::snapshot::Snapshot;
+use crate::state::data_access_api::ManualTx;
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
+
+pub static SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1"#;
 
 pub struct SnapshotApi {}
 
@@ -24,12 +26,7 @@ impl SnapshotApi {
     }
 
     pub async fn update(db: Arc<Database>, new_version: u64) -> Result<u64, String> {
-        let updated = db
-            .execute(
-                r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1"#,
-                &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID],
-            )
-            .await;
+        let updated = db.execute(SNAPSHOT_UPDATE_QUERY, &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID]).await;
 
         if updated == 0 {
             return Err(format!(
@@ -41,22 +38,16 @@ impl SnapshotApi {
         Ok(updated)
     }
 
-    pub async fn update_using<T: GenericClient + Sync>(client: &T, new_version: u64) -> Result<u64, String> {
-        let statement = client
-            .prepare_cached(r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1"#)
-            .await
-            .unwrap();
-
+    pub async fn update_using<T: ManualTx>(client: &T, new_version: u64) -> Result<u64, String> {
         let affected_rows = client
-            .execute(&statement, &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID])
-            .await
-            .map_err(|e| e.to_string())?;
+            .execute(SNAPSHOT_UPDATE_QUERY.to_string(), &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID])
+            .await?;
 
         if affected_rows == 0 {
-            return Err(format!(
+            log::warn!(
                 "Could not set 'cohort_snapshot.version' to '{}'. The current version has moved ahead",
                 new_version,
-            ));
+            );
         }
 
         Ok(affected_rows)

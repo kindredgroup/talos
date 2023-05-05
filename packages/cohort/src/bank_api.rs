@@ -5,8 +5,12 @@ use rusty_money::Money;
 
 use crate::actions::account_update::AccountUpdate;
 use crate::actions::transfer::Transfer;
+
 use crate::model::bank_account::BankAccount;
 use crate::model::requests::{AccountUpdateRequest, TransferRequest};
+
+use crate::state::data_access_api::TxApi;
+use crate::state::postgres::data_access::{PostgresApi, PostgresAutoTx};
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::{Action, Database};
 
@@ -30,7 +34,10 @@ impl BankApi {
     }
 
     pub async fn deposit(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        AccountUpdate::deposit(data, new_version).execute(&db.pool.get().await.unwrap()).await
+        let mut tx_api = PostgresApi { client: db.get().await };
+        let tx = tx_api.transaction().await;
+
+        AccountUpdate::deposit(data, new_version).execute(&tx).await
     }
 
     pub async fn withdraw(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
@@ -51,6 +58,6 @@ impl BankApi {
     }
 
     pub async fn transfer_one(db: Arc<Database>, action: Transfer) -> Result<u64, String> {
-        action.execute(&db.pool.get().await.unwrap()).await
+        action.execute_in_db(&PostgresAutoTx { client: db.get().await }).await
     }
 }

@@ -19,11 +19,16 @@ use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
 use crate::bank_api::BankApi;
+
 use crate::model::bank_account::{as_money, BankAccount};
 use crate::model::requests::{AccountUpdateRequest, BusinessActionType, TransferRequest};
+
 use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
+
+use crate::state::postgres::data_access::PostgresApi;
 use crate::state::postgres::database::Database;
+
 use crate::tx_batch_executor::BatchExecutor;
 
 pub struct Cohort {
@@ -120,7 +125,11 @@ impl Cohort {
             ),
         ];
 
-        match BatchExecutor::execute(&self.database, batch, Some(version)).await {
+        let mut manual_tx_api = PostgresApi {
+            client: self.database.get().await,
+        };
+
+        match BatchExecutor::execute(&mut manual_tx_api, batch, Some(version)).await {
             Ok(affected_rows) => {
                 log::info!("Successfully completed batch of transactions! Updated: {} rows", affected_rows);
                 let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;

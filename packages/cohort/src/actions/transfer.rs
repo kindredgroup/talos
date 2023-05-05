@@ -2,10 +2,10 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 
 use async_trait::async_trait;
-use deadpool_postgres::GenericClient;
 use tokio_postgres::types::ToSql;
 
 use crate::model::requests::TransferRequest;
+use crate::state::data_access_api::{Connection, ManualTx};
 use crate::state::postgres::database::Action;
 
 #[derive(Debug)]
@@ -39,10 +39,7 @@ impl Transfer {
 
 #[async_trait]
 impl Action for Transfer {
-    async fn execute<T>(&self, client: &T) -> Result<u64, String>
-    where
-        T: GenericClient + Sync,
-    {
+    async fn execute<T: ManualTx>(&self, client: &T) -> Result<u64, String> {
         let params: &[&(dyn ToSql + Sync)] = &[
             &self.data.amount,
             &self.data.from,
@@ -51,7 +48,18 @@ impl Action for Transfer {
             &(self.new_version as i64),
         ];
 
-        let statement = client.prepare_cached(Self::sql()).await.unwrap();
-        client.execute(&statement, params).await.map_err(|e| e.to_string())
+        client.execute(Self::sql().to_string(), params).await
+    }
+
+    async fn execute_in_db<T: Connection>(&self, client: &T) -> Result<u64, String> {
+        let params: &[&(dyn ToSql + Sync)] = &[
+            &self.data.amount,
+            &self.data.from,
+            &(self.new_version as i64),
+            &self.data.to,
+            &(self.new_version as i64),
+        ];
+
+        client.execute(Self::sql().to_string(), params).await
     }
 }
