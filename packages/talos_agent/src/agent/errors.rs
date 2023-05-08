@@ -100,6 +100,7 @@ mod tests {
                     readvers: vec![1_u64, 2_u64, 3_u64],
                     snapshot: 0,
                     writeset: vec![String::from("1"), String::from("2"), String::from("3")],
+                    statemap: None,
                 },
                 timeout: Some(Duration::from_secs(1)),
             },

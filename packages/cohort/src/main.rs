@@ -5,7 +5,7 @@ use tokio::signal;
 use cohort::config_loader::ConfigLoader;
 use cohort::core::Cohort;
 use cohort::model::bank_account::BankAccount;
-use cohort::state::model::Snapshot;
+use cohort::model::snapshot::Snapshot;
 use cohort::state::postgres::data_store::DataStore;
 use cohort::state::postgres::database::Database;
 

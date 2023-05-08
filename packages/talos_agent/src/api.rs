@@ -3,11 +3,15 @@ use crate::messaging::api::Decision;
 use crate::metrics::model::MetricsReport;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::time::Duration;
 
 ///
 /// Data structures and interfaces exposed to agent client
 ///
+
+pub type StateMap = Vec<HashMap<String, Value>>;
 
 /// The main candidate payload
 #[derive(Clone, Debug)]
@@ -17,6 +21,7 @@ pub struct CandidateData {
     pub readvers: Vec<u64>,
     pub snapshot: u64,
     pub writeset: Vec<String>,
+    pub statemap: Option<StateMap>,
 }
 
 /// The data input from client to agent

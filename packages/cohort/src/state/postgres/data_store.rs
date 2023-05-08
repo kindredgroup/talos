@@ -1,10 +1,11 @@
+// $coverage:ignore-start
 use std::sync::Arc;
 use tokio_postgres::Row;
 
 use tokio_postgres::types::Json;
 
 use crate::model::bank_account::BankAccount;
-use crate::state::model::Snapshot;
+use crate::model::snapshot::Snapshot;
 use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
 
 pub struct DataStore {}
@@ -85,3 +86,4 @@ impl DataStore {
         Snapshot { version: updated as u64 }
     }
 }
+// $coverage:ignore-end

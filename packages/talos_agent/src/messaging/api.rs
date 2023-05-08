@@ -1,4 +1,4 @@
-use crate::api::CandidateData;
+use crate::api::{CandidateData, StateMap};
 use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,8 @@ pub struct CandidateMessage {
     pub readvers: Vec<u64>,
     pub snapshot: u64,
     pub writeset: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub statemap: Option<StateMap>,
 }
 
 impl CandidateMessage {
@@ -36,6 +38,7 @@ impl CandidateMessage {
             readvers: candidate.readvers,
             snapshot: candidate.snapshot,
             writeset: candidate.writeset,
+            statemap: candidate.statemap,
         }
     }
 }
@@ -112,6 +115,7 @@ mod tests {
                 readvers: vec![2_u64],
                 snapshot: 1_u64,
                 writeset: vec!["1".to_string()],
+                statemap: None,
             },
         );
 

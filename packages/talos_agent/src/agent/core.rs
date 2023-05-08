@@ -233,6 +233,7 @@ mod tests {
             readvers: Vec::<u64>::new(),
             snapshot: 1_u64,
             writeset: Vec::<String>::new(),
+            statemap: None,
         }
     }
 

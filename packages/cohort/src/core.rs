@@ -1,4 +1,5 @@
 // $coverage:ignore-start
+use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Sub;
 use std::sync::Arc;
@@ -9,7 +10,7 @@ use time::OffsetDateTime;
 
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, StateMap, TalosAgent};
 use talos_agent::messaging::api::{Decision, DecisionMessage};
 use talos_agent::messaging::kafka::KafkaInitializer;
 use talos_agent::metrics::client::MetricsClient;
@@ -19,13 +20,11 @@ use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 
 use crate::bank_api::BankApi;
 use crate::model::bank_account::{as_money, BankAccount};
+use crate::model::requests::{AccountUpdateRequest, BusinessActionType, TransferRequest};
 use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
-use crate::state::model::{AccountUpdateRequest, BusinessActionType, TransferRequest};
 use crate::state::postgres::database::Database;
 use crate::tx_batch_executor::BatchExecutor;
-
-// $coverage:ignore-end
 
 pub struct Cohort {
     agent: Box<dyn TalosAgent + Sync + Send>,
@@ -33,7 +32,6 @@ pub struct Cohort {
 }
 
 impl Cohort {
-    // $coverage:ignore-start
     pub async fn init_agent(config: AgentConfig, kafka_config: KafkaConfig) -> Box<dyn TalosAgent + Sync + Send> {
         let (tx_certify_ch, rx_certify_ch) = tokio::sync::mpsc::channel::<CertifyRequestChannelMessage>(config.buffer_size);
         let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
@@ -72,15 +70,11 @@ impl Cohort {
 
         Box::new(agent)
     }
-    // $coverage:ignore-end
 
-    // $coverage:ignore-start
     pub fn new(agent: Box<dyn TalosAgent + Sync + Send>, database: Arc<Database>) -> Self {
         Cohort { agent, database }
     }
-    // $coverage:ignore-end
 
-    // $coverage:ignore-start
     pub async fn execute_batch_workload(&self) -> Result<(), String> {
         let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
         let account1 = accounts.iter().find(|a| a.number == "00001").unwrap();
@@ -166,9 +160,12 @@ impl Cohort {
             }
 
             // single account picked, do deposit or withdrawal
-
             if is_deposit {
-                self.do_bank(account1, amount, BankApi::deposit).await?;
+                let statemap = vec![HashMap::from([(
+                    BusinessActionType::DEPOSIT.to_string(),
+                    AccountUpdateRequest::new(account1.number.clone(), amount.clone()).json(),
+                )])];
+                self.do_bank(account1, amount, statemap, BankApi::deposit).await?;
                 continue;
             }
 
@@ -176,11 +173,20 @@ impl Cohort {
             let balance = BankApi::get_balance(Arc::clone(&self.database), account1.number.clone()).await?;
 
             if balance < as_money(amount.clone(), account1.balance.currency())? {
-                log::warn!("Cannot withdraw {:>2} from {} with balance {}", amount, account1.number, balance);
+                log::warn!("Cannot withdraw {:>2} from {} with balance {}", amount.clone(), account1.number, balance);
                 continue;
             }
 
-            self.do_bank(account1, amount, BankApi::withdraw).await?;
+            self.do_bank(
+                account1,
+                amount.clone(),
+                vec![HashMap::from([(
+                    BusinessActionType::WITHDRAW.to_string(),
+                    AccountUpdateRequest::new(account1.number.clone(), amount.clone()).json(),
+                )])],
+                BankApi::withdraw,
+            )
+            .await?;
 
             let elapsed = OffsetDateTime::now_utc().sub(started_at).as_seconds_f32();
             if (duration_sec as f32) <= elapsed {
@@ -197,7 +203,6 @@ impl Cohort {
 
         Ok(())
     }
-    // $coverage:ignore-end
 
     fn pick(accounts: &Vec<BankAccount>) -> (&BankAccount, String, Option<&BankAccount>, bool) {
         let mut rnd = rand::thread_rng();
@@ -220,8 +225,7 @@ impl Cohort {
         }
     }
 
-    // $coverage:ignore-start
-    async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, op_impl: F) -> Result<(), String>
+    async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, statemap: StateMap, op_impl: F) -> Result<(), String>
     where
         F: Fn(Arc<Database>, AccountUpdateRequest, u64) -> R,
         R: Future<Output = Result<u64, String>>,
@@ -237,6 +241,7 @@ impl Cohort {
                 readvers: vec![account.talos_state.version],
                 snapshot: snapshot.version,
                 writeset: vec![account.number.to_string()],
+                statemap: Some(statemap),
             },
             timeout: Some(Duration::from_secs(10)),
         };
@@ -279,14 +284,16 @@ impl Cohort {
 
         Ok(())
     }
-    // $coverage:ignore-end
 
-    // $coverage:ignore-start
     async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
         // todo Implement snapshot tracking
         let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
 
         let xid = uuid::Uuid::new_v4().to_string();
+        let statemap = vec![HashMap::from([(
+            BusinessActionType::TRANSFER.to_string(),
+            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()).json(),
+        )])];
         let cert_req = CertificationRequest {
             message_key: "cohort-sample".to_string(),
             candidate: CandidateData {
@@ -295,6 +302,7 @@ impl Cohort {
                 readvers: vec![from.talos_state.version, to.talos_state.version],
                 snapshot: snapshot.version,
                 writeset: vec![from.number.to_string(), to.number.to_string()],
+                statemap: Some(statemap),
             },
             timeout: Some(Duration::from_secs(10)),
         };
@@ -324,15 +332,20 @@ impl Cohort {
 
         // install
 
-        BankApi::transfer(Arc::clone(&self.database), from.number.clone(), to.number.clone(), amount.clone(), resp.version).await?;
+        BankApi::transfer(
+            Arc::clone(&self.database),
+            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
+            resp.version,
+        )
+        .await?;
 
         // TODO: this should be done by replicator
         SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
 
         Ok(())
     }
-    // $coverage:ignore-end
 }
+// $coverage:ignore-end
 
 // $coverage:ignore-start
 #[cfg(test)]
