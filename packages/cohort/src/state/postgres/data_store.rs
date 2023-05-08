@@ -5,7 +5,7 @@ use tokio_postgres::Row;
 use tokio_postgres::types::Json;
 
 use crate::model::bank_account::BankAccount;
-use crate::state::model::Snapshot;
+use crate::model::snapshot::Snapshot;
 use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
 
 pub struct DataStore {}

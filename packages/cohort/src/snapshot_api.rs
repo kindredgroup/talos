@@ -5,7 +5,7 @@ use deadpool_postgres::GenericClient;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
-use crate::state::model::Snapshot;
+use crate::model::snapshot::Snapshot;
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
 
