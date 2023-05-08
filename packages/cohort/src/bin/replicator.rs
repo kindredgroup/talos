@@ -7,7 +7,7 @@ use cohort::{
         core::{Replicator, ReplicatorCandidate, StatemapItem},
         replicator_service::run_talos_replicator,
     },
-    state::postgres::database::Database,
+    state::postgres::{data_access::PostgresApi, database::Database},
     tx_batch_executor::BatchExecutor,
 };
 use log::info;
@@ -18,7 +18,8 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>) -> Result<bool, Error> {
     info!("Original statemaps received ... {:#?} ", sm);
 
-    let result = BatchExecutor::execute(&db, sm, None).await;
+    let mut manual_tx_api = PostgresApi { client: db.get().await };
+    let result = BatchExecutor::execute(&mut manual_tx_api, sm, None).await;
 
     info!("Result on executing the statmaps is ... {result:?}");
 
