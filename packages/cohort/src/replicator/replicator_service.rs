@@ -1,5 +1,5 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, time::Duration};
+use std::{fmt::Debug, future::Future, io::Error, time::Duration};
 
 use super::{
     core::{Replicator, ReplicatorCandidate, StatemapItem},
@@ -8,11 +8,12 @@ use super::{
 use log::info;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
-pub async fn run_talos_replicator<S, M, F>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, install_statemaps: F)
+pub async fn run_talos_replicator<S, M, F, Fut>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, install_statemaps: F)
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
-    F: Fn(Vec<StatemapItem>) -> bool,
+    Fut: Future<Output = Result<bool, Error>>,
+    F: Fn(Vec<StatemapItem>) -> Fut,
 {
     info!("Going to consume the message.... ");
     let mut interval = tokio::time::interval(Duration::from_millis(2_000));
@@ -46,20 +47,37 @@ where
             //      (c) Send it to the state manager to do the updates.
             _ = interval.tick() => {
 
-                if let Some((statemap_batch, last_item_vers)) = replicator.generate_statemap_batch() {
+                if let Some(statemap_batch) = replicator.generate_statemap_batch() {
+                    if !statemap_batch.is_empty() {
 
-                    // Call fn to install statemaps in batch amd update the snapshot
-                    let result = install_statemaps(statemap_batch);
+                        info!("Statemap batch in replicator_service is ={statemap_batch:?}");
+                        let version = statemap_batch.iter().last().unwrap().version;
+                        // Call fn to install statemaps in batch amd update the snapshot
+                        let result = install_statemaps(statemap_batch).await;
 
-                    // 4. Remove the versions if installations are complete.
-                    if result {
-                        //  4.1 Remove the versions
-                        //  4.2 Update the head
-                        //  4.3 Update the prune head
-                        let _prune_result = replicator.suffix.prune_till_version(last_item_vers);
+                        info!("Installation result ={result:?}");
 
-                      //5. commit the version after pruning is successful
-                    //   replicator.receiver.commit(last_item_vers).await.unwrap();
+                        // 4. Remove the versions if installations are complete.
+                        if let Ok(res) = result {
+                            if res {
+
+                                // Mark the suffix item as installed.
+                                replicator.suffix.set_item_installed(version);
+                                // if all prior items are installed, then update the prune vers
+                                replicator.suffix.update_prune_index(version);
+
+
+                                // Prune suffix and update suffix head.
+                                if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                                    replicator.suffix.prune_till_version(version).unwrap();
+                                }
+
+                                // TODO-REPLICATOR:- Commit the Kafka offset.
+                                // commit the offset
+                                // replicator.receiver.commit(version).await.unwrap();
+                            }
+
+                        }
                     }
                 }
             }

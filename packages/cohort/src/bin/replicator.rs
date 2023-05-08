@@ -1,15 +1,28 @@
-use cohort::replicator::{
-    core::{Replicator, ReplicatorCandidate, StatemapItem},
-    replicator_service::run_talos_replicator,
+// $coverage:ignore-start
+use std::{io::Error, sync::Arc};
+
+use cohort::{
+    config_loader::ConfigLoader,
+    replicator::{
+        core::{Replicator, ReplicatorCandidate, StatemapItem},
+        replicator_service::run_talos_replicator,
+    },
+    state::postgres::database::Database,
+    tx_batch_executor::BatchExecutor,
 };
 use log::info;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};
 
-fn statemap_install_handler(sm: Vec<StatemapItem>) -> bool {
-    info!("Printing the length of statemaps ... {}", sm.len());
-    true
+async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>) -> Result<bool, Error> {
+    info!("Original statemaps received ... {:#?} ", sm);
+
+    let result = BatchExecutor::execute(&db, sm, None).await;
+
+    info!("Result on executing the statmaps is ... {result:?}");
+
+    Ok(result.is_ok())
 }
 
 #[tokio::main]
@@ -28,7 +41,7 @@ async fn main() {
     //  c. Create suffix.
     let suffix_config = SuffixConfig {
         capacity: 10,
-        prune_start_threshold: None,
+        prune_start_threshold: Some(2),
         min_size_after_prune: None,
     };
     let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
@@ -36,5 +49,14 @@ async fn main() {
     let mut replicator = Replicator::new(kafka_consumer, suffix);
     info!("Replicator starting...");
 
-    run_talos_replicator(&mut replicator, statemap_install_handler).await;
+    let cfg_db = ConfigLoader::load_db_config().unwrap();
+    let database = Database::init_db(cfg_db).await;
+
+    let installer_callback = |sm: Vec<StatemapItem>| async {
+        // call the statemap installer.
+        statemap_install_handler(sm, Arc::clone(&database)).await
+    };
+
+    run_talos_replicator(&mut replicator, installer_callback).await;
 }
+// $coverage:ignore-end

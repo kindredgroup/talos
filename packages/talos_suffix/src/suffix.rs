@@ -67,7 +67,7 @@ where
         }
     }
 
-    fn suffix_length(&self) -> usize {
+    pub fn suffix_length(&self) -> usize {
         self.messages.len()
     }
 
@@ -261,6 +261,7 @@ where
     fn update_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         // When Certifier is catching up with messages ignore the messages which are prior to the head
         if version < self.meta.head {
+            warn!("Version {version} is below the suffix head {}. Skipping updates", self.meta.head);
             return Ok(());
         }
 
@@ -286,29 +287,36 @@ where
         info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
         // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
-        let k = self.retrieve_all_some_vec_items();
-        info!("Items before pruning are \n{k:?}");
+        // let k = self.retrieve_all_some_vec_items();
+        // info!("Items before pruning are \n{k:?}");
 
         let drained_entries = self.messages.drain(..=index).collect();
 
         self.update_prune_index(None);
 
-        if let Some(Some(s_item)) = self.messages.front() {
+        if let Some(Some(s_item)) = self.messages.iter().find(|m| m.is_some()) {
             self.update_head(s_item.item_ver);
+        } else {
+            self.update_head(0)
         }
 
-        info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
-        let k = self.retrieve_all_some_vec_items();
-        info!("Items after pruning are \n{k:?}");
+        // info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        // let k = self.retrieve_all_some_vec_items();
+        // info!("Items after pruning are \n{k:?}");
         // }
 
         Ok(drained_entries)
     }
 
     fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
+        info!("Suffix before prune.... {}", self.suffix_length());
         if let Some(index) = self.index_from_head(version) {
             info!("Index send for pruning is {index} for version={version}");
-            return self.prune_till_index(index);
+            let prune_result = self.prune_till_index(index);
+            info!("Suffix items pruned.... {prune_result:?}");
+            info!("Suffix after prune.... {}", self.suffix_length());
+            info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
+            return prune_result;
         } else {
             warn!("Unable to prune as index not found for version {version}.")
         }

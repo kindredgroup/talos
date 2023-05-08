@@ -42,6 +42,9 @@ pub struct ReplicatorCandidate {
 
     #[serde(skip_deserializing)]
     pub decision_outcome: Option<CandidateDecisionOutcome>,
+
+    #[serde(skip_deserializing)]
+    pub is_installed: bool,
 }
 
 impl From<CandidateMessage> for ReplicatorCandidate {
@@ -50,6 +53,7 @@ impl From<CandidateMessage> for ReplicatorCandidate {
             candidate: value,
             safepoint: None,
             decision_outcome: None,
+            is_installed: false,
         }
     }
 }
@@ -66,6 +70,12 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
     }
     fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>) {
         self.decision_outcome = decision_outcome
+    }
+    fn set_suffix_item_installed(&mut self) {
+        self.is_installed = true
+    }
+    fn is_installed(&self) -> bool {
+        self.is_installed
     }
 }
 
@@ -109,13 +119,19 @@ where
             talos_certifier::model::Decision::Committed => Some(CandidateDecisionOutcome::Committed),
             talos_certifier::model::Decision::Aborted => Some(CandidateDecisionOutcome::Aborted),
         };
-        self.suffix.update_decision(version, decision_version).unwrap();
+        self.suffix.update_suffix_item_decision(version, decision_version).unwrap();
         self.suffix.set_decision_outcome(version, decision_outcome);
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
+
+        // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
+        //TODO-REPLICATOR: Confirm this in test.
+        if decision_message.is_duplicate() {
+            self.suffix.set_item_installed(version);
+        }
     }
 
-    pub(crate) fn generate_statemap_batch(&self) -> Option<(Vec<StatemapItem>, u64)> {
-        let Some(batch) = self.suffix.get_message_batch() else {
+    pub(crate) fn generate_statemap_batch(&self) -> Option<Vec<StatemapItem>> {
+        let Some(batch) = self.suffix.get_message_batch(Some(1)) else {
             return None;
         };
 
@@ -127,8 +143,6 @@ where
 
         info!("Statemap_Batch={statemap_batch:#?} ");
 
-        let last_item = batch.iter().last();
-        let last_item_vers = last_item.unwrap().item_ver;
-        Some((statemap_batch, last_item_vers))
+        Some(statemap_batch)
     }
 }
