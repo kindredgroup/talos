@@ -149,7 +149,7 @@ run.with_mock_db:
 ## dev.run_cohort: 🧪 Runs Cohort
 dev.run_cohort:
 	$(call pp,run cohort...)
-	cargo run --bin cohort
+	cargo run --bin cohort -- $(args)
 
 ## dev.run_replicator: 🧪 Runs replicator
 dev.run_replicator:

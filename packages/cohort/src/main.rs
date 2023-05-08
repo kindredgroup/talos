@@ -1,3 +1,4 @@
+use std::env;
 // $coverage:ignore-start
 use std::sync::Arc;
 use tokio::signal;
@@ -13,6 +14,9 @@ use cohort::state::postgres::database::Database;
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
 
+    let workload_duration = get_duration();
+    log::info!("Cohort workflow generator will run for: {}sec", workload_duration);
+
     let (cfg_agent, cfg_kafka, cfg_db) = ConfigLoader::load()?;
     tokio::spawn(async move {
         let agent = Cohort::init_agent(cfg_agent, cfg_kafka).await;
@@ -23,7 +27,7 @@ async fn main() -> Result<(), String> {
         prefill_db(database).await;
         log::info!("Cohort started...");
 
-        if let Err(e) = cohort.generate_workload(20).await {
+        if let Err(e) = cohort.generate_workload(workload_duration).await {
             // if let Err(e) = cohort.execute_batch_workload().await {
             log::error!("Error when generating a test load: {}", e)
         } else {
@@ -72,4 +76,39 @@ async fn prefill_db(db: Arc<Database>) {
     }
     log::info!("{}", updated_snapshot);
 }
+
+fn get_duration() -> u32 {
+    let args: Vec<String> = env::args().collect();
+    let mut workload_duration = 0_u32;
+    if args.len() >= 3 {
+        let mut i = 1;
+        while i < args.len() {
+            let param_name = &args[i];
+            if param_name.eq("--workflow-duration") {
+                let param_value = &args[i + 1];
+                workload_duration = param_value.parse().unwrap();
+                break;
+            }
+
+            i += 2;
+        }
+    }
+
+    if workload_duration == 0 {
+        // check env variable
+        workload_duration = if let Ok(value) = env::var("COHORT_WORKLOAD_DURATION") {
+            value.parse().unwrap()
+        } else {
+            30
+        }
+    } else if workload_duration > 5 * 60 * 60 {
+        // 5 hours
+        panic!(
+            "Please specify the duration for Cohort workflow generator. It shoiuld be no longer than 5 hours. Current value is {workload_duration} seconds."
+        );
+    }
+
+    workload_duration
+}
+
 // $coverage:ignore-end
