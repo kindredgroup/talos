@@ -74,7 +74,7 @@ where
 
                                 // TODO-REPLICATOR:- Commit the Kafka offset.
                                 // commit the offset
-                                // replicator.receiver.commit(version).await.unwrap();
+                                replicator.receiver.commit(version).await.unwrap();
                             }
 
                         }

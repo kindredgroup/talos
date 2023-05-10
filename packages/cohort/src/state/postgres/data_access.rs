@@ -11,16 +11,27 @@ pub struct PostgresManualTx<'a> {
 #[async_trait]
 impl<'a> ManualTx for PostgresManualTx<'a> {
     async fn execute(&self, sql: String, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
+        log::debug!("execute: \n\t{}", sql.as_str());
         let statement = self.tx.prepare_cached(&sql).await.unwrap();
         self.tx.execute(&statement, params).await.map_err(|e| e.to_string())
     }
 
     async fn commit(self) -> Result<(), String> {
-        self.tx.commit().await.map_err(|e| e.to_string())
+        log::debug!("commit");
+        let r = self.tx.commit().await.map_err(|e| e.to_string());
+        if r.is_err() {
+            log::debug!("...commit fail");
+        }
+        r
     }
 
     async fn rollback(self) -> Result<(), String> {
-        self.tx.rollback().await.map_err(|e| e.to_string())
+        log::debug!("rollback...");
+        let r = self.tx.rollback().await.map_err(|e| e.to_string());
+        if r.is_err() {
+            log::debug!("...rollback fail");
+        }
+        r
     }
 }
 

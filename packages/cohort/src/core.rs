@@ -2,6 +2,7 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::ops::Sub;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ use crate::bank_api::BankApi;
 use crate::model::bank_account::{as_money, BankAccount};
 use crate::model::requests::{AccountUpdateRequest, BusinessActionType, TransferRequest};
 
+use crate::model::snapshot::Snapshot;
 use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
 
@@ -144,27 +146,111 @@ impl Cohort {
         }
     }
 
+    pub async fn execute_workload(&self, transactions: String) -> Result<(), String> {
+        let field_action = 0;
+        let field_acc1 = 1;
+        let field_amount = 2;
+        let field_acc2 = 3;
+
+        let started_at = OffsetDateTime::now_utc().unix_timestamp();
+        let mut reader = csv::Reader::from_reader(transactions.as_bytes());
+
+        for (index, rslt_record) in reader.records().enumerate() {
+            let record = rslt_record.map_err(|e| format!("{:?}", e))?;
+
+            let mut retry_count = 0;
+
+            loop {
+                retry_count += 1;
+                if retry_count > 10 {
+                    // Should we give up on it or keep trying?
+                    log::warn!("Giving up on failing tx: {} {:?}", index, record.clone());
+                    break;
+                }
+
+                if retry_count == 1 {
+                    log::info!("executing: {}, {:?}", index, record);
+                } else {
+                    log::info!("retrying: {}, {:?}", index, record);
+                }
+
+                let cpt_snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
+                let action = BusinessActionType::from_str(&record[field_action]).unwrap();
+                let all_accounts = BankApi::get_accounts_as_map(Arc::clone(&self.database)).await.unwrap();
+                let reloaded_account1 = all_accounts.get(&record[field_acc1]).unwrap();
+                let balance = reloaded_account1.balance.clone();
+                let amount = record[field_amount].to_string();
+
+                let is_commit = match action {
+                    BusinessActionType::DEPOSIT => {
+                        let statemap = vec![HashMap::from([(
+                            BusinessActionType::DEPOSIT.to_string(),
+                            AccountUpdateRequest::new(reloaded_account1.number.clone(), amount.clone()).json(),
+                        )])];
+                        self.do_bank("D".to_string(), reloaded_account1, amount, statemap, cpt_snapshot, BankApi::deposit)
+                            .await?
+                    }
+                    BusinessActionType::WITHDRAW => {
+                        if balance < as_money(amount.clone(), balance.currency())? {
+                            log::warn!("Cannot withdraw {:>2} from {} with balance {}", amount, reloaded_account1.number, balance);
+                            true
+                        } else {
+                            let statemap = vec![HashMap::from([(
+                                BusinessActionType::WITHDRAW.to_string(),
+                                AccountUpdateRequest::new(reloaded_account1.number.clone(), amount.clone()).json(),
+                            )])];
+                            self.do_bank("W".to_string(), reloaded_account1, amount, statemap, cpt_snapshot, BankApi::deposit)
+                                .await?
+                        }
+                    }
+                    BusinessActionType::TRANSFER => {
+                        let reloaded_account2 = all_accounts.get(&record[field_acc2]).unwrap();
+                        if balance < as_money(amount.clone(), balance.currency())? {
+                            log::warn!("Cannot transfer {:>2} from {} with balance {}", amount, reloaded_account1.number, balance);
+                            true
+                        } else {
+                            self.transfer(reloaded_account1, reloaded_account2, amount, cpt_snapshot).await?
+                        }
+                    }
+                };
+
+                if is_commit {
+                    break;
+                }
+            }
+        }
+
+        let finished_at = OffsetDateTime::now_utc().unix_timestamp();
+        log::info!("The workload completed in {} s", (finished_at - started_at));
+
+        Ok(())
+    }
+
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
         log::info!("Generating test load for {}s", duration_sec);
 
         let started_at = OffsetDateTime::now_utc();
         loop {
-            let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
+            let cpt_snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
+            let accounts = BankApi::get_accounts_as_map(Arc::clone(&self.database)).await.unwrap();
 
             // pick random bank accounts and amount
-            let (account1, amount, account2, is_deposit) = Self::pick(&accounts);
-            if account2.is_some() {
+            let (account1, amount, opt_account2, is_deposit) = Self::pick(&accounts);
+            let reloaded_account1 = accounts.get(&account1.number).unwrap();
+            let balance = reloaded_account1.balance.clone();
+
+            if let Some(a2) = opt_account2 {
                 // two accounts picked, do transfer...
 
                 // Cohort should do local validation before attempting to alter internal state
-                let balance = BankApi::get_balance(Arc::clone(&self.database), account1.number.clone()).await?;
 
+                let reloaded_account2 = accounts.get(&a2.number).unwrap();
                 if balance < as_money(amount.clone(), account1.balance.currency())? {
                     log::warn!("Cannot transfer {:>2} from {} with balance {}", amount, account1.number, balance);
                     continue;
                 }
 
-                self.transfer(account1, account2.unwrap(), amount).await?;
+                self.transfer(reloaded_account1, reloaded_account2, amount, cpt_snapshot).await?;
                 continue;
             }
 
@@ -174,25 +260,26 @@ impl Cohort {
                     BusinessActionType::DEPOSIT.to_string(),
                     AccountUpdateRequest::new(account1.number.clone(), amount.clone()).json(),
                 )])];
-                self.do_bank(account1, amount, statemap, BankApi::deposit).await?;
+                self.do_bank("D".to_string(), reloaded_account1, amount, statemap, cpt_snapshot, BankApi::deposit)
+                    .await?;
                 continue;
             }
 
             // Cohort should do local validation before attempting to alter internal state
-            let balance = BankApi::get_balance(Arc::clone(&self.database), account1.number.clone()).await?;
-
             if balance < as_money(amount.clone(), account1.balance.currency())? {
                 log::warn!("Cannot withdraw {:>2} from {} with balance {}", amount.clone(), account1.number, balance);
                 continue;
             }
 
             self.do_bank(
-                account1,
+                "W".to_string(),
+                reloaded_account1,
                 amount.clone(),
                 vec![HashMap::from([(
                     BusinessActionType::WITHDRAW.to_string(),
                     AccountUpdateRequest::new(account1.number.clone(), amount.clone()).json(),
                 )])],
+                cpt_snapshot,
                 BankApi::withdraw,
             )
             .await?;
@@ -201,7 +288,7 @@ impl Cohort {
             if (duration_sec as f32) <= elapsed {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            tokio::time::sleep(Duration::from_millis(1000)).await;
         }
 
         let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
@@ -213,7 +300,143 @@ impl Cohort {
         Ok(())
     }
 
-    fn pick(accounts: &Vec<BankAccount>) -> (&BankAccount, String, Option<&BankAccount>, bool) {
+    async fn do_bank<F, R>(
+        &self,
+        action: String,
+        account: &BankAccount,
+        amount: String,
+        statemap: StateMap,
+        cpt_snapshot: Snapshot,
+        op_impl: F,
+    ) -> Result<bool, String>
+    where
+        F: Fn(Arc<Database>, AccountUpdateRequest, u64) -> R,
+        R: Future<Output = Result<u64, String>>,
+    {
+        let (shanpshot_version, read_vers) = Self::select_snapshot_and_readvers(cpt_snapshot.version, vec![account.talos_state.version]);
+
+        let xid = uuid::Uuid::new_v4().to_string();
+        let cert_req = CertificationRequest {
+            message_key: "cohort-sample".to_string(),
+            candidate: CandidateData {
+                xid: xid.clone(),
+                readset: vec![account.number.to_string()],
+                readvers: read_vers,
+                snapshot: shanpshot_version,
+                writeset: vec![account.number.to_string()],
+                statemap: Some(statemap),
+            },
+            timeout: Some(Duration::from_secs(10)),
+        };
+
+        let rslt_cert = self.agent.certify(cert_req).await;
+        if let Err(e) = rslt_cert {
+            log::warn!(
+                "Error communicating via agent: {}, xid: {}, operation: 'deposit/withdraw' {} to {}",
+                e.reason,
+                xid,
+                amount,
+                account,
+            );
+            return Err(format!("{:?}", e));
+        }
+
+        let resp = rslt_cert.unwrap();
+        if Decision::Aborted == resp.decision {
+            log::debug!("Aborted by talos: xid: {}, operation: 'deposit' {} to {}", xid, amount, account);
+            return Ok(false);
+        }
+
+        // Talos gave "go ahead"
+        log::info!("LOG: '{}' {} {}", action, account.number.clone(), amount.clone());
+
+        // Check safepoint condition before installing ...
+
+        let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
+        SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
+
+        // install
+
+        op_impl(
+            Arc::clone(&self.database),
+            AccountUpdateRequest::new(account.number.clone(), amount),
+            resp.version,
+        )
+        .await?;
+
+        // TODO: this should be done by replicator
+        //SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
+
+        Ok(true)
+    }
+
+    async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String, cpt_snapshot: Snapshot) -> Result<bool, String> {
+        let (shanpshot_version, read_vers) = Self::select_snapshot_and_readvers(cpt_snapshot.version, vec![from.talos_state.version, to.talos_state.version]);
+
+        let xid = uuid::Uuid::new_v4().to_string();
+        let statemap = vec![HashMap::from([(
+            BusinessActionType::TRANSFER.to_string(),
+            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()).json(),
+        )])];
+        let cert_req = CertificationRequest {
+            message_key: "cohort-sample".to_string(),
+            candidate: CandidateData {
+                xid: xid.clone(),
+                readset: vec![from.number.to_string(), to.number.to_string()],
+                readvers: read_vers,
+                snapshot: shanpshot_version,
+                writeset: vec![from.number.to_string(), to.number.to_string()],
+                statemap: Some(statemap),
+            },
+            timeout: Some(Duration::from_secs(10)),
+        };
+
+        let rslt_cert = self.agent.certify(cert_req).await;
+        if let Err(e) = rslt_cert {
+            log::warn!(
+                "Error communicating via agent: {}, xid: {}, operation: 'transfer' {} from {} to {}",
+                e.reason,
+                xid,
+                amount,
+                from,
+                to,
+            );
+            return Err(format!("{:?}", e));
+        }
+        let resp = rslt_cert.unwrap();
+        if Decision::Aborted == resp.decision {
+            log::debug!("Aborted by talos: xid: {}, operation: 'transfer' {} from {} to {}", xid, amount, from, to);
+            return Ok(false);
+        }
+
+        log::info!("LOG: 'T' {} {} {}", from.number.clone(), amount.clone(), to.number.clone());
+        // Check safepoint condition before installing ...
+
+        let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
+        SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
+
+        // install
+
+        BankApi::transfer(
+            Arc::clone(&self.database),
+            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
+            resp.version,
+        )
+        .await?;
+
+        // TODO: this should be done by replicator
+        //SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
+
+        Ok(true)
+    }
+    // $coverage:ignore-end
+
+    fn pick(accounts_map: &HashMap<String, BankAccount>) -> (&BankAccount, String, Option<&BankAccount>, bool) {
+        let mut accounts = Vec::<&BankAccount>::new();
+        for a in accounts_map.values() {
+            accounts.push(a);
+        }
+
         let mut rnd = rand::thread_rng();
         let i = rnd.gen_range(0..accounts.len());
         let account1 = accounts.get(i).unwrap();
@@ -234,132 +457,34 @@ impl Cohort {
         }
     }
 
-    async fn do_bank<F, R>(&self, account: &BankAccount, amount: String, statemap: StateMap, op_impl: F) -> Result<(), String>
-    where
-        F: Fn(Arc<Database>, AccountUpdateRequest, u64) -> R,
-        R: Future<Output = Result<u64, String>>,
-    {
-        let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
-
-        let xid = uuid::Uuid::new_v4().to_string();
-        let cert_req = CertificationRequest {
-            message_key: "cohort-sample".to_string(),
-            candidate: CandidateData {
-                xid: xid.clone(),
-                readset: vec![account.number.to_string()],
-                readvers: vec![account.talos_state.version],
-                snapshot: snapshot.version,
-                writeset: vec![account.number.to_string()],
-                statemap: Some(statemap),
-            },
-            timeout: Some(Duration::from_secs(10)),
-        };
-
-        let rslt_cert = self.agent.certify(cert_req).await;
-        if let Err(e) = rslt_cert {
-            log::warn!(
-                "Error communicating via agent: {}, xid: {}, operation: 'deposit/withdraw' {} to {}",
-                e.reason,
-                xid,
-                amount,
-                account,
-            );
-            return Ok(());
-        }
-        let resp = rslt_cert.unwrap();
-        if Decision::Aborted == resp.decision {
-            log::warn!("Aborted by talos: xid: {}, operation: 'deposit' {} to {}", xid, amount, account);
-            return Ok(());
+    fn select_snapshot_and_readvers(cpt_snapshot: u64, cpt_versions: Vec<u64>) -> (u64, Vec<u64>) {
+        if cpt_versions.is_empty() {
+            return (cpt_snapshot, vec![]);
         }
 
-        // Talos gave "go ahead"
-
-        // Check safepoint condition before installing ...
-
-        let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
-        SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
-
-        // install
-
-        op_impl(
-            Arc::clone(&self.database),
-            AccountUpdateRequest::new(account.number.clone(), amount),
-            resp.version,
-        )
-        .await?;
-
-        // TODO: this should be done by replicator
-        SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
-
-        Ok(())
-    }
-
-    async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String) -> Result<(), String> {
-        // todo Implement snapshot tracking
-        let snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
-
-        let xid = uuid::Uuid::new_v4().to_string();
-        let statemap = vec![HashMap::from([(
-            BusinessActionType::TRANSFER.to_string(),
-            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()).json(),
-        )])];
-        let cert_req = CertificationRequest {
-            message_key: "cohort-sample".to_string(),
-            candidate: CandidateData {
-                xid: xid.clone(),
-                readset: vec![from.number.to_string(), to.number.to_string()],
-                readvers: vec![from.talos_state.version, to.talos_state.version],
-                snapshot: snapshot.version,
-                writeset: vec![from.number.to_string(), to.number.to_string()],
-                statemap: Some(statemap),
-            },
-            timeout: Some(Duration::from_secs(10)),
-        };
-
-        let rslt_cert = self.agent.certify(cert_req).await;
-        if let Err(e) = rslt_cert {
-            log::warn!(
-                "Error communicating via agent: {}, xid: {}, operation: 'transfer' {} from {} to {}",
-                e.reason,
-                xid,
-                amount,
-                from,
-                to,
-            );
-            return Ok(());
+        let mut cpt_version_min: u64 = u64::MAX;
+        for v in cpt_versions.iter() {
+            if cpt_version_min > *v {
+                cpt_version_min = *v;
+            }
         }
-        let resp = rslt_cert.unwrap();
-        if Decision::Aborted == resp.decision {
-            log::warn!("Aborted by talos: xid: {}, operation: 'transfer' {} from {} to {}", xid, amount, from, to);
-            return Ok(());
+        let shanpshot_version = std::cmp::max(cpt_snapshot, cpt_version_min);
+        let mut read_vers = Vec::<u64>::new();
+        for v in cpt_versions.iter() {
+            if shanpshot_version < *v {
+                read_vers.push(*v);
+            }
         }
 
-        // Check safepoint condition before installing ...
-
-        let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
-        SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
-
-        // install
-
-        BankApi::transfer(
-            Arc::clone(&self.database),
-            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
-            resp.version,
-        )
-        .await?;
-
-        // TODO: this should be done by replicator
-        SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
-
-        Ok(())
+        (shanpshot_version, read_vers)
     }
 }
-// $coverage:ignore-end
 
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
-    use std::{assert_ne, vec};
+    use std::assert_ne;
+    use std::collections::HashMap;
 
     use crate::core::Cohort;
     use crate::model::bank_account::BankAccount;
@@ -367,19 +492,51 @@ mod tests {
 
     #[test]
     fn pick() {
-        let list = vec![
-            BankAccount::aud("a1".to_string(), "a1".to_string(), "1".to_string(), TalosState { version: 1 }),
-            BankAccount::aud("a2".to_string(), "a2".to_string(), "2".to_string(), TalosState { version: 2 }),
-            BankAccount::aud("a3".to_string(), "a3".to_string(), "3".to_string(), TalosState { version: 3 }),
-        ];
+        let list = HashMap::from([
+            (
+                "a1".to_string(),
+                BankAccount::aud("a1".to_string(), "a1".to_string(), "1".to_string(), TalosState { version: 1 }),
+            ),
+            (
+                "a2".to_string(),
+                BankAccount::aud("a2".to_string(), "a2".to_string(), "2".to_string(), TalosState { version: 2 }),
+            ),
+            (
+                "a3".to_string(),
+                BankAccount::aud("a3".to_string(), "a3".to_string(), "3".to_string(), TalosState { version: 3 }),
+            ),
+        ]);
 
         let (a1, _, a2, is_deposit) = Cohort::pick(&list);
-        assert!(list.contains(a1));
-        if a2.is_some() {
-            assert!(list.contains(a2.unwrap()));
-            assert_ne!(*a1, *a2.unwrap());
+        assert!(list.get(&a1.number).is_some());
+        if let Some(a2_value) = a2 {
+            assert!(list.get(&a2_value.number).is_some());
+            assert_ne!(*a1, *a2_value);
             assert!(!is_deposit);
         }
+    }
+
+    #[test]
+    fn select_snapshot_and_readvers() {
+        let (s, rv) = Cohort::select_snapshot_and_readvers(1, vec![]);
+        assert_eq!(s, 1);
+        assert!(rv.is_empty());
+
+        let (s, rv) = Cohort::select_snapshot_and_readvers(1, vec![1]);
+        assert_eq!(s, 1);
+        assert!(rv.is_empty());
+
+        let (s, rv) = Cohort::select_snapshot_and_readvers(2, vec![1, 2, 2]);
+        assert_eq!(s, 2);
+        assert!(rv.is_empty());
+
+        let (s, rv) = Cohort::select_snapshot_and_readvers(2, vec![1, 2, 3, 4]);
+        assert_eq!(s, 2);
+        assert_eq!(rv, vec![3, 4]);
+
+        let (s, rv) = Cohort::select_snapshot_and_readvers(5, vec![1, 2, 3, 4]);
+        assert_eq!(s, 5);
+        assert!(rv.is_empty());
     }
 }
 // $coverage:ignore-end

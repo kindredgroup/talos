@@ -19,7 +19,9 @@ async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>) -> R
     info!("Original statemaps received ... {:#?} ", sm);
 
     let mut manual_tx_api = PostgresApi { client: db.get().await };
-    let result = BatchExecutor::execute(&mut manual_tx_api, sm, None).await;
+
+    let snapshot_version = sm.last().map(|item| item.version);
+    let result = BatchExecutor::execute(&mut manual_tx_api, sm, snapshot_version).await;
 
     info!("Result on executing the statmaps is ... {result:?}");
 
@@ -42,7 +44,7 @@ async fn main() {
     //  c. Create suffix.
     let suffix_config = SuffixConfig {
         capacity: 10,
-        prune_start_threshold: Some(2),
+        prune_start_threshold: Some(2000),
         min_size_after_prune: None,
     };
     let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);

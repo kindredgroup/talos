@@ -27,6 +27,7 @@ thiserror =         { version = "1.0.31" }
 # Time
 time =              { version = "0.3.17" }
 
+csv =               { version = "1.2.1" }
 futures =           { version = "0.3.28" }
 multimap =          { version = "0.9.0" }
 rand =              { version = "0.8.5" }

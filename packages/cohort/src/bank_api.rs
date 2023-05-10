@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use rusty_money::iso::Currency;
@@ -20,6 +21,15 @@ impl BankApi {
     pub async fn get_accounts(db: Arc<Database>) -> Result<Vec<BankAccount>, String> {
         let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
         Ok(list)
+    }
+
+    pub async fn get_accounts_as_map(db: Arc<Database>) -> Result<HashMap<String, BankAccount>, String> {
+        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
+        let mut map = HashMap::<String, BankAccount>::new();
+        for account in list.iter() {
+            map.insert(account.number.clone(), account.clone());
+        }
+        Ok(map)
     }
 
     pub async fn get_balance(db: Arc<Database>, account: String) -> Result<Money<'static, Currency>, String> {
