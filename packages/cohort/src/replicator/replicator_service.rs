@@ -72,7 +72,6 @@ where
                                     replicator.suffix.prune_till_version(version).unwrap();
                                 }
 
-                                // TODO-REPLICATOR:- Commit the Kafka offset.
                                 // commit the offset
                                 replicator.receiver.commit(version).await.unwrap();
                             }

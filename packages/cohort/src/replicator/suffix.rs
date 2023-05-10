@@ -62,6 +62,7 @@ where
                 item_to_update.item.set_suffix_item_installed();
             } else {
                 warn!("Unable to update is_installed flag as message with version={version} not found");
+                // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
             }
         }
     }

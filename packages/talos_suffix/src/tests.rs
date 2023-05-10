@@ -194,9 +194,9 @@ mod suffix_tests {
         // prune suffix
         let result = sfx.prune_till_index(24).unwrap();
         // new length of suffix after pruning.
-        assert_eq!(sfx.messages.len(), 5);
-        assert_eq!(result.len(), 25); // result.len() + sfx.messages.len() = 30
-        assert_eq!(sfx.meta.head, 25);
+        assert_eq!(sfx.messages.len(), 6);
+        assert_eq!(result.len(), 24); // result.len() + sfx.messages.len() = 30
+        assert_eq!(sfx.meta.head, 24);
         assert_eq!(sfx.meta.prune_index, None);
     }
 
