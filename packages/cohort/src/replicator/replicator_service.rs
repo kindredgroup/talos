@@ -1,7 +1,10 @@
 // $coverage:ignore-start
 use std::{fmt::Debug, io::Error, sync::Arc, time::Duration};
 
-use crate::{state::postgres::database::Database, tx_batch_executor::BatchExecutor};
+use crate::{
+    state::postgres::{data_access::PostgresApi, database::Database},
+    tx_batch_executor::BatchExecutor,
+};
 
 use super::{
     core::{Replicator, ReplicatorCandidate, StatemapItem},
@@ -14,9 +17,9 @@ async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>, vers
     info!("Last version ... {:#?} ", version);
     info!("Original statemaps received ... {:#?} ", sm);
 
-    // let snapshot_version = sm.last().map(|item| item.version);
+    let mut manual_tx_api = PostgresApi { client: db.get().await };
 
-    let result = BatchExecutor::execute(&db, sm, version).await;
+    let result = BatchExecutor::execute(&mut manual_tx_api, sm, version).await;
 
     info!("Result on executing the statmaps is ... {result:?}");
 
