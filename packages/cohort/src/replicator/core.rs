@@ -8,7 +8,7 @@ use talos_certifier::{
     ChannelMessage,
 };
 
-use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
+use crate::replicator::utils::get_statemap_from_suffix_items;
 
 use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
 
@@ -130,19 +130,18 @@ where
         }
     }
 
-    pub(crate) fn generate_statemap_batch(&self) -> Option<Vec<StatemapItem>> {
+    pub(crate) fn generate_statemap_batch(&self) -> (Option<Vec<StatemapItem>>, Option<u64>) {
         let Some(batch) = self.suffix.get_message_batch(Some(1)) else {
-            return None;
+            return (None, None);
         };
 
-        // Filtering out messages that are not applicable.
-        let filtered_message_batch = get_filtered_batch(batch.iter().copied()); //.collect::<Vec<&SuffixItem<CandidateMessage>>>();
+        let version = batch.last().unwrap().item_ver;
 
         // Create the statemap batch
-        let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
+        let statemap_batch = get_statemap_from_suffix_items(batch.into_iter());
 
         info!("Statemap_Batch={statemap_batch:#?} ");
 
-        Some(statemap_batch)
+        (Some(statemap_batch), Some(version))
     }
 }

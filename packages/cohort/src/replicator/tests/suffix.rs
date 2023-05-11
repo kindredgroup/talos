@@ -104,15 +104,17 @@ fn test_replicator_suffix() {
     assert_eq!(suffix.get_message_batch(Some(4)).unwrap().len(), 1);
 
     suffix.update_decision(5, 19).unwrap();
-    // Message batch will be 1 as safepoint is not set for version 4 and version 5
-    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 1);
+    // Message batch will be 2 as safepoint is not set a decision is made, therefore version 3 and 4 are picked.
+    // version 3 is considered as commited as the safepoint and decision_outcome is set.
+    // version 4 is considered as aborted at this point as safepoint is not set.
+    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 2);
 
     //add safepoint and decision for version 8
     suffix.update_decision(8, 19).unwrap();
     suffix.set_safepoint(8, Some(2));
     suffix.set_decision_outcome(8, Some(CandidateDecisionOutcome::Committed));
-    // Message batch will be 1  as version 4 doesn't have a safepoint yet.
-    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 2);
+    // Message batch will be 3, as version 3,5, and 8 are not installed.
+    assert_eq!(suffix.get_message_batch(Some(10)).unwrap().len(), 3);
 
     //add safepoint and decision for version 5
     suffix.set_safepoint(5, Some(2));
@@ -161,16 +163,17 @@ fn test_replicator_suffix_installed() {
     suffix.update_suffix_item_decision(6, 23).unwrap();
     suffix.set_safepoint(6, None);
     suffix.set_decision_outcome(6, Some(CandidateDecisionOutcome::Aborted));
-    // Batch returns 1 item (version 9), because version 6 decision is aborted.
+    // Batch returns 2 items (version 6 &  9).
     let batch = suffix.get_message_batch(None).unwrap();
-    assert_eq!(batch.len(), 1);
+    assert_eq!(batch.len(), 2);
 
     // Confirm the batch returned the correct item.
-    assert_eq!(batch.first().unwrap().item_ver, 9);
+    assert_eq!(batch.first().unwrap().item_ver, 6);
 
     // Mark version 9 as installed.
     suffix.set_item_installed(9);
-    assert!(suffix.get_message_batch(Some(1)).is_none());
+    // Although version 9 is installed, version 6 is not, therefore it is picked up here.
+    assert_eq!(suffix.get_message_batch(Some(1)).unwrap().len(), 1);
 
     assert_eq!(suffix.get_suffix_meta().head, 3);
 }

@@ -1,5 +1,7 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, future::Future, io::Error, time::Duration};
+use std::{fmt::Debug, io::Error, sync::Arc, time::Duration};
+
+use crate::{state::postgres::database::Database, tx_batch_executor::BatchExecutor};
 
 use super::{
     core::{Replicator, ReplicatorCandidate, StatemapItem},
@@ -8,12 +10,43 @@ use super::{
 use log::info;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
-pub async fn run_talos_replicator<S, M, F, Fut>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, install_statemaps: F)
-where
+async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>, version: Option<u64>) -> Result<bool, Error> {
+    info!("Last version ... {:#?} ", version);
+    info!("Original statemaps received ... {:#?} ", sm);
+
+    // let snapshot_version = sm.last().map(|item| item.version);
+
+    let result = BatchExecutor::execute(&db, sm, version).await;
+
+    info!("Result on executing the statmaps is ... {result:?}");
+
+    Ok(result.is_ok())
+}
+
+pub struct ReplicatorStatemapInstaller {
+    pub db: Arc<Database>,
+}
+
+impl ReplicatorStatemapInstaller {
+    pub async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
+        let db = Arc::clone(&self.db);
+        statemap_install_handler(sm, db, version).await
+    }
+}
+
+pub async fn run_talos_replicator<
+    S,
+    M,
+    //  F, Fut
+>(
+    replicator: &mut Replicator<ReplicatorCandidate, S, M>,
+    // install_statemaps: F,
+    statemap_installer: ReplicatorStatemapInstaller,
+) where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
-    Fut: Future<Output = Result<bool, Error>>,
-    F: Fn(Vec<StatemapItem>) -> Fut,
+    // Fut: Future<Output = Result<bool, Error>>,
+    // F: for<'a> Fn(Vec<StatemapItem>, &'a Option<u64>) -> Fut,
 {
     info!("Going to consume the message.... ");
     let mut interval = tokio::time::interval(Duration::from_millis(2_000));
@@ -47,13 +80,15 @@ where
             //      (c) Send it to the state manager to do the updates.
             _ = interval.tick() => {
 
-                if let Some(statemap_batch) = replicator.generate_statemap_batch() {
-                    if !statemap_batch.is_empty() {
+                if let (Some(statemap_batch), version_option) = replicator.generate_statemap_batch() {
+                    if version_option.is_some() {
 
                         info!("Statemap batch in replicator_service is ={statemap_batch:?}");
-                        let version = statemap_batch.iter().last().unwrap().version;
+                        // let version = statemap_batch.iter().last().unwrap().version;
                         // Call fn to install statemaps in batch amd update the snapshot
-                        let result = install_statemaps(statemap_batch).await;
+                        let version = version_option.unwrap();
+
+                        let result = statemap_installer.install(statemap_batch, version_option).await;
 
                         info!("Installation result ={result:?}");
 
