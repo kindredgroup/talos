@@ -1,16 +1,23 @@
+use async_trait::async_trait;
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, io::Error, marker::PhantomData, sync::Arc};
 use talos_certifier::{
     model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
     ChannelMessage,
 };
 
-use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
+use crate::{
+    replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items},
+    state::postgres::database::Database,
+};
 
-use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
+use super::{
+    suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
+    utils::statemap_install_handler,
+};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CandidateDecisionOutcome {
@@ -30,6 +37,23 @@ pub struct StatemapItem {
 impl StatemapItem {
     pub fn new(action: String, version: u64, payload: Value) -> Self {
         StatemapItem { action, version, payload }
+    }
+}
+
+#[async_trait]
+pub trait ReplicatorInstaller {
+    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error>;
+}
+
+pub struct ReplicatorStatemapInstaller {
+    pub db: Arc<Database>,
+}
+
+#[async_trait]
+impl ReplicatorInstaller for ReplicatorStatemapInstaller {
+    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
+        let db = Arc::clone(&self.db);
+        statemap_install_handler(sm, db, version).await
     }
 }
 

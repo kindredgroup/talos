@@ -1,41 +1,14 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, io::Error, sync::Arc, time::Duration};
+use std::{fmt::Debug, time::Duration};
 
-use crate::{
-    state::postgres::{data_access::PostgresApi, database::Database},
-    tx_batch_executor::BatchExecutor,
-};
+use crate::replicator::core::ReplicatorInstaller;
 
 use super::{
-    core::{Replicator, ReplicatorCandidate, StatemapItem},
+    core::{Replicator, ReplicatorCandidate},
     suffix::ReplicatorSuffixTrait,
 };
 use log::info;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
-
-async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>, version: Option<u64>) -> Result<bool, Error> {
-    info!("Last version ... {:#?} ", version);
-    info!("Original statemaps received ... {:#?} ", sm);
-
-    let mut manual_tx_api = PostgresApi { client: db.get().await };
-
-    let result = BatchExecutor::execute(&mut manual_tx_api, sm, version).await;
-
-    info!("Result on executing the statmaps is ... {result:?}");
-
-    Ok(result.is_ok())
-}
-
-pub struct ReplicatorStatemapInstaller {
-    pub db: Arc<Database>,
-}
-
-impl ReplicatorStatemapInstaller {
-    pub async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
-        let db = Arc::clone(&self.db);
-        statemap_install_handler(sm, db, version).await
-    }
-}
 
 pub async fn run_talos_replicator<
     S,
@@ -44,7 +17,7 @@ pub async fn run_talos_replicator<
 >(
     replicator: &mut Replicator<ReplicatorCandidate, S, M>,
     // install_statemaps: F,
-    statemap_installer: ReplicatorStatemapInstaller,
+    statemap_installer: impl ReplicatorInstaller,
 ) where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,

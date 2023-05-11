@@ -3,8 +3,8 @@
 use cohort::{
     config_loader::ConfigLoader,
     replicator::{
-        core::{Replicator, ReplicatorCandidate},
-        replicator_service::{run_talos_replicator, ReplicatorStatemapInstaller},
+        core::{Replicator, ReplicatorCandidate, ReplicatorStatemapInstaller},
+        replicator_service::run_talos_replicator,
     },
     state::postgres::database::Database,
 };
@@ -40,8 +40,8 @@ async fn main() {
     let cfg_db = ConfigLoader::load_db_config().unwrap();
     let database = Database::init_db(cfg_db).await;
 
-    let test_struct = ReplicatorStatemapInstaller { db: database };
+    let installer = ReplicatorStatemapInstaller { db: database };
 
-    run_talos_replicator(&mut replicator, test_struct).await;
+    run_talos_replicator(&mut replicator, installer).await;
 }
 // $coverage:ignore-end
