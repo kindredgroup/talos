@@ -146,7 +146,7 @@ where
         let filtered_message_batch = get_filtered_batch(batch.iter().copied());
 
         // Create the statemap batch
-        let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch.into_iter());
+        let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
 
         info!("Statemap_Batch={statemap_batch:#?} ");
 
