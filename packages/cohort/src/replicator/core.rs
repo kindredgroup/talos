@@ -9,9 +9,15 @@ use talos_certifier::{
     ChannelMessage,
 };
 
-use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
+use crate::{
+    replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items},
+    state::postgres::database::Database,
+};
 
-use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
+use super::{
+    suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
+    utils::statemap_install_handler,
+};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CandidateDecisionOutcome {
