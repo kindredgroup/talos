@@ -11,7 +11,7 @@ use talos_certifier::{
 
 use crate::{
     replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items},
-    state::postgres::database::Database,
+    state::postgres::{data_access::PostgresApi, database::Database},
 };
 
 use super::{
@@ -53,7 +53,9 @@ pub struct ReplicatorStatemapInstaller {
 impl ReplicatorInstaller for ReplicatorStatemapInstaller {
     async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
         let db = Arc::clone(&self.db);
-        statemap_install_handler(sm, db, version).await
+        let mut manual_tx_api = PostgresApi { client: db.get().await };
+
+        statemap_install_handler(sm, &mut manual_tx_api, version).await
     }
 }
 
