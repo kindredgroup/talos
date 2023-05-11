@@ -9,6 +9,7 @@ use tokio_postgres::{NoTls, Row};
 
 use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, Runtime};
 
+use crate::state::data_access_api::{Connection, ManualTx};
 use crate::state::postgres::database_config::DatabaseConfig;
 
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
@@ -16,9 +17,8 @@ pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 #[async_trait]
 pub trait Action: Display {
     /// Returns the number of affected rows
-    async fn execute<T>(&self, client: &T) -> Result<u64, String>
-    where
-        T: GenericClient + Sync;
+    async fn execute<T: ManualTx>(&self, client: &T) -> Result<u64, String>;
+    async fn execute_in_db<T: Connection>(&self, client: &T) -> Result<u64, String>;
 }
 
 pub struct Database {
@@ -26,7 +26,7 @@ pub struct Database {
 }
 
 impl Database {
-    async fn get(&self) -> Object {
+    pub async fn get(&self) -> Object {
         self.pool.get().await.unwrap()
     }
 

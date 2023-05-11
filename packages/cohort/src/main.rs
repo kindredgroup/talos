@@ -1,5 +1,8 @@
+use std::env;
 // $coverage:ignore-start
 use std::sync::Arc;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use tokio::signal;
 
 use cohort::config_loader::ConfigLoader;
@@ -13,6 +16,8 @@ use cohort::state::postgres::database::Database;
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
 
+    let (workload_duration, transactions) = get_params().await;
+
     let (cfg_agent, cfg_kafka, cfg_db) = ConfigLoader::load()?;
     tokio::spawn(async move {
         let agent = Cohort::init_agent(cfg_agent, cfg_kafka).await;
@@ -23,11 +28,22 @@ async fn main() -> Result<(), String> {
         prefill_db(database).await;
         log::info!("Cohort started...");
 
-        // if let Err(e) = cohort.generate_workload(2).await {
-        if let Err(e) = cohort.execute_batch_workload().await {
-            log::error!("Error when generating a test load: {}", e)
-        } else {
-            log::info!("No more data to generate...")
+        if let Some(duration) = workload_duration {
+            log::info!("Cohort workflow generator will run for: {}sec", duration);
+            if let Err(e) = cohort.generate_workload(duration).await {
+                log::error!("Error when generating a test load: {}", e)
+            } else {
+                log::info!("No more data to generate...")
+            }
+        }
+
+        if let Some(csv) = transactions {
+            log::info!("Cohort workflow generator will use CSV transactions: {}", csv.lines().count());
+            if let Err(e) = cohort.execute_workload(csv).await {
+                log::error!("Error when generating a test CSV load: {}", e)
+            } else {
+                log::info!("No more data to generate...")
+            }
         }
     });
 
@@ -72,4 +88,55 @@ async fn prefill_db(db: Arc<Database>) {
     }
     log::info!("{}", updated_snapshot);
 }
+
+async fn get_params() -> (Option<u32>, Option<String>) {
+    let args: Vec<String> = env::args().collect();
+    let mut workload_duration: Option<u32> = None;
+    let mut transactions: Option<String> = None;
+
+    if args.len() >= 3 {
+        let mut i = 1;
+        while i < args.len() {
+            let param_name = &args[i];
+            if param_name.eq("--workflow-duration") {
+                let param_value = &args[i + 1];
+                workload_duration = Some(param_value.parse().unwrap());
+                break;
+            }
+
+            if param_name.eq("--transactions") {
+                let param_value = &args[i + 1];
+                let mut file = File::open(param_value).await.unwrap();
+                let mut content = String::from("");
+                let _ = file.read_to_string(&mut content).await;
+                transactions = Some(content);
+                break;
+            }
+
+            i += 2;
+        }
+    }
+
+    workload_duration = match workload_duration {
+        None => {
+            // check env variable
+            if let Ok(value) = env::var("COHORT_WORKLOAD_DURATION") {
+                Some(value.parse().unwrap())
+            } else {
+                None
+            }
+        }
+
+        Some(value) => {
+            if value > 5 * 60 * 60 {
+                panic!("Please specify the duration for Cohort workflow generator. It shoiuld be no longer than 5 hours. Current value is {value} seconds.");
+            }
+
+            Some(value)
+        }
+    };
+
+    (workload_duration, transactions)
+}
+
 // $coverage:ignore-end

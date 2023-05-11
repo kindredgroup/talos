@@ -1,13 +1,15 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use deadpool_postgres::GenericClient;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
 use crate::model::snapshot::Snapshot;
+use crate::state::data_access_api::ManualTx;
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
+
+pub static SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = ($1)::BIGINT WHERE id = $2 AND "version" < ($1)::BIGINT"#;
 
 pub struct SnapshotApi {}
 
@@ -23,42 +25,25 @@ impl SnapshotApi {
         Ok(result)
     }
 
-    pub async fn update(db: Arc<Database>, new_version: u64) -> Result<u64, String> {
-        let updated = db
-            .execute(
-                r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1"#,
-                &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID],
-            )
-            .await;
-
-        if updated == 0 {
-            return Err(format!(
-                "Could not set 'cohort_snapshot.version' to '{}'. The current version has moved ahead",
-                new_version,
-            ));
-        }
-
-        Ok(updated)
-    }
-
-    pub async fn update_using<T: GenericClient + Sync>(client: &T, new_version: u64) -> Result<u64, String> {
-        let statement = client
-            .prepare_cached(r#"UPDATE cohort_snapshot SET "version" = $1 WHERE id = $2 AND "version" < $1"#)
-            .await
-            .unwrap();
-
+    pub async fn update_using<T: ManualTx>(client: &T, new_version: u64) -> Result<u64, String> {
+        let mut udpate_was_successful = true;
         let affected_rows = client
-            .execute(&statement, &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID])
-            .await
-            .map_err(|e| e.to_string())?;
+            .execute(SNAPSHOT_UPDATE_QUERY.to_string(), &[&(new_version as i64), &SNAPSHOT_SINGLETON_ROW_ID])
+            .await?;
 
         if affected_rows == 0 {
-            return Err(format!(
+            udpate_was_successful = false;
+            log::warn!(
                 "Could not set 'cohort_snapshot.version' to '{}'. The current version has moved ahead",
                 new_version,
-            ));
+            );
         }
 
+        if udpate_was_successful {
+            log::debug!("updated snapshot to: {}", new_version);
+        } else {
+            log::debug!("attempted to update snapshot to: {} but query returned rows: {}", new_version, affected_rows);
+        }
         Ok(affected_rows)
     }
 
@@ -70,15 +55,16 @@ impl SnapshotApi {
         }
 
         // long path...
-        let timeout_at = OffsetDateTime::now_utc().unix_timestamp() + 10;
+        let timeout_at = OffsetDateTime::now_utc().unix_timestamp() + 60;
         let poll_frequency = Duration::from_secs(1);
-
+        let started_at = OffsetDateTime::now_utc().unix_timestamp();
         let poll_handle: JoinHandle<Result<(), String>> = tokio::spawn(async move {
             let db = Arc::clone(&db);
             loop {
-                let is_timed_out = OffsetDateTime::now_utc().unix_timestamp() >= timeout_at;
+                let now = OffsetDateTime::now_utc().unix_timestamp();
+                let is_timed_out = now >= timeout_at;
                 if is_timed_out {
-                    break Err(format!("Timeout afeter: {}s", timeout_at));
+                    break Err(format!("await_until_safe(): Timeout after: {}s", (now - started_at)));
                 }
 
                 if Self::is_safe_to_proceed(Arc::clone(&db), safepoint).await? {
