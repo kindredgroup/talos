@@ -11,7 +11,7 @@ use talos_certifier::{
 
 use crate::{
     replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items},
-    state::postgres::database::Database,
+    state::postgres::{data_access::PostgresApi, database::Database},
 };
 
 use super::{

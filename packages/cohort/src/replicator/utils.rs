@@ -1,10 +1,10 @@
-use std::{io::Error, sync::Arc};
+use std::io::Error;
 
 use log::info;
 use talos_suffix::SuffixItem;
 
 use crate::{
-    state::postgres::{data_access::PostgresApi, database::Database},
+    state::data_access_api::{ManualTx, TxApi},
     tx_batch_executor::BatchExecutor,
 };
 
@@ -37,13 +37,15 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(mes
     })
 }
 
-pub async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>, version: Option<u64>) -> Result<bool, Error> {
+pub async fn statemap_install_handler<'a, T, A>(sm: Vec<StatemapItem>, tx: &'a mut A, version: Option<u64>) -> Result<bool, Error>
+where
+    T: ManualTx,
+    A: TxApi<'a, T>,
+{
     info!("Last version ... {:#?} ", version);
     info!("Original statemaps received ... {:#?} ", sm);
 
-    let mut manual_tx_api = PostgresApi { client: db.get().await };
-
-    let result = BatchExecutor::execute(&mut manual_tx_api, sm, version).await;
+    let result = BatchExecutor::execute(tx, sm, version).await;
 
     info!("Result on executing the statmaps is ... {result:?}");
 
