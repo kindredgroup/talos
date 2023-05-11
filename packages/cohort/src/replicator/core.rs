@@ -8,7 +8,7 @@ use talos_certifier::{
     ChannelMessage,
 };
 
-use crate::replicator::utils::get_statemap_from_suffix_items;
+use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
 
 use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
 
@@ -124,7 +124,6 @@ where
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
-        //TODO-REPLICATOR: Confirm this in test.
         if decision_message.is_duplicate() {
             self.suffix.set_item_installed(version);
         }
@@ -137,8 +136,11 @@ where
 
         let version = batch.last().unwrap().item_ver;
 
+        // Filtering out messages that are not applicable.
+        let filtered_message_batch = get_filtered_batch(batch.iter().copied());
+
         // Create the statemap batch
-        let statemap_batch = get_statemap_from_suffix_items(batch.into_iter());
+        let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
 
         info!("Statemap_Batch={statemap_batch:#?} ");
 
