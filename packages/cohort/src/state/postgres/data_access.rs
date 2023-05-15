@@ -55,7 +55,14 @@ pub struct PostgresApi {
 #[async_trait]
 impl<'a> TxApi<'a, PostgresManualTx<'a>> for PostgresApi {
     async fn transaction(&'a mut self) -> PostgresManualTx<'a> {
-        let tx = self.client.transaction().await.unwrap();
+        let tx = self
+            .client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::Serializable)
+            .start()
+            .await
+            .unwrap();
+        // let tx = self.client.transaction().await.unwrap();
         PostgresManualTx { tx }
     }
 }

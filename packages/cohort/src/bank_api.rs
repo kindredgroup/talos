@@ -11,9 +11,11 @@ use crate::actions::transfer::Transfer;
 use crate::model::bank_account::BankAccount;
 use crate::model::requests::{AccountUpdateRequest, TransferRequest};
 
-use crate::state::postgres::data_access::PostgresAutoTx;
+use crate::state::postgres::data_access::PostgresApi;
 use crate::state::postgres::data_store::DataStore;
 use crate::state::postgres::database::Database;
+
+use crate::state::data_access_api::{ManualTx, TxApi};
 
 pub struct BankApi {}
 
@@ -44,15 +46,34 @@ impl BankApi {
     }
 
     pub async fn deposit(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        AccountUpdate::deposit(data, new_version)
-            .execute_in_db(&PostgresAutoTx { client: db.get().await })
-            .await
+        let mut manual_tx_api = PostgresApi { client: db.get().await };
+        let tx = manual_tx_api.transaction().await;
+        let action = AccountUpdate::deposit(data, new_version);
+        action.execute(&tx).await.as_ref()?;
+        let result = action.update_version(&tx).await;
+        if result.is_ok() {
+            let rslt_commit = tx.commit().await;
+            if let Err(e) = rslt_commit {
+                return Err(format!("Unable to commit: {}. The original transaction updated: {} rows", e, result.unwrap()));
+            }
+        }
+
+        result
     }
 
     pub async fn withdraw(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        AccountUpdate::withdraw(data, new_version)
-            .execute_in_db(&PostgresAutoTx { client: db.get().await })
-            .await
+        let mut manual_tx_api = PostgresApi { client: db.get().await };
+        let tx = manual_tx_api.transaction().await;
+        let action = AccountUpdate::withdraw(data, new_version);
+        action.execute(&tx).await.as_ref()?;
+        let result = action.update_version(&tx).await;
+        if result.is_ok() {
+            let rslt_commit = tx.commit().await;
+            if let Err(e) = rslt_commit {
+                return Err(format!("Unable to commit: {}. The original transaction updated: {} rows", e, result.unwrap()));
+            }
+        }
+        result
     }
 
     pub async fn transfer(db: Arc<Database>, data: TransferRequest, new_version: u64) -> Result<u64, String> {
@@ -69,6 +90,16 @@ impl BankApi {
     }
 
     pub async fn transfer_one(db: Arc<Database>, action: Transfer) -> Result<u64, String> {
-        action.execute_in_db(&PostgresAutoTx { client: db.get().await }).await
+        let mut manual_tx_api = PostgresApi { client: db.get().await };
+        let tx = manual_tx_api.transaction().await;
+        action.execute(&tx).await.as_ref()?;
+        let result = action.update_version(&tx).await;
+        if result.is_ok() {
+            let rslt_commit = tx.commit().await;
+            if let Err(e) = rslt_commit {
+                return Err(format!("Unable to commit: {}. The original transaction updated: {} rows", e, result.unwrap()));
+            }
+        }
+        result
     }
 }

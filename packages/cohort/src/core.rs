@@ -160,19 +160,18 @@ impl Cohort {
             let mut retry_count = 0;
 
             loop {
-                // tokio::time::sleep(Duration::from_secs(5)).await;
-
                 retry_count += 1;
-                if retry_count > 3 {
+                if retry_count > 10 {
                     // Should we give up on it or keep trying?
                     log::warn!("Giving up on failing tx: {} {:?}\n", (index + 1), record.clone());
                     break;
                 }
 
                 if retry_count == 1 {
-                    log::info!("executing: {}, {:?}", (index + 1), record);
+                    log::info!("\n\nexecuting: {}, {:?}", (index + 1), record);
                 } else {
                     log::info!("retrying: {} (attempt: {}), {:?}", (index + 1), retry_count, record);
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
 
                 let cpt_snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
@@ -376,19 +375,37 @@ impl Cohort {
 
         // install
         log::debug!("... installing '{}' {} {}", action, account.number.clone(), amount.clone());
-        let rows = op_impl(
+        let rslt = op_impl(
             Arc::clone(&self.database),
             AccountUpdateRequest::new(account.number.clone(), amount.clone()),
             resp.version,
         )
-        .await?;
+        .await;
 
-        log::debug!("updated {} rows when running '{}' {} {}\n", rows, action, account.number.clone(), amount);
-
-        // TODO: this should be done by replicator
-        //SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
-
-        Ok(true)
+        if rslt.is_err() {
+            let e = rslt.unwrap_err();
+            if e.contains("could not serialize access due to concurrent update") {
+                log::debug!(
+                    "tx conflict when running '{}' {} {}. Err: {}, Moving on...\n",
+                    action,
+                    account.number.clone(),
+                    amount,
+                    e
+                );
+                Ok(true)
+            } else {
+                Err(e)
+            }
+        } else {
+            log::debug!(
+                "updated {} rows when running '{}' {} {}\n",
+                rslt.unwrap(),
+                action,
+                account.number.clone(),
+                amount
+            );
+            Ok(true)
+        }
     }
 
     async fn transfer(&self, from: &BankAccount, to: &BankAccount, amount: String, cpt_snapshot: Snapshot) -> Result<bool, String> {
@@ -445,25 +462,38 @@ impl Cohort {
 
         // install
         log::debug!("... installing 'T' {} {} {}", from.number.clone(), amount.clone(), to.number.clone());
-        let rows = BankApi::transfer(
+        let rslt = BankApi::transfer(
             Arc::clone(&self.database),
             TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
             resp.version,
         )
-        .await?;
+        .await;
 
-        log::debug!(
-            "updated {} rows when running 'T' {} {} {}\n",
-            rows,
-            from.number.clone(),
-            amount.clone(),
-            to.number.clone()
-        );
+        if rslt.is_err() {
+            let e = rslt.unwrap_err();
+            if e.contains("could not serialize access due to concurrent update") {
+                log::debug!(
+                    "tx conflict when running 'T' {} {} {}. Err: {}, Moving on...\n",
+                    from.number.clone(),
+                    amount.clone(),
+                    to.number.clone(),
+                    e
+                );
+                Ok(true)
+            } else {
+                Err(e)
+            }
+        } else {
+            log::debug!(
+                "updated {} rows when running 'T' {} {} {}\n",
+                rslt.unwrap(),
+                from.number.clone(),
+                amount.clone(),
+                to.number.clone()
+            );
 
-        // TODO: this should be done by replicator
-        //SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
-
-        Ok(true)
+            Ok(true)
+        }
     }
     // $coverage:ignore-end
 
