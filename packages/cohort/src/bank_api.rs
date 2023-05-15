@@ -5,15 +5,15 @@ use rusty_money::iso::Currency;
 use rusty_money::Money;
 
 use crate::actions::account_update::AccountUpdate;
+use crate::actions::action::Action;
 use crate::actions::transfer::Transfer;
 
 use crate::model::bank_account::BankAccount;
 use crate::model::requests::{AccountUpdateRequest, TransferRequest};
 
-use crate::state::data_access_api::TxApi;
-use crate::state::postgres::data_access::{PostgresApi, PostgresAutoTx};
+use crate::state::postgres::data_access::PostgresAutoTx;
 use crate::state::postgres::data_store::DataStore;
-use crate::state::postgres::database::{Action, Database};
+use crate::state::postgres::database::Database;
 
 pub struct BankApi {}
 
@@ -44,14 +44,15 @@ impl BankApi {
     }
 
     pub async fn deposit(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        let mut tx_api = PostgresApi { client: db.get().await };
-        let tx = tx_api.transaction().await;
-
-        AccountUpdate::deposit(data, new_version).execute(&tx).await
+        AccountUpdate::deposit(data, new_version)
+            .execute_in_db(&PostgresAutoTx { client: db.get().await })
+            .await
     }
 
     pub async fn withdraw(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        Self::deposit(db, data, new_version).await
+        AccountUpdate::withdraw(data, new_version)
+            .execute_in_db(&PostgresAutoTx { client: db.get().await })
+            .await
     }
 
     pub async fn transfer(db: Arc<Database>, data: TransferRequest, new_version: u64) -> Result<u64, String> {

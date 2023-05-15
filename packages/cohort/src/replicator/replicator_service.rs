@@ -52,7 +52,7 @@ pub async fn run_talos_replicator<
     // F: for<'a> Fn(Vec<StatemapItem>, &'a Option<u64>) -> Fut,
 {
     info!("Going to consume the message.... ");
-    let mut interval = tokio::time::interval(Duration::from_millis(2_000));
+    let mut interval = tokio::time::interval(Duration::from_millis(10));
 
     loop {
         tokio::select! {

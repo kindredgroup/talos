@@ -38,7 +38,7 @@ async fn main() -> Result<(), String> {
         }
 
         if let Some(csv) = transactions {
-            log::info!("Cohort workflow generator will use CSV transactions: {}", csv.lines().count());
+            log::info!("Cohort workflow generator will use CSV transactions: {}", csv.lines().count() - 1);
             if let Err(e) = cohort.execute_workload(csv).await {
                 log::error!("Error when generating a test CSV load: {}", e)
             } else {
@@ -98,7 +98,7 @@ async fn get_params() -> (Option<u32>, Option<String>) {
         let mut i = 1;
         while i < args.len() {
             let param_name = &args[i];
-            if param_name.eq("--workflow-duration") {
+            if param_name.eq("--workload-duration") {
                 let param_value = &args[i + 1];
                 workload_duration = Some(param_value.parse().unwrap());
                 break;
@@ -109,7 +109,8 @@ async fn get_params() -> (Option<u32>, Option<String>) {
                 let mut file = File::open(param_value).await.unwrap();
                 let mut content = String::from("");
                 let _ = file.read_to_string(&mut content).await;
-                transactions = Some(content);
+                log::info!("\n{}\n", content.clone());
+                transactions = Some(content.replace(['\t', ' '], ""));
                 break;
             }
 

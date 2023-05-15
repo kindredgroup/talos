@@ -1,7 +1,4 @@
 // $coverage:ignore-start
-use async_trait::async_trait;
-
-use std::fmt::Display;
 use std::sync::Arc;
 
 use tokio_postgres::types::ToSql;
@@ -9,17 +6,9 @@ use tokio_postgres::{NoTls, Row};
 
 use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, Runtime};
 
-use crate::state::data_access_api::{Connection, ManualTx};
 use crate::state::postgres::database_config::DatabaseConfig;
 
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
-
-#[async_trait]
-pub trait Action: Display {
-    /// Returns the number of affected rows
-    async fn execute<T: ManualTx>(&self, client: &T) -> Result<u64, String>;
-    async fn execute_in_db<T: Connection>(&self, client: &T) -> Result<u64, String>;
-}
 
 pub struct Database {
     pub pool: Pool,

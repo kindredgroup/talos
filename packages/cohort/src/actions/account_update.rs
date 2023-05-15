@@ -6,7 +6,20 @@ use tokio_postgres::types::ToSql;
 
 use crate::model::requests::AccountUpdateRequest;
 use crate::state::data_access_api::{Connection, ManualTx};
-use crate::state::postgres::database::Action;
+
+use super::action::Action;
+
+pub static ACCOUNT_UPDATE_QUERY: &str = r#"UPDATE bank_accounts SET data = data ||
+        jsonb_build_object(
+            'amount', ((data->>'amount')::DECIMAL + (($1)::TEXT)::DECIMAL)::TEXT
+        )
+        WHERE "number" = $3 AND (data->'talosState'->'version')::BIGINT < ($2)::BIGINT"#;
+
+pub static ACCOUNT_VERSION_UPDATE_QUERY: &str = r#"UPDATE bank_accounts SET data = data ||
+        jsonb_build_object(
+            'talosState', jsonb_build_object('version', ($2)::BIGINT)
+        )
+        WHERE "number" = $1 AND (data->'talosState'->'version')::BIGINT < ($2)::BIGINT"#;
 
 #[derive(Debug)]
 pub struct AccountUpdate {
@@ -43,14 +56,11 @@ impl AccountUpdate {
     }
 
     fn sql() -> &'static str {
-        r#"
-            UPDATE bank_accounts SET data = data ||
-            jsonb_build_object(
-                'amount', ((data->>'amount')::DECIMAL + (($1)::TEXT)::DECIMAL)::TEXT,
-                'talosState', jsonb_build_object('version', ($2)::BIGINT)
-            )
-            WHERE "number" = $3 AND (data->'talosState'->'version')::BIGINT <= ($2)::BIGINT
-        "#
+        ACCOUNT_UPDATE_QUERY
+    }
+
+    fn sql_update_version() -> &'static str {
+        ACCOUNT_VERSION_UPDATE_QUERY
     }
 }
 
@@ -60,6 +70,12 @@ impl Action for AccountUpdate {
         let params: &[&(dyn ToSql + Sync)] = &[&self.data.amount, &(self.new_version as i64), &self.data.account];
 
         client.execute(Self::sql().to_string(), params).await
+    }
+
+    async fn update_version<T: ManualTx>(&self, client: &T) -> Result<u64, String> {
+        let params: &[&(dyn ToSql + Sync)] = &[&self.data.account, &(self.new_version as i64)];
+
+        client.execute(Self::sql_update_version().to_string(), params).await
     }
 
     async fn execute_in_db<T: Connection>(&self, client: &T) -> Result<u64, String> {

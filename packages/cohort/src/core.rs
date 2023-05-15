@@ -1,7 +1,6 @@
 // $coverage:ignore-start
 use std::collections::HashMap;
 use std::future::Future;
-use std::ops::Sub;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -152,7 +151,7 @@ impl Cohort {
         let field_amount = 2;
         let field_acc2 = 3;
 
-        let started_at = OffsetDateTime::now_utc().unix_timestamp();
+        let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let mut reader = csv::Reader::from_reader(transactions.as_bytes());
 
         for (index, rslt_record) in reader.records().enumerate() {
@@ -161,17 +160,19 @@ impl Cohort {
             let mut retry_count = 0;
 
             loop {
+                // tokio::time::sleep(Duration::from_secs(5)).await;
+
                 retry_count += 1;
-                if retry_count > 10 {
+                if retry_count > 3 {
                     // Should we give up on it or keep trying?
-                    log::warn!("Giving up on failing tx: {} {:?}", index, record.clone());
+                    log::warn!("Giving up on failing tx: {} {:?}\n", (index + 1), record.clone());
                     break;
                 }
 
                 if retry_count == 1 {
-                    log::info!("executing: {}, {:?}", index, record);
+                    log::info!("executing: {}, {:?}", (index + 1), record);
                 } else {
-                    log::info!("retrying: {}, {:?}", index, record);
+                    log::info!("retrying: {} (attempt: {}), {:?}", (index + 1), retry_count, record);
                 }
 
                 let cpt_snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
@@ -199,7 +200,7 @@ impl Cohort {
                                 BusinessActionType::WITHDRAW.to_string(),
                                 AccountUpdateRequest::new(reloaded_account1.number.clone(), amount.clone()).json(),
                             )])];
-                            self.do_bank("W".to_string(), reloaded_account1, amount, statemap, cpt_snapshot, BankApi::deposit)
+                            self.do_bank("W".to_string(), reloaded_account1, amount, statemap, cpt_snapshot, BankApi::withdraw)
                                 .await?
                         }
                     }
@@ -220,8 +221,14 @@ impl Cohort {
             }
         }
 
-        let finished_at = OffsetDateTime::now_utc().unix_timestamp();
-        log::info!("The workload completed in {} s", (finished_at - started_at));
+        let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        log::info!("The workload completed in {} s", ((finished_at - started_at) as f32) / 1000000000.0_f32);
+
+        let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
+        log::info!("New state of bank accounts is");
+        for a in accounts.iter() {
+            log::info!("{}", a);
+        }
 
         Ok(())
     }
@@ -229,7 +236,7 @@ impl Cohort {
     pub async fn generate_workload(&self, duration_sec: u32) -> Result<(), String> {
         log::info!("Generating test load for {}s", duration_sec);
 
-        let started_at = OffsetDateTime::now_utc();
+        let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         loop {
             let cpt_snapshot = SnapshotApi::query(Arc::clone(&self.database)).await?;
             let accounts = BankApi::get_accounts_as_map(Arc::clone(&self.database)).await.unwrap();
@@ -284,12 +291,15 @@ impl Cohort {
             )
             .await?;
 
-            let elapsed = OffsetDateTime::now_utc().sub(started_at).as_seconds_f32();
-            if (duration_sec as f32) <= elapsed {
+            let elapsed = OffsetDateTime::now_utc().unix_timestamp_nanos() - started_at;
+            if (duration_sec as i128 * 1000000000_i128) <= elapsed {
                 break;
             }
-            tokio::time::sleep(Duration::from_millis(1000)).await;
+            //tokio::time::sleep(Duration::from_millis(1000)).await;
         }
+
+        let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        log::info!("The workload completed in {} s", ((finished_at - started_at) as f32) / 1000000000.0_f32);
 
         let accounts = BankApi::get_accounts(Arc::clone(&self.database)).await?;
         log::info!("New state of bank accounts is");
@@ -332,9 +342,10 @@ impl Cohort {
         let rslt_cert = self.agent.certify(cert_req).await;
         if let Err(e) = rslt_cert {
             log::warn!(
-                "Error communicating via agent: {}, xid: {}, operation: 'deposit/withdraw' {} to {}",
+                "Error communicating via agent: {}, xid: {}, operation: '{}' {} {}",
                 e.reason,
                 xid,
+                action,
                 amount,
                 account,
             );
@@ -343,26 +354,36 @@ impl Cohort {
 
         let resp = rslt_cert.unwrap();
         if Decision::Aborted == resp.decision {
-            log::debug!("Aborted by talos: xid: {}, operation: 'deposit' {} to {}", xid, amount, account);
+            log::debug!("Aborted by talos: xid: {}, operation: '{}' {} {}", xid, action, amount, account);
             return Ok(false);
         }
 
         // Talos gave "go ahead"
-        log::info!("LOG: '{}' {} {}", action, account.number.clone(), amount.clone());
+        log::debug!("Running: '{}' {} {}", action, account.number.clone(), amount.clone());
 
         // Check safepoint condition before installing ...
 
         let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
+
+        log::debug!(
+            "... waiting for safepoint: {} on '{}' {} {}",
+            safepoint,
+            action,
+            account.number.clone(),
+            amount.clone()
+        );
         SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
 
         // install
-
-        op_impl(
+        log::debug!("... installing '{}' {} {}", action, account.number.clone(), amount.clone());
+        let rows = op_impl(
             Arc::clone(&self.database),
-            AccountUpdateRequest::new(account.number.clone(), amount),
+            AccountUpdateRequest::new(account.number.clone(), amount.clone()),
             resp.version,
         )
         .await?;
+
+        log::debug!("updated {} rows when running '{}' {} {}\n", rows, action, account.number.clone(), amount);
 
         // TODO: this should be done by replicator
         //SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;
@@ -409,20 +430,35 @@ impl Cohort {
             return Ok(false);
         }
 
-        log::info!("LOG: 'T' {} {} {}", from.number.clone(), amount.clone(), to.number.clone());
+        log::info!("Running: 'T' {} {} {}", from.number.clone(), amount.clone(), to.number.clone());
         // Check safepoint condition before installing ...
 
         let safepoint = resp.safepoint.unwrap(); // this is safe for 'Committed'
+        log::debug!(
+            "... waiting for safepoint: {} on 'T' {} {} {}",
+            safepoint,
+            from.number.clone(),
+            amount.clone(),
+            to.number.clone()
+        );
         SnapshotApi::await_until_safe(Arc::clone(&self.database), safepoint).await?;
 
         // install
-
-        BankApi::transfer(
+        log::debug!("... installing 'T' {} {} {}", from.number.clone(), amount.clone(), to.number.clone());
+        let rows = BankApi::transfer(
             Arc::clone(&self.database),
             TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
             resp.version,
         )
         .await?;
+
+        log::debug!(
+            "updated {} rows when running 'T' {} {} {}\n",
+            rows,
+            from.number.clone(),
+            amount.clone(),
+            to.number.clone()
+        );
 
         // TODO: this should be done by replicator
         //SnapshotApi::update(Arc::clone(&self.database), resp.version).await?;

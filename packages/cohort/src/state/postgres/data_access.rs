@@ -42,6 +42,7 @@ pub struct PostgresAutoTx {
 #[async_trait]
 impl Connection for PostgresAutoTx {
     async fn execute(&self, sql: String, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
+        log::debug!("execute: \n\t{}", sql.as_str());
         let statement = self.client.prepare_cached(&sql).await.unwrap();
         self.client.execute(&statement, params).await.map_err(|e| e.to_string())
     }

@@ -168,6 +168,12 @@ test.unit:
 	$(call pp,rust unit tests...)
 	cargo test
 
+## test.some-unit: 🧪 Runs specified unit tests
+#  Example: test.some-unit args="--test tx_batch_executor"
+test.some-unit:
+	$(call pp,rust unit tests...)
+	cargo test -- $(args) | grep -v "running 0 tests" | grep -v "Doc-tests" | grep -v "filtered out"
+
 ## test.unit.coverage: 🧪 Runs rust unit tests with coverage 'cobertura' and 'junit' reports
 test.unit.coverage:
 	$(call pp,rust unit tests...)
