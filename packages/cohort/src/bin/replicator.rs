@@ -3,10 +3,11 @@
 use cohort::{
     config_loader::ConfigLoader,
     replicator::{
-        core::{Replicator, ReplicatorCandidate, ReplicatorStatemapInstaller},
+        core::{Replicator, ReplicatorCandidate},
+        pg_replicator_installer::PgReplicatorStatemapInstaller,
         replicator_service::run_talos_replicator,
     },
-    state::postgres::database::Database,
+    state::postgres::{data_access::PostgresApi, database::Database},
 };
 use log::info;
 use talos_certifier::ports::MessageReciever;
@@ -39,9 +40,10 @@ async fn main() {
 
     let cfg_db = ConfigLoader::load_db_config().unwrap();
     let database = Database::init_db(cfg_db).await;
+    let manual_tx_api = PostgresApi { client: database.get().await };
 
-    let installer = ReplicatorStatemapInstaller { db: database };
+    let mut pg_statemap_installer = PgReplicatorStatemapInstaller { pg: manual_tx_api };
 
-    run_talos_replicator(&mut replicator, installer).await;
+    run_talos_replicator(&mut replicator, &mut pg_statemap_installer).await;
 }
 // $coverage:ignore-end

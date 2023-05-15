@@ -10,10 +10,11 @@ use super::{
 use log::info;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
-pub async fn run_talos_replicator<S, M>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, statemap_installer: impl ReplicatorInstaller)
+pub async fn run_talos_replicator<S, M, T>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, statemap_installer: &mut T)
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
+    T: ReplicatorInstaller,
 {
     info!("Going to consume the message.... ");
     let mut interval = tokio::time::interval(Duration::from_millis(2_000));
