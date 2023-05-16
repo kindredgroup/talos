@@ -1,7 +1,8 @@
+use async_trait::async_trait;
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, io::Error, marker::PhantomData};
 use talos_certifier::{
     model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
@@ -31,6 +32,11 @@ impl StatemapItem {
     pub fn new(action: String, version: u64, payload: Value) -> Self {
         StatemapItem { action, version, payload }
     }
+}
+
+#[async_trait]
+pub trait ReplicatorInstaller {
+    async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -124,25 +130,26 @@ where
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
-        //TODO-REPLICATOR: Confirm this in test.
         if decision_message.is_duplicate() {
             self.suffix.set_item_installed(version);
         }
     }
 
-    pub(crate) fn generate_statemap_batch(&self) -> Option<Vec<StatemapItem>> {
+    pub(crate) fn generate_statemap_batch(&self) -> (Option<Vec<StatemapItem>>, Option<u64>) {
         let Some(batch) = self.suffix.get_message_batch(Some(1)) else {
-            return None;
+            return (None, None);
         };
 
+        let version = batch.last().unwrap().item_ver;
+
         // Filtering out messages that are not applicable.
-        let filtered_message_batch = get_filtered_batch(batch.iter().copied()); //.collect::<Vec<&SuffixItem<CandidateMessage>>>();
+        let filtered_message_batch = get_filtered_batch(batch.iter().copied());
 
         // Create the statemap batch
         let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
 
         info!("Statemap_Batch={statemap_batch:#?} ");
 
-        Some(statemap_batch)
+        (Some(statemap_batch), Some(version))
     }
 }

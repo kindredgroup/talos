@@ -198,6 +198,7 @@ where
         .get(version)?
         else {
                 info!("Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}", self.index_from_head(version));
+                // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
                 return Ok(());
             };
 
@@ -255,6 +256,12 @@ where
             self.meta.last_insert_vers = version;
         }
 
+        // info!(
+        //     "All some items on suffix insert where head ={}.... {:?}",
+        //     self.meta.head,
+        //     self.retrieve_all_some_vec_items()
+        // );
+
         Ok(())
     }
 
@@ -290,7 +297,7 @@ where
         // let k = self.retrieve_all_some_vec_items();
         // info!("Items before pruning are \n{k:?}");
 
-        let drained_entries = self.messages.drain(..=index).collect();
+        let drained_entries = self.messages.drain(..index).collect();
 
         self.update_prune_index(None);
 
@@ -312,7 +319,8 @@ where
         info!("Suffix before prune.... {}", self.suffix_length());
         if let Some(index) = self.index_from_head(version) {
             info!("Index send for pruning is {index} for version={version}");
-            let prune_result = self.prune_till_index(index);
+            let prune_index = self.find_prune_till_index(index);
+            let prune_result = self.prune_till_index(prune_index);
             info!("Suffix items pruned.... {prune_result:?}");
             info!("Suffix after prune.... {}", self.suffix_length());
             info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());

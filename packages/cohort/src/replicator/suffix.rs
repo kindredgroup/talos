@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, ops::ControlFlow};
+use std::{collections::HashMap, fmt::Debug};
 
 use log::warn;
 use serde_json::Value;
@@ -62,6 +62,7 @@ where
                 item_to_update.item.set_suffix_item_installed();
             } else {
                 warn!("Unable to update is_installed flag as message with version={version} not found");
+                // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
             }
         }
     }
@@ -74,33 +75,22 @@ where
     }
 
     fn get_message_batch(&self, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>> {
-        let mut batch = vec![];
+        // let mut batch = vec![];
         let batch_size = match count {
             Some(c) => c as usize,
             None => self.messages.len(),
         };
 
-        get_nonempty_suffix_items(self.messages.iter()) // take only some items in suffix
-            // take items till we find a not decided item.
-            .take_while(|m| m.is_decided)
-            // pick only committed messages.
-            .filter(|m| m.item.get_safepoint().is_some())
-            // pick items not installed.
-            .try_for_each(|m| {
-                if !m.item.is_installed() {
-                    batch.push(m);
+        let items = get_nonempty_suffix_items(self.messages.iter()) // take only some items in suffix
+            .take_while(|m| m.is_decided) // take items till we find a not decided item.
+            .filter(|m| !m.item.is_installed()) // remove already installed items.
+            .take(batch_size)
+            .collect::<Vec<&SuffixItem<T>>>();
 
-                    if batch.len() == batch_size {
-                        return ControlFlow::Break(());
-                    }
-                }
-                ControlFlow::Continue(())
-            });
-
-        if batch.is_empty() {
-            None
+        if !items.is_empty() {
+            Some(items)
         } else {
-            Some(batch)
+            None
         }
     }
 

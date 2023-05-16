@@ -1,19 +1,20 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, future::Future, io::Error, time::Duration};
+use std::{fmt::Debug, time::Duration};
+
+use crate::replicator::core::ReplicatorInstaller;
 
 use super::{
-    core::{Replicator, ReplicatorCandidate, StatemapItem},
+    core::{Replicator, ReplicatorCandidate},
     suffix::ReplicatorSuffixTrait,
 };
-use log::info;
+use log::{debug, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
-pub async fn run_talos_replicator<S, M, F, Fut>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, install_statemaps: F)
+pub async fn run_talos_replicator<S, M, T>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, statemap_installer: &mut T)
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
-    Fut: Future<Output = Result<bool, Error>>,
-    F: Fn(Vec<StatemapItem>) -> Fut,
+    T: ReplicatorInstaller,
 {
     info!("Going to consume the message.... ");
     let mut interval = tokio::time::interval(Duration::from_millis(2_000));
@@ -47,13 +48,15 @@ where
             //      (c) Send it to the state manager to do the updates.
             _ = interval.tick() => {
 
-                if let Some(statemap_batch) = replicator.generate_statemap_batch() {
-                    if !statemap_batch.is_empty() {
+                if let (Some(statemap_batch), version_option) = replicator.generate_statemap_batch() {
+                    if version_option.is_some() {
 
-                        info!("Statemap batch in replicator_service is ={statemap_batch:?}");
-                        let version = statemap_batch.iter().last().unwrap().version;
+                        debug!("Statemap batch in replicator_service is ={statemap_batch:?}");
+                        // let version = statemap_batch.iter().last().unwrap().version;
                         // Call fn to install statemaps in batch amd update the snapshot
-                        let result = install_statemaps(statemap_batch).await;
+                        let version = version_option.unwrap();
+
+                        let result = statemap_installer.install(statemap_batch, version_option).await;
 
                         info!("Installation result ={result:?}");
 
@@ -72,7 +75,6 @@ where
                                     replicator.suffix.prune_till_version(version).unwrap();
                                 }
 
-                                // TODO-REPLICATOR:- Commit the Kafka offset.
                                 // commit the offset
                                 replicator.receiver.commit(version).await.unwrap();
                             }
