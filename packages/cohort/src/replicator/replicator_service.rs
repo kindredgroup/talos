@@ -1,58 +1,23 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, io::Error, sync::Arc, time::Duration};
+use std::{fmt::Debug, time::Duration};
 
-use crate::{
-    state::postgres::{data_access::PostgresApi, database::Database},
-    tx_batch_executor::BatchExecutor,
-};
+use crate::replicator::core::ReplicatorInstaller;
 
 use super::{
-    core::{Replicator, ReplicatorCandidate, StatemapItem},
+    core::{Replicator, ReplicatorCandidate},
     suffix::ReplicatorSuffixTrait,
 };
-use log::info;
+use log::{debug, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
-async fn statemap_install_handler(sm: Vec<StatemapItem>, db: Arc<Database>, version: Option<u64>) -> Result<bool, Error> {
-    info!("Last version ... {:#?} ", version);
-    info!("Original statemaps received ... {:#?} ", sm);
-
-    let mut manual_tx_api = PostgresApi { client: db.get().await };
-
-    let result = BatchExecutor::execute(&mut manual_tx_api, sm, version).await;
-
-    info!("Result on executing the statmaps is ... {result:?}");
-
-    Ok(result.is_ok())
-}
-
-pub struct ReplicatorStatemapInstaller {
-    pub db: Arc<Database>,
-}
-
-impl ReplicatorStatemapInstaller {
-    pub async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
-        let db = Arc::clone(&self.db);
-        statemap_install_handler(sm, db, version).await
-    }
-}
-
-pub async fn run_talos_replicator<
-    S,
-    M,
-    //  F, Fut
->(
-    replicator: &mut Replicator<ReplicatorCandidate, S, M>,
-    // install_statemaps: F,
-    statemap_installer: ReplicatorStatemapInstaller,
-) where
+pub async fn run_talos_replicator<S, M, T>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, statemap_installer: &mut T)
+where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
-    // Fut: Future<Output = Result<bool, Error>>,
-    // F: for<'a> Fn(Vec<StatemapItem>, &'a Option<u64>) -> Fut,
+    T: ReplicatorInstaller,
 {
     info!("Going to consume the message.... ");
-    let mut interval = tokio::time::interval(Duration::from_millis(10));
+    let mut interval = tokio::time::interval(Duration::from_millis(2_000));
 
     loop {
         tokio::select! {
@@ -86,7 +51,7 @@ pub async fn run_talos_replicator<
                 if let (Some(statemap_batch), version_option) = replicator.generate_statemap_batch() {
                     if version_option.is_some() {
 
-                        info!("Statemap batch in replicator_service is ={statemap_batch:?}");
+                        debug!("Statemap batch in replicator_service is ={statemap_batch:?}");
                         // let version = statemap_batch.iter().last().unwrap().version;
                         // Call fn to install statemaps in batch amd update the snapshot
                         let version = version_option.unwrap();
