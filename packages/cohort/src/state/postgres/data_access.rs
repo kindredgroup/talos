@@ -62,7 +62,6 @@ impl<'a> TxApi<'a, PostgresManualTx<'a>> for PostgresApi {
             .start()
             .await
             .unwrap();
-        // let tx = self.client.transaction().await.unwrap();
         PostgresManualTx { tx }
     }
 }

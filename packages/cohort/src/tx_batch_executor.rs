@@ -68,7 +68,7 @@ impl BatchExecutor {
 
         if let Some(new_version) = snapshot {
             if affected_rows == 0 {
-                log::warn!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
+                log::info!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
             }
 
             let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
@@ -79,7 +79,7 @@ impl BatchExecutor {
                 let snapshot_error = snapshot_update_result.unwrap_err();
                 return Err(Self::handle_rollback(
                     tx.rollback().await,
-                    format!("Snpshot update error: '{}'", snapshot_error),
+                    format!("Snapshot update error: '{}'", snapshot_error),
                 ));
             }
         } else if affected_rows == 0 {
@@ -217,7 +217,7 @@ mod tests {
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    // tests for execuote_item(...)
+    // tests for execute_item(...)
 
     #[tokio::test]
     async fn excute_item_should_recognise_deposit() {
@@ -430,7 +430,7 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
-            "Cannot execute action. Error: \"Snpshot update error: 'cannot udpate snapshot'\"",
+            "Cannot execute action. Error: \"Snapshot update error: 'cannot udpate snapshot'\"",
         );
     }
 

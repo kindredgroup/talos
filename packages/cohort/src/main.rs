@@ -38,7 +38,7 @@ async fn main() -> Result<(), String> {
         }
 
         if let Some(csv) = transactions {
-            log::info!("Cohort workflow generator will use CSV transactions: {}", csv.lines().count() - 1);
+            log::warn!("Cohort workflow generator will use CSV transactions: {}", csv.lines().count() - 1);
             if let Err(e) = cohort.execute_workload(csv).await {
                 log::error!("Error when generating a test CSV load: {}", e)
             } else {
@@ -70,23 +70,23 @@ async fn prefill_db(db: Arc<Database>) {
         })
         .unwrap();
 
-    log::info!("----------------------------------");
-    log::info!("Initial state is loaded from files");
+    log::warn!("----------------------------------");
+    log::warn!("Initial state is loaded from files");
     for a in accounts.iter() {
-        log::info!("{}", a);
+        log::warn!("{}", a);
     }
-    log::info!("{}", snapshot);
+    log::warn!("{}", snapshot);
 
     // Init database ...
     let updated_accounts = DataStore::prefill_accounts(Arc::clone(&db), accounts.clone()).await.unwrap();
     let updated_snapshot = DataStore::prefill_snapshot(Arc::clone(&db), snapshot.clone()).await.unwrap();
 
-    log::info!("----------------------------------");
-    log::info!("Current initial state");
+    log::warn!("----------------------------------");
+    log::warn!("Current initial state");
     for a in updated_accounts.iter() {
-        log::info!("{}", a);
+        log::warn!("{}", a);
     }
-    log::info!("{}", updated_snapshot);
+    log::warn!("{}", updated_snapshot);
 }
 
 async fn get_params() -> (Option<u32>, Option<String>) {
