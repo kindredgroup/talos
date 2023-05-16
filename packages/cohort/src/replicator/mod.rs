@@ -1,6 +1,6 @@
 pub mod core;
 pub mod pg_replicator_installer;
-pub mod replicator_service;
+pub mod services;
 pub mod suffix;
 pub mod utils;
 

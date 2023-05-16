@@ -5,14 +5,16 @@ use cohort::{
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
-        replicator_service::run_talos_replicator,
+        services::{replicator_service::replicator_service, statemap_installer_service::installer_service},
     },
     state::postgres::{data_access::PostgresApi, database::Database},
 };
-use log::info;
+use futures::try_join;
+use log::{info, warn};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};
+use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
@@ -35,15 +37,34 @@ async fn main() {
     };
     let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
 
-    let mut replicator = Replicator::new(kafka_consumer, suffix);
+    //  d. Intantiate the replicator.
+    let replicator = Replicator::new(kafka_consumer, suffix);
     info!("Replicator starting...");
 
+    // e. Create postgres statemap installer instance.
     let cfg_db = ConfigLoader::load_db_config().unwrap();
     let database = Database::init_db(cfg_db).await;
     let manual_tx_api = PostgresApi { client: database.get().await };
 
-    let mut pg_statemap_installer = PgReplicatorStatemapInstaller { pg: manual_tx_api };
+    let pg_statemap_installer = PgReplicatorStatemapInstaller { pg: manual_tx_api };
 
-    run_talos_replicator(&mut replicator, &mut pg_statemap_installer).await;
+    // f. Create the replicator and statemap installer services.
+    // run_talos_replicator(&mut replicator, &mut pg_statemap_installer).await;
+    let (replicator_tx, replicator_rx) = mpsc::channel(3_000);
+    let (statemap_installer_tx, statemap_installer_rx) = mpsc::channel(3_000);
+
+    let pg_statemap_installer_service = installer_service(statemap_installer_rx, replicator_tx, pg_statemap_installer);
+
+    let replicator_service = replicator_service(statemap_installer_tx, replicator_rx, replicator);
+
+    let replicator_handle = tokio::spawn(async move { replicator_service.await });
+    let installer_handle = tokio::spawn(async move { pg_statemap_installer_service.await });
+
+    // g. Run the 2 services.
+    let result = try_join!(replicator_handle, installer_handle);
+    // h. Both the services are in infinite loops.
+    //    We reach here only if there was an error in either of the service.
+    warn!("Result from the services ={result:?}");
+    info!("Exiting Cohort Replicator!!");
 }
 // $coverage:ignore-end
