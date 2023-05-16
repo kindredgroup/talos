@@ -42,6 +42,7 @@ pub struct PostgresAutoTx {
 #[async_trait]
 impl Connection for PostgresAutoTx {
     async fn execute(&self, sql: String, params: &[&(dyn ToSql + Sync)]) -> Result<u64, String> {
+        log::debug!("execute: \n\t{}", sql.as_str());
         let statement = self.client.prepare_cached(&sql).await.unwrap();
         self.client.execute(&statement, params).await.map_err(|e| e.to_string())
     }
@@ -54,7 +55,13 @@ pub struct PostgresApi {
 #[async_trait]
 impl<'a> TxApi<'a, PostgresManualTx<'a>> for PostgresApi {
     async fn transaction(&'a mut self) -> PostgresManualTx<'a> {
-        let tx = self.client.transaction().await.unwrap();
+        let tx = self
+            .client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::Serializable)
+            .start()
+            .await
+            .unwrap();
         PostgresManualTx { tx }
     }
 }
