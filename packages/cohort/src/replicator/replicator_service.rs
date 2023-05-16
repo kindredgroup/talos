@@ -7,7 +7,7 @@ use super::{
     core::{Replicator, ReplicatorCandidate},
     suffix::ReplicatorSuffixTrait,
 };
-use log::info;
+use log::{debug, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 
 pub async fn run_talos_replicator<S, M, T>(replicator: &mut Replicator<ReplicatorCandidate, S, M>, statemap_installer: &mut T)
@@ -51,7 +51,7 @@ where
                 if let (Some(statemap_batch), version_option) = replicator.generate_statemap_batch() {
                     if version_option.is_some() {
 
-                        info!("Statemap batch in replicator_service is ={statemap_batch:?}");
+                        debug!("Statemap batch in replicator_service is ={statemap_batch:?}");
                         // let version = statemap_batch.iter().last().unwrap().version;
                         // Call fn to install statemaps in batch amd update the snapshot
                         let version = version_option.unwrap();
