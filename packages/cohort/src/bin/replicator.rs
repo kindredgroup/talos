@@ -9,12 +9,11 @@ use cohort::{
     },
     state::postgres::{data_access::PostgresApi, database::Database},
 };
-use futures::try_join;
 use log::{info, warn};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};
-use tokio::sync::mpsc;
+use tokio::{signal, sync::mpsc, try_join};
 
 #[tokio::main]
 async fn main() {
@@ -60,11 +59,24 @@ async fn main() {
     let replicator_handle = tokio::spawn(async move { replicator_service.await });
     let installer_handle = tokio::spawn(async move { pg_statemap_installer_service.await });
 
-    // g. Run the 2 services.
-    let result = try_join!(replicator_handle, installer_handle);
-    // h. Both the services are in infinite loops.
-    //    We reach here only if there was an error in either of the service.
-    warn!("Result from the services ={result:?}");
+    let handle = tokio::spawn(async move {
+        // g. Run the 2 services.
+        let result = try_join!(replicator_handle, installer_handle,);
+        // h. Both the services are in infinite loops.
+        //    We reach here only if there was an error in either of the service.
+        warn!("Result from the services ={result:?}");
+
+        result.unwrap()
+    });
+
+    tokio::select! {
+        _ = handle => {}
+        // CTRL + C termination signal
+        _ = signal::ctrl_c() => {
+            log::info!("CTRL + C TERMINATION!!!!");
+        }
+    }
+
     info!("Exiting Cohort Replicator!!");
 }
 // $coverage:ignore-end
