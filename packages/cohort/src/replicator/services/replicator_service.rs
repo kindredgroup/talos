@@ -1,19 +1,28 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, time::Duration};
+use std::{
+    fmt::Debug,
+    time::{Duration, Instant},
+};
 
 use crate::replicator::{
     core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
+    statistics::core::ReplicatorStatisticsChannelMessage,
     suffix::ReplicatorSuffixTrait,
 };
 
 use log::{debug, info};
-use talos_certifier::{ports::MessageReciever, ChannelMessage};
+use talos_certifier::{
+    model::{Decision, DecisionMessageTrait},
+    ports::MessageReciever,
+    ChannelMessage,
+};
 use tokio::sync::mpsc;
 
 pub async fn replicator_service<S, M>(
     statemaps_tx: mpsc::Sender<(Vec<StatemapItem>, Option<u64>)>,
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
+    statistics_tx: Option<mpsc::Sender<ReplicatorStatisticsChannelMessage>>,
 ) -> Result<(), String>
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
@@ -21,6 +30,8 @@ where
 {
     info!("Starting Replicator Service.... ");
     let mut interval = tokio::time::interval(Duration::from_millis(1_000));
+
+    let capture_stats = statistics_tx.is_some();
 
     loop {
         tokio::select! {
@@ -32,12 +43,29 @@ where
                 match msg {
                     // 2.1 For CM - Install messages on the version
                     ChannelMessage::Candidate( message) => {
+                        let stats_suffix_insert_time = Instant::now();
+
                         let version = message.version;
                         replicator.process_consumer_message(version, message.into()).await;
+
+                        let stats_suffix_insert_time_elapse = stats_suffix_insert_time.elapsed();
+                        if capture_stats {
+                            let _ = statistics_tx.as_ref().unwrap().send(ReplicatorStatisticsChannelMessage::SuffixInsertCandidate(version, stats_suffix_insert_time_elapse.as_nanos())).await;
+                        };
                     },
                     // 2.2 For DM - Update the decision with outcome + safepoint.
                     ChannelMessage::Decision(decision_version, decision_message) => {
+                        let stats_suffix_insert_time = Instant::now();
+
+                        let version = decision_message.get_candidate_version();
+                        let is_committed = decision_message.get_decision() == &Decision::Committed;
+
                         replicator.process_decision_message(decision_version, decision_message).await;
+
+                        let stats_suffix_insert_time_elapse = stats_suffix_insert_time.elapsed();
+                        if capture_stats {
+                            let _ = statistics_tx.as_ref().unwrap().send(ReplicatorStatisticsChannelMessage::SuffixUpdateDecision(version, stats_suffix_insert_time_elapse.as_nanos(), is_committed)).await;
+                        };
 
                     },
                 }
@@ -51,8 +79,15 @@ where
         //      (c) Send it to the state manager to do the updates.
         _ = interval.tick() => {
 
+            let stats_suffix_insert_time = Instant::now();
+
             if let (Some(statemap_batch), version_option) = replicator.generate_statemap_batch() {
                 if version_option.is_some() {
+
+                    let stats_suffix_insert_time_elapse = stats_suffix_insert_time.elapsed();
+                    if capture_stats {
+                        let _ = statistics_tx.as_ref().unwrap().send(ReplicatorStatisticsChannelMessage::StatemapBatchCreateTime(version_option.unwrap(), stats_suffix_insert_time_elapse.as_nanos())).await;
+                    };
 
                     info!("Statemap batch in replicator_service is ={statemap_batch:?}");
 
@@ -76,8 +111,16 @@ where
                     ReplicatorChannel::InstallationSuccess(vers) => {
                         let version = vers.last().unwrap().to_owned();
                         debug!("Installated successfully till version={version:?}");
+
+                        let stats_suffix_insert_time = Instant::now();
+
                         // Mark the suffix item as installed.
                         replicator.suffix.set_item_installed(version);
+
+                        let stats_suffix_insert_time_elapse = stats_suffix_insert_time.elapsed();
+                        if capture_stats {
+                            let _ = statistics_tx.as_ref().unwrap().send(ReplicatorStatisticsChannelMessage::SuffixUpdateInstallFlagsTime(version, stats_suffix_insert_time_elapse.as_nanos())).await;
+                        };
                         // if all prior items are installed, then update the prune vers
                         replicator.suffix.update_prune_index(version);
 
