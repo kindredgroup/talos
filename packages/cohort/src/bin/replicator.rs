@@ -29,6 +29,12 @@ async fn main() {
     let stats_object: HashMap<u64, ReplicatorStatisticsItem> = HashMap::new();
     let stats = Arc::new(Mutex::new(stats_object));
 
+    let option_collect_stats = option_env!("REPLICATOR_ENABLE_STATS");
+    let should_collect_stats = if option_collect_stats.is_some() {
+        option_collect_stats.unwrap().parse::<bool>().unwrap_or_default()
+    } else {
+        false
+    };
     // 0. Create required items.
     //  a. Create Kafka consumer
     let mut kafka_config = KafkaConfig::from_env();
@@ -64,15 +70,17 @@ async fn main() {
     let (statistics_tx, statistics_rx) = mpsc::channel(3_000);
 
     // statemap installer service.
-    let pg_statemap_installer_service = installer_service(statemap_installer_rx, replicator_tx, pg_statemap_installer, Some(statistics_tx.clone()));
+    let stats_tx = if should_collect_stats { Some(statistics_tx.clone()) } else { None };
+    let pg_statemap_installer_service = installer_service(statemap_installer_rx, replicator_tx, pg_statemap_installer, stats_tx);
     let installer_handle = tokio::spawn(async move { pg_statemap_installer_service.await });
 
     // replicator service.
-    let replicator_service = replicator_service(statemap_installer_tx, replicator_rx, replicator, Some(statistics_tx.clone()));
+    let stats_tx = if should_collect_stats { Some(statistics_tx.clone()) } else { None };
+    let replicator_service = replicator_service(statemap_installer_tx, replicator_rx, replicator, stats_tx);
     let replicator_handle = tokio::spawn(async move { replicator_service.await });
 
     // statistics service.
-    let statistics_service = stats_service(Arc::clone(&stats), statistics_rx);
+    let statistics_service = stats_service(Arc::clone(&stats), statistics_rx, should_collect_stats);
     let statistics_handle = tokio::spawn(async move { statistics_service.await });
 
     let handle = tokio::spawn(async move {
@@ -93,7 +101,13 @@ async fn main() {
         }
     }
 
-    generate_statistics(stats).await;
+    let s = stats.lock().await;
+    info!("Stats Object ={s:#?}");
+    drop(s);
+
+    if should_collect_stats {
+        generate_statistics(stats).await;
+    }
 
     info!("Exiting Cohort Replicator!!");
 }
