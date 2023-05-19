@@ -13,6 +13,12 @@ use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_item
 
 use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
 
+#[derive(Debug)]
+pub enum ReplicatorChannel {
+    InstallationSuccess(Vec<u64>),
+    // InstallationFailure(String),
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CandidateDecisionOutcome {
     Committed,
