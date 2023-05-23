@@ -25,9 +25,22 @@ impl BankApi {
         Ok(list)
     }
 
-    pub async fn get_accounts_as_map(db: Arc<Database>) -> Result<HashMap<String, BankAccount>, String> {
-        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
+    pub async fn get_accounts_as_map(db: Arc<Database>, numbers: Option<Vec<String>>) -> Result<HashMap<String, BankAccount>, String> {
         let mut map = HashMap::<String, BankAccount>::new();
+
+        let base_query = "SELECT data FROM bank_accounts";
+        let list = if numbers.is_none() {
+            db.query(base_query, DataStore::account_from_row).await
+        } else {
+            let mut filter: String = "".into();
+            for nr in numbers.unwrap().iter() {
+                if !filter.is_empty() {
+                    filter += " OR"
+                }
+                filter += &format!(" number = '{}'", nr);
+            }
+            db.query(&format!("{} WHERE {}", base_query, filter), DataStore::account_from_row).await
+        };
         for account in list.iter() {
             map.insert(account.number.clone(), account.clone());
         }

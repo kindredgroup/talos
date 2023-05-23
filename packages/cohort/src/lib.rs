@@ -1,7 +1,10 @@
 pub mod actions; // TODO: move to /packages/src/core/
 pub mod bank_api;
+pub mod cohort_exec_models;
+pub mod cohort_stats;
 pub mod config_loader;
 pub mod core; // TODO: move to /packages/src/core/
+pub mod executors;
 pub mod model;
 pub mod replicator;
 pub mod snapshot_api;

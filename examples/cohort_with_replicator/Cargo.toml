@@ -1,0 +1,23 @@
+[package]
+name = "cohort_with_replicator"
+version = "0.0.1"
+edition = "2021"
+
+[dev-dependencies]
+
+cohort =                   { path = "../../packages/cohort" }
+talos_agent =              { path = "../../packages/talos_agent" }
+talos_certifier =          { path = "../../packages/talos_certifier" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_suffix =             { path = "../../packages/talos_suffix" }
+
+async-trait = { workspace = true }
+env_logger =  { workspace = true }
+log =         { workspace = true }
+serde =       { workspace = true }
+serde_json =  { workspace = true }
+tokio =       { workspace = true, features = ["full"] }
+
+csv =  { version = "1.2.1" }
+time = { version = "0.3.17" }
+uuid = { version = "1.2.2", features = ["v4"] }
