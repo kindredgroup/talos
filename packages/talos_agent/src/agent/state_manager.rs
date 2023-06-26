@@ -185,10 +185,14 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
                     .await
                     .unwrap();
-                mc.new_event_at(EventName::CandidateReceivedByTalos, xid.to_string(), message.decided_at.unwrap_or(0))
-                    .await
-                    .unwrap();
-                mc.new_event_at(EventName::Decided, xid.to_string(), message.decided_at.unwrap_or(0))
+                mc.new_event_at(
+                    EventName::CandidateReceivedByTalos,
+                    xid.to_string(),
+                    message.can_received_at.unwrap_or(decision_received_at),
+                )
+                .await
+                .unwrap();
+                mc.new_event_at(EventName::Decided, xid.to_string(), message.created_at.unwrap_or(decision_received_at))
                     .await
                     .unwrap();
                 mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at)
@@ -523,7 +527,8 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            decided_at: Some(999),
+            can_received_at: Some(900),
+            created_at: Some(999),
         };
 
         assert_eq!(state.len(), 2);
@@ -550,7 +555,8 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            decided_at: Some(999),
+            can_received_at: Some(900),
+            created_at: Some(999),
         };
 
         assert!(state.is_empty());
@@ -562,6 +568,7 @@ mod tests {
     async fn handle_decision_should_emit_metrics() {
         // time when event was decided (sent by Talos)
         let candidate_time_at = 888;
+        let candidate_received_at = 900;
         let decided_at = 999;
 
         let mut seq = Sequence::new();
@@ -576,7 +583,7 @@ mod tests {
 
         tx_metrics
             .expect_send()
-            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceivedByTalos, decided_at))
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceivedByTalos, candidate_received_at))
             .once()
             .in_sequence(&mut seq)
             .returning(move |_| Ok(()));
@@ -616,7 +623,8 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            decided_at: Some(decided_at),
+            can_received_at: Some(candidate_received_at),
+            created_at: Some(decided_at),
         };
 
         assert_eq!(state.len(), 1);

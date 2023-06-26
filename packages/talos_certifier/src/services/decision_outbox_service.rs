@@ -1,4 +1,3 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
@@ -85,21 +84,6 @@ impl DecisionOutboxService {
 
         let mut decision_publish_header = HashMap::new();
         decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
-        decision_publish_header.insert(
-            "decisionTime".to_string(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| {
-                    Box::new(SystemServiceError {
-                        kind: SystemServiceErrorKind::ParseError,
-                        reason: format!("Error getting current time - {}", e),
-                        data: Some(format!("{:?}", decision_message)),
-                        service: "Decision Outbox Service".to_string(),
-                    })
-                })?
-                .as_nanos()
-                .to_string(),
-        );
         decision_publish_header.insert("certAgent".to_string(), decision_message.agent.clone());
 
         debug!("Publishing message {}", decision_message.version);
