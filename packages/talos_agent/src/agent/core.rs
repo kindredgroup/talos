@@ -114,10 +114,8 @@ where
 
         let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timout_ms));
 
-        // span 3.1.1 (to_state_manager.send)
         let result: Result<Result<CertificationResponse, AgentError>, Elapsed> = timeout(max_wait, async {
             match to_state_manager.send(m).await {
-                // span 3.1.2 (rx.recv())
                 Ok(()) => match rx.recv().await {
                     Some(response) => {
                         if let Some(mc) = self.metrics_client.as_ref() {
