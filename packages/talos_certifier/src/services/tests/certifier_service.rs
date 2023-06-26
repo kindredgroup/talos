@@ -68,6 +68,8 @@ async fn test_certification_rule_2() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -85,6 +87,8 @@ async fn test_certification_rule_2() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -138,6 +142,8 @@ async fn test_error_in_processing_candidate_message_certifying() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -188,6 +194,8 @@ async fn test_certification_process_decision() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -244,6 +252,8 @@ async fn test_certification_process_decision_incorrect_version() {
             // safepoint: None,
             // decision_outcome: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -313,6 +323,8 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -332,6 +344,8 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -351,6 +365,8 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -370,6 +386,8 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -389,6 +407,8 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -511,6 +531,8 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;
@@ -530,6 +552,8 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
             metadata: None,
             on_commit: None,
             statemap: None,
+            published_at: 0,
+            received_at: 0,
         },
     )
     .await;

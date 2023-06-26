@@ -33,6 +33,8 @@ tokio-postgres = { version = "0.7", features = [
 deadpool-postgres = "0.10"
 refinery = { version = "0.8.7", features = ["tokio-postgres"] }
 
+time = { version = "0.3.17" }
+
 # Error
 thiserror = "1.0.31"
 

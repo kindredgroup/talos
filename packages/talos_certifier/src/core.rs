@@ -9,6 +9,7 @@ use crate::{
 
 type Version = u64;
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum ChannelMessage {
     Candidate(CandidateMessage),
     Decision(Version, DecisionMessage),
