@@ -1,10 +1,12 @@
-extern crate core;
-use log::info;
+use async_channel::Receiver;
+use examples_support::load_generator::generator::ControlledRateLoadGenerator;
+use examples_support::load_generator::models::StopType;
+use std::num::ParseIntError;
+use std::{env, sync::Arc, time::Duration};
+
 use rdkafka::config::RDKafkaLogLevel;
-use std::sync::Arc;
-use std::time::Duration;
+use std::env::{var, VarError};
 use talos_agent::agent::core::TalosAgentImpl;
-use talos_agent::agent::errors::AgentError;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosType};
 use talos_agent::messaging::api::DecisionMessage;
@@ -16,82 +18,200 @@ use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio::{signal, try_join};
 use uuid::Uuid;
 
-///
-/// The sample usage of talos agent library
-///
+#[derive(Clone)]
+struct LaunchParams {
+    stop_max_empty_checks: u64,
+    stop_check_delay: Duration,
+    stop_type: StopType,
+    target_rate: u64,
+    threads: u64,
+    collect_metrics: bool,
+}
 
-const BATCH_SIZE: i32 = 10;
-const TALOS_TYPE: TalosType = TalosType::InProcessMock;
-const PROGRESS_EVERY: i32 = 50_000;
-const NANO_IN_SEC: i32 = 1_000_000_000;
-const TARGET_RATE: f64 = 500_f64;
-const BASE_DELAY: Duration = Duration::from_nanos((NANO_IN_SEC as f64 / TARGET_RATE) as u64);
-const WITH_METRICS: bool = true;
+#[tokio::main]
+async fn main() -> Result<(), String> {
+    env_logger::builder().format_timestamp_millis().init();
 
-fn make_configs() -> (AgentConfig, KafkaConfig) {
-    let cohort = "HostForTesting";
-    let agent = format!("agent-for-{}-{}", cohort, Uuid::new_v4());
+    log::info!("started program: {}", std::process::id());
+
+    certify().await
+}
+
+async fn certify() -> Result<(), String> {
+    let params = get_params().await?;
+
+    let generated = async_channel::unbounded::<CertificationRequest>();
+    let tx_generated = Arc::new(generated.0);
+
+    // give this to worker threads
+    let rx_generated = Arc::new(generated.1);
+    // give this to stop controller
+    let rx_generated_ref = Arc::clone(&rx_generated);
+
+    let h_stop_controller: JoinHandle<Result<(), String>> = create_stop_controller(params.clone(), rx_generated_ref);
+
+    let h_agent_workers = init_workers(params.clone(), rx_generated);
+
+    let h_workload_generator = tokio::spawn(async move {
+        let params = params.clone();
+        ControlledRateLoadGenerator::generate::<CertificationRequest>(params.stop_type, params.target_rate as f32, &create_new_candidate, tx_generated).await
+    });
+
+    let all_async_services = tokio::spawn(async move {
+        let result = try_join!(h_workload_generator, h_agent_workers);
+        log::info!("Result from the services ={result:?}");
+    });
+
+    tokio::select! {
+        _ = h_stop_controller => {
+            log::info!("Stop controller is active...");
+        }
+
+        _ = all_async_services => {}
+
+        // CTRL + C termination signal
+        _ = signal::ctrl_c() => {
+            log::info!("Shutting down...");
+        }
+    }
+
+    Ok(())
+}
+
+fn init_workers(params: LaunchParams, queue: Arc<Receiver<CertificationRequest>>) -> JoinHandle<()> {
+    tokio::spawn(async move {
+        let agent = Arc::new(make_agent(params.clone()).await);
+
+        let mut tasks: Vec<JoinHandle<Result<u64, String>>> = Vec::new();
+        let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        for _ in 1..=params.threads {
+            let agent_ref = Arc::clone(&agent);
+            let queue_ref = Arc::clone(&queue);
+            // implement task
+            let task_h = tokio::spawn(async move {
+                let mut errors_count = 0_u64;
+                loop {
+                    let queue = Arc::clone(&queue_ref);
+                    let agent = Arc::clone(&agent_ref);
+                    if let Ok(tx_req) = queue.recv().await {
+                        if (agent.certify(tx_req).await).is_err() {
+                            errors_count += 1
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                Ok(errors_count)
+            });
+
+            tasks.push(task_h);
+        }
+
+        let mut total_errors = 0_u64;
+        for task in tasks {
+            match task.await {
+                Ok(Ok(count)) => total_errors += count,
+                Ok(Err(e)) => log::warn!("Agent worker task finished with error: {}", e),
+                Err(e) => {
+                    log::warn!("Could not launch agent worker task: {}", e);
+                }
+            }
+        }
+
+        if let Some(report) = agent.collect_metrics().await {
+            let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+            let duration_ms = Duration::from_nanos((finished_at - started_at) as u64).as_millis() as u64;
+            report.print(duration_ms, total_errors);
+        } else {
+            log::warn!("There are no metrics collected ...")
+        }
+    })
+}
+
+fn get_kafka_log_level_from_env() -> Result<RDKafkaLogLevel, String> {
+    match read_var("KAFKA_LOG_LEVEL") {
+        Ok(level) => match level.to_lowercase().as_str() {
+            "alert" => Ok(RDKafkaLogLevel::Alert),
+            "critical" => Ok(RDKafkaLogLevel::Critical),
+            "debug" => Ok(RDKafkaLogLevel::Debug),
+            "emerg" => Ok(RDKafkaLogLevel::Emerg),
+            "error" => Ok(RDKafkaLogLevel::Error),
+            "info" => Ok(RDKafkaLogLevel::Info),
+            "notice" => Ok(RDKafkaLogLevel::Notice),
+            "warning" => Ok(RDKafkaLogLevel::Warning),
+            _ => Ok(RDKafkaLogLevel::Info),
+        },
+
+        Err(e) => Err(e),
+    }
+}
+
+fn load_configs() -> Result<(AgentConfig, KafkaConfig), String> {
     let cfg_agent = AgentConfig {
-        agent: agent.clone(),
-        cohort: cohort.to_string(),
-        buffer_size: 10_000,
-        timout_ms: 3_000,
+        agent: read_var("AGENT_NAME").unwrap(),
+        cohort: read_var("COHORT_NAME").unwrap(),
+        buffer_size: read_var("AGENT_BUFFER_SIZE").unwrap().parse().unwrap(),
+        timout_ms: read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
     };
 
     let cfg_kafka = KafkaConfig {
-        brokers: "127.0.0.1:9092".to_string(),
-        group_id: agent,
-        enqueue_timeout_ms: 10,
-        message_timeout_ms: 15000,
-        fetch_wait_max_ms: 6000,
-        certification_topic: "dev.ksp.certification".to_string(),
-        log_level: RDKafkaLogLevel::Info,
-        talos_type: TALOS_TYPE,
-        sasl_mechanisms: None,
-        username: None,
-        password: None,
+        brokers: read_var("KAFKA_BROKERS")?,
+        group_id: read_var("KAFKA_GROUP_ID")?,
+        certification_topic: read_var("KAFKA_TOPIC")?,
+        fetch_wait_max_ms: read_var("KAFKA_FETCH_WAIT_MAX_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
+        message_timeout_ms: read_var("KAFKA_MESSAGE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
+        enqueue_timeout_ms: read_var("KAFKA_ENQUEUE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
+        log_level: get_kafka_log_level_from_env()?,
+        talos_type: TalosType::External,
+        sasl_mechanisms: read_var_optional("KAFKA_SASL_MECHANISMS")?,
+        username: read_var_optional("KAFKA_USERNAME")?,
+        password: read_var_optional("KAFKA_PASSWORD")?,
     };
 
-    (cfg_agent, cfg_kafka)
+    Ok((cfg_agent, cfg_kafka))
 }
 
-fn make_candidate(xid: String) -> CertificationRequest {
-    let tx_data = CandidateData {
-        xid,
-        readset: Vec::new(),
-        readvers: Vec::new(),
-        snapshot: 5,
-        writeset: Vec::from(["3".to_string()]),
-        statemap: None,
-    };
-
-    CertificationRequest {
-        message_key: "12345".to_string(),
-        candidate: tx_data,
-        timeout: None, // this will use the default global value as defined in AgentConfig
+fn read_var_optional(name: &str) -> Result<Option<String>, String> {
+    match var(name) {
+        Ok(value) => {
+            if value.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(value.trim().to_string()))
+            }
+        }
+        Err(e) => match e {
+            VarError::NotPresent => {
+                log::info!("Environment variable is not found: \"{}\"", name);
+                Ok(None)
+            }
+            VarError::NotUnicode(_) => Err(format!("Environment variable is not unique: \"{}\"", name)),
+        },
     }
 }
 
-pub fn name_talos_type(talos_type: &TalosType) -> &'static str {
-    match talos_type {
-        TalosType::External => "Talos",
-        TalosType::InProcessMock => "In proc mock",
+fn read_var(name: &str) -> Result<String, String> {
+    match var(name) {
+        Ok(value) => {
+            if value.is_empty() {
+                Err(format!("Environment variable is not set: \"{}\"", name))
+            } else {
+                Ok(value.trim().to_string())
+            }
+        }
+        Err(e) => match e {
+            VarError::NotPresent => Err(format!("Environment variable is not found: \"{}\"", name)),
+            VarError::NotUnicode(_) => Err(format!("Environment variable is not unique: \"{}\"", name)),
+        },
     }
 }
 
-fn name_rate(v: Duration) -> String {
-    let nr = 1_f64 / v.as_secs_f64();
-    if nr > 1000_f64 {
-        format!("{}k/s", nr / 1000_f64)
-    } else {
-        format!("{}/s", nr)
-    }
-}
-
-async fn make_agent() -> impl TalosAgent {
-    let (cfg_agent, cfg_kafka) = make_configs();
+async fn make_agent(params: LaunchParams) -> impl TalosAgent {
+    let (cfg_agent, cfg_kafka) = load_configs().unwrap();
 
     let (tx_certify_ch, rx_certify_ch) = mpsc::channel::<CertifyRequestChannelMessage>(cfg_agent.buffer_size);
     let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
@@ -111,14 +231,14 @@ async fn make_agent() -> impl TalosAgent {
 
     let metrics: Option<Metrics>;
     let metrics_client: Option<Box<MetricsClient<SenderWrapper<Signal>>>>;
-    if WITH_METRICS {
+    if params.collect_metrics {
         let server = Metrics::new();
 
-        let (tx_ch, rx_ch) = mpsc::channel::<Signal>(100_000);
-        server.run(ReceiverWrapper { rx: rx_ch });
+        let (tx, rx) = mpsc::channel::<Signal>(1_000_000_000);
+        server.run(ReceiverWrapper { rx });
 
         let client = MetricsClient {
-            tx_destination: SenderWrapper::<Signal> { tx: tx_ch },
+            tx_destination: SenderWrapper::<Signal> { tx },
         };
 
         metrics_client = Some(Box::new(client));
@@ -135,8 +255,8 @@ async fn make_agent() -> impl TalosAgent {
         metrics,
         Arc::new(metrics_client),
         || {
-            let (tx_ch, rx_ch) = mpsc::channel::<CertificationResponse>(1);
-            (SenderWrapper { tx: tx_ch }, ReceiverWrapper { rx: rx_ch })
+            let (tx, rx) = mpsc::channel::<CertificationResponse>(1);
+            (SenderWrapper { tx }, ReceiverWrapper { rx })
         },
     );
 
@@ -146,117 +266,106 @@ async fn make_agent() -> impl TalosAgent {
     agent
 }
 
-#[tokio::main]
-async fn main() -> Result<(), String> {
-    env_logger::builder().format_timestamp_millis().init();
+fn create_new_candidate() -> CertificationRequest {
+    let tx_data = CandidateData {
+        xid: Uuid::new_v4().to_string(),
+        readset: Vec::new(),
+        readvers: Vec::new(),
+        snapshot: 5,
+        writeset: Vec::from(["3".to_string()]),
+        statemap: None,
+    };
 
-    log::info!("started program: {}", std::process::id());
-
-    info!("sleeping for 10 sec to allow profiler tool to connect to this process");
-    tokio::time::sleep(Duration::from_secs(10)).await;
-    info!("resumed...");
-
-    certify(BATCH_SIZE).await
+    CertificationRequest {
+        message_key: "12345".to_string(),
+        candidate: tx_data,
+        timeout: None, // this will use the default global value as defined in AgentConfig
+    }
 }
 
-async fn certify(batch_size: i32) -> Result<(), String> {
-    info!("Certifying {} transactions", batch_size);
-
-    // "global" state where we will collect publishing times: A - B, where
-    // B: transaction start time
-    // A: the end of call to kafka send_message(candidate)
-    let mut tasks = Vec::<JoinHandle<Result<CertificationResponse, AgentError>>>::new();
-    let agent = Arc::new(make_agent().await);
-
-    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-    info!("Starting publishing process...");
-
-    let adjust_every = 100;
-    let mut delay = BASE_DELAY;
-    let mut done = 0;
-    let mut skip = 0;
-    let min_sleep = Duration::from_micros(500);
-    for i in 0..batch_size {
-        done += 1;
-        if skip == 0 {
-            tokio::time::sleep(delay).await;
-        } else {
-            skip -= 1
-        }
-        let ac = Arc::clone(&agent);
-        let task = tokio::spawn(async move { ac.certify(make_candidate(Uuid::new_v4().to_string())).await });
-        tasks.push(task);
-
-        let p = i + 1;
-        if p % PROGRESS_EVERY == 0 || p == batch_size {
-            info!("Published {} of {}", p, batch_size);
-        }
-
-        if done % adjust_every == 0 {
-            let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-            let elapsed = Duration::from_nanos((now - started_at) as u64).as_secs_f64();
-            let effective_rate = done as f64 / elapsed;
-            let scale = TARGET_RATE / effective_rate;
-            let sleep = delay.as_secs_f64() / scale;
-            if Duration::from_secs_f64(sleep) < min_sleep {
-                skip = (min_sleep.as_secs_f64() / sleep).ceil() as i32 * adjust_every;
+fn create_stop_controller(params: LaunchParams, queue: Arc<Receiver<CertificationRequest>>) -> JoinHandle<Result<(), String>> {
+    tokio::spawn(async move {
+        let mut remaining_checks = params.stop_max_empty_checks;
+        loop {
+            tokio::time::sleep(params.stop_check_delay).await;
+            if queue.is_empty() {
+                log::info!(
+                    "There are no more items to process, finalising in {} sec",
+                    remaining_checks * params.stop_check_delay.as_secs()
+                );
+                remaining_checks -= 1;
+                if remaining_checks == 0 {
+                    break;
+                }
             } else {
-                delay = Duration::from_secs_f64(sleep);
-                skip = 0;
+                let len = queue.len();
+                log::info!("Items remaining to process: {}", len);
+                remaining_checks = params.stop_max_empty_checks;
             }
         }
+
+        queue.close();
+
+        Err("Signal from StopController".into())
+    })
+}
+
+async fn get_params() -> Result<LaunchParams, String> {
+    let args: Vec<String> = env::args().collect();
+    let mut threads: Option<u64> = Some(1);
+    let mut target_rate: Option<u64> = None;
+    let mut stop_type: Option<StopType> = None;
+    let mut stop_max_empty_checks: Option<u64> = Some(5);
+    let mut stop_check_delay: Option<u64> = Some(5);
+    let mut collect_metrics: Option<bool> = Some(true);
+
+    if args.len() >= 3 {
+        let mut i = 1;
+        while i < args.len() {
+            let param_name = &args[i];
+            if param_name.eq("--threads") {
+                let param_value = &args[i + 1];
+                threads = Some(param_value.parse().unwrap());
+            } else if param_name.eq("--rate") {
+                let param_value = &args[i + 1];
+                target_rate = Some(param_value.parse().unwrap());
+            } else if param_name.eq("--volume") {
+                let param_value = &args[i + 1];
+
+                if param_value.contains("-sec") {
+                    let seconds: u64 = param_value.replace("-sec", "").parse().unwrap();
+                    stop_type = Some(StopType::LimitExecutionDuration {
+                        run_duration: Duration::from_secs(seconds),
+                    })
+                } else {
+                    let count: u64 = param_value.parse().unwrap();
+                    stop_type = Some(StopType::LimitGeneratedTransactions { count })
+                }
+            } else if param_name.eq("--stop-controller-max-empty-checks") {
+                let param_value = &args[i + 1];
+                stop_max_empty_checks = Some(param_value.parse().unwrap());
+            } else if param_name.eq("--stop-controller-delay") {
+                let param_value = &args[i + 1];
+                stop_check_delay = Some(param_value.parse().unwrap());
+            } else if param_name.eq("--no-metrics") {
+                collect_metrics = Some(false)
+            }
+            i += 2;
+        }
     }
 
-    // Collect all stats and produce metrics
-    let mut i = 1;
-    let mut errors_count = 0;
-    for task in tasks {
-        if let Err(e) = task.await.unwrap() {
-            errors_count += 1;
-            log::error!("{:?}", e);
-        }
-
-        if i % PROGRESS_EVERY == 0 {
-            info!("Completed {} of {}", i, batch_size);
-        }
-        i += 1;
-    }
-
-    // Compute and print metrics
-
-    let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-    let duration_ms = Duration::from_nanos((finished_at - started_at) as u64).as_millis() as u64;
-
-    if let Some(report) = agent.collect_metrics() {
-        info!("Metric: value [client->agent + agent->talos.decision + talos.decision->agent + agent->client]) (request publish to kafka)");
-        info!("");
-        info!("Publishing: {:>5.2} tps", report.publish_rate);
-        info!("Throuhput:  {:>5.2} tps", report.get_rate(duration_ms));
-        info!("Max: {} ms", report.format_certify_max());
-        info!("Min: {} ms", report.format_certify_min());
-        info!("99%: {} ms", report.format_p99());
-        info!("95%: {} ms", report.format_p95());
-        info!("90%: {} ms", report.format_p90());
-        info!("75%: {} ms", report.format_p75());
-        info!("50%: {} ms", report.format_p50());
-        info!("");
-        info!("Batch size,Talos type,Target load,Throughput,Min,Max,p75,p90,p95,Errors");
-        info!(
-            "{},{},{},{},{},{},{},{},{},{}",
-            batch_size,
-            name_talos_type(&TALOS_TYPE),
-            name_rate(BASE_DELAY),
-            report.get_rate(duration_ms),
-            report.certify_min.get_total_ms(),
-            report.certify_max.get_total_ms(),
-            report.total.p75.value,
-            report.total.p90.value,
-            report.total.p95.value,
-            errors_count,
-        )
+    if stop_type.is_none() {
+        Err("Parameter --volume is required".into())
+    } else if target_rate.is_none() {
+        Err("Parameter --rate is required".into())
     } else {
-        log::warn!("There are no metrics collected ...")
+        Ok(LaunchParams {
+            target_rate: target_rate.unwrap(),
+            stop_type: stop_type.unwrap(),
+            threads: threads.unwrap(),
+            stop_max_empty_checks: stop_max_empty_checks.unwrap(),
+            stop_check_delay: Duration::from_secs(stop_check_delay.unwrap()),
+            collect_metrics: collect_metrics.unwrap(),
+        })
     }
-
-    Ok(())
 }

@@ -1,6 +1,6 @@
 use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::api::{AgentConfig, CertificationResponse};
-use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
+use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType};
 use crate::metrics::client::MetricsClient;
 use crate::metrics::model::{EventName, Signal};
 use crate::mpsc::core::{Receiver, Sender};
@@ -10,9 +10,9 @@ use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
 /// Structure represents client who sent the certification request.
-struct WaitingClient {
+pub struct WaitingClient {
     /// Time when certification request received.
-    received_at: u64,
+    pub received_at: u64,
     tx_sender: Arc<Box<dyn Sender<Data = CertificationResponse>>>,
 }
 
@@ -23,7 +23,7 @@ impl WaitingClient {
             tx_sender,
         }
     }
-    async fn notify(&self, response: CertificationResponse, error_message: String) {
+    pub async fn notify(&self, response: CertificationResponse, error_message: String) {
         if let Err(e) = self.tx_sender.send(response).await {
             log::error!("{}. Error: {}", error_message, e);
         };
@@ -34,6 +34,8 @@ pub struct StateManager<TSignalTx: Sender<Data = Signal>> {
     agent_config: AgentConfig,
     metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
 }
+
+const PRINT_STATS_FREQUENCY: f32 = 5_f32;
 
 impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     pub fn new(agent_config: AgentConfig, metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>) -> StateManager<TSignalTx> {
@@ -54,11 +56,65 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         TDecisionRx: Receiver<Data = DecisionMessage>,
     {
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
+
+        let mut iterations = 0_f32;
+        let mut cert_started_at_nanos = 0_i128;
+        let mut cert_count = 0_f32;
+        let mut cert_last_metric_print = 0_i128;
+        let mut cert_duration = 0_f32;
+        let mut duration_cert = 0_i128;
+
+        let mut dec_started_at_nanos = 0_i128;
+        let mut dec_count = 0_f32;
+        let mut dec_last_metric_print = 0_i128;
+        let mut dec_duration = 0_f32;
+        let mut duration_dec = 0_i128;
+
+        let begin_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
         loop {
             let mc = Arc::clone(&self.metrics_client);
+            let publisher_ref = Arc::clone(&publisher);
+            iterations += 1.0;
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
-                    self.handle_candidate(rslt_request_msg, publisher.clone(), &mut state).await;
+                    let c1 = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    if rslt_request_msg.is_none() {
+                        duration_cert += OffsetDateTime::now_utc().unix_timestamp_nanos() - c1;
+                        continue;
+                    }
+
+                    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    if cert_started_at_nanos == 0 {
+                        cert_started_at_nanos = now;
+                    }
+
+                    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+                    // span 3.1.2.1 self.handle_candidate
+                    self.handle_candidate(rslt_request_msg, publisher_ref, &mut state).await;
+                    let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    cert_count += 1.0;
+                    cert_duration += (finished_at - started_at) as f32 / 1_000_000_f32;
+                    let since = if cert_last_metric_print == 0 { cert_started_at_nanos } else { cert_last_metric_print };
+
+                    let elapsed = (now - since) as f32 / 1_000_000_000_f32;
+                    if elapsed >= PRINT_STATS_FREQUENCY {
+                        cert_last_metric_print = now;
+                        log::warn!(
+                            "METRIC (agent-cert) : {} / {}, rate: {:.4} tps, avg: {:.} ms, cert TPS: {:.4}, cert dur: {:.4} sec.), in-flight: {} (requests), time: {:.4} of {:.4} sec",
+                            iterations,
+                            cert_count,
+                            (cert_count / ((now - cert_started_at_nanos) as f32 / 1_000_000_000_f32)),
+                            (cert_duration / 1_000_f32) / cert_count,
+                            cert_count / (cert_duration / 1_000_f32),
+                            cert_duration / 1_000_f32,
+                            state.len(),
+                            duration_cert as f32 / 1_000_000_000_f32,
+                            (OffsetDateTime::now_utc().unix_timestamp_nanos() - begin_at) as f32 / 1_000_000_000_f32,
+                        );
+                    }
+                    duration_cert += OffsetDateTime::now_utc().unix_timestamp_nanos() - c1;
                 }
 
                 rslt_cancel_request_msg = rx_cancel.recv() => {
@@ -66,7 +122,41 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 }
 
                 rslt_decision_msg = rx_decision.recv() => {
+                    let d1 = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    if rslt_decision_msg.is_none() {
+                        duration_dec += OffsetDateTime::now_utc().unix_timestamp_nanos() - d1;
+                        continue;
+                    }
+
+                    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    if dec_started_at_nanos == 0 {
+                        dec_started_at_nanos = now;
+                    }
+
+                    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
                     Self::handle_decision(rslt_decision_msg, &mut state, mc).await;
+                    let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    dec_count += 1.0;
+                    dec_duration += (finished_at - started_at) as f32 / 1_000_000_f32;
+                    let since = if dec_last_metric_print == 0 { dec_started_at_nanos } else { dec_last_metric_print };
+
+                    let elapsed = (now - since) as f32 / 1_000_000_000_f32;
+                    if elapsed >= PRINT_STATS_FREQUENCY {
+                        dec_last_metric_print = now;
+                        log::warn!(
+                            "METRIC (agent-dec) : {} / {}, rate: {:.4} tps, avg: {:.} ms, dec TPS: {:.4}, dec dur: {:.4} sec.), in-flight: {} (requests), time: {:.4} of {:.4} sec",
+                            iterations,
+                            dec_count,
+                            (dec_count / ((now - dec_started_at_nanos) as f32 / 1_000_000_000_f32)),
+                            (dec_duration / 1_000_f32) / dec_count,
+                            dec_count / (dec_duration / 1_000_f32),
+                            dec_duration / 1_000_f32,
+                            state.len(),
+                            duration_dec as f32 / 1_000_000_000_f32,
+                            (OffsetDateTime::now_utc().unix_timestamp_nanos() - begin_at) as f32 / 1_000_000_000_f32,
+                        );
+                    }
+                    duration_dec += OffsetDateTime::now_utc().unix_timestamp_nanos() - d1;
                 }
             }
         }
@@ -83,23 +173,34 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     ) -> Option<JoinHandle<()>> {
         if let Some(request_msg) = opt_candidate {
             let wc = WaitingClient::new(Arc::clone(&request_msg.tx_answer));
+            let key = request_msg.request.message_key;
+            let xid = request_msg.request.candidate.xid.clone();
+            let metrics = Arc::clone(&self.metrics_client);
+
             state.insert(request_msg.request.candidate.xid.clone(), wc);
+            if let Some(mc) = metrics.as_ref() {
+                mc.new_event(EventName::CandidateEnqueuedInAgent, xid.clone()).await.unwrap();
+            }
 
             let msg = CandidateMessage::new(
                 self.agent_config.agent.clone(),
                 self.agent_config.cohort.clone(),
                 request_msg.request.candidate.clone(),
+                0,
             );
 
             let publisher_ref = Arc::clone(&publisher);
-            let key = request_msg.request.message_key;
-            let xid = msg.xid.clone();
-            let metrics = Arc::clone(&self.metrics_client);
 
             // Fire and forget, errors will show up in the log,
             // while corresponding requests will timeout.
+            if let Some(mc) = metrics.as_ref() {
+                mc.new_event(EventName::CandidatePublishTaskStarting, xid.clone()).await.unwrap();
+            }
             Some(tokio::spawn(async move {
-                publisher_ref.send_message(key, msg).await.unwrap();
+                if let Some(mc) = metrics.as_ref() {
+                    mc.new_event(EventName::CandidatePublishStarted, xid.clone()).await.unwrap();
+                }
+                let _ = publisher_ref.send_message(key, msg).await;
                 if let Some(mc) = metrics.as_ref() {
                     mc.new_event(EventName::CandidatePublished, xid.clone()).await.unwrap();
                 }
@@ -118,16 +219,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     ) {
         if let Some(message) = opt_decision {
             let xid = &message.xid;
-            Self::reply_to_agent(
-                xid,
-                message.decision,
-                message.decided_at,
-                message.version,
-                message.safepoint,
-                state.get_vec(&message.xid),
-                metrics_client,
-            )
-            .await;
+            Self::reply_to_agent(xid, message.clone(), state.get_vec(&message.xid), metrics_client).await;
             state.remove(xid);
         }
     }
@@ -142,10 +234,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
 
     async fn reply_to_agent(
         xid: &str,
-        decision: Decision,
-        decided_at: Option<u64>,
-        version: u64,
-        safepoint: Option<u64>,
+        message: DecisionMessage,
         clients: Option<&Vec<WaitingClient>>,
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
@@ -162,9 +251,9 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             client_nr += 1;
             let response = CertificationResponse {
                 xid: xid.to_string(),
-                decision: decision.clone(),
-                version,
-                safepoint,
+                decision: message.decision.clone(),
+                version: message.version,
+                safepoint: message.safepoint,
             };
 
             let error_message = format!(
@@ -172,17 +261,21 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 xid, client_nr, count,
             );
 
-            waiting_client.notify(response.clone(), error_message).await;
-
             if let Some(mc) = metrics_client.as_ref() {
-                mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0)).await.unwrap();
                 mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
+                    .await
+                    .unwrap();
+                mc.new_event_at(EventName::CandidateReceivedByTalos, xid.to_string(), message.decided_at.unwrap_or(0))
+                    .await
+                    .unwrap();
+                mc.new_event_at(EventName::Decided, xid.to_string(), message.decided_at.unwrap_or(0))
                     .await
                     .unwrap();
                 mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at)
                     .await
                     .unwrap();
             }
+            waiting_client.notify(response.clone(), error_message).await;
         }
     }
 }
@@ -398,6 +491,24 @@ mod tests {
         let mut tx_metrics = MockNoopMetricsSender::new();
         tx_metrics
             .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidateEnqueuedInAgent, 0))
+            .once()
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublishTaskStarting, 0))
+            .once()
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublishStarted, 0))
+            .once()
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
             .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublished, 0))
             .once()
             .returning(move |_| Ok(()));
@@ -535,16 +646,24 @@ mod tests {
 
         let mut seq = Sequence::new();
         let mut tx_metrics = MockNoopMetricsSender::new();
+
         tx_metrics
             .expect_send()
-            .withf(move |param_event| expect_event_at_time(param_event, EventName::Decided, decided_at))
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceived, candidate_time_at))
             .once()
             .in_sequence(&mut seq)
             .returning(move |_| Ok(()));
 
         tx_metrics
             .expect_send()
-            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceived, candidate_time_at))
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceivedByTalos, decided_at))
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::Decided, decided_at))
             .once()
             .in_sequence(&mut seq)
             .returning(move |_| Ok(()));

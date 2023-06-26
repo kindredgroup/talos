@@ -77,8 +77,8 @@ build:
 
 ## dev.run-agent-client: 🧪 Runs agent
 dev.run-agent-client:
-	$(call pp,run-agent app...)
-	cargo run --example agent_client --release
+	$(call pp,run-agent-client app...)
+	cargo run --example agent_client --release -- $(args)
 
 ## init.samply: 🧪 Installs Samply profiler
 init.samply:

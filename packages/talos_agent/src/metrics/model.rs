@@ -16,7 +16,11 @@ pub enum EventName {
     Started,
     // Span represents a time from the moment client formulated certification request to the moment it has been received by agent
     CandidateReceived,
+    CandidateEnqueuedInAgent,
+    CandidatePublishTaskStarting,
+    CandidatePublishStarted,
     CandidatePublished,
+    CandidateReceivedByTalos,
     // Time when decision is decided by Talos (the remote Talos time)
     Decided,
     // Decision is received by agent, but hasn't been passed back to the client
@@ -42,12 +46,15 @@ pub enum Signal {
 #[derive(Debug)]
 pub struct MetricsReport {
     pub times: Vec<Timeline>,
-    pub outbox: PercentileSet,
-    pub candidate_publish_and_decision_time: PercentileSet,
-    pub decision_download: PercentileSet,
-    pub inbox: PercentileSet,
+    pub outbox_1: PercentileSet,
+    pub enqueing_2: PercentileSet,
+    pub publish_taks_spawned_3: PercentileSet,
+    pub candidate_publish_4: PercentileSet,
+    pub candidate_kafka_trip_5: PercentileSet,
+    pub decision_duration_6: PercentileSet,
+    pub decision_download_7: PercentileSet,
+    pub inbox_8: PercentileSet,
     pub total: PercentileSet,
-    pub candidate_publish: PercentileSet,
     pub certify_min: Timeline,
     pub certify_max: Timeline,
     pub count: u64,
@@ -57,90 +64,139 @@ pub struct MetricsReport {
 impl MetricsReport {
     pub fn format_certify_max(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
-            self.certify_max.total.as_micros() as f64 / 1000_f64,
-            self.certify_max.outbox.as_micros() as f64 / 1000_f64,
-            self.certify_max.candidate_publish_and_decision_time.as_micros() as f64 / 1000_f64,
-            self.certify_max.decision_download.as_micros() as f64 / 1000_f64,
-            self.certify_max.inbox.as_micros() as f64 / 1000_f64,
-            self.certify_max.publish.as_micros() as f64 / 1000_f64,
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
+            self.certify_max.total.as_micros(),
+            self.certify_max.outbox_1.as_micros(),
+            self.certify_max.enqueing_2.as_micros(),
+            self.certify_max.publish_taks_spawn_3.as_micros(),
+            self.certify_max.candidate_publish_4.as_micros(),
+            self.certify_max.candidate_kafka_trip_5.as_micros(),
+            self.certify_max.decision_duration_6.as_micros(),
+            self.certify_max.decision_download_7.as_micros(),
+            self.certify_max.inbox_8.as_micros(),
         )
     }
 
     pub fn format_certify_min(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
-            self.certify_min.total.as_micros() as f64 / 1000_f64,
-            self.certify_min.outbox.as_micros() as f64 / 1000_f64,
-            self.certify_min.candidate_publish_and_decision_time.as_micros() as f64 / 1000_f64,
-            self.certify_min.decision_download.as_micros() as f64 / 1000_f64,
-            self.certify_min.inbox.as_micros() as f64 / 1000_f64,
-            self.certify_min.publish.as_micros() as f64 / 1000_f64,
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
+            self.certify_min.total.as_micros(),
+            self.certify_min.outbox_1.as_micros(),
+            self.certify_min.enqueing_2.as_micros(),
+            self.certify_min.publish_taks_spawn_3.as_micros(),
+            self.certify_min.candidate_publish_4.as_micros(),
+            self.certify_min.candidate_kafka_trip_5.as_micros(),
+            self.certify_min.decision_duration_6.as_micros(),
+            self.certify_min.decision_download_7.as_micros(),
+            self.certify_min.inbox_8.as_micros(),
         )
     }
 
     pub fn format_p99(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
             self.total.p99.value,
-            self.outbox.p99.value,
-            self.candidate_publish_and_decision_time.p99.value,
-            self.decision_download.p99.value,
-            self.inbox.p99.value,
-            self.candidate_publish.p99.value,
+            self.outbox_1.p99.value,
+            self.enqueing_2.p99.value,
+            self.publish_taks_spawned_3.p99.value,
+            self.candidate_publish_4.p99.value,
+            self.candidate_kafka_trip_5.p99.value,
+            self.decision_duration_6.p99.value,
+            self.decision_download_7.p99.value,
+            self.inbox_8.p99.value,
         )
     }
 
     pub fn format_p95(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
             self.total.p95.value,
-            self.outbox.p95.value,
-            self.candidate_publish_and_decision_time.p95.value,
-            self.decision_download.p95.value,
-            self.inbox.p95.value,
-            self.candidate_publish.p95.value,
+            self.outbox_1.p95.value,
+            self.enqueing_2.p95.value,
+            self.publish_taks_spawned_3.p95.value,
+            self.candidate_publish_4.p95.value,
+            self.candidate_kafka_trip_5.p95.value,
+            self.decision_duration_6.p95.value,
+            self.decision_download_7.p95.value,
+            self.inbox_8.p95.value,
         )
     }
 
     pub fn format_p90(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
             self.total.p90.value,
-            self.outbox.p90.value,
-            self.candidate_publish_and_decision_time.p90.value,
-            self.decision_download.p90.value,
-            self.inbox.p90.value,
-            self.candidate_publish.p90.value,
+            self.outbox_1.p90.value,
+            self.enqueing_2.p90.value,
+            self.publish_taks_spawned_3.p90.value,
+            self.candidate_publish_4.p90.value,
+            self.candidate_kafka_trip_5.p90.value,
+            self.decision_duration_6.p90.value,
+            self.decision_download_7.p90.value,
+            self.inbox_8.p90.value,
         )
     }
 
     pub fn format_p75(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
             self.total.p75.value,
-            self.outbox.p75.value,
-            self.candidate_publish_and_decision_time.p75.value,
-            self.decision_download.p75.value,
-            self.inbox.p75.value,
-            self.candidate_publish.p75.value,
+            self.outbox_1.p75.value,
+            self.enqueing_2.p75.value,
+            self.publish_taks_spawned_3.p75.value,
+            self.candidate_publish_4.p75.value,
+            self.candidate_kafka_trip_5.p75.value,
+            self.decision_duration_6.p75.value,
+            self.decision_download_7.p75.value,
+            self.inbox_8.p75.value,
         )
     }
 
     pub fn format_p50(&self) -> String {
         format!(
-            "{:>7.3}: [{:>7.3}, {:>7.3}, {:>7.3}, {:>7.3}] ({:>7.3})",
+            "{:>8}: [{:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}, {:>8}]",
             self.total.p50.value,
-            self.outbox.p50.value,
-            self.candidate_publish_and_decision_time.p50.value,
-            self.decision_download.p50.value,
-            self.inbox.p50.value,
-            self.candidate_publish.p50.value,
+            self.outbox_1.p50.value,
+            self.enqueing_2.p50.value,
+            self.publish_taks_spawned_3.p50.value,
+            self.candidate_publish_4.p50.value,
+            self.candidate_kafka_trip_5.p50.value,
+            self.decision_duration_6.p50.value,
+            self.decision_download_7.p50.value,
+            self.inbox_8.p50.value,
         )
     }
 
     pub fn get_rate(&self, duration_ms: u64) -> f64 {
         (self.count as f64) / (duration_ms as f64) * 1000.0
+    }
+
+    pub fn print(&self, duration_ms: u64, errors_count: u64) {
+        let headers = r"'Rroundtrip (mcs)' ['client until agent 1 (mcs)', 'enqueued for in-flight tracing 2 (mcs)', 'publishing task spawn 3 (mcs)', 'kafka publishing 4 (mcs)', 'C. kafka trip 5 (mcs)','decision duration 6 (mcs)', 'D. kafka trip 7 (mcs)', 'agent to client 8 (mcs)']";
+
+        log::warn!("");
+        log::warn!("Publishing: {:>5.2} tps", self.publish_rate);
+        log::warn!("Throuhput:  {:>5.2} tps", self.get_rate(duration_ms));
+        log::warn!("");
+        log::warn!("{}", headers);
+        log::warn!("Max (mcs): {}", self.format_certify_max());
+        log::warn!("Min (mcs): {}", self.format_certify_min());
+        log::warn!("99% (mcs): {}", self.format_p99());
+        log::warn!("95% (mcs): {}", self.format_p95());
+        log::warn!("90% (mcs): {}", self.format_p90());
+        log::warn!("75% (mcs): {}", self.format_p75());
+        log::warn!("50% (mcs): {}", self.format_p50());
+        log::warn!("");
+        log::warn!("Min,Max,p75,p90,p95,Errors");
+        log::warn!(
+            "{},{},{},{},{},{}",
+            self.certify_min.get_total_mcs(),
+            self.certify_max.get_total_mcs(),
+            self.total.p75.value,
+            self.total.p90.value,
+            self.total.p95.value,
+            errors_count,
+        )
     }
 }
 
@@ -154,28 +210,34 @@ mod tests {
     fn tx(id: String, total_sec: u64) -> Timeline {
         Timeline {
             id,
-            started_at: 1,
-            outbox: Duration::from_secs(1),
-            publish: Duration::from_secs(2),
-            candidate_publish_and_decision_time: Duration::from_secs(3),
-            decision_download: Duration::from_secs(4),
-            inbox: Duration::from_secs(5),
+            started_at: 0,
+            outbox_1: Duration::from_secs(1),
+            enqueing_2: Duration::from_secs(2),
+            publish_taks_spawn_3: Duration::from_secs(3),
+            candidate_publish_4: Duration::from_secs(4),
+            candidate_kafka_trip_5: Duration::from_secs(5),
+            decision_duration_6: Duration::from_secs(6),
+            decision_download_7: Duration::from_secs(7),
+            inbox_8: Duration::from_secs(8),
             total: Duration::from_secs(total_sec),
         }
     }
 
     fn sample_report() -> MetricsReport {
-        let p_set = PercentileSet::new(&mut [], Timeline::get_total_ms, |t| t.total.as_millis());
+        let p_set = PercentileSet::new(&mut [], Timeline::get_total_mcs, |t| t.total.as_millis());
         MetricsReport {
             times: Vec::<Timeline>::new(),
-            outbox: p_set.clone(),
-            candidate_publish_and_decision_time: p_set.clone(),
-            decision_download: p_set.clone(),
-            inbox: p_set.clone(),
             total: p_set.clone(),
-            candidate_publish: p_set,
-            certify_min: tx("id1".to_string(), 1),
-            certify_max: tx("id2".to_string(), 2),
+            outbox_1: p_set.clone(),
+            enqueing_2: p_set.clone(),
+            publish_taks_spawned_3: p_set.clone(),
+            candidate_publish_4: p_set.clone(),
+            candidate_kafka_trip_5: p_set.clone(),
+            decision_duration_6: p_set.clone(),
+            decision_download_7: p_set.clone(),
+            inbox_8: p_set,
+            certify_max: tx("id1".to_string(), 1),
+            certify_min: tx("id2".to_string(), 2),
             count: 10,
             publish_rate: 0.0,
         }
@@ -215,13 +277,34 @@ mod tests {
         let report = sample_report();
         let _ = format!("debug and clone coverage {:?}", report);
 
-        assert_eq!(report.format_p99(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
-        assert_eq!(report.format_p95(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
-        assert_eq!(report.format_p90(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
-        assert_eq!(report.format_p75(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
-        assert_eq!(report.format_p50(), "  0.000: [  0.000,   0.000,   0.000,   0.000] (  0.000)");
-        assert_eq!(report.format_certify_min(), "1000.000: [1000.000, 3000.000, 4000.000, 5000.000] (2000.000)");
-        assert_eq!(report.format_certify_max(), "2000.000: [1000.000, 3000.000, 4000.000, 5000.000] (2000.000)");
+        assert_eq!(
+            report.format_p99(),
+            "       0: [       0,        0,        0,        0,        0,        0,        0,        0]"
+        );
+        assert_eq!(
+            report.format_p95(),
+            "       0: [       0,        0,        0,        0,        0,        0,        0,        0]"
+        );
+        assert_eq!(
+            report.format_p90(),
+            "       0: [       0,        0,        0,        0,        0,        0,        0,        0]"
+        );
+        assert_eq!(
+            report.format_p75(),
+            "       0: [       0,        0,        0,        0,        0,        0,        0,        0]"
+        );
+        assert_eq!(
+            report.format_p50(),
+            "       0: [       0,        0,        0,        0,        0,        0,        0,        0]"
+        );
+        assert_eq!(
+            report.format_certify_min(),
+            " 2000000: [ 1000000,  2000000,  3000000,  4000000,  5000000,  6000000,  7000000,  8000000]"
+        );
+        assert_eq!(
+            report.format_certify_max(),
+            " 1000000: [ 1000000,  2000000,  3000000,  4000000,  5000000,  6000000,  7000000,  8000000]"
+        );
     }
 
     #[test]

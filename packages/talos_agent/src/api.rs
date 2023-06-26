@@ -81,7 +81,7 @@ pub struct KafkaConfig {
 #[async_trait]
 pub trait TalosAgent {
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError>;
-    fn collect_metrics(&self) -> Option<MetricsReport>;
+    async fn collect_metrics(&self) -> Option<MetricsReport>;
 }
 
 #[derive(Clone)]

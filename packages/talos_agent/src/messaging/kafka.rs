@@ -54,7 +54,9 @@ impl KafkaPublisher {
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
             .set("queue.buffering.max.messages", "1000000")
-            .set("topic.metadata.refresh.interval.ms", "4")
+            .set("topic.metadata.refresh.interval.ms", "5000")
+            .set("socket.keepalive.enable", "true")
+            .set("acks", "0")
             .set_log_level(kafka.log_level);
 
         setup_kafka_auth(&mut cfg, kafka);
@@ -81,10 +83,11 @@ impl KafkaPublisher {
 
 #[async_trait]
 impl Publisher for KafkaPublisher {
-    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
+    async fn send_message(&self, key: String, mut message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
         debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
 
         let topic = self.config.certification_topic.clone();
+        message.published_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let payload = serde_json::to_string(&message).unwrap();
 
         let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.certification_topic, key.as_str(), payload.as_str());
@@ -362,6 +365,7 @@ mod tests_publisher {
             snapshot: 2_u64,
             writeset: vec!["1".to_string()],
             statemap: None,
+            published_at: 0,
         })
         .unwrap();
 

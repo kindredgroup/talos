@@ -2,42 +2,55 @@ use std::cmp;
 use std::fmt::{Display, Formatter};
 use std::time::Duration;
 
-const MICRO_PER_MS: f32 = 1_000_f32;
-
 #[derive(Clone, Debug)]
 pub struct Timeline {
     pub id: String,
     pub started_at: u64,
-    pub outbox: Duration,                              // time candidate spent in the internal channel queue before being sent to kafka
-    pub publish: Duration,                             // time between start and publish to kafka
-    pub candidate_publish_and_decision_time: Duration, // time from start till talos made a decision (including kafka transmit and read)
-    pub decision_download: Duration,
-    pub inbox: Duration,
+    pub outbox_1: Duration,               // time candidate spent in the internal channel queue before received by agent
+    pub enqueing_2: Duration,             // time candidate spent inserting to internal waiting list (in flight queue)
+    pub publish_taks_spawn_3: Duration,   // time spent spawning publisher task
+    pub candidate_publish_4: Duration,    // time spent publishing to kafka
+    pub candidate_kafka_trip_5: Duration, // time spent in kafka
+    pub decision_duration_6: Duration,    // time from the moment candidate is picked up from kafka till decision is made
+    pub decision_download_7: Duration,    // the duration of decision delivery via kafka to agent
+    pub inbox_8: Duration,
     pub total: Duration,
 }
 
-fn ms(value: Duration) -> f32 {
-    value.as_micros() as f32 / MICRO_PER_MS
+fn micros(value: Duration) -> f32 {
+    value.as_micros() as f32
 }
 
 impl Timeline {
-    pub fn get_total_ms(&self) -> f32 {
-        ms(self.total)
+    pub fn get_started_at(&self) -> u64 {
+        self.started_at
     }
-    pub fn get_outbox_ms(&self) -> f32 {
-        ms(self.outbox)
+    pub fn get_total_mcs(&self) -> f32 {
+        micros(self.total)
     }
-    pub fn get_candidate_publish_and_decision_time_ms(&self) -> f32 {
-        ms(self.candidate_publish_and_decision_time)
+    pub fn get_outbox_mcs(&self) -> f32 {
+        micros(self.outbox_1)
     }
-    pub fn get_decision_download_ms(&self) -> f32 {
-        ms(self.decision_download)
+    pub fn get_enqueing_mcs(&self) -> f32 {
+        micros(self.enqueing_2)
     }
-    pub fn get_inbox_ms(&self) -> f32 {
-        ms(self.inbox)
+    pub fn get_publish_taks_spawn_mcs(&self) -> f32 {
+        micros(self.publish_taks_spawn_3)
     }
-    pub fn get_publish_ms(&self) -> f32 {
-        ms(self.publish)
+    pub fn get_candidate_publish_mcs(&self) -> f32 {
+        micros(self.candidate_publish_4)
+    }
+    pub fn get_candidate_kafka_trip_mcs(&self) -> f32 {
+        micros(self.candidate_kafka_trip_5)
+    }
+    pub fn get_decision_duration_mcs(&self) -> f32 {
+        micros(self.decision_duration_6)
+    }
+    pub fn get_decision_download_mcs(&self) -> f32 {
+        micros(self.decision_download_7)
+    }
+    pub fn get_inbox_mcs(&self) -> f32 {
+        micros(self.inbox_8)
     }
 }
 
@@ -99,11 +112,11 @@ impl PercentileSet {
     {
         let sorted = &mut metrics.to_owned();
         sorted.sort_by_key(fn_key_getter);
-        let p50 = Percentile::compute(sorted, 50, "ms", &fn_getter);
-        let p75 = Percentile::compute(sorted, 75, "ms", &fn_getter);
-        let p90 = Percentile::compute(sorted, 90, "ms", &fn_getter);
-        let p95 = Percentile::compute(sorted, 95, "ms", &fn_getter);
-        let p99 = Percentile::compute(sorted, 99, "ms", &fn_getter);
+        let p50 = Percentile::compute(sorted, 50, "mcs", &fn_getter);
+        let p75 = Percentile::compute(sorted, 75, "mcs", &fn_getter);
+        let p90 = Percentile::compute(sorted, 90, "mcs", &fn_getter);
+        let p95 = Percentile::compute(sorted, 95, "mcs", &fn_getter);
+        let p99 = Percentile::compute(sorted, 99, "mcs", &fn_getter);
 
         PercentileSet { p50, p75, p90, p95, p99 }
     }
@@ -118,11 +131,14 @@ mod tests {
         Timeline {
             id,
             started_at: 0,
-            outbox: Duration::from_secs(1),
-            publish: Duration::from_secs(2),
-            candidate_publish_and_decision_time: Duration::from_secs(3),
-            decision_download: Duration::from_secs(4),
-            inbox: Duration::from_secs(5),
+            outbox_1: Duration::from_secs(1),
+            enqueing_2: Duration::from_secs(2),
+            publish_taks_spawn_3: Duration::from_secs(3),
+            candidate_publish_4: Duration::from_secs(4),
+            candidate_kafka_trip_5: Duration::from_secs(5),
+            decision_duration_6: Duration::from_secs(6),
+            decision_download_7: Duration::from_secs(7),
+            inbox_8: Duration::from_secs(8),
             total: Duration::from_secs(total_sec),
         }
     }
@@ -160,12 +176,12 @@ mod tests {
         let tx10 = tx("id10".to_string(), 10);
 
         let data = vec![tx1, tx2, tx3, tx4, tx5, tx6, tx7, tx8, tx9, tx10];
-        assert_eq!(Percentile::compute(&data, 50, "ms", &Timeline::get_total_ms).value, 5_000_f32);
+        assert_eq!(Percentile::compute(&data, 50, "mcs", &Timeline::get_total_mcs).value, 5_000_000_f32);
     }
 
     #[test]
     fn empty_data_should_compute_to_zero() {
-        assert_eq!(Percentile::compute(&Vec::<Timeline>::new(), 50, "ms", &Timeline::get_total_ms).value, 0_f32);
+        assert_eq!(Percentile::compute(&Vec::<Timeline>::new(), 50, "ms", &Timeline::get_total_mcs).value, 0_f32);
     }
 
     #[test]
@@ -181,28 +197,32 @@ mod tests {
         let tx9 = tx("id9".to_string(), 9);
         let tx10 = tx("id10".to_string(), 10);
 
-        let p_set = PercentileSet::new(&mut [tx1, tx3, tx2, tx5, tx4, tx6, tx8, tx7, tx10, tx9], Timeline::get_total_ms, |t| {
+        let p_set = PercentileSet::new(&mut [tx1, tx3, tx2, tx5, tx4, tx6, tx8, tx7, tx10, tx9], Timeline::get_total_mcs, |t| {
             t.total.as_millis()
         });
 
-        assert_eq!(p_set.p50.value, 5_000_f32);
-        assert_eq!(p_set.p75.value, 8_000_f32);
-        assert_eq!(p_set.p90.value, 9_000_f32);
-        assert_eq!(p_set.p95.value, 10_000_f32);
-        assert_eq!(p_set.p99.value, 10_000_f32);
+        assert_eq!(p_set.p50.value, 5_000_000_f32);
+        assert_eq!(p_set.p75.value, 8_000_000_f32);
+        assert_eq!(p_set.p90.value, 9_000_000_f32);
+        assert_eq!(p_set.p95.value, 10_000_000_f32);
+        assert_eq!(p_set.p99.value, 10_000_000_f32);
     }
 
     #[test]
     fn should_convert_spans_to_ms() {
-        let tx = tx("id1".to_string(), 1);
+        let tx = tx("id1".to_string(), 36);
 
-        assert_eq!(tx.get_total_ms(), 1_000_f32);
-        assert_eq!(tx.get_outbox_ms(), 1_000_f32);
-        assert_eq!(tx.get_publish_ms(), 2_000_f32);
-        assert_eq!(tx.get_candidate_publish_and_decision_time_ms(), 3_000_f32);
-        assert_eq!(tx.get_decision_download_ms(), 4_000_f32);
-        assert_eq!(tx.get_inbox_ms(), 5_000_f32);
-        assert_eq!(tx.get_total_ms(), 1_000_f32);
+        assert_eq!(tx.get_total_mcs(), 36_000_000_f32);
+        assert_eq!(tx.get_outbox_mcs(), 1_000_000_f32);
+        assert_eq!(tx.get_enqueing_mcs(), 2_000_000_f32);
+        assert_eq!(tx.get_publish_taks_spawn_mcs(), 3_000_000_f32);
+        assert_eq!(tx.get_candidate_publish_mcs(), 4_000_000_f32);
+        assert_eq!(tx.get_candidate_kafka_trip_mcs(), 5_000_000_f32);
+        assert_eq!(tx.get_decision_duration_mcs(), 6_000_000_f32);
+        assert_eq!(tx.get_decision_download_mcs(), 7_000_000_f32);
+        assert_eq!(tx.get_inbox_mcs(), 8_000_000_f32);
     }
+
+    // total: Duration::from_secs(total_sec),
 }
 // $coverage:ignore-end
