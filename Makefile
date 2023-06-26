@@ -159,7 +159,7 @@ dev.run_cohort:
 ## dev.run_replicator: 🧪 Runs replicator
 dev.run_replicator:
 	$(call pp,run replicator...)
-	cargo run --bin replicator
+	cargo run --bin replicator --release
 
 ## lint: 🧹 Checks for lint failures on rust
 lint:

@@ -27,6 +27,7 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     /// Returns the items from suffix
     fn get_suffix_meta(&self) -> &SuffixMeta;
     fn get_message_batch(&self, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>>;
+    fn get_message_batch_from(&self, from: u64, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>>;
 }
 
 impl<T> ReplicatorSuffixTrait<T> for Suffix<T>
@@ -82,6 +83,31 @@ where
         };
 
         let items = get_nonempty_suffix_items(self.messages.iter()) // take only some items in suffix
+            .take_while(|m| m.is_decided) // take items till we find a not decided item.
+            .filter(|m| !m.item.is_installed()) // remove already installed items.
+            .take(batch_size)
+            .collect::<Vec<&SuffixItem<T>>>();
+
+        if !items.is_empty() {
+            Some(items)
+        } else {
+            None
+        }
+    }
+    fn get_message_batch_from(&self, from: u64, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>> {
+        // let mut batch = vec![];
+        let batch_size = match count {
+            Some(c) => c as usize,
+            None => self.messages.len(),
+        };
+
+        // if self.messages.len() == 1 {
+        //     return None;
+        // }
+
+        let from_index = if from != 0 { self.index_from_head(from).unwrap() + 1 } else { 0 };
+
+        let items = get_nonempty_suffix_items(self.messages.range(from_index..)) // take only some items in suffix
             .take_while(|m| m.is_decided) // take items till we find a not decided item.
             .filter(|m| !m.item.is_installed()) // remove already installed items.
             .take(batch_size)

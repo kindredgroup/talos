@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::{info, warn};
+use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, io::Error, marker::PhantomData};
@@ -8,8 +8,6 @@ use talos_certifier::{
     ports::MessageReciever,
     ChannelMessage,
 };
-
-use crate::replicator::utils::{get_filtered_batch, get_statemap_from_suffix_items};
 
 use super::suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait};
 
@@ -99,6 +97,8 @@ where
 {
     pub receiver: M,
     pub suffix: S,
+    pub last_installed: u64,
+    pub last_installing: u64,
     _phantom: PhantomData<T>,
 }
 
@@ -112,6 +112,8 @@ where
         Replicator {
             receiver,
             suffix,
+            last_installed: 0,
+            last_installing: 0,
             _phantom: PhantomData,
         }
     }
@@ -141,21 +143,21 @@ where
         }
     }
 
-    pub(crate) fn generate_statemap_batch(&self) -> (Option<Vec<StatemapItem>>, Option<u64>) {
-        let Some(batch) = self.suffix.get_message_batch(Some(1)) else {
-            return (None, None);
-        };
+    // pub(crate) fn generate_statemap_batch(&self) -> (Option<Vec<StatemapItem>>, Option<u64>) {
+    //     let Some(batch) = self.suffix.get_message_batch(Some(1)) else {
+    //         return (None, None);
+    //     };
 
-        let version = batch.last().unwrap().item_ver;
+    //     let version = batch.last().unwrap().item_ver;
 
-        // Filtering out messages that are not applicable.
-        let filtered_message_batch = get_filtered_batch(batch.iter().copied());
+    //     // Filtering out messages that are not applicable.
+    //     let filtered_message_batch = get_filtered_batch(batch.iter().copied());
 
-        // Create the statemap batch
-        let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
+    //     // Create the statemap batch
+    //     let statemap_batch = get_statemap_from_suffix_items(filtered_message_batch);
 
-        info!("Statemap_Batch={statemap_batch:#?} ");
+    //     info!("Statemap_Batch={statemap_batch:#?} ");
 
-        (Some(statemap_batch), Some(version))
-    }
+    //     (Some(statemap_batch), Some(version))
+    // }
 }
