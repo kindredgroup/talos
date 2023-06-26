@@ -35,8 +35,6 @@ pub struct StateManager<TSignalTx: Sender<Data = Signal>> {
     metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
 }
 
-const PRINT_STATS_FREQUENCY: f32 = 5_f32;
-
 impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     pub fn new(agent_config: AgentConfig, metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>) -> StateManager<TSignalTx> {
         StateManager { agent_config, metrics_client }
@@ -57,64 +55,16 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     {
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
 
-        let mut iterations = 0_f32;
-        let mut cert_started_at_nanos = 0_i128;
-        let mut cert_count = 0_f32;
-        let mut cert_last_metric_print = 0_i128;
-        let mut cert_duration = 0_f32;
-        let mut duration_cert = 0_i128;
-
-        let mut dec_started_at_nanos = 0_i128;
-        let mut dec_count = 0_f32;
-        let mut dec_last_metric_print = 0_i128;
-        let mut dec_duration = 0_f32;
-        let mut duration_dec = 0_i128;
-
-        let begin_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-
         loop {
             let mc = Arc::clone(&self.metrics_client);
             let publisher_ref = Arc::clone(&publisher);
-            iterations += 1.0;
+
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
-                    let c1 = OffsetDateTime::now_utc().unix_timestamp_nanos();
                     if rslt_request_msg.is_none() {
-                        duration_cert += OffsetDateTime::now_utc().unix_timestamp_nanos() - c1;
                         continue;
                     }
-
-                    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    if cert_started_at_nanos == 0 {
-                        cert_started_at_nanos = now;
-                    }
-
-                    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-
-                    // span 3.1.2.1 self.handle_candidate
                     self.handle_candidate(rslt_request_msg, publisher_ref, &mut state).await;
-                    let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    cert_count += 1.0;
-                    cert_duration += (finished_at - started_at) as f32 / 1_000_000_f32;
-                    let since = if cert_last_metric_print == 0 { cert_started_at_nanos } else { cert_last_metric_print };
-
-                    let elapsed = (now - since) as f32 / 1_000_000_000_f32;
-                    if elapsed >= PRINT_STATS_FREQUENCY {
-                        cert_last_metric_print = now;
-                        log::warn!(
-                            "METRIC (agent-cert) : {} / {}, rate: {:.4} tps, avg: {:.} ms, cert TPS: {:.4}, cert dur: {:.4} sec.), in-flight: {} (requests), time: {:.4} of {:.4} sec",
-                            iterations,
-                            cert_count,
-                            (cert_count / ((now - cert_started_at_nanos) as f32 / 1_000_000_000_f32)),
-                            (cert_duration / 1_000_f32) / cert_count,
-                            cert_count / (cert_duration / 1_000_f32),
-                            cert_duration / 1_000_f32,
-                            state.len(),
-                            duration_cert as f32 / 1_000_000_000_f32,
-                            (OffsetDateTime::now_utc().unix_timestamp_nanos() - begin_at) as f32 / 1_000_000_000_f32,
-                        );
-                    }
-                    duration_cert += OffsetDateTime::now_utc().unix_timestamp_nanos() - c1;
                 }
 
                 rslt_cancel_request_msg = rx_cancel.recv() => {
@@ -122,41 +72,11 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 }
 
                 rslt_decision_msg = rx_decision.recv() => {
-                    let d1 = OffsetDateTime::now_utc().unix_timestamp_nanos();
                     if rslt_decision_msg.is_none() {
-                        duration_dec += OffsetDateTime::now_utc().unix_timestamp_nanos() - d1;
                         continue;
                     }
 
-                    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    if dec_started_at_nanos == 0 {
-                        dec_started_at_nanos = now;
-                    }
-
-                    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
                     Self::handle_decision(rslt_decision_msg, &mut state, mc).await;
-                    let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    dec_count += 1.0;
-                    dec_duration += (finished_at - started_at) as f32 / 1_000_000_f32;
-                    let since = if dec_last_metric_print == 0 { dec_started_at_nanos } else { dec_last_metric_print };
-
-                    let elapsed = (now - since) as f32 / 1_000_000_000_f32;
-                    if elapsed >= PRINT_STATS_FREQUENCY {
-                        dec_last_metric_print = now;
-                        log::warn!(
-                            "METRIC (agent-dec) : {} / {}, rate: {:.4} tps, avg: {:.} ms, dec TPS: {:.4}, dec dur: {:.4} sec.), in-flight: {} (requests), time: {:.4} of {:.4} sec",
-                            iterations,
-                            dec_count,
-                            (dec_count / ((now - dec_started_at_nanos) as f32 / 1_000_000_000_f32)),
-                            (dec_duration / 1_000_f32) / dec_count,
-                            dec_count / (dec_duration / 1_000_f32),
-                            dec_duration / 1_000_f32,
-                            state.len(),
-                            duration_dec as f32 / 1_000_000_000_f32,
-                            (OffsetDateTime::now_utc().unix_timestamp_nanos() - begin_at) as f32 / 1_000_000_000_f32,
-                        );
-                    }
-                    duration_dec += OffsetDateTime::now_utc().unix_timestamp_nanos() - d1;
                 }
             }
         }
