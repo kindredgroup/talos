@@ -70,7 +70,9 @@ pub struct DecisionMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub decided_at: Option<u64>,
+    pub can_received_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,
 }
 
 /// The response of message publishing action, essentially this is

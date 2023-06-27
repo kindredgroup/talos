@@ -1872,6 +1872,7 @@ dependencies = [
  "strum",
  "talos_suffix",
  "thiserror",
+ "time 0.3.22",
  "tokio",
  "tokio-test",
 ]
@@ -1895,6 +1896,7 @@ dependencies = [
  "talos_certifier",
  "talos_suffix",
  "thiserror",
+ "time 0.3.22",
  "tokio",
  "tokio-postgres",
  "uuid",

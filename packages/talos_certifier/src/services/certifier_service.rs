@@ -2,9 +2,10 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
@@ -81,6 +82,7 @@ impl CertifierService {
     pub(crate) fn process_candidate(&mut self, message: &CandidateMessage) -> Result<DecisionMessage, CertificationError> {
         debug!("[Process Candidate message] Version {} ", message.version);
 
+        let can_process_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
         // Insert into Suffix
         if message.version > 0 {
             self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
@@ -96,7 +98,12 @@ impl CertifierService {
         let conflict_candidate: Option<CandidateMessage> = self.get_conflict_candidates(&outcome);
 
         // Create the Decision Message
-        Ok(DecisionMessage::new(message, conflict_candidate, outcome, suffix_head))
+        let mut dm = DecisionMessage::new(message, conflict_candidate, outcome, suffix_head);
+        dm.can_received_at = message.received_at;
+        dm.can_process_start = can_process_start;
+        dm.can_process_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        dm.created_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        Ok(dm)
     }
 
     pub(crate) fn process_decision(&mut self, decision_version: &u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
@@ -116,7 +123,8 @@ impl CertifierService {
 
         let candidate_version_index = self.suffix.index_from_head(candidate_version);
 
-        info!("Suffix with items : {:?}", self.suffix.retrieve_all_some_vec_items());
+        // This has big impact on performance, even if log level is below info.
+        // info!("Suffix with items : {:?}", self.suffix.retrieve_all_some_vec_items());
 
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             self.suffix

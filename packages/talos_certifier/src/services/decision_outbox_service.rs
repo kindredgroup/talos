@@ -1,9 +1,9 @@
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use log::{debug, error};
 
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::core::ServiceResult;
@@ -46,6 +46,7 @@ impl DecisionOutboxService {
     ) -> ServiceResult<DecisionMessage> {
         let xid = decision_message.xid.clone();
 
+        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let mut decision = datastore
             .insert_decision(xid, decision_message.clone())
             .await
@@ -55,6 +56,7 @@ impl DecisionOutboxService {
                 data: insert_error.data,
                 service: "Decision Outbox Service".to_string(),
             })?;
+        let end = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         if decision.version.ne(&decision_message.version) {
             decision = DecisionMessage {
@@ -64,6 +66,8 @@ impl DecisionOutboxService {
             }
         }
 
+        decision.db_start = now;
+        decision.db_end = end;
         Ok(decision)
     }
 
@@ -80,21 +84,6 @@ impl DecisionOutboxService {
 
         let mut decision_publish_header = HashMap::new();
         decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
-        decision_publish_header.insert(
-            "decisionTime".to_string(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| {
-                    Box::new(SystemServiceError {
-                        kind: SystemServiceErrorKind::ParseError,
-                        reason: format!("Error getting current time - {}", e),
-                        data: Some(format!("{:?}", decision_message)),
-                        service: "Decision Outbox Service".to_string(),
-                    })
-                })?
-                .as_nanos()
-                .to_string(),
-        );
         decision_publish_header.insert("certAgent".to_string(), decision_message.agent.clone());
 
         debug!("Publishing message {}", decision_message.version);

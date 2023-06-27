@@ -211,7 +211,8 @@ mod tests {
             suffix_start: 0_u64,
             version: 0_u64,
             safepoint: None,
-            decided_at: None,
+            can_received_at: None,
+            created_at: None,
         }
     }
 }

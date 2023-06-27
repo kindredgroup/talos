@@ -87,6 +87,15 @@ pub struct DecisionMessage {
     pub safepoint: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflicts: Option<Vec<ConflictMessage>>,
+
+    pub can_published_at: i128,
+    pub can_received_at: i128,
+    pub can_process_start: i128,
+    pub can_process_end: i128,
+    pub created_at: i128,
+    pub db_start: i128,
+    pub db_end: i128,
+    pub received_at: i128,
     //TODO:- Add them in next iteration
     // pub time: String,
     // pub certifier: String,
@@ -98,6 +107,7 @@ pub trait DecisionMessageTrait {
     fn get_safepoint(&self) -> Option<u64>;
     fn get_decision(&self) -> &Decision;
     fn is_duplicate(&self) -> bool;
+    fn get_decided_at(&self) -> i128;
 }
 
 impl DecisionMessageTrait for DecisionMessage {
@@ -116,6 +126,10 @@ impl DecisionMessageTrait for DecisionMessage {
 
     fn is_duplicate(&self) -> bool {
         self.duplicate_version.is_some()
+    }
+
+    fn get_decided_at(&self) -> i128 {
+        self.created_at
     }
 }
 
@@ -148,6 +162,14 @@ impl DecisionMessage {
             safepoint,
             conflicts,
             duplicate_version: None,
+            can_published_at: candidate_message.published_at,
+            can_received_at: candidate_message.received_at,
+            can_process_start: 0, // set later
+            can_process_end: 0,   // set later
+            created_at: 0,
+            db_start: 0,
+            db_end: 0,
+            received_at: 0,
         }
     }
 }

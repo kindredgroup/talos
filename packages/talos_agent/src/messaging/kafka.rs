@@ -236,15 +236,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
         });
 
-        let decided_at = headers.get("decisionTime").and_then(|raw_value| match raw_value.as_str().parse::<u64>() {
-            Ok(parsed) => Some(parsed),
-            Err(e) => {
-                warn!("Unable to parse decisionTime from this value '{}'. Error: {:?}", raw_value, e);
-                None
-            }
-        });
-
-        parsed_type.and_then(|message_type| deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>(), decided_at))
+        parsed_type.and_then(|message_type| deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>()))
     }
 }
 
@@ -264,27 +256,15 @@ fn deserialize_decision(
     talos_type: &TalosType,
     message_type: &TalosMessageType,
     payload_view: &Option<Result<&str, Utf8Error>>,
-    decided_at: Option<u64>,
 ) -> Option<Result<DecisionMessage, MessagingError>> {
     match message_type {
         TalosMessageType::Candidate => match talos_type {
             TalosType::External => None,
-            TalosType::InProcessMock => payload_view.and_then(|raw_payload| {
-                Some(parse_payload_as_candidate(
-                    &raw_payload,
-                    Decision::Committed,
-                    decided_at.or_else(|| Some(OffsetDateTime::now_utc().unix_timestamp_nanos() as u64)),
-                ))
-            }),
+            TalosType::InProcessMock => payload_view.and_then(|raw_payload| Some(parse_payload_as_candidate(&raw_payload, Decision::Committed))),
         },
 
         // Take only decisions...
-        TalosMessageType::Decision => payload_view.and_then(|raw_payload| {
-            Some(parse_payload_as_decision(&raw_payload).map(|mut decision| {
-                decision.decided_at = decided_at;
-                decision
-            }))
-        }),
+        TalosMessageType::Decision => payload_view.and_then(|raw_payload| Some(parse_payload_as_decision(&raw_payload))),
     }
 }
 
@@ -296,8 +276,10 @@ fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<De
         .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))
 }
 
-fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision, decided_at: Option<u64>) -> Result<DecisionMessage, MessagingError> {
+fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision) -> Result<DecisionMessage, MessagingError> {
     let json_as_text = raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
+
+    let now = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
 
     // convert JSON text into DecisionMessage
     serde_json::from_str::<CandidateMessage>(json_as_text)
@@ -310,7 +292,8 @@ fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: D
             suffix_start: 0,
             version: 0,
             safepoint: None,
-            decided_at,
+            can_received_at: Some(now),
+            created_at: Some(now),
         })
 }
 

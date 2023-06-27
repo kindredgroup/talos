@@ -29,13 +29,10 @@ pub struct CandidateMessage {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<Vec<HashMap<String, Value>>>,
-    // #[serde(skip_deserializing)]
-    // pub safepoint: Option<u64>,
 
-    // #[serde(skip_deserializing)]
-    // pub decision_outcome: Option<CandidateDecisionOutcome>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub statemap: Option<Vec<HashMap<String, Value>>>,
+    pub published_at: i128,
+    #[serde(skip_deserializing)]
+    pub received_at: i128,
 }
 
 pub trait CandidateReadWriteSet {
