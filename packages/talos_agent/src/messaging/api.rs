@@ -16,6 +16,7 @@ pub enum TalosMessageType {
 
 /// Kafka candidate message which will be published to Talos queue
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase", tag = "_typ")]
 pub struct CandidateMessage {
     pub xid: String,
     pub agent: String,
@@ -26,10 +27,11 @@ pub struct CandidateMessage {
     pub writeset: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<StateMap>,
+    pub published_at: i128,
 }
 
 impl CandidateMessage {
-    pub fn new(agent_name: String, cohort_name: String, candidate: CandidateData) -> Self {
+    pub fn new(agent_name: String, cohort_name: String, candidate: CandidateData, published_at: i128) -> Self {
         Self {
             xid: candidate.xid,
             agent: agent_name,
@@ -39,6 +41,7 @@ impl CandidateMessage {
             snapshot: candidate.snapshot,
             writeset: candidate.writeset,
             statemap: candidate.statemap,
+            published_at,
         }
     }
 }
@@ -66,10 +69,10 @@ pub struct DecisionMessage {
     pub version: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // pub conflicts: Option<Vec<ConflictMessage>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub decided_at: Option<u64>,
+    pub can_received_at: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,
 }
 
 /// The response of message publishing action, essentially this is
@@ -117,6 +120,7 @@ mod tests {
                 writeset: vec!["1".to_string()],
                 statemap: None,
             },
+            0,
         );
 
         let _ = format!("{:?}", message);

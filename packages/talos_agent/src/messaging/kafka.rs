@@ -54,7 +54,9 @@ impl KafkaPublisher {
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
             .set("queue.buffering.max.messages", "1000000")
-            .set("topic.metadata.refresh.interval.ms", "4")
+            .set("topic.metadata.refresh.interval.ms", "5000")
+            .set("socket.keepalive.enable", "true")
+            .set("acks", "0")
             .set_log_level(kafka.log_level);
 
         setup_kafka_auth(&mut cfg, kafka);
@@ -81,10 +83,11 @@ impl KafkaPublisher {
 
 #[async_trait]
 impl Publisher for KafkaPublisher {
-    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
+    async fn send_message(&self, key: String, mut message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
         debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
 
         let topic = self.config.certification_topic.clone();
+        message.published_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let payload = serde_json::to_string(&message).unwrap();
 
         let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.certification_topic, key.as_str(), payload.as_str());
@@ -233,15 +236,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
         });
 
-        let decided_at = headers.get("decisionTime").and_then(|raw_value| match raw_value.as_str().parse::<u64>() {
-            Ok(parsed) => Some(parsed),
-            Err(e) => {
-                warn!("Unable to parse decisionTime from this value '{}'. Error: {:?}", raw_value, e);
-                None
-            }
-        });
-
-        parsed_type.and_then(|message_type| deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>(), decided_at))
+        parsed_type.and_then(|message_type| deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>()))
     }
 }
 
@@ -261,27 +256,15 @@ fn deserialize_decision(
     talos_type: &TalosType,
     message_type: &TalosMessageType,
     payload_view: &Option<Result<&str, Utf8Error>>,
-    decided_at: Option<u64>,
 ) -> Option<Result<DecisionMessage, MessagingError>> {
     match message_type {
         TalosMessageType::Candidate => match talos_type {
             TalosType::External => None,
-            TalosType::InProcessMock => payload_view.and_then(|raw_payload| {
-                Some(parse_payload_as_candidate(
-                    &raw_payload,
-                    Decision::Committed,
-                    decided_at.or_else(|| Some(OffsetDateTime::now_utc().unix_timestamp_nanos() as u64)),
-                ))
-            }),
+            TalosType::InProcessMock => payload_view.and_then(|raw_payload| Some(parse_payload_as_candidate(&raw_payload, Decision::Committed))),
         },
 
         // Take only decisions...
-        TalosMessageType::Decision => payload_view.and_then(|raw_payload| {
-            Some(parse_payload_as_decision(&raw_payload).map(|mut decision| {
-                decision.decided_at = decided_at;
-                decision
-            }))
-        }),
+        TalosMessageType::Decision => payload_view.and_then(|raw_payload| Some(parse_payload_as_decision(&raw_payload))),
     }
 }
 
@@ -293,8 +276,10 @@ fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<De
         .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))
 }
 
-fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision, decided_at: Option<u64>) -> Result<DecisionMessage, MessagingError> {
+fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision) -> Result<DecisionMessage, MessagingError> {
     let json_as_text = raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
+
+    let now = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
 
     // convert JSON text into DecisionMessage
     serde_json::from_str::<CandidateMessage>(json_as_text)
@@ -307,7 +292,8 @@ fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: D
             suffix_start: 0,
             version: 0,
             safepoint: None,
-            decided_at,
+            can_received_at: Some(now),
+            created_at: Some(now),
         })
 }
 
@@ -362,6 +348,7 @@ mod tests_publisher {
             snapshot: 2_u64,
             writeset: vec!["1".to_string()],
             statemap: None,
+            published_at: 0,
         })
         .unwrap();
 

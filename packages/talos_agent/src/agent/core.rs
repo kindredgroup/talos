@@ -147,8 +147,11 @@ where
         }
     }
 
-    fn collect_metrics(&self) -> Option<MetricsReport> {
-        self.metrics.as_ref().and_then(|m| m.collect())
+    async fn collect_metrics(&self) -> Option<MetricsReport> {
+        match self.metrics.as_ref() {
+            Some(m) => m.collect().await,
+            None => None,
+        }
     }
 }
 
@@ -325,7 +328,7 @@ mod tests {
         assert!(result.is_ok());
         let response = result.unwrap();
         assert_eq!(response.xid, "xid1".to_string());
-        assert!(agent.collect_metrics().is_none());
+        assert!(agent.collect_metrics().await.is_none());
     }
 
     #[tokio::test]
@@ -374,7 +377,7 @@ mod tests {
         assert!(result.is_ok());
         let response = result.unwrap();
         assert_eq!(response.xid, "xid1".to_string());
-        assert!(agent.collect_metrics().is_none());
+        assert!(agent.collect_metrics().await.is_none());
     }
 
     #[tokio::test]
@@ -408,7 +411,7 @@ mod tests {
         let request = sample_request(sample_candidate);
         let result = agent.certify(request).await;
         assert_expected_certify_error(result);
-        assert!(agent.collect_metrics().is_none());
+        assert!(agent.collect_metrics().await.is_none());
     }
 
     #[tokio::test]
@@ -436,7 +439,7 @@ mod tests {
         let request = sample_request(sample_candidate);
         let result = agent.certify(request).await;
         assert_expected_certify_error(result);
-        assert!(agent.collect_metrics().is_none());
+        assert!(agent.collect_metrics().await.is_none());
     }
 }
 // $coverage:ignore-end

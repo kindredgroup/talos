@@ -1,6 +1,6 @@
 use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::api::{AgentConfig, CertificationResponse};
-use crate::messaging::api::{CandidateMessage, Decision, DecisionMessage, PublisherType};
+use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType};
 use crate::metrics::client::MetricsClient;
 use crate::metrics::model::{EventName, Signal};
 use crate::mpsc::core::{Receiver, Sender};
@@ -10,9 +10,9 @@ use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
 /// Structure represents client who sent the certification request.
-struct WaitingClient {
+pub struct WaitingClient {
     /// Time when certification request received.
-    received_at: u64,
+    pub received_at: u64,
     tx_sender: Arc<Box<dyn Sender<Data = CertificationResponse>>>,
 }
 
@@ -23,7 +23,7 @@ impl WaitingClient {
             tx_sender,
         }
     }
-    async fn notify(&self, response: CertificationResponse, error_message: String) {
+    pub async fn notify(&self, response: CertificationResponse, error_message: String) {
         if let Err(e) = self.tx_sender.send(response).await {
             log::error!("{}. Error: {}", error_message, e);
         };
@@ -54,11 +54,17 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         TDecisionRx: Receiver<Data = DecisionMessage>,
     {
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
+
         loop {
             let mc = Arc::clone(&self.metrics_client);
+            let publisher_ref = Arc::clone(&publisher);
+
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
-                    self.handle_candidate(rslt_request_msg, publisher.clone(), &mut state).await;
+                    if rslt_request_msg.is_none() {
+                        continue;
+                    }
+                    self.handle_candidate(rslt_request_msg, publisher_ref, &mut state).await;
                 }
 
                 rslt_cancel_request_msg = rx_cancel.recv() => {
@@ -66,6 +72,10 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 }
 
                 rslt_decision_msg = rx_decision.recv() => {
+                    if rslt_decision_msg.is_none() {
+                        continue;
+                    }
+
                     Self::handle_decision(rslt_decision_msg, &mut state, mc).await;
                 }
             }
@@ -83,23 +93,34 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     ) -> Option<JoinHandle<()>> {
         if let Some(request_msg) = opt_candidate {
             let wc = WaitingClient::new(Arc::clone(&request_msg.tx_answer));
+            let key = request_msg.request.message_key;
+            let xid = request_msg.request.candidate.xid.clone();
+            let metrics = Arc::clone(&self.metrics_client);
+
             state.insert(request_msg.request.candidate.xid.clone(), wc);
+            if let Some(mc) = metrics.as_ref() {
+                mc.new_event(EventName::CandidateEnqueuedInAgent, xid.clone()).await.unwrap();
+            }
 
             let msg = CandidateMessage::new(
                 self.agent_config.agent.clone(),
                 self.agent_config.cohort.clone(),
                 request_msg.request.candidate.clone(),
+                0,
             );
 
             let publisher_ref = Arc::clone(&publisher);
-            let key = request_msg.request.message_key;
-            let xid = msg.xid.clone();
-            let metrics = Arc::clone(&self.metrics_client);
 
             // Fire and forget, errors will show up in the log,
             // while corresponding requests will timeout.
+            if let Some(mc) = metrics.as_ref() {
+                mc.new_event(EventName::CandidatePublishTaskStarting, xid.clone()).await.unwrap();
+            }
             Some(tokio::spawn(async move {
-                publisher_ref.send_message(key, msg).await.unwrap();
+                if let Some(mc) = metrics.as_ref() {
+                    mc.new_event(EventName::CandidatePublishStarted, xid.clone()).await.unwrap();
+                }
+                let _ = publisher_ref.send_message(key, msg).await;
                 if let Some(mc) = metrics.as_ref() {
                     mc.new_event(EventName::CandidatePublished, xid.clone()).await.unwrap();
                 }
@@ -118,16 +139,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     ) {
         if let Some(message) = opt_decision {
             let xid = &message.xid;
-            Self::reply_to_agent(
-                xid,
-                message.decision,
-                message.decided_at,
-                message.version,
-                message.safepoint,
-                state.get_vec(&message.xid),
-                metrics_client,
-            )
-            .await;
+            Self::reply_to_agent(xid, message.clone(), state.get_vec(&message.xid), metrics_client).await;
             state.remove(xid);
         }
     }
@@ -142,10 +154,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
 
     async fn reply_to_agent(
         xid: &str,
-        decision: Decision,
-        decided_at: Option<u64>,
-        version: u64,
-        safepoint: Option<u64>,
+        message: DecisionMessage,
         clients: Option<&Vec<WaitingClient>>,
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
@@ -162,9 +171,9 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
             client_nr += 1;
             let response = CertificationResponse {
                 xid: xid.to_string(),
-                decision: decision.clone(),
-                version,
-                safepoint,
+                decision: message.decision.clone(),
+                version: message.version,
+                safepoint: message.safepoint,
             };
 
             let error_message = format!(
@@ -172,17 +181,25 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 xid, client_nr, count,
             );
 
-            waiting_client.notify(response.clone(), error_message).await;
-
             if let Some(mc) = metrics_client.as_ref() {
-                mc.new_event_at(EventName::Decided, xid.to_string(), decided_at.unwrap_or(0)).await.unwrap();
                 mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
+                    .await
+                    .unwrap();
+                mc.new_event_at(
+                    EventName::CandidateReceivedByTalos,
+                    xid.to_string(),
+                    message.can_received_at.unwrap_or(decision_received_at),
+                )
+                .await
+                .unwrap();
+                mc.new_event_at(EventName::Decided, xid.to_string(), message.created_at.unwrap_or(decision_received_at))
                     .await
                     .unwrap();
                 mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at)
                     .await
                     .unwrap();
             }
+            waiting_client.notify(response.clone(), error_message).await;
         }
     }
 }
@@ -398,6 +415,24 @@ mod tests {
         let mut tx_metrics = MockNoopMetricsSender::new();
         tx_metrics
             .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidateEnqueuedInAgent, 0))
+            .once()
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublishTaskStarting, 0))
+            .once()
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublishStarted, 0))
+            .once()
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
             .withf(move |param_event| expect_event_after_time(param_event, EventName::CandidatePublished, 0))
             .once()
             .returning(move |_| Ok(()));
@@ -492,7 +527,8 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            decided_at: Some(999),
+            can_received_at: Some(900),
+            created_at: Some(999),
         };
 
         assert_eq!(state.len(), 2);
@@ -519,7 +555,8 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            decided_at: Some(999),
+            can_received_at: Some(900),
+            created_at: Some(999),
         };
 
         assert!(state.is_empty());
@@ -531,20 +568,29 @@ mod tests {
     async fn handle_decision_should_emit_metrics() {
         // time when event was decided (sent by Talos)
         let candidate_time_at = 888;
+        let candidate_received_at = 900;
         let decided_at = 999;
 
         let mut seq = Sequence::new();
         let mut tx_metrics = MockNoopMetricsSender::new();
+
         tx_metrics
             .expect_send()
-            .withf(move |param_event| expect_event_at_time(param_event, EventName::Decided, decided_at))
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceived, candidate_time_at))
             .once()
             .in_sequence(&mut seq)
             .returning(move |_| Ok(()));
 
         tx_metrics
             .expect_send()
-            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceived, candidate_time_at))
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::CandidateReceivedByTalos, candidate_received_at))
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(()));
+
+        tx_metrics
+            .expect_send()
+            .withf(move |param_event| expect_event_at_time(param_event, EventName::Decided, decided_at))
             .once()
             .in_sequence(&mut seq)
             .returning(move |_| Ok(()));
@@ -577,7 +623,8 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            decided_at: Some(decided_at),
+            can_received_at: Some(candidate_received_at),
+            created_at: Some(decided_at),
         };
 
         assert_eq!(state.len(), 1);

@@ -25,6 +25,8 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+time = { version = "0.3.17" }
+
 # Error
 thiserror = "1.0.31"
 

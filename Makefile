@@ -77,8 +77,8 @@ build:
 
 ## dev.run-agent-client: 🧪 Runs agent
 dev.run-agent-client:
-	$(call pp,run-agent app...)
-	cargo run --example agent_client --release
+	$(call pp,run-agent-client app...)
+	cargo run --example agent_client --release -- $(args)
 
 ## init.samply: 🧪 Installs Samply profiler
 init.samply:
@@ -145,6 +145,11 @@ run.release:
 run.with_mock_db:
 	$(call pp,run app...)
 	cargo run -r --example certifier_kafka_dbmock
+
+## dev.preload_db: 🧪 Injects initial data into DB if it's not there yet
+dev.preload_db:
+	$(call pp,run preload_db...)
+	cargo run --bin preload_db -- $(args)
 
 ## dev.run_cohort: 🧪 Runs Cohort
 dev.run_cohort:
