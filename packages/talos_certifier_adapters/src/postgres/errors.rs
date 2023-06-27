@@ -5,6 +5,8 @@ use thiserror::Error as ThisError;
 use tokio_postgres::Error as TokioPostgresError;
 
 #[derive(Debug, ThisError)]
+// TODO: double check this setting
+#[allow(clippy::large_enum_variant)]
 pub enum PgError {
     // Deadpool errors
     #[error("Error creating pool - {0}")]

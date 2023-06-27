@@ -146,6 +146,11 @@ run.with_mock_db:
 	$(call pp,run app...)
 	cargo run -r --example certifier_kafka_dbmock
 
+## dev.preload_db: 🧪 Injects initial data into DB if it's not there yet
+dev.preload_db:
+	$(call pp,run preload_db...)
+	cargo run --bin preload_db -- $(args)
+
 ## dev.run_cohort: 🧪 Runs Cohort
 dev.run_cohort:
 	$(call pp,run cohort...)

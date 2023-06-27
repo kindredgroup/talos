@@ -17,6 +17,7 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
+use time::OffsetDateTime;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
@@ -112,16 +113,17 @@ impl MessageReciever for KafkaConsumer {
                     data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
                 })?;
                 msg.version = offset;
-
+                msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
                 ChannelMessage::Candidate(msg)
             }
             MessageVariant::Decision => {
-                let msg: DecisionMessage = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
+                let mut msg: DecisionMessage = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
                     kind: MessageReceiverErrorKind::ParseError,
                     version: Some(offset),
                     reason: e.to_string(),
                     data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
                 })?;
+                msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
                 debug!("Decision received and the offset is {} !!!! ", offset);
 

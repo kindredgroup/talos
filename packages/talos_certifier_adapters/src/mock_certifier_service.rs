@@ -40,16 +40,24 @@ impl SystemService for MockCertifierService {
                             safepoint: Some(0),
                             conflicts: None,
                             duplicate_version: None,
+                            can_published_at: 0,
+                            can_received_at: 0,
+                            can_process_start: 0,
+                            can_process_end: 0,
+                            created_at: 0,
+                            db_start: 0,
+                            db_end: 0,
+                            received_at: 0,
                         };
-                    self.decision_outbox_tx
-            .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
-            .await
-            .map_err(|e| SystemServiceError {
-                kind: SystemServiceErrorKind::CertifierError,
-                data: Some(format!("{:?}", decision_message)),
-                reason: e.to_string(),
-                service: "Certifier Service".to_string(),
-            })?;
+                        self.decision_outbox_tx
+                            .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
+                            .await
+                            .map_err(|e| SystemServiceError {
+                                kind: SystemServiceErrorKind::CertifierError,
+                                data: Some(format!("{:?}", decision_message)),
+                                reason: e.to_string(),
+                                service: "Certifier Service".to_string(),
+                            })?;
 
                     },
 
