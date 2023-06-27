@@ -116,8 +116,8 @@ fn start_queue_monitor(
     fn_on_empty_queue: impl FnOnce() -> bool + Send + 'static,
 ) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
-        let check_frequency = Duration::from_secs(1);
-        let total_attempts = 25;
+        let check_frequency = Duration::from_secs(5);
+        let total_attempts = 5;
 
         let mut remaining_attempts = total_attempts;
         loop {
