@@ -5,18 +5,19 @@ use std::{
 };
 
 use crate::replicator::{
-    core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
+    core::{Replicator, ReplicatorCandidate, ReplicatorChannel, ReplicatorInstallerMetric, StatemapItem},
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
     utils::get_filtered_batch,
 };
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_suffix::SuffixItem;
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 pub async fn replicator_service<S, M>(
-    statemaps_tx: mpsc::Sender<(Vec<StatemapItem>, Option<u64>)>,
+    statemaps_tx: mpsc::Sender<(Vec<StatemapItem>, Option<u64>, i128, i128)>,
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
 ) -> Result<(), String>
@@ -45,13 +46,18 @@ where
                         replicator.process_decision_message(decision_version, decision_message).await;
 
 
-                        let instance = Instant::now();
+                        let instance = OffsetDateTime::now_utc().unix_timestamp_nanos();
                         let msg_batch_instance = Instant::now();
                         // get batch of items from suffix to install.
                         let items_option = replicator.suffix.get_message_batch_from(replicator.last_installing, None);
                         let msg_batch_instance_elapsed = msg_batch_instance.elapsed();
 
-                        let msg_statemap_create = Instant::now();
+                        tokio::spawn(
+
+                            async move {
+
+                            }
+                        );
 
                         let mut msg_statemap_create_elapsed = Duration::from_nanos(0);
                         if let Some(items) = items_option {
@@ -61,6 +67,8 @@ where
 
                             let filter_vec = filtered_message_batch.collect::<Vec<&SuffixItem<ReplicatorCandidate>>>();
                             let filtered_vec_len = filter_vec.len();
+
+                            let msg_statemap_create = Instant::now();
                             // generate the statemap from each item in batch.
                             if filtered_vec_len > 0 {
 
@@ -80,13 +88,14 @@ where
                                         msg_statemap_create_elapsed = msg_statemap_create.elapsed();
 
                                         // send for install.
-                                        statemaps_tx.send((statemaps_to_install, Some(b_item.item_ver))).await.unwrap();
+                                        statemaps_tx.send((statemaps_to_install, Some(b_item.item_ver), instance, OffsetDateTime::now_utc().unix_timestamp_nanos())).await.unwrap();
                                     }
                                 }
                             }
 
 
-                            let elapsed = instance.elapsed();
+                            let elapsed = OffsetDateTime::now_utc().unix_timestamp_nanos() - instance;
+
                             if let Some(last_item) = items.last() {
                                 replicator.last_installing = last_item.item_ver;
                             }
@@ -95,7 +104,7 @@ where
                             if !items.is_empty() {
                                 let first_version =  items.first().unwrap().item_ver;
                                 let last_version =  items.last().unwrap().item_ver;
-                                warn!("[CREATE_STATEMAP] Processed total of count={} from_version={first_version:?} to_version={last_version:?} with batch_create_time={:?}, filter_time={msg_batch_instance_filter_elapsed:?} and filter_len={filtered_vec_len} statemap_create_time={msg_statemap_create_elapsed:?} and total_time={elapsed:?} {}", items.len(), msg_batch_instance_elapsed, elapsed.as_nanos());
+                                warn!("[CREATE_STATEMAP] Processed total of count={} from_version={first_version:?} to_version={last_version:?} with batch_create_time={:?}, filter_time={msg_batch_instance_filter_elapsed:?} and filter_len={filtered_vec_len} statemap_create_time={msg_statemap_create_elapsed:?} and total_time={elapsed:?} {}", items.len(), msg_batch_instance_elapsed, elapsed);
                             }
                         }
 
@@ -107,7 +116,9 @@ where
             if let Some(result) = res {
                 match result {
                     // 4. Remove the versions if installations are complete.
-                    ReplicatorChannel::InstallationSuccess(vers) => {
+                    ReplicatorChannel::InstallationSuccess(vers, mut replicator_installer_metric) => {
+                        replicator_installer_metric.capture_post_install_suffix_update_start(OffsetDateTime::now_utc().unix_timestamp_nanos());
+
                         let version = vers.last().unwrap().to_owned();
                         debug!("Installated successfully till version={version:?}");
                         // Mark the suffix item as installed.
@@ -117,11 +128,24 @@ where
                         // if all prior items are installed, then update the prune vers
                         replicator.suffix.update_prune_index(version);
 
+                        replicator_installer_metric.capture_post_install_suffix_update_end(OffsetDateTime::now_utc().unix_timestamp_nanos());
 
                         // Prune suffix and update suffix head.
                         if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                            replicator_installer_metric.capture_prune_start_time(OffsetDateTime::now_utc().unix_timestamp_nanos());
                             replicator.suffix.prune_till_version(version).unwrap();
+                            replicator_installer_metric.capture_prune_end_time(OffsetDateTime::now_utc().unix_timestamp_nanos());
                         }
+
+                        let metrics = replicator_installer_metric.build();
+                        let metrics_durations = metrics.calculate_durations();
+
+                        // let ReplicatorInstallerMetric { replicator_start_time, channel_send_time, channel_receive_time, installation_start_time, installation_end_time } = replicator_installer_metric;
+
+                        // let wait_in_channel_duration = channel_send_time - channel_receive_time;
+                        // let installation_duration = installation_start_time - installation_end_time;
+
+                        error!("Replicator metrics for version={version} metrics_durations={metrics_durations:?}");
 
                         // commit the offset
                         replicator.receiver.commit(version).await.unwrap();
