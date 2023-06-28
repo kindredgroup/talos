@@ -68,8 +68,8 @@ async fn main() {
 
     let replicator_service = replicator_service(statemap_installer_tx, replicator_rx, replicator);
 
-    let replicator_handle = tokio::spawn(async move { replicator_service.await });
-    let installer_handle = tokio::spawn(async move { pg_statemap_installer_service.await });
+    let replicator_handle = tokio::spawn(replicator_service);
+    let installer_handle = tokio::spawn(pg_statemap_installer_service);
 
     let handle = tokio::spawn(async move {
         // g. Run the 2 services.
