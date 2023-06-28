@@ -214,8 +214,8 @@ async fn start_replicator(
     let future_replicator = ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_resp, replicator_metrics);
     let future_installer = ReplicatorService2::start_installer(rx_install_req, tx_install_resp, installer, tx_heartbeat_ref1, replicator_metrics);
 
-    let h_replicator = tokio::spawn(async move { future_replicator.await });
-    let h_installer = tokio::spawn(async move { future_installer.await });
+    let h_replicator = tokio::spawn(future_replicator);
+    let h_installer = tokio::spawn(future_installer);
 
     (h_replicator, h_installer, rx_heartbeat)
 }
