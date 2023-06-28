@@ -19,6 +19,8 @@ use std::time::Duration;
 use std::{str, thread};
 use time::OffsetDateTime;
 
+use super::api::TxProcessingTimeline;
+
 /// The Kafka error into generic custom messaging error type
 
 impl From<KafkaError> for MessagingError {
@@ -279,7 +281,12 @@ fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<De
 fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision) -> Result<DecisionMessage, MessagingError> {
     let json_as_text = raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
 
-    let now = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    let metrics = TxProcessingTimeline {
+        candidate_received: now,
+        decision_created_at: now,
+        ..Default::default()
+    };
 
     // convert JSON text into DecisionMessage
     serde_json::from_str::<CandidateMessage>(json_as_text)
@@ -292,8 +299,7 @@ fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: D
             suffix_start: 0,
             version: 0,
             safepoint: None,
-            can_received_at: Some(now),
-            created_at: Some(now),
+            metrics: Some(metrics),
         })
 }
 

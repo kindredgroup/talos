@@ -165,6 +165,12 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
 
         let waiting_clients = clients.unwrap();
         let decision_received_at = OffsetDateTime::now_utc().unix_timestamp_nanos() as u64;
+        let (candidate_received, decision_created_at) = if let Some(metrics) = message.metrics {
+            (metrics.candidate_received as u64, metrics.decision_created_at as u64)
+        } else {
+            (decision_received_at, decision_received_at)
+        };
+
         let count = waiting_clients.len();
         let mut client_nr = 0;
         for waiting_client in waiting_clients {
@@ -185,16 +191,10 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 mc.new_event_at(EventName::CandidateReceived, xid.to_string(), waiting_client.received_at)
                     .await
                     .unwrap();
-                mc.new_event_at(
-                    EventName::CandidateReceivedByTalos,
-                    xid.to_string(),
-                    message.can_received_at.unwrap_or(decision_received_at),
-                )
-                .await
-                .unwrap();
-                mc.new_event_at(EventName::Decided, xid.to_string(), message.created_at.unwrap_or(decision_received_at))
+                mc.new_event_at(EventName::CandidateReceivedByTalos, xid.to_string(), candidate_received)
                     .await
                     .unwrap();
+                mc.new_event_at(EventName::Decided, xid.to_string(), decision_created_at).await.unwrap();
                 mc.new_event_at(EventName::DecisionReceived, xid.to_string(), decision_received_at)
                     .await
                     .unwrap();
@@ -268,7 +268,7 @@ mod tests {
     use super::*;
     use crate::api::{CandidateData, CertificationRequest};
     use crate::messaging::api::Decision::Committed;
-    use crate::messaging::api::{PublishResponse, Publisher};
+    use crate::messaging::api::{PublishResponse, Publisher, TxProcessingTimeline};
     use crate::messaging::errors::MessagingError;
     use async_trait::async_trait;
     use mockall::{mock, Sequence};
@@ -527,8 +527,7 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            can_received_at: Some(900),
-            created_at: Some(999),
+            metrics: None,
         };
 
         assert_eq!(state.len(), 2);
@@ -555,8 +554,7 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            can_received_at: Some(900),
-            created_at: Some(999),
+            metrics: None,
         };
 
         assert!(state.is_empty());
@@ -566,6 +564,8 @@ mod tests {
 
     #[tokio::test]
     async fn handle_decision_should_emit_metrics() {
+        env_logger::builder().format_timestamp_millis().init();
+
         // time when event was decided (sent by Talos)
         let candidate_time_at = 888;
         let candidate_received_at = 900;
@@ -623,8 +623,12 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
-            can_received_at: Some(candidate_received_at),
-            created_at: Some(decided_at),
+            metrics: Some(TxProcessingTimeline {
+                candidate_published: candidate_time_at as i128,
+                candidate_received: candidate_received_at as i128,
+                decision_created_at: decided_at as i128,
+                ..TxProcessingTimeline::default()
+            }),
         };
 
         assert_eq!(state.len(), 1);

@@ -46,7 +46,7 @@ impl DecisionOutboxService {
     ) -> ServiceResult<DecisionMessage> {
         let xid = decision_message.xid.clone();
 
-        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let mut decision = datastore
             .insert_decision(xid, decision_message.clone())
             .await
@@ -56,7 +56,7 @@ impl DecisionOutboxService {
                 data: insert_error.data,
                 service: "Decision Outbox Service".to_string(),
             })?;
-        let end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         if decision.version.ne(&decision_message.version) {
             decision = DecisionMessage {
@@ -66,8 +66,8 @@ impl DecisionOutboxService {
             }
         }
 
-        decision.db_start = now;
-        decision.db_end = end;
+        decision.metrics.db_save_started = started_at;
+        decision.metrics.db_save_ended = finished_at;
         Ok(decision)
     }
 

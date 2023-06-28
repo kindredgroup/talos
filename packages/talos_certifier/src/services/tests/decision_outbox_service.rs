@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     errors::{SystemServiceError, SystemServiceErrorKind},
-    model::{Decision, DecisionMessage},
+    model::{metrics::TxProcessingTimeline, Decision, DecisionMessage},
     ports::{
         common::SharedPortTraits,
         errors::{DecisionStoreError, DecisionStoreErrorKind},
@@ -121,14 +121,7 @@ async fn test_candidate_message_create_decision_message() {
                 duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
-                can_published_at: 0,
-                can_received_at: 0,
-                can_process_start: 0,
-                can_process_end: 0,
-                created_at: 0,
-                db_start: 0,
-                db_end: 0,
-                received_at: 0,
+                metrics: TxProcessingTimeline::default(),
             }))
             .await
             .unwrap();
@@ -187,14 +180,7 @@ async fn test_save_and_publish_multiple_decisions() {
                 duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
-                can_published_at: 0,
-                can_received_at: 0,
-                can_process_start: 0,
-                can_process_end: 0,
-                created_at: 0,
-                db_start: 0,
-                db_end: 0,
-                received_at: 0,
+                metrics: TxProcessingTimeline::default(),
             }))
             .await
             .unwrap();
@@ -212,14 +198,7 @@ async fn test_save_and_publish_multiple_decisions() {
                 duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
-                can_published_at: 0,
-                can_received_at: 0,
-                can_process_start: 0,
-                can_process_end: 0,
-                created_at: 0,
-                db_start: 0,
-                db_end: 0,
-                received_at: 0,
+                metrics: TxProcessingTimeline::default(),
             }))
             .await
             .unwrap();
@@ -315,14 +294,7 @@ async fn test_capture_child_thread_dberror() {
                 duplicate_version: None,
                 safepoint: Some(3),
                 conflicts: None,
-                can_published_at: 0,
-                can_received_at: 0,
-                can_process_start: 0,
-                can_process_end: 0,
-                created_at: 0,
-                db_start: 0,
-                db_end: 0,
-                received_at: 0,
+                metrics: TxProcessingTimeline::default(),
             }))
             .await
             .unwrap();
@@ -374,14 +346,7 @@ async fn test_capture_publish_error() {
         duplicate_version: None,
         safepoint: Some(3),
         conflicts: None,
-        can_published_at: 0,
-        can_received_at: 0,
-        can_process_start: 0,
-        can_process_end: 0,
-        created_at: 0,
-        db_start: 0,
-        db_end: 0,
-        received_at: 0,
+        metrics: TxProcessingTimeline::default(),
     };
 
     if let Err(publish_error) = DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message).await {
@@ -441,14 +406,7 @@ async fn test_duplicate_version_found_in_db() {
         duplicate_version: None,
         safepoint: Some(3),
         conflicts: None,
-        can_published_at: 0,
-        can_received_at: 0,
-        can_process_start: 0,
-        can_process_end: 0,
-        created_at: 0,
-        db_start: 0,
-        db_end: 0,
-        received_at: 0,
+        metrics: TxProcessingTimeline::default(),
     };
 
     let result_first_decision = DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await;
@@ -465,14 +423,7 @@ async fn test_duplicate_version_found_in_db() {
         duplicate_version: None,
         safepoint: Some(3),
         conflicts: None,
-        can_published_at: 0,
-        can_received_at: 0,
-        can_process_start: 0,
-        can_process_end: 0,
-        created_at: 0,
-        db_start: 0,
-        db_end: 0,
-        received_at: 0,
+        metrics: TxProcessingTimeline::default(),
     };
     let result_duplicate_decision = DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message_duplicate_same_xid).await;
 

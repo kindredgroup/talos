@@ -1928,6 +1928,7 @@ dependencies = [
  "futures-util",
  "log",
  "logger",
+ "metrics",
  "mockall",
  "rdkafka",
  "refinery",
