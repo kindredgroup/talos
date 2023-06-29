@@ -25,12 +25,29 @@ impl BankApi {
         Ok(list)
     }
 
-    pub async fn get_accounts_as_map(db: Arc<Database>) -> Result<HashMap<String, BankAccount>, String> {
-        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
+    pub async fn get_accounts_as_map(db: Arc<Database>, number_from: String, number_to: String) -> Result<HashMap<String, BankAccount>, String> {
         let mut map = HashMap::<String, BankAccount>::new();
+
+        let from = db
+            .query_one("SELECT data FROM bank_accounts WHERE number = $1", &[&number_from], DataStore::account_from_row)
+            .await;
+        let to = db
+            .query_one("SELECT data FROM bank_accounts WHERE number = $1", &[&number_to], DataStore::account_from_row)
+            .await;
+        map.insert(number_from, from);
+        map.insert(number_to, to);
+
+        Ok(map)
+    }
+
+    pub async fn get_all_accounts_as_map(db: Arc<Database>) -> Result<HashMap<String, BankAccount>, String> {
+        let mut map = HashMap::<String, BankAccount>::new();
+
+        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
         for account in list.iter() {
             map.insert(account.number.clone(), account.clone());
         }
+
         Ok(map)
     }
 
@@ -84,7 +101,7 @@ impl BankApi {
         } else {
             Err(format!(
                 "Unable to transfer ${} from '{}' to '{}'. Error: affected rows({}) != 2",
-                data.from, data.to, data.amount, affected_rows,
+                data.amount, data.from, data.to, affected_rows,
             ))
         }
     }
@@ -99,6 +116,8 @@ impl BankApi {
             if let Err(e) = rslt_commit {
                 return Err(format!("Unable to commit: {}. The original transaction updated: {} rows", e, result.unwrap()));
             }
+        } else {
+            let _ = tx.rollback().await;
         }
         result
     }

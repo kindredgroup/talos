@@ -65,27 +65,8 @@ impl ConfigLoader {
     }
 
     pub fn load() -> Result<(AgentConfig, KafkaConfig, DatabaseConfig), String> {
-        let cfg_agent = AgentConfig {
-            agent: Self::read_var("AGENT_NAME").unwrap(),
-            cohort: Self::read_var("COHORT_NAME").unwrap(),
-            buffer_size: Self::read_var("AGENT_BUFFER_SIZE").unwrap().parse().unwrap(),
-            timout_ms: Self::read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
-        };
-
-        let cfg_kafka = KafkaConfig {
-            brokers: Self::read_var("KAFKA_BROKERS")?,
-            group_id: Self::read_var("KAFKA_GROUP_ID")?,
-            certification_topic: Self::read_var("KAFKA_TOPIC")?,
-            fetch_wait_max_ms: Self::read_var("KAFKA_FETCH_WAIT_MAX_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
-            message_timeout_ms: Self::read_var("KAFKA_MESSAGE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
-            enqueue_timeout_ms: Self::read_var("KAFKA_ENQUEUE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
-            log_level: Self::get_kafka_log_level_from_env()?,
-            talos_type: TalosType::External,
-            sasl_mechanisms: Self::read_var_optional("KAFKA_SASL_MECHANISMS")?,
-            username: Self::read_var_optional("KAFKA_USERNAME")?,
-            password: Self::read_var_optional("KAFKA_PASSWORD")?,
-        };
-
+        let cfg_agent = Self::load_agent_config()?;
+        let cfg_kafka = Self::load_kafka_config()?;
         let cfg_db = Self::load_db_config()?;
         log::info!("Configs:\n\t{:?}\n\t{:?}\n\t{:?}", cfg_agent, cfg_kafka, cfg_db);
         Ok((cfg_agent, cfg_kafka, cfg_db))
@@ -98,6 +79,31 @@ impl ConfigLoader {
             host: Self::read_var("COHORT_PG_HOST")?,
             port: Self::read_var("COHORT_PG_PORT")?,
             database: Self::read_var("COHORT_PG_DATABASE")?,
+        })
+    }
+
+    pub fn load_kafka_config() -> Result<KafkaConfig, String> {
+        Ok(KafkaConfig {
+            brokers: Self::read_var("KAFKA_BROKERS")?,
+            group_id: Self::read_var("KAFKA_GROUP_ID")?,
+            certification_topic: Self::read_var("KAFKA_TOPIC")?,
+            fetch_wait_max_ms: Self::read_var("KAFKA_FETCH_WAIT_MAX_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
+            message_timeout_ms: Self::read_var("KAFKA_MESSAGE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
+            enqueue_timeout_ms: Self::read_var("KAFKA_ENQUEUE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
+            log_level: Self::get_kafka_log_level_from_env()?,
+            talos_type: TalosType::External,
+            sasl_mechanisms: Self::read_var_optional("KAFKA_SASL_MECHANISMS")?,
+            username: Self::read_var_optional("KAFKA_USERNAME")?,
+            password: Self::read_var_optional("KAFKA_PASSWORD")?,
+        })
+    }
+
+    pub fn load_agent_config() -> Result<AgentConfig, String> {
+        Ok(AgentConfig {
+            agent: Self::read_var("AGENT_NAME").unwrap(),
+            cohort: Self::read_var("COHORT_NAME").unwrap(),
+            buffer_size: Self::read_var("AGENT_BUFFER_SIZE").unwrap().parse().unwrap(),
+            timout_ms: Self::read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
         })
     }
 }

@@ -283,6 +283,7 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
+ "metrics",
  "mockall",
  "multimap 0.9.0",
  "rand",
@@ -302,6 +303,34 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tokio-test",
+ "uuid",
+]
+
+[[package]]
+name = "cohort_banking"
+version = "0.0.1"
+dependencies = [
+ "async-channel",
+ "async-trait",
+ "cohort",
+ "csv",
+ "deadpool-postgres",
+ "env_logger",
+ "examples_support",
+ "log",
+ "metrics",
+ "rand",
+ "rdkafka",
+ "rdkafka-sys",
+ "serde",
+ "serde_json",
+ "talos_agent",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "talos_suffix",
+ "time 0.3.22",
+ "tokio",
+ "tokio-postgres",
  "uuid",
 ]
 
@@ -588,12 +617,17 @@ version = "0.0.1"
 dependencies = [
  "async-channel",
  "async-trait",
+ "cohort",
+ "deadpool-postgres",
  "env_logger",
  "log",
+ "metrics",
+ "refinery",
  "strum",
  "thiserror",
  "time 0.3.22",
  "tokio",
+ "tokio-postgres",
  "uuid",
 ]
 
@@ -984,6 +1018,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a634b1c61a95585bd15607c6ab0c4e5b226e695ff2800ba0cdccddf208c406c"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "metrics"
+version = "0.0.1"
+dependencies = [
+ "time 0.3.22",
 ]
 
 [[package]]

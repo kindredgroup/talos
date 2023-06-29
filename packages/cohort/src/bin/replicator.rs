@@ -2,6 +2,7 @@
 
 use cohort::{
     config_loader::ConfigLoader,
+    metrics::MinMax,
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
@@ -10,6 +11,7 @@ use cohort::{
     state::postgres::{data_access::PostgresApi, database::Database},
 };
 use log::{info, warn};
+use metrics::model::MicroMetrics;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};
@@ -45,7 +47,17 @@ async fn main() {
     let database = Database::init_db(cfg_db).await;
     let manual_tx_api = PostgresApi { client: database.get().await };
 
-    let pg_statemap_installer = PgReplicatorStatemapInstaller { pg: manual_tx_api };
+    let pg_statemap_installer = PgReplicatorStatemapInstaller {
+        metrics_frequency: None,
+        pg: manual_tx_api,
+        metrics: MicroMetrics::new(1_000_000_000_f32, true),
+        m_total: MinMax::default(),
+        m1_tx: MinMax::default(),
+        m2_exec: MinMax::default(),
+        m3_ver: MinMax::default(),
+        m4_snap: MinMax::default(),
+        m5_commit: MinMax::default(),
+    };
 
     // f. Create the replicator and statemap installer services.
     // run_talos_replicator(&mut replicator, &mut pg_statemap_installer).await;

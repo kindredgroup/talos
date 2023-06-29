@@ -8,10 +8,119 @@ use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
 use crate::state::data_access_api::{ManualTx, TxApi};
 use futures::future::BoxFuture;
+use time::OffsetDateTime;
 
 pub struct BatchExecutor {}
 
 impl BatchExecutor {
+    pub async fn execute_instrumented<'a, T, A>(
+        manual_tx_api: &'a mut A,
+        batch: Vec<StatemapItem>,
+        snapshot: Option<u64>,
+    ) -> Result<(u64, ((i128, i128), (i128, i128), (i128, i128), (i128, i128), (i128, i128), (i128, i128))), String>
+    where
+        T: ManualTx,
+        A: TxApi<'a, T>,
+    {
+        //
+        // We attempt to execute all actions in this batch and then track how many DB rows where affected.
+        // If there were no rows updated in DB then we print warning and allow cohort to proceed.
+        // In case of batch execution produced an error we rollback.
+        // If rollback fails we return error describing both - the reson for batch execution error and the reason for rollback error.
+        // If successfull we check whether snapshot update is required.
+        // Then we udpate snapshot and commit. Or we update snapshot, fail and rollback.
+        // The error handling of commit is the same as for rollabck error.
+
+        let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+        let s1_tx_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let tx = manual_tx_api.transaction().await;
+        let s1_tx_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+        let mut batch_p1: Vec<BoxFuture<Result<Option<u64>, String>>> = Vec::new();
+        for item in batch.iter() {
+            let pinned_box: BoxFuture<Result<Option<u64>, String>> = Box::pin(Self::execute_item(item, &tx));
+            batch_p1.push(pinned_box);
+        }
+
+        let s2_exec_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let rslt_p1 = futures::future::try_join_all(batch_p1).await;
+        let s2_exec_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        if rslt_p1.is_err() {
+            return Err(Self::handle_rollback(tx.rollback().await, rslt_p1.unwrap_err()));
+        }
+
+        let mut affected_rows = 0_u64;
+        // filter out empty Option elements, here flatten() = filter(Option::is_some).map(Option::unwrap)
+        for c in rslt_p1.unwrap().iter().flatten() {
+            affected_rows += c;
+        }
+
+        // Phase two
+
+        let mut batch_p2: Vec<BoxFuture<Result<Option<u64>, String>>> = Vec::new();
+        for item in batch.iter() {
+            let pinned_box: BoxFuture<Result<Option<u64>, String>> = Box::pin(Self::update_version(item, &tx));
+            batch_p2.push(pinned_box);
+        }
+
+        let s3_upd_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let rslt_p2 = futures::future::try_join_all(batch_p2).await;
+        let s3_upd_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        if rslt_p2.is_err() {
+            return Err(Self::handle_rollback(tx.rollback().await, rslt_p2.unwrap_err()));
+        }
+
+        let mut affected_rows_p2 = 0_u64;
+        // filter out empty Option elements, here flatten() = filter(Option::is_some).map(Option::unwrap)
+        for c in rslt_p2.unwrap().iter().flatten() {
+            affected_rows_p2 += c;
+        }
+
+        // Snapshot update
+
+        let mut s4_snap_s = 0_i128;
+        let mut s4_snap_f = 0_i128;
+
+        if let Some(new_version) = snapshot {
+            if affected_rows == 0 {
+                log::info!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
+            }
+
+            s4_snap_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
+            let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
+            s4_snap_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
+            if let Ok(rows) = snapshot_update_result {
+                affected_rows += rows;
+            } else {
+                // there was an error updating snapshot, we need to rollabck the whole batch
+                let snapshot_error = snapshot_update_result.unwrap_err();
+                return Err(Self::handle_rollback(
+                    tx.rollback().await,
+                    format!("Snapshot update error: '{}'", snapshot_error),
+                ));
+            }
+        } else if affected_rows == 0 {
+            log::warn!("No rows were updated when executing batch.");
+        }
+
+        let s5_cm_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
+        let s5_cm_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+        let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+        let spans = (
+            (started_at, finished_at),
+            (s1_tx_s, s1_tx_f),
+            (s2_exec_s, s2_exec_f),
+            (s3_upd_s, s3_upd_f),
+            (s4_snap_s, s4_snap_f),
+            (s5_cm_s, s5_cm_f),
+        );
+        Ok((affected_rows, spans))
+    }
+
     pub async fn execute<'a, T, A>(manual_tx_api: &'a mut A, batch: Vec<StatemapItem>, snapshot: Option<u64>) -> Result<u64, String>
     where
         T: ManualTx,

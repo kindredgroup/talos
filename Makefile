@@ -151,10 +151,10 @@ dev.preload_db:
 	$(call pp,run preload_db...)
 	cargo run --bin preload_db -- $(args)
 
-## dev.run_cohort: 🧪 Runs Cohort
-dev.run_cohort:
-	$(call pp,run cohort...)
-	cargo run --bin cohort -- $(args)
+## dev.cohort_banking: 🧪 Runs Cohort with built-it replicator and executes banking transactions
+dev.cohort_banking:
+	$(call pp,run cohort_banking...)
+	cargo run --example cohort_banking --release -- $(args)
 
 ## dev.run_replicator: 🧪 Runs replicator
 dev.run_replicator:
