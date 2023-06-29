@@ -42,9 +42,10 @@ thiserror = "1.0.31"
 mockall = "0.11.0"
 
 # internal crates
-logger = { path = "../logger" }
-talos_certifier = { path = "../talos_certifier" }
-talos_suffix = { path = "../talos_suffix" }
+logger =            { path = "../logger" }
+metrics =           { path = "../metrics" }
+talos_certifier =   { path = "../talos_certifier" }
+talos_suffix =      { path = "../talos_suffix" }
 
 
 [dev-dependencies]

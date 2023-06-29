@@ -70,9 +70,20 @@ pub struct DecisionMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub can_received_at: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created_at: Option<u64>,
+    pub metrics: Option<TxProcessingTimeline>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TxProcessingTimeline {
+    pub candidate_published: i128,
+    pub candidate_received: i128,
+    pub candidate_processing_started: i128,
+    pub decision_created_at: i128,
+    pub db_save_started: i128,
+    pub db_save_ended: i128,
+    #[serde(skip_serializing, skip_deserializing)]
+    pub decision_received_at: i128,
 }
 
 /// The response of message publishing action, essentially this is

@@ -1,5 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
+use metrics::model::MinMax;
+
 #[derive(Debug, Clone)]
 pub struct Span {
     pub started: i128,
@@ -32,56 +34,6 @@ impl Default for TxExecSpans {
             span3_certify: Span::new(0, 0),
             span4_wait_for_safepoint: Span::new(0, 0),
             span5_install: Span::new(0, 0),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct MinMax {
-    pub sum: i128,
-    pub min: i128,
-    pub max: i128,
-    pub count: i128,
-}
-
-impl MinMax {
-    pub fn merge(&mut self, value: MinMax) {
-        if self.min > value.min {
-            self.min = value.min;
-        }
-        if self.max < value.max && value.max < i128::MAX {
-            self.max = value.max;
-        }
-        self.sum += value.sum;
-        self.count += value.count;
-    }
-
-    pub fn add(&mut self, value: i128) {
-        if self.min > value {
-            self.min = value;
-        }
-        if self.max < value && value < i128::MAX {
-            self.max = value;
-        }
-        self.count += 1;
-        self.sum += value;
-    }
-
-    pub fn reset(&mut self) {
-        self.sum = 0;
-        self.min = i128::MAX;
-        self.max = 0;
-        self.count = 0;
-    }
-}
-
-impl Default for MinMax {
-    fn default() -> Self {
-        MinMax {
-            min: i128::MAX,
-            max: 0,
-            count: 0,
-            sum: 0,
         }
     }
 }

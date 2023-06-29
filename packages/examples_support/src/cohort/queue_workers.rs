@@ -5,7 +5,7 @@ use cohort::{
     config_loader::ConfigLoader,
     core::{AgentType, Cohort},
     delay_controller::DelayController,
-    metrics::{MinMax, Span, Stats, TxExecSpans},
+    metrics::{Span, Stats, TxExecSpans},
     model::{
         bank_account::as_money,
         requests::TransferRequest,
@@ -14,7 +14,7 @@ use cohort::{
     snapshot_api::SnapshotApi,
     state::postgres::database::Database,
 };
-use metrics::model::MicroMetrics;
+use metrics::model::{MicroMetrics, MinMax};
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 

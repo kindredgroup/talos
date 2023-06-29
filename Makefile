@@ -156,6 +156,11 @@ dev.cohort_banking:
 	$(call pp,run cohort_banking...)
 	cargo run --example cohort_banking --release -- $(args)
 
+## dev.histogram_decision_timeline_from_kafka: 🧪 Reads all decisions from kafka and prints processing timeline as csv
+dev.histogram_decision_timeline_from_kafka:
+	$(call pp,histogram_decision_timeline_from_kafka...)
+	cargo run --bin histogram_decision_timeline_from_kafka --release -- $(args)
+
 ## dev.run_replicator: 🧪 Runs replicator
 dev.run_replicator:
 	$(call pp,run replicator...)

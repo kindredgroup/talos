@@ -3,7 +3,7 @@ use std::{env, sync::Arc, time::Duration};
 use async_channel::Receiver;
 use cohort::{
     config_loader::ConfigLoader,
-    metrics::{MinMax, Stats},
+    metrics::Stats,
     model::requests::TransferRequest,
     replicator::pg_replicator_installer::PgReplicatorStatemapInstaller,
     replicator2::{cohort_replicator::CohortReplicator, cohort_suffix::CohortSuffix, service::ReplicatorService2},
@@ -14,7 +14,7 @@ use examples_support::{
     load_generator::{generator::ControlledRateLoadGenerator, models::StopType},
 };
 
-use metrics::model::MicroMetrics;
+use metrics::model::{MicroMetrics, MinMax};
 use rand::Rng;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
@@ -136,7 +136,7 @@ fn start_queue_monitor(
                 remaining_attempts -= 1;
                 log::warn!(
                     "Workers queue is empty and there is no activity signal from replicator. Finishing in: {} seconds...",
-                    remaining_attempts
+                    remaining_attempts * check_frequency.as_secs()
                 );
             } else {
                 remaining_attempts = total_attempts;

@@ -2,7 +2,6 @@
 
 use cohort::{
     config_loader::ConfigLoader,
-    metrics::MinMax,
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
@@ -11,7 +10,7 @@ use cohort::{
     state::postgres::{data_access::PostgresApi, database::Database},
 };
 use log::{info, warn};
-use metrics::model::MicroMetrics;
+use metrics::model::{MicroMetrics, MinMax};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemService};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
+use talos_certifier::model::metrics::TxProcessingTimeline;
 use talos_certifier::model::{Decision, DecisionMessage};
 use talos_certifier::ports::common::SharedPortTraits;
 use talos_certifier::ChannelMessage;
@@ -40,14 +41,7 @@ impl SystemService for MockCertifierService {
                             safepoint: Some(0),
                             conflicts: None,
                             duplicate_version: None,
-                            can_published_at: 0,
-                            can_received_at: 0,
-                            can_process_start: 0,
-                            can_process_end: 0,
-                            created_at: 0,
-                            db_start: 0,
-                            db_end: 0,
-                            received_at: 0,
+                            metrics: TxProcessingTimeline::default(),
                         };
                         self.decision_outbox_tx
                             .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))

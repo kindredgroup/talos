@@ -1,13 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
-use metrics::model::MicroMetrics;
+use metrics::model::{MicroMetrics, MinMax};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use time::OffsetDateTime;
 
-use crate::{
-    metrics::MinMax,
-    replicator::{core::ReplicatorInstaller, pg_replicator_installer::PgReplicatorStatemapInstaller},
-};
+use crate::replicator::{core::ReplicatorInstaller, pg_replicator_installer::PgReplicatorStatemapInstaller};
 
 use super::cohort_replicator::CohortReplicator;
 use super::model::{InstallOutcome, StateMapWithVersion};

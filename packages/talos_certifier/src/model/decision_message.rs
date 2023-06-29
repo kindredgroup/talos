@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::certifier::Outcome;
 
-use super::candidate_message::CandidateMessage;
+use super::{candidate_message::CandidateMessage, metrics::TxProcessingTimeline};
 
 // {
 //     "xid": "38c729ec-dc28-4da4-9b0b-d3ec136a30ff",
@@ -88,14 +88,7 @@ pub struct DecisionMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflicts: Option<Vec<ConflictMessage>>,
 
-    pub can_published_at: i128,
-    pub can_received_at: i128,
-    pub can_process_start: i128,
-    pub can_process_end: i128,
-    pub created_at: i128,
-    pub db_start: i128,
-    pub db_end: i128,
-    pub received_at: i128,
+    pub metrics: TxProcessingTimeline,
     //TODO:- Add them in next iteration
     // pub time: String,
     // pub certifier: String,
@@ -129,7 +122,7 @@ impl DecisionMessageTrait for DecisionMessage {
     }
 
     fn get_decided_at(&self) -> i128 {
-        self.created_at
+        self.metrics.decision_created_at
     }
 }
 
@@ -162,14 +155,7 @@ impl DecisionMessage {
             safepoint,
             conflicts,
             duplicate_version: None,
-            can_published_at: candidate_message.published_at,
-            can_received_at: candidate_message.received_at,
-            can_process_start: 0, // set later
-            can_process_end: 0,   // set later
-            created_at: 0,
-            db_start: 0,
-            db_end: 0,
-            received_at: 0,
+            metrics: TxProcessingTimeline::default(),
         }
     }
 }

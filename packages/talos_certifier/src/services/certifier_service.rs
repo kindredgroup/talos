@@ -99,10 +99,11 @@ impl CertifierService {
 
         // Create the Decision Message
         let mut dm = DecisionMessage::new(message, conflict_candidate, outcome, suffix_head);
-        dm.can_received_at = message.received_at;
-        dm.can_process_start = can_process_start;
-        dm.can_process_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        dm.created_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        dm.metrics.candidate_published = message.published_at;
+        dm.metrics.candidate_received = message.received_at;
+        dm.metrics.candidate_processing_started = can_process_start;
+        dm.metrics.decision_created_at = now;
         Ok(dm)
     }
 

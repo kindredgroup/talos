@@ -123,7 +123,7 @@ impl MessageReciever for KafkaConsumer {
                     reason: e.to_string(),
                     data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
                 })?;
-                msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                msg.metrics.decision_received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
                 debug!("Decision received and the offset is {} !!!! ", offset);
 

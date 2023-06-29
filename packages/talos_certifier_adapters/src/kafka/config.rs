@@ -2,7 +2,7 @@ use rdkafka::ClientConfig;
 use std::collections::HashMap;
 use talos_certifier::env_var;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct KafkaConfig {
     pub brokers: Vec<String>,
     pub topic: String,

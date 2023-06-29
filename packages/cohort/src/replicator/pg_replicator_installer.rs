@@ -3,9 +3,9 @@ use std::{io::Error, time::Duration};
 
 use async_trait::async_trait;
 use log::debug;
-use metrics::model::MicroMetrics;
+use metrics::model::{MicroMetrics, MinMax};
 
-use crate::{metrics::MinMax, state::postgres::data_access::PostgresApi, tx_batch_executor::BatchExecutor};
+use crate::{state::postgres::data_access::PostgresApi, tx_batch_executor::BatchExecutor};
 
 use super::core::{ReplicatorInstaller, StatemapItem};
 
