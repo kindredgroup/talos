@@ -52,7 +52,7 @@ def generateInitialData(params):
             if i > 1:
                 file.write(",\n")
 
-            line = '{{"name": "{:04d}", "number": "{:04d}", "amount": "{}", "currency": "AUD", "talosState": {{"version": 0}}}}'
+            line = '{{"name": "{:04d}", "number": "{:04d}", "amount": "{}", "currency": "AUD", "version": 0}}'
             file.write(line.format(i, i, amount))
         file.write("\n]")
 
@@ -113,11 +113,13 @@ def generateTransactions(params):
 #  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -
 def main(args):
     params = parse(args)
-
-    if params[PARAM_ACTION] == ACTION_GENERATE_INITIAL:
+    action = params[PARAM_ACTION]
+    if action == ACTION_GENERATE_INITIAL:
         generateInitialData(params)
-    elif params[PARAM_ACTION] == ACTION_GENERATE_TRANSACTIONS:
+    elif action == ACTION_GENERATE_TRANSACTIONS:
         generateTransactions(params)
+    else:
+        print("Unknown action {}".format(action))
 
 if len(sys.argv) == 1:
     print("Usage:")

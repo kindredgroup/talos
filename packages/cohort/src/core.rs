@@ -87,7 +87,7 @@ impl Cohort {
         amount: String,
         cpt_snapshot: Snapshot,
     ) -> Result<BankResult, String> {
-        let (shanpshot_version, read_vers) = Self::select_snapshot_and_readvers(cpt_snapshot.version, vec![from.talos_state.version, to.talos_state.version]);
+        let (shanpshot_version, read_vers) = Self::select_snapshot_and_readvers(cpt_snapshot.version, vec![from.version, to.version]);
         let xid = uuid::Uuid::new_v4().to_string();
         let statemap = vec![HashMap::from([(
             BusinessActionType::TRANSFER.to_string(),

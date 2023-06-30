@@ -8,8 +8,6 @@ use strum::{Display, EnumString};
 #[derive(Display, Debug, Deserialize, EnumString, PartialEq, Eq)]
 pub enum BusinessActionType {
     TRANSFER,
-    DEPOSIT,
-    WITHDRAW,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -29,22 +27,6 @@ impl TransferRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct AccountUpdateRequest {
-    pub account: String,
-    pub amount: String,
-}
-
-impl AccountUpdateRequest {
-    pub fn new(account: String, amount: String) -> Self {
-        Self { account, amount }
-    }
-
-    pub fn json(&self) -> Value {
-        serde_json::to_value(self).unwrap()
-    }
-}
-
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
@@ -54,45 +36,12 @@ mod tests {
     #[test]
     fn models() {
         assert_eq!(
-            format!("{:?}", AccountUpdateRequest::new("a1".into(), "10".into())),
-            r#"AccountUpdateRequest { account: "a1", amount: "10" }"#.to_string(),
-        );
-        assert_eq!(
             format!("{:?}", TransferRequest::new("a1".into(), "a2".into(), "10".into())),
             r#"TransferRequest { from: "a1", to: "a2", amount: "10" }"#.to_string(),
         );
 
-        assert_eq!(format!("{:?}", BusinessActionType::DEPOSIT), "DEPOSIT".to_string());
-        assert_eq!(format!("{:?}", BusinessActionType::WITHDRAW), "WITHDRAW".to_string());
         assert_eq!(format!("{:?}", BusinessActionType::TRANSFER), "TRANSFER".to_string());
-
         assert_eq!(BusinessActionType::from_str("TRANSFER").unwrap(), BusinessActionType::TRANSFER);
-        assert_eq!(BusinessActionType::from_str("WITHDRAW").unwrap(), BusinessActionType::WITHDRAW);
-        assert_eq!(BusinessActionType::from_str("DEPOSIT").unwrap(), BusinessActionType::DEPOSIT);
-    }
-
-    #[test]
-    fn should_deserialize_account_update_request() {
-        let rslt = serde_json::from_str::<AccountUpdateRequest>(r#"{ "account": "a1", "amount": "10.0" }"#).unwrap();
-        assert_eq!(rslt.account, "a1");
-        assert_eq!(rslt.amount, "10.0");
-    }
-
-    #[test]
-    fn json_for_account_update_request() {
-        let json = AccountUpdateRequest::new("a1".into(), "10.0".into()).json();
-
-        assert!(json.get("account").is_some());
-        assert_eq!(json.get("account").unwrap(), "a1");
-
-        assert!(json.get("amount").is_some());
-        assert_eq!(json.get("amount").unwrap(), "10.0");
-    }
-
-    #[test]
-    fn should_serialize_account_update_request() {
-        let rslt = serde_json::to_string(&AccountUpdateRequest::new("a1".into(), "10.0".into())).unwrap();
-        assert_eq!(rslt, r#"{"account":"a1","amount":"10.0"}"#);
     }
 
     #[test]

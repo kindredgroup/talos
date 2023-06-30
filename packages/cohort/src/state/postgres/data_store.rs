@@ -1,8 +1,7 @@
 // $coverage:ignore-start
+use rusty_money::{iso, Money};
 use std::sync::Arc;
 use tokio_postgres::Row;
-
-use tokio_postgres::types::Json;
 
 use crate::model::bank_account::BankAccount;
 use crate::model::snapshot::Snapshot;
@@ -45,8 +44,8 @@ impl DataStore {
             let updated = {
                 let rslt = client
                     .query_opt(
-                        r#"SELECT "number", "data" FROM bank_accounts WHERE "number" = $1 AND (data->'talosState'->'version')::BIGINT >= $2"#,
-                        &[&acc.number, &(acc.talos_state.version as i64)],
+                        r#"SELECT "name", "number", "amount", "currency", "version" FROM bank_accounts WHERE "number" = $1 AND "version" >= $2"#,
+                        &[&acc.number, &(acc.version as i64)],
                     )
                     .await
                     .unwrap();
@@ -58,11 +57,17 @@ impl DataStore {
                     let updated_row = client
                         .query_one(
                             r#"
-                                INSERT INTO bank_accounts("number", "data") VALUES ($1, $2)
+                                INSERT INTO bank_accounts("name", "number", "amount", "currency", "version") VALUES ($1, $2, $3, $4, $5)
                                 ON CONFLICT(number) DO
-                                    UPDATE SET data = $2 RETURNING data
+                                    UPDATE SET "name" = $1, "amount" = $3, "currency" = $4, "version" = $5 RETURNING "name", "number", "amount", "currency", "version"
                             "#,
-                            &[&acc.number, &Json(acc)],
+                            &[
+                                &acc.name,
+                                &acc.number,
+                                &acc.balance.amount().to_string(),
+                                &acc.balance.currency().iso_alpha_code,
+                                &(acc.version as i64),
+                            ],
                         )
                         .await
                         .unwrap();
@@ -78,7 +83,16 @@ impl DataStore {
     }
 
     pub fn account_from_row(row: &Row) -> BankAccount {
-        row.get::<&str, Json<BankAccount>>("data").0
+        BankAccount {
+            name: row.get::<&str, String>("name"),
+            number: row.get::<&str, String>("number"),
+            version: row.get::<&str, i64>("version") as u64,
+            balance: Money::from_str(
+                row.get::<&str, String>("amount").as_str(),
+                iso::find(row.get::<&str, String>("currency").as_str()).unwrap(),
+            )
+            .unwrap(),
+        }
     }
 
     pub fn snapshot_from_row(row: &Row) -> Snapshot {

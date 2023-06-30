@@ -1,15 +1,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rusty_money::iso::Currency;
-use rusty_money::Money;
-
-use crate::actions::account_update::AccountUpdate;
 use crate::actions::action::Action;
 use crate::actions::transfer::Transfer;
 
 use crate::model::bank_account::BankAccount;
-use crate::model::requests::{AccountUpdateRequest, TransferRequest};
+use crate::model::requests::TransferRequest;
 
 use crate::state::postgres::data_access::PostgresApi;
 use crate::state::postgres::data_store::DataStore;
@@ -21,7 +17,7 @@ pub struct BankApi {}
 
 impl BankApi {
     pub async fn get_accounts(db: Arc<Database>) -> Result<Vec<BankAccount>, String> {
-        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
+        let list = db.query("SELECT * FROM bank_accounts", DataStore::account_from_row).await;
         Ok(list)
     }
 
@@ -29,68 +25,15 @@ impl BankApi {
         let mut map = HashMap::<String, BankAccount>::new();
 
         let from = db
-            .query_one("SELECT data FROM bank_accounts WHERE number = $1", &[&number_from], DataStore::account_from_row)
+            .query_one("SELECT * FROM bank_accounts WHERE number = $1", &[&number_from], DataStore::account_from_row)
             .await;
         let to = db
-            .query_one("SELECT data FROM bank_accounts WHERE number = $1", &[&number_to], DataStore::account_from_row)
+            .query_one("SELECT * FROM bank_accounts WHERE number = $1", &[&number_to], DataStore::account_from_row)
             .await;
         map.insert(number_from, from);
         map.insert(number_to, to);
 
         Ok(map)
-    }
-
-    pub async fn get_all_accounts_as_map(db: Arc<Database>) -> Result<HashMap<String, BankAccount>, String> {
-        let mut map = HashMap::<String, BankAccount>::new();
-
-        let list = db.query("SELECT data FROM bank_accounts", DataStore::account_from_row).await;
-        for account in list.iter() {
-            map.insert(account.number.clone(), account.clone());
-        }
-
-        Ok(map)
-    }
-
-    pub async fn get_balance(db: Arc<Database>, account: String) -> Result<Money<'static, Currency>, String> {
-        let rslt = db
-            .query_opt("SELECT data FROM bank_accounts WHERE number = $1", &[&account], DataStore::account_from_row)
-            .await;
-
-        match rslt {
-            Some(account) => Ok(account.balance),
-            None => Err(format!("There is no bank account with number: {}", account)),
-        }
-    }
-
-    pub async fn deposit(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        let mut manual_tx_api = PostgresApi { client: db.get().await };
-        let tx = manual_tx_api.transaction().await;
-        let action = AccountUpdate::deposit(data, new_version);
-        action.execute(&tx).await.as_ref()?;
-        let result = action.update_version(&tx).await;
-        if result.is_ok() {
-            let rslt_commit = tx.commit().await;
-            if let Err(e) = rslt_commit {
-                return Err(format!("Unable to commit: {}. The original transaction updated: {} rows", e, result.unwrap()));
-            }
-        }
-
-        result
-    }
-
-    pub async fn withdraw(db: Arc<Database>, data: AccountUpdateRequest, new_version: u64) -> Result<u64, String> {
-        let mut manual_tx_api = PostgresApi { client: db.get().await };
-        let tx = manual_tx_api.transaction().await;
-        let action = AccountUpdate::withdraw(data, new_version);
-        action.execute(&tx).await.as_ref()?;
-        let result = action.update_version(&tx).await;
-        if result.is_ok() {
-            let rslt_commit = tx.commit().await;
-            if let Err(e) = rslt_commit {
-                return Err(format!("Unable to commit: {}. The original transaction updated: {} rows", e, result.unwrap()));
-            }
-        }
-        result
     }
 
     pub async fn transfer(db: Arc<Database>, data: TransferRequest, new_version: u64) -> Result<u64, String> {

@@ -26,6 +26,7 @@ impl QueueProcessor {
         threads: u64,
         max_retry: u64,
         database: Arc<Database>,
+        metrics_frequency: Option<i128>,
     ) -> Result<(), String> {
         let cfg_agent = ConfigLoader::load_agent_config()?;
         let cfg_kafka = ConfigLoader::load_kafka_config()?;
@@ -35,6 +36,7 @@ impl QueueProcessor {
         let mut tasks = Vec::<JoinHandle<Result<(), String>>>::new();
         let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         for thread_number in 1..=threads {
+            let metrics_frequency = if thread_number == 1 { metrics_frequency } else { None };
             let task_h = Self::launch_handler(
                 thread_number,
                 max_retry,
@@ -42,6 +44,7 @@ impl QueueProcessor {
                 Arc::clone(&tx_metrics),
                 Arc::clone(&agent_ref),
                 Arc::clone(&database),
+                metrics_frequency,
             )
             .await;
             tasks.push(task_h);
@@ -78,6 +81,7 @@ impl QueueProcessor {
         tx_metrics: Arc<async_channel::Sender<Stats>>,
         agent: Arc<AgentType>,
         database: Arc<Database>,
+        metrics_frequency: Option<i128>,
     ) -> JoinHandle<Result<(), String>> {
         let queue_ref = Arc::clone(&queue);
         tokio::spawn(async move {
@@ -119,48 +123,49 @@ impl QueueProcessor {
                         if is_giveup {
                             stats.giveup_count += 1;
                         }
+                        if let Some(frequency) = metrics_frequency {
+                            span1_get_accounts.merge(stats.getaccounts.clone());
+                            span2_get_snap_ver.merge(stats.getsnap.clone());
+                            span3_certify.merge(stats.certify.clone());
+                            span4_wait_for_safepoint.merge(stats.waiting.clone());
+                            span5_install.merge(stats.installing.clone());
 
-                        span1_get_accounts.merge(stats.getaccounts.clone());
-                        span2_get_snap_ver.merge(stats.getsnap.clone());
-                        span3_certify.merge(stats.certify.clone());
-                        span4_wait_for_safepoint.merge(stats.waiting.clone());
-                        span5_install.merge(stats.installing.clone());
+                            total_attempts += stats.total_count;
 
-                        total_attempts += stats.total_count;
+                            if elapsed >= frequency {
+                                metrics.sample_end();
+                                log::warn!(
+                                    "METRIC (cohort) :{:>3},{},{},{},{},{},{},{},{},{},{},{},'-',{},{},{},{},{}",
+                                    thread_number,
+                                    total_attempts,
+                                    Duration::from_nanos(span1_get_accounts.min as u64).as_micros(),
+                                    Duration::from_nanos(span1_get_accounts.max as u64).as_micros(),
+                                    Duration::from_nanos(span2_get_snap_ver.min as u64).as_micros(),
+                                    Duration::from_nanos(span2_get_snap_ver.max as u64).as_micros(),
+                                    Duration::from_nanos(span3_certify.min as u64).as_micros(),
+                                    Duration::from_nanos(span3_certify.max as u64).as_micros(),
+                                    Duration::from_nanos(span4_wait_for_safepoint.min as u64).as_micros(),
+                                    Duration::from_nanos(span4_wait_for_safepoint.max as u64).as_micros(),
+                                    Duration::from_nanos(span5_install.min as u64).as_micros(),
+                                    Duration::from_nanos(span5_install.max as u64).as_micros(),
+                                    Duration::from_nanos(span1_get_accounts.sum as u64).as_micros(),
+                                    Duration::from_nanos(span2_get_snap_ver.sum as u64).as_micros(),
+                                    Duration::from_nanos(span3_certify.sum as u64).as_micros(),
+                                    Duration::from_nanos(span4_wait_for_safepoint.sum as u64).as_micros(),
+                                    Duration::from_nanos(span5_install.sum as u64).as_micros(),
+                                );
 
-                        if elapsed >= 1_000_000_000 && thread_number == 1 {
-                            metrics.sample_end();
-                            log::warn!(
-                                "METRIC (cohort) :{:>3},{},{},{},{},{},{},{},{},{},{},{},'-',{},{},{},{},{}",
-                                thread_number,
-                                total_attempts,
-                                Duration::from_nanos(span1_get_accounts.min as u64).as_micros(),
-                                Duration::from_nanos(span1_get_accounts.max as u64).as_micros(),
-                                Duration::from_nanos(span2_get_snap_ver.min as u64).as_micros(),
-                                Duration::from_nanos(span2_get_snap_ver.max as u64).as_micros(),
-                                Duration::from_nanos(span3_certify.min as u64).as_micros(),
-                                Duration::from_nanos(span3_certify.max as u64).as_micros(),
-                                Duration::from_nanos(span4_wait_for_safepoint.min as u64).as_micros(),
-                                Duration::from_nanos(span4_wait_for_safepoint.max as u64).as_micros(),
-                                Duration::from_nanos(span5_install.min as u64).as_micros(),
-                                Duration::from_nanos(span5_install.max as u64).as_micros(),
-                                Duration::from_nanos(span1_get_accounts.sum as u64).as_micros(),
-                                Duration::from_nanos(span2_get_snap_ver.sum as u64).as_micros(),
-                                Duration::from_nanos(span3_certify.sum as u64).as_micros(),
-                                Duration::from_nanos(span4_wait_for_safepoint.sum as u64).as_micros(),
-                                Duration::from_nanos(span5_install.sum as u64).as_micros(),
-                            );
-
-                            span1_get_accounts.reset();
-                            span2_get_snap_ver.reset();
-                            span3_certify.reset();
-                            span4_wait_for_safepoint.reset();
-                            span5_install.reset();
-                            total_attempts = 0;
+                                span1_get_accounts.reset();
+                                span2_get_snap_ver.reset();
+                                span3_certify.reset();
+                                span4_wait_for_safepoint.reset();
+                                span5_install.reset();
+                                total_attempts = 0;
+                            }
                         }
 
                         if metrics.count % 1000.0 == 0.0 && thread_number == 1 {
-                            log::info!("Thread {:>2} processed: {}", thread_number, metrics.count);
+                            log::debug!("Thread {:>2} processed: {}", thread_number, metrics.count);
                         }
                         tokio::spawn(async move { tx_metrics.send(stats).await });
                     }

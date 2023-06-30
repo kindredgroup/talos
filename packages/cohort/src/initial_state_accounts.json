@@ -4,17 +4,13 @@
         "number": "00001",
         "amount": "100000",
         "currency": "AUD",
-        "talosState": {
-            "version": 0
-        }
+        "version": 0
     },
     {
         "name": "Test Account 2",
         "number": "00002",
         "amount": "100000",
         "currency": "AUD",
-        "talosState": {
-            "version": 0
-        }
+        "version": 0
     }
 ]
