@@ -1,9 +1,8 @@
 use std::str::FromStr;
 
-use crate::actions::account_update::AccountUpdate;
 use crate::actions::action::Action;
 use crate::actions::transfer::Transfer;
-use crate::model::requests::{AccountUpdateRequest, BusinessActionType, TransferRequest};
+use crate::model::requests::{BusinessActionType, TransferRequest};
 use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
 use crate::state::data_access_api::{ManualTx, TxApi};
@@ -217,14 +216,6 @@ impl BatchExecutor {
                 let data: TransferRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
                 Some(Transfer::new(data, item.version).execute(client).await?)
             }
-            BusinessActionType::DEPOSIT => {
-                let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(AccountUpdate::deposit(data, item.version).execute(client).await?)
-            }
-            BusinessActionType::WITHDRAW => {
-                let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(AccountUpdate::withdraw(data, item.version).execute(client).await?)
-            }
         };
 
         Ok(action_outcome)
@@ -248,14 +239,6 @@ impl BatchExecutor {
                 let data: TransferRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
                 Some(Transfer::new(data, item.version).update_version(client).await?)
             }
-            BusinessActionType::DEPOSIT => {
-                let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(AccountUpdate::deposit(data, item.version).update_version(client).await?)
-            }
-            BusinessActionType::WITHDRAW => {
-                let data: AccountUpdateRequest = serde_json::from_value(item.payload.clone()).map_err(|e| e.to_string())?;
-                Some(AccountUpdate::withdraw(data, item.version).update_version(client).await?)
-            }
         };
 
         Ok(action_outcome)
@@ -273,15 +256,13 @@ impl BatchExecutor {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
-    use crate::{
-        actions::account_update::{ACCOUNT_UPDATE_QUERY, ACCOUNT_VERSION_UPDATE_QUERY},
-        snapshot_api::SNAPSHOT_UPDATE_QUERY,
-    };
+    use crate::snapshot_api::SNAPSHOT_UPDATE_QUERY;
 
     use super::*;
 
     use async_trait::async_trait;
     use mockall::{mock, Sequence};
+    use rust_decimal::{prelude::FromPrimitive, Decimal};
     use serde::Serialize;
     use tokio_postgres::types::ToSql;
 
@@ -329,34 +310,12 @@ mod tests {
     // tests for execute_item(...)
 
     #[tokio::test]
-    async fn excute_item_should_recognise_deposit() {
-        let mut tx = MockTx::new();
-        tx.expect_commit().never();
-        tx.expect_rollback().never();
-        tx.expect_execute().withf(move |_, params| params.len() == 3).returning(move |_, _| Ok(1));
-        let item = item("DEPOSIT", 1, AccountUpdateRequest::new("a1".into(), "10.0".into()));
-        let result = BatchExecutor::execute_item(&item, &tx).await;
-        expect_opt_rows(result, 1);
-    }
-
-    #[tokio::test]
-    async fn excute_item_should_recognise_withdraw() {
-        let mut tx = MockTx::new();
-        tx.expect_commit().never();
-        tx.expect_rollback().never();
-        tx.expect_execute().withf(move |_, params| params.len() == 3).returning(move |_, _| Ok(1));
-        let item = item("WITHDRAW", 1, AccountUpdateRequest::new("a1".into(), "10.0".into()));
-        let result = BatchExecutor::execute_item(&item, &tx).await;
-        expect_opt_rows(result, 1);
-    }
-
-    #[tokio::test]
     async fn excute_item_should_recognise_transfer() {
         let mut tx = MockTx::new();
         tx.expect_commit().never();
         tx.expect_rollback().never();
-        tx.expect_execute().withf(move |_, params| params.len() == 5).returning(move |_, _| Ok(1));
-        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), "10.0".into()));
+        tx.expect_execute().withf(move |_, params| params.len() == 4).returning(move |_, _| Ok(1));
+        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), Decimal::from_f32(10.0).unwrap()));
         let result = BatchExecutor::execute_item(&item, &tx).await;
         expect_opt_rows(result, 1);
     }
@@ -381,34 +340,12 @@ mod tests {
     // tests for update_version(...)
 
     #[tokio::test]
-    async fn update_version_should_recognise_deposit() {
-        let mut tx = MockTx::new();
-        tx.expect_commit().never();
-        tx.expect_rollback().never();
-        tx.expect_execute().withf(move |_, params| params.len() == 2).returning(move |_, _| Ok(1));
-        let item = item("DEPOSIT", 1, AccountUpdateRequest::new("a1".into(), "10.0".into()));
-        let result = BatchExecutor::update_version(&item, &tx).await;
-        expect_opt_rows(result, 1);
-    }
-
-    #[tokio::test]
-    async fn update_version_should_recognise_withdraw() {
-        let mut tx = MockTx::new();
-        tx.expect_commit().never();
-        tx.expect_rollback().never();
-        tx.expect_execute().withf(move |_, params| params.len() == 2).returning(move |_, _| Ok(1));
-        let item = item("WITHDRAW", 1, AccountUpdateRequest::new("a1".into(), "10.0".into()));
-        let result = BatchExecutor::update_version(&item, &tx).await;
-        expect_opt_rows(result, 1);
-    }
-
-    #[tokio::test]
     async fn update_version_should_recognise_transfer() {
         let mut tx = MockTx::new();
         tx.expect_commit().never();
         tx.expect_rollback().never();
         tx.expect_execute().withf(move |_, params| params.len() == 3).returning(move |_, _| Ok(1));
-        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), "10.0".into()));
+        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), Decimal::from_f32(10.0).unwrap()));
         let result = BatchExecutor::update_version(&item, &tx).await;
         expect_opt_rows(result, 1);
     }
@@ -433,8 +370,8 @@ mod tests {
     // Below are various test scenarios to cover batch execution logic and handling of transaction
 
     fn items() -> Vec<StatemapItem> {
-        let item1 = item("DEPOSIT", 1, AccountUpdateRequest::new("a1".into(), "10.0".into()));
-        let item2 = item("DEPOSIT", 1, AccountUpdateRequest::new("a1".into(), "10.0".into()));
+        let item1 = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), Decimal::from_f32(10.0).unwrap()));
+        let item2 = item("TRANSFER", 1, TransferRequest::new("a3".into(), "a4".into(), Decimal::from_f32(10.0).unwrap()));
         vec![item1, item2]
     }
 
@@ -488,39 +425,6 @@ mod tests {
         let mut cnn = cnn(tx);
         let result = BatchExecutor::execute(&mut cnn, items(), None).await;
         expect_rows(result, 2);
-    }
-
-    #[tokio::test]
-    async fn expect_db_updates_in_sequence() {
-        env_logger::builder().format_timestamp_millis().init();
-
-        let mut tx = MockTx::new();
-
-        let mut seq = Sequence::new();
-        tx.expect_execute()
-            .times(2)
-            .withf(move |sql, _| sql.eq(ACCOUNT_UPDATE_QUERY))
-            .returning(move |_, _| Ok(1))
-            .in_sequence(&mut seq);
-
-        tx.expect_execute()
-            .times(2)
-            .withf(move |sql, _| sql.eq(ACCOUNT_VERSION_UPDATE_QUERY))
-            .returning(move |_, _| Ok(1))
-            .in_sequence(&mut seq);
-
-        tx.expect_execute()
-            .once()
-            .withf(move |sql, _| sql.eq(SNAPSHOT_UPDATE_QUERY))
-            .returning(move |_, _| Ok(1))
-            .in_sequence(&mut seq);
-
-        tx.expect_rollback().never();
-        tx.expect_commit().once().returning(move || Ok(()));
-
-        let mut cnn = cnn(tx);
-        let result = BatchExecutor::execute(&mut cnn, items(), Some(1)).await;
-        expect_rows(result, 3);
     }
 
     #[tokio::test]

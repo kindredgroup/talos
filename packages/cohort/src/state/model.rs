@@ -53,22 +53,6 @@ impl TransferRequest {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct AccountUpdateRequest {
-    pub account: String,
-    pub amount: String,
-}
-
-impl AccountUpdateRequest {
-    pub fn new(account: String, amount: String) -> Self {
-        Self { account, amount }
-    }
-
-    pub fn json(&self) -> Value {
-        serde_json::to_value(self).unwrap()
-    }
-}
-
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {

@@ -18,6 +18,7 @@ async-trait =   { workspace = true }
 env_logger =    { workspace = true }
 log =           { workspace = true }
 strum =         { version = "0.24", features = ["derive"] }
+rust_decimal =  { version = "1.30.0", features = ["db-tokio-postgres", "serde-with-float"] }
 thiserror =     { version = "1.0.31" }
 time =          { version = "0.3.17" }
 tokio =         { workspace = true, features = ["full"] }

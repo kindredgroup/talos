@@ -16,6 +16,7 @@ use examples_support::{
 
 use metrics::model::{MicroMetrics, MinMax};
 use rand::Rng;
+use rust_decimal::{prelude::FromPrimitive, Decimal};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::core::SuffixConfig;
@@ -32,6 +33,7 @@ struct LaunchParams {
     threads: u64,
     max_retry: u64,
     replicator_metrics: Option<i128>,
+    cohort_metrics: Option<i128>,
 }
 
 #[tokio::main]
@@ -62,7 +64,7 @@ async fn main() -> Result<(), String> {
 
     let h_cohort = tokio::spawn(
         // pass tasks queue "rx_generated" to be accessed by multiple worker threads
-        async move { QueueProcessor::process(rx_queue, tx_metrics, params.threads, params.max_retry, db_ref1).await },
+        async move { QueueProcessor::process(rx_queue, tx_metrics, params.threads, params.max_retry, db_ref1, params.cohort_metrics).await },
     );
 
     // TODO: extract 100_000 into command line parameter - channel_size between replicator and installer tasks
@@ -116,8 +118,8 @@ fn start_queue_monitor(
     fn_on_empty_queue: impl FnOnce() -> bool + Send + 'static,
 ) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
-        let check_frequency = Duration::from_secs(5);
-        let total_attempts = 5;
+        let check_frequency = Duration::from_secs(10);
+        let total_attempts = 3;
 
         let mut remaining_attempts = total_attempts;
         loop {
@@ -250,7 +252,7 @@ fn create_transfer_request() -> TransferRequest {
     TransferRequest {
         from: format!("{:<04}", from),
         to: format!("{:<04}", to),
-        amount: "1.00".into(),
+        amount: Decimal::from_f32(1.0).unwrap(),
     }
 }
 
@@ -262,6 +264,7 @@ async fn get_params() -> Result<LaunchParams, String> {
     let mut target_rate: Option<f32> = None;
     let mut stop_type: Option<StopType> = None;
     let mut replicator_metrics: Option<i128> = None;
+    let mut cohort_metrics: Option<i128> = None;
 
     if args.len() >= 3 {
         let mut i = 1;
@@ -299,6 +302,14 @@ async fn get_params() -> Result<LaunchParams, String> {
                 } else {
                     replicator_metrics = Some(Duration::from_secs(param_value.parse().unwrap()).as_nanos() as i128);
                 }
+            } else if param_name.eq("--cohort-metrics") {
+                let param_value = &args[i + 1];
+                if param_value.contains("-sec") {
+                    let seconds: u64 = param_value.replace("-sec", "").parse().unwrap();
+                    cohort_metrics = Some(Duration::from_secs(seconds).as_nanos() as i128);
+                } else {
+                    cohort_metrics = Some(Duration::from_secs(param_value.parse().unwrap()).as_nanos() as i128);
+                }
             }
 
             i += 2;
@@ -318,6 +329,7 @@ async fn get_params() -> Result<LaunchParams, String> {
             threads: threads.unwrap(),
             max_retry: max_retry.unwrap(),
             replicator_metrics,
+            cohort_metrics,
         })
     }
 }

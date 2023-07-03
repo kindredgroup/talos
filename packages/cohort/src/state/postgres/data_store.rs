@@ -1,8 +1,7 @@
 // $coverage:ignore-start
+use rust_decimal::Decimal;
 use std::sync::Arc;
 use tokio_postgres::Row;
-
-use tokio_postgres::types::Json;
 
 use crate::model::bank_account::BankAccount;
 use crate::model::snapshot::Snapshot;
@@ -45,8 +44,8 @@ impl DataStore {
             let updated = {
                 let rslt = client
                     .query_opt(
-                        r#"SELECT "number", "data" FROM bank_accounts WHERE "number" = $1 AND (data->'talosState'->'version')::BIGINT >= $2"#,
-                        &[&acc.number, &(acc.talos_state.version as i64)],
+                        r#"SELECT "name", "number", "amount", "version" FROM bank_accounts WHERE "number" = $1 AND "version" >= $2"#,
+                        &[&acc.number, &(acc.version as i64)],
                     )
                     .await
                     .unwrap();
@@ -58,11 +57,11 @@ impl DataStore {
                     let updated_row = client
                         .query_one(
                             r#"
-                                INSERT INTO bank_accounts("number", "data") VALUES ($1, $2)
+                                INSERT INTO bank_accounts("name", "number", "amount", "version") VALUES ($1, $2, $3, $4)
                                 ON CONFLICT(number) DO
-                                    UPDATE SET data = $2 RETURNING data
+                                    UPDATE SET "name" = $1, "amount" = $3, "version" = $4 RETURNING "name", "number", "amount", "version"
                             "#,
-                            &[&acc.number, &Json(acc)],
+                            &[&acc.name, &acc.number, &acc.balance, &(acc.version as i64)],
                         )
                         .await
                         .unwrap();
@@ -78,7 +77,12 @@ impl DataStore {
     }
 
     pub fn account_from_row(row: &Row) -> BankAccount {
-        row.get::<&str, Json<BankAccount>>("data").0
+        BankAccount {
+            name: row.get::<&str, String>("name"),
+            number: row.get::<&str, String>("number"),
+            version: row.get::<&str, i64>("version") as u64,
+            balance: row.get::<&str, Decimal>("amount"),
+        }
     }
 
     pub fn snapshot_from_row(row: &Row) -> Snapshot {

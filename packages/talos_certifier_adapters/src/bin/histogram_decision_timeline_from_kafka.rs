@@ -28,7 +28,7 @@ async fn main() -> Result<(), String> {
         10
     } else {
         // every 5%%
-        total_decisions / 5
+        (total_decisions as f32 / 100_f32 * 5_f32) as u64
     };
 
     kafka_consumer.unsubscribe().await;

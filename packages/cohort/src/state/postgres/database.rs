@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio_postgres::types::ToSql;
 use tokio_postgres::{NoTls, Row};
 
-use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, Runtime};
+use deadpool_postgres::{Config, GenericClient, ManagerConfig, Object, Pool, PoolConfig, Runtime};
 
 use crate::state::postgres::database_config::DatabaseConfig;
 
@@ -29,14 +29,36 @@ impl Database {
         config.manager = Some(ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
+        let pc = PoolConfig {
+            max_size: 100,
+            ..PoolConfig::default()
+        };
+        config.pool = Some(pc);
 
         let pool = config
             .create_pool(Some(Runtime::Tokio1), NoTls)
             .map_err(|e| format!("Cannot connect to database. Error: {}", e))
             .unwrap();
 
-        //test connection
-        let _ = pool.get().await.map_err(|e| format!("Cannot get client from DB pool. Error: {}", e));
+        {
+            //test connection
+            let mut tmp_list: Vec<Object> = Vec::new();
+            for _ in 1..=pc.max_size {
+                let client = pool.get().await.map_err(|e| format!("Cannot get client from DB pool. Error: {}", e)).unwrap();
+                client
+                    .execute("SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL REPEATABLE READ;", &[])
+                    .await
+                    .unwrap();
+                tmp_list.push(client);
+            }
+        }
+
+        for _ in 1..=pc.max_size {
+            let client = pool.get().await.map_err(|e| format!("Cannot get client from DB pool. Error: {}", e)).unwrap();
+            let rs = client.query_one("show transaction_isolation", &[]).await.unwrap();
+            let value: String = rs.get(0);
+            log::debug!("init: db-isolation-level: {}", value);
+        }
 
         Arc::new(Database { pool })
     }

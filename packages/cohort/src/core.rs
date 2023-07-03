@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use rust_decimal::Decimal;
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent};
@@ -84,14 +85,14 @@ impl Cohort {
         database: Arc<Database>,
         from: &BankAccount,
         to: &BankAccount,
-        amount: String,
+        amount: Decimal,
         cpt_snapshot: Snapshot,
     ) -> Result<BankResult, String> {
-        let (shanpshot_version, read_vers) = Self::select_snapshot_and_readvers(cpt_snapshot.version, vec![from.talos_state.version, to.talos_state.version]);
+        let (shanpshot_version, read_vers) = Self::select_snapshot_and_readvers(cpt_snapshot.version, vec![from.version, to.version]);
         let xid = uuid::Uuid::new_v4().to_string();
         let statemap = vec![HashMap::from([(
             BusinessActionType::TRANSFER.to_string(),
-            TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()).json(),
+            TransferRequest::new(from.number.clone(), to.number.clone(), amount).json(),
         )])];
         let cert_req = CertificationRequest {
             message_key: "cohort-sample".to_string(),
@@ -184,7 +185,7 @@ impl Cohort {
             let s3_transfer_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
             let rslt = BankApi::transfer(
                 Arc::clone(&database),
-                TransferRequest::new(from.number.clone(), to.number.clone(), amount.clone()),
+                TransferRequest::new(from.number.clone(), to.number.clone(), amount),
                 resp.version,
             )
             .await;
