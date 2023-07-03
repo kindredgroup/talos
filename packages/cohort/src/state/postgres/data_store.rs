@@ -1,5 +1,5 @@
 // $coverage:ignore-start
-use rusty_money::{iso, Money};
+use rust_decimal::Decimal;
 use std::sync::Arc;
 use tokio_postgres::Row;
 
@@ -44,7 +44,7 @@ impl DataStore {
             let updated = {
                 let rslt = client
                     .query_opt(
-                        r#"SELECT "name", "number", "amount", "currency", "version" FROM bank_accounts WHERE "number" = $1 AND "version" >= $2"#,
+                        r#"SELECT "name", "number", "amount", "version" FROM bank_accounts WHERE "number" = $1 AND "version" >= $2"#,
                         &[&acc.number, &(acc.version as i64)],
                     )
                     .await
@@ -57,17 +57,11 @@ impl DataStore {
                     let updated_row = client
                         .query_one(
                             r#"
-                                INSERT INTO bank_accounts("name", "number", "amount", "currency", "version") VALUES ($1, $2, $3, $4, $5)
+                                INSERT INTO bank_accounts("name", "number", "amount", "version") VALUES ($1, $2, $3, $4)
                                 ON CONFLICT(number) DO
-                                    UPDATE SET "name" = $1, "amount" = $3, "currency" = $4, "version" = $5 RETURNING "name", "number", "amount", "currency", "version"
+                                    UPDATE SET "name" = $1, "amount" = $3, "version" = $4 RETURNING "name", "number", "amount", "version"
                             "#,
-                            &[
-                                &acc.name,
-                                &acc.number,
-                                &acc.balance.amount().to_string(),
-                                &acc.balance.currency().iso_alpha_code,
-                                &(acc.version as i64),
-                            ],
+                            &[&acc.name, &acc.number, &acc.balance, &(acc.version as i64)],
                         )
                         .await
                         .unwrap();
@@ -87,11 +81,7 @@ impl DataStore {
             name: row.get::<&str, String>("name"),
             number: row.get::<&str, String>("number"),
             version: row.get::<&str, i64>("version") as u64,
-            balance: Money::from_str(
-                row.get::<&str, String>("amount").as_str(),
-                iso::find(row.get::<&str, String>("currency").as_str()).unwrap(),
-            )
-            .unwrap(),
+            balance: row.get::<&str, Decimal>("amount"),
         }
     }
 

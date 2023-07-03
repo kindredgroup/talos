@@ -262,6 +262,7 @@ mod tests {
 
     use async_trait::async_trait;
     use mockall::{mock, Sequence};
+    use rust_decimal::{prelude::FromPrimitive, Decimal};
     use serde::Serialize;
     use tokio_postgres::types::ToSql;
 
@@ -314,7 +315,7 @@ mod tests {
         tx.expect_commit().never();
         tx.expect_rollback().never();
         tx.expect_execute().withf(move |_, params| params.len() == 4).returning(move |_, _| Ok(1));
-        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), "10.0".into()));
+        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), Decimal::from_f32(10.0).unwrap()));
         let result = BatchExecutor::execute_item(&item, &tx).await;
         expect_opt_rows(result, 1);
     }
@@ -344,7 +345,7 @@ mod tests {
         tx.expect_commit().never();
         tx.expect_rollback().never();
         tx.expect_execute().withf(move |_, params| params.len() == 3).returning(move |_, _| Ok(1));
-        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), "10.0".into()));
+        let item = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), Decimal::from_f32(10.0).unwrap()));
         let result = BatchExecutor::update_version(&item, &tx).await;
         expect_opt_rows(result, 1);
     }
@@ -369,8 +370,8 @@ mod tests {
     // Below are various test scenarios to cover batch execution logic and handling of transaction
 
     fn items() -> Vec<StatemapItem> {
-        let item1 = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), "10.0".into()));
-        let item2 = item("TRANSFER", 1, TransferRequest::new("a3".into(), "a4".into(), "10.0".into()));
+        let item1 = item("TRANSFER", 1, TransferRequest::new("a1".into(), "a2".into(), Decimal::from_f32(10.0).unwrap()));
+        let item2 = item("TRANSFER", 1, TransferRequest::new("a3".into(), "a4".into(), Decimal::from_f32(10.0).unwrap()));
         vec![item1, item2]
     }
 

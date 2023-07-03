@@ -16,6 +16,7 @@ use examples_support::{
 
 use metrics::model::{MicroMetrics, MinMax};
 use rand::Rng;
+use rust_decimal::{prelude::FromPrimitive, Decimal};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::core::SuffixConfig;
@@ -117,8 +118,8 @@ fn start_queue_monitor(
     fn_on_empty_queue: impl FnOnce() -> bool + Send + 'static,
 ) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
-        let check_frequency = Duration::from_secs(2);
-        let total_attempts = 12;
+        let check_frequency = Duration::from_secs(10);
+        let total_attempts = 3;
 
         let mut remaining_attempts = total_attempts;
         loop {
@@ -251,7 +252,7 @@ fn create_transfer_request() -> TransferRequest {
     TransferRequest {
         from: format!("{:<04}", from),
         to: format!("{:<04}", to),
-        amount: "1.00".into(),
+        amount: Decimal::from_f32(1.0).unwrap(),
     }
 }
 

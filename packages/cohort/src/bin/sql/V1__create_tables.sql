@@ -1,8 +1,7 @@
 CREATE TABLE IF NOT EXISTS bank_accounts (
     "number"    VARCHAR(20) PRIMARY KEY,
     "name"      VARCHAR(20) NOT NULL,
-    "amount"    VARCHAR(20) NOT NULL,
-    "currency"  CHAR(3) NOT NULL,
+    "amount"    DECIMAL(20,5) NOT NULL,
     "version"   BIGINT NOT NULL
 );
 

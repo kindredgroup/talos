@@ -30,8 +30,8 @@ impl Transfer {
         r#"
         UPDATE bank_accounts SET "amount" =
             CASE
-                WHEN "number" = ($2)::TEXT THEN (("amount"::DECIMAL) - (($1)::TEXT)::DECIMAL)::TEXT
-                WHEN "number" = ($3)::TEXT THEN (("amount"::DECIMAL) + (($1)::TEXT)::DECIMAL)::TEXT
+                WHEN "number" = ($2)::TEXT THEN ("amount"::DECIMAL) - ($1)::DECIMAL
+                WHEN "number" = ($3)::TEXT THEN ("amount"::DECIMAL) + ($1)::DECIMAL
             END
         WHERE "number" IN(($2)::TEXT, ($3)::TEXT) AND "version" < ($4)::BIGINT
         "#

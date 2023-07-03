@@ -7,7 +7,6 @@ use cohort::{
     delay_controller::DelayController,
     metrics::{Span, Stats, TxExecSpans},
     model::{
-        bank_account::as_money,
         requests::TransferRequest,
         tx_execution::{TxExecutionOutcome, TxExecutionResult, TxNonFatalError},
     },
@@ -239,10 +238,10 @@ impl QueueProcessor {
         let s1_getacc_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         let account_from = all_accounts.get(&tx_request.from).unwrap();
-        let balance = account_from.balance.clone();
+        let balance = account_from.balance;
         let account_to = all_accounts.get(&tx_request.to).unwrap();
 
-        if balance < as_money(tx_request.amount.clone(), balance.currency())? {
+        if balance < tx_request.amount {
             log::warn!(
                 "Thread: {} Cannot transfer {:>2} from {} with balance {}",
                 thread_number,
@@ -266,7 +265,7 @@ impl QueueProcessor {
             Arc::clone(&database),
             account_from,
             account_to,
-            tx_request.amount.clone(),
+            tx_request.amount,
             cpt_snapshot,
         )
         .await?;
