@@ -23,7 +23,7 @@ async fn main() {
     // 0. Create required items.
     //  a. Create Kafka consumer
     let mut kafka_config = KafkaConfig::from_env();
-    kafka_config.group_id = "talos-replicator-dev".to_string();
+    kafka_config.group_id = "talos-replicator-dev-1".to_string();
     let kafka_consumer = KafkaConsumer::new(&kafka_config);
 
     // b. Subscribe to topic.

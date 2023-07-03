@@ -77,11 +77,11 @@ fn test_get_all_statemap_from_suffix_items() {
     let result = get_filtered_batch(suffix_item.into_iter());
 
     let state_map_batch = get_statemap_from_suffix_items(result);
-    assert_eq!(state_map_batch.len(), 10);
-    assert_eq!(state_map_batch[0].version, 10);
-    assert_eq!(state_map_batch[2].version, 10);
-    assert_eq!(state_map_batch[3].version, 12);
-    assert_eq!(state_map_batch.last().unwrap().version, 16);
+    assert_eq!(state_map_batch[0].1.len(), 3); // three items in statemap for version 10
+    assert_eq!(state_map_batch[0].0, 10);
+    assert_eq!(state_map_batch[2].0, 13);
+    assert_eq!(state_map_batch[3].0, 16);
+    assert_eq!(state_map_batch.last().unwrap().0, 16);
 }
 
 #[test]
@@ -96,5 +96,7 @@ fn test_get_statemap_from_suffix_items_no_statemaps() {
     // let result = get_filtered_batch(suffix_item.into_iter());
 
     let state_map_batch = get_statemap_from_suffix_items(suffix_item.into_iter());
-    assert!(state_map_batch.is_empty());
+    assert_eq!(state_map_batch.len(), 2);
+    assert!(state_map_batch[0].1.is_empty());
+    assert!(state_map_batch[1].1.is_empty());
 }
