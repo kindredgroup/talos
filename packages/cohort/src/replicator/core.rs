@@ -2,18 +2,12 @@ use async_trait::async_trait;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    io::Error,
-    marker::PhantomData,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, io::Error, marker::PhantomData};
 use talos_certifier::{
     model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
     ChannelMessage,
 };
-use time::OffsetDateTime;
 
 use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
@@ -151,40 +145,40 @@ where
     }
 
     pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>)> {
-        let instance = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        let msg_batch_instance = Instant::now();
+        // let instance = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        // let msg_batch_instance = Instant::now();
         // get batch of items from suffix to install.
         let items_option = self.suffix.get_message_batch_from_version(self.last_installing, None);
-        let msg_batch_instance_elapsed = msg_batch_instance.elapsed();
+        // let msg_batch_instance_elapsed = msg_batch_instance.elapsed();
 
         let mut statemaps_batch = vec![];
 
-        #[allow(unused_assignments)]
-        let mut msg_statemap_create_elapsed = Duration::from_nanos(0);
+        // #[allow(unused_assignments)]
+        // let mut msg_statemap_create_elapsed = Duration::from_nanos(0);
 
         if let Some(items) = items_option {
-            let msg_batch_instance_filter = Instant::now();
+            // let msg_batch_instance_filter = Instant::now();
             let filtered_message_batch = get_filtered_batch(items.iter().copied());
-            let msg_batch_instance_filter_elapsed = msg_batch_instance_filter.elapsed();
+            // let msg_batch_instance_filter_elapsed = msg_batch_instance_filter.elapsed();
 
-            let msg_statemap_create = Instant::now();
+            // let msg_statemap_create = Instant::now();
             // generate the statemap from each item in batch.
             statemaps_batch = get_statemap_from_suffix_items(filtered_message_batch);
 
-            msg_statemap_create_elapsed = msg_statemap_create.elapsed();
+            // msg_statemap_create_elapsed = msg_statemap_create.elapsed();
 
-            let elapsed = OffsetDateTime::now_utc().unix_timestamp_nanos() - instance;
+            // let elapsed = OffsetDateTime::now_utc().unix_timestamp_nanos() - instance;
 
             if let Some(last_item) = items.last() {
                 self.last_installing = last_item.item_ver;
             }
 
             // TODO: Remove TEMP_CODE and replace with proper metrics from feature/cohort-db-mock
-            if !items.is_empty() {
-                let first_version = items.first().unwrap().item_ver;
-                let last_version = items.last().unwrap().item_ver;
-                warn!("[CREATE_STATEMAP] Processed total of count={} from_version={first_version:?} to_version={last_version:?} with batch_create_time={:?}, filter_time={msg_batch_instance_filter_elapsed:?}  statemap_create_time={msg_statemap_create_elapsed:?} and total_time={elapsed:?} {}", items.len(), msg_batch_instance_elapsed, elapsed);
-            };
+            // if !items.is_empty() {
+            //     let first_version = items.first().unwrap().item_ver;
+            //     let last_version = items.last().unwrap().item_ver;
+            //     debug!("[CREATE_STATEMAP] Processed total of count={} from_version={first_version:?} to_version={last_version:?} with batch_create_time={:?}, filter_time={msg_batch_instance_filter_elapsed:?}  statemap_create_time={msg_statemap_create_elapsed:?} and total_time={elapsed:?} {}", items.len(), msg_batch_instance_elapsed, elapsed);
+            // };
         }
         statemaps_batch
     }

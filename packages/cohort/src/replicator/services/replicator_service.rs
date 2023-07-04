@@ -1,12 +1,12 @@
 // $coverage:ignore-start
-use std::{fmt::Debug, time::Instant};
+use std::fmt::Debug;
 
 use crate::replicator::{
     core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, info, warn};
+use log::{debug, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use tokio::sync::mpsc;
 
@@ -43,31 +43,8 @@ where
                         let statemaps_batch = replicator.generate_statemap_batch();
 
                         if !statemaps_batch.is_empty() {
-                            let statemaps_tx_clone = statemaps_tx.clone();
-                            tokio::spawn(async move {
-                                let instance = Instant::now();
-                                let statemaps_batch_len = statemaps_batch.len();
-                                let first_item_version = statemaps_batch.first().unwrap().0;
-                                let last_item_version = statemaps_batch.last().unwrap().0;
-                                statemaps_tx_clone.send(statemaps_batch).await.unwrap();
-                                // for (vers, statemaps_to_install) in statemaps_batch.clone() {
-                                //     // send for install.
-                                //     if let Err(e) = statemaps_tx_clone.send((statemaps_to_install, Some(vers))).await {
-                                //         return Err(e)
-                                //     };
-
-                                // };
-                                let elapsed = instance.elapsed();
-                                warn!("Total items send over channel count={} first_version={first_item_version} --> last_version={last_item_version} and time taken to send={elapsed:?}", statemaps_batch_len);
-
-                                // Ok(())
-                            });
-                            // handle.await.unwrap();
-                            // if let Err(e) = handle.await.unwrap() {
-                            //     error!("Error sending statemaps over the channel with reason={e:?}");
-                            // }
+                            statemaps_tx.send(statemaps_batch).await.unwrap();
                         }
-
 
                     },
                 }
