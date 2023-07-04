@@ -2,18 +2,12 @@ use async_trait::async_trait;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    collections::HashMap,
-    io::Error,
-    marker::PhantomData,
-    time::{Duration, Instant},
-};
+use std::{collections::HashMap, io::Error, marker::PhantomData};
 use talos_certifier::{
     model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
     ChannelMessage,
 };
-use time::OffsetDateTime;
 
 use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
