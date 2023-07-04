@@ -1,17 +1,17 @@
 // $coverage:ignore-start
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 
 use crate::replicator::{
     core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, info};
+use log::{debug, info, warn};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use tokio::sync::mpsc;
 
 pub async fn replicator_service<S, M>(
-    statemaps_tx: mpsc::Sender<(Vec<StatemapItem>, Option<u64>)>,
+    statemaps_tx: mpsc::Sender<Vec<(u64, Vec<StatemapItem>)>>,
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
 ) -> Result<(), String>
@@ -43,11 +43,29 @@ where
                         let statemaps_batch = replicator.generate_statemap_batch();
 
                         if !statemaps_batch.is_empty() {
-                            for (vers, statemaps_to_install) in statemaps_batch {
-                                // send for install.
-                                statemaps_tx.send((statemaps_to_install, Some(vers))).await.unwrap();
+                            let statemaps_tx_clone = statemaps_tx.clone();
+                            tokio::spawn(async move {
+                                let instance = Instant::now();
+                                let statemaps_batch_len = statemaps_batch.len();
+                                let first_item_version = statemaps_batch.first().unwrap().0;
+                                let last_item_version = statemaps_batch.last().unwrap().0;
+                                statemaps_tx_clone.send(statemaps_batch).await.unwrap();
+                                // for (vers, statemaps_to_install) in statemaps_batch.clone() {
+                                //     // send for install.
+                                //     if let Err(e) = statemaps_tx_clone.send((statemaps_to_install, Some(vers))).await {
+                                //         return Err(e)
+                                //     };
 
-                            };
+                                // };
+                                let elapsed = instance.elapsed();
+                                warn!("Total items send over channel count={} first_version={first_item_version} --> last_version={last_item_version} and time taken to send={elapsed:?}", statemaps_batch_len);
+
+                                // Ok(())
+                            });
+                            // handle.await.unwrap();
+                            // if let Err(e) = handle.await.unwrap() {
+                            //     error!("Error sending statemaps over the channel with reason={e:?}");
+                            // }
                         }
 
 
