@@ -5,8 +5,11 @@ use cohort::{
     config_loader::ConfigLoader,
     metrics::Stats,
     model::requests::TransferRequest,
-    replicator::pg_replicator_installer::PgReplicatorStatemapInstaller,
-    replicator2::{cohort_replicator::CohortReplicator, cohort_suffix::CohortSuffix, service::ReplicatorService2},
+    replicator::{
+        core::{Replicator, ReplicatorCandidate},
+        pg_replicator_installer::PgReplicatorStatemapInstaller,
+        services::{replicator_service::replicator_service, statemap_installer_service::installer_service},
+    },
     state::postgres::{data_access::PostgresApi, database::Database},
 };
 use examples_support::{
@@ -19,7 +22,7 @@ use rand::Rng;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
-use talos_suffix::core::SuffixConfig;
+use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{signal, sync::Mutex, task::JoinHandle, try_join};
 
 type ReplicatorTaskHandle = JoinHandle<Result<(), String>>;
@@ -177,14 +180,6 @@ async fn start_replicator(
     database: Arc<Database>,
     channel_size: usize,
 ) -> (ReplicatorTaskHandle, InstallerTaskHandle, HeartBeatReceiver) {
-    let suffix_config = SuffixConfig {
-        capacity: 100_000,
-        prune_start_threshold: Some(100_000),
-        min_size_after_prune: None,
-    };
-
-    let suffix = CohortSuffix::with_config(suffix_config);
-
     let mut kafka_config = KafkaConfig::from_env();
     kafka_config.group_id = "talos-replicator-dev".to_string();
     let kafka_consumer = KafkaConsumer::new(&kafka_config);
@@ -192,13 +187,9 @@ async fn start_replicator(
     // b. Subscribe to topic.
     kafka_consumer.subscribe().await.unwrap();
 
-    let (tx_heartbeat, rx_heartbeat) = tokio::sync::watch::channel(0_u64);
-    let tx_heartbeat_ref = Arc::new(tx_heartbeat);
-    let tx_heartbeat_ref1 = Arc::clone(&tx_heartbeat_ref);
+    let (_tx_heartbeat, rx_heartbeat) = tokio::sync::watch::channel(0_u64);
     let (tx_install_req, rx_install_req) = tokio::sync::mpsc::channel(channel_size);
     let (tx_install_resp, rx_install_resp) = tokio::sync::mpsc::channel(channel_size);
-
-    let replicator = CohortReplicator::new(kafka_consumer, suffix);
 
     let manual_tx_api = PostgresApi { client: database.get().await };
     let installer = PgReplicatorStatemapInstaller {
@@ -213,8 +204,15 @@ async fn start_replicator(
         m5_commit: MinMax::default(),
     };
 
-    let future_replicator = ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_resp, replicator_metrics);
-    let future_installer = ReplicatorService2::start_installer(rx_install_req, tx_install_resp, installer, tx_heartbeat_ref1, replicator_metrics);
+    let suffix_config = SuffixConfig {
+        capacity: 10,
+        prune_start_threshold: Some(2000),
+        min_size_after_prune: None,
+    };
+    let talos_suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
+    let replicator_v1 = Replicator::new(kafka_consumer, talos_suffix);
+    let future_replicator = replicator_service(tx_install_req, rx_install_resp, replicator_v1);
+    let future_installer = installer_service(rx_install_req, tx_install_resp, installer);
 
     let h_replicator = tokio::spawn(future_replicator);
     let h_installer = tokio::spawn(future_installer);
