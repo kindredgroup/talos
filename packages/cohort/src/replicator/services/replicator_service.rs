@@ -6,7 +6,7 @@ use crate::replicator::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, info, warn};
+use log::{debug, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use tokio::sync::mpsc;
 
