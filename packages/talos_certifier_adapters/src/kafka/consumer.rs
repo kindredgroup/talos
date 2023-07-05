@@ -48,15 +48,25 @@ impl KafkaConsumer {
 
         let offset_to_update = offset + 1;
 
-        if self.tpl.find_partition(&self.topic, partition).is_none() {
-            self.tpl
-                .add_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
-                .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
-        } else {
-            self.tpl
-                .set_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
-                .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
-        }
+        match self.tpl.find_partition(&self.topic, partition) {
+            Some(tpl) => {
+                let offset_in_tpl = tpl.offset().to_raw().unwrap_or_default();
+
+                // error!("Offset received ={offset} and offset in tpl ={offset_in_tpl}");
+                if offset_to_update > offset_in_tpl {
+                    // error!("Updating partition offset....");
+                    self.tpl
+                        .set_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
+                        .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
+                }
+            }
+            None => {
+                self.tpl
+                    .add_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
+                    .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
+            }
+        };
+
         Ok(())
     }
 }
@@ -156,14 +166,17 @@ impl MessageReciever for KafkaConsumer {
 
     async fn commit(&self, vers: u64) -> Result<(), SystemServiceError> {
         let vers_i64: i64 = vers.try_into().unwrap_or_default();
-        self.consumer
-            .commit(&self.tpl, rdkafka::consumer::CommitMode::Sync)
-            .map_err(|err| MessageReceiverError {
-                kind: MessageReceiverErrorKind::CommitError,
-                version: Some(vers),
-                reason: err.to_string(),
-                data: Some(format!("{}", vers_i64)),
-            })?;
+
+        if self.tpl.count() > 0 {
+            self.consumer
+                .commit(&self.tpl, rdkafka::consumer::CommitMode::Sync)
+                .map_err(|err| MessageReceiverError {
+                    kind: MessageReceiverErrorKind::CommitError,
+                    version: Some(vers),
+                    reason: err.to_string(),
+                    data: Some(format!("{}", vers_i64)),
+                })?;
+        }
         Ok(())
     }
 }
