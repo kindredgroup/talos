@@ -137,15 +137,19 @@ impl MessageReciever for KafkaConsumer {
 
                 debug!("Decision received and the offset is {} !!!! ", offset);
 
+                let tpl = self.tpl.elements_for_topic(&self.topic);
+                if tpl.is_empty() {
+                    self.store_offsets(partition, offset_i64).map_err(|err| MessageReceiverError {
+                        kind: MessageReceiverErrorKind::SaveVersion,
+                        version: Some(offset),
+                        reason: err.to_string(),
+                        data: Some(format!("{}", offset)),
+                    })?;
+                }
+
                 ChannelMessage::Decision(offset, msg)
             }
         };
-        self.store_offsets(partition, offset_i64).map_err(|err| MessageReceiverError {
-            kind: MessageReceiverErrorKind::SaveVersion,
-            version: Some(offset),
-            reason: err.to_string(),
-            data: Some(format!("{}", offset)),
-        })?;
 
         Ok(Some(channel_msg))
     }
@@ -164,18 +168,32 @@ impl MessageReciever for KafkaConsumer {
         self.consumer.unsubscribe();
     }
 
-    async fn commit(&self, vers: u64) -> Result<(), SystemServiceError> {
-        let vers_i64: i64 = vers.try_into().unwrap_or_default();
-
+    async fn commit(&self) -> Result<(), SystemServiceError> {
         if self.tpl.count() > 0 {
             self.consumer
-                .commit(&self.tpl, rdkafka::consumer::CommitMode::Sync)
+                .commit(&self.tpl, rdkafka::consumer::CommitMode::Async)
                 .map_err(|err| MessageReceiverError {
                     kind: MessageReceiverErrorKind::CommitError,
-                    version: Some(vers),
+                    version: None,
                     reason: err.to_string(),
-                    data: Some(format!("{}", vers_i64)),
+                    data: None,
                 })?;
+        }
+        Ok(())
+    }
+    async fn update_savepoint(&mut self, offset: i64) -> Result<(), SystemServiceError> {
+        // let partition = self.tpl.;
+        let tpl = self.tpl.elements_for_topic(&self.topic);
+        if !tpl.is_empty() {
+            let first = tpl.first().unwrap();
+            let partition = first.partition();
+
+            self.store_offsets(partition, offset).map_err(|err| MessageReceiverError {
+                kind: MessageReceiverErrorKind::SaveVersion,
+                version: None,
+                reason: err.to_string(),
+                data: None,
+            })?;
         }
         Ok(())
     }

@@ -77,7 +77,7 @@ where
 
     pub async fn commit(&mut self) {
         if let Some(offset) = self.suffix.find_commit_offset(self.latest_in_flight) {
-            if let Err(error) = self.receiver.commit(offset).await {
+            if let Err(error) = self.receiver.commit().await {
                 log::warn!("Unable to commit offset: {}. Error: {}", offset, error);
             }
         }
