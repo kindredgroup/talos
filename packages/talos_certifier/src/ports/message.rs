@@ -13,7 +13,8 @@ pub trait MessageReciever: SharedPortTraits {
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
     async fn subscribe(&self) -> Result<(), SystemServiceError>;
-    async fn commit(&self, vers: u64) -> Result<(), SystemServiceError>;
+    async fn commit(&self) -> Result<(), SystemServiceError>;
+    async fn update_savepoint(&mut self, offset: i64) -> Result<(), SystemServiceError>;
     async fn unsubscribe(&self);
 }
 

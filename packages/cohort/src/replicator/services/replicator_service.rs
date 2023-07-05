@@ -53,7 +53,7 @@ where
         }
         // Commit offsets at interval.
         _ = interval.tick() => {
-            replicator.receiver.commit(0).await.unwrap();
+            replicator.commit_till_last_installed().await;
         }
         // Receive feedback from installer.
         res = replicator_rx.recv() => {

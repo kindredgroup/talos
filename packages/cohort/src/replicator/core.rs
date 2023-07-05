@@ -182,4 +182,15 @@ where
         }
         statemaps_batch
     }
+
+    pub(crate) async fn commit_till_last_installed(&mut self) {
+        if self.last_installing > 0 {
+            if let Some(last_installed) = self.suffix.get_last_installed(Some(self.last_installing)) {
+                let version = last_installed.decision_ver.unwrap();
+                self.receiver.update_savepoint(version as i64).await.unwrap();
+
+                self.receiver.commit().await.unwrap();
+            }
+        }
+    }
 }
