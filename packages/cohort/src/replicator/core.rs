@@ -32,18 +32,24 @@ pub enum CandidateDecisionOutcome {
 pub struct StatemapItem {
     pub action: String,
     pub version: u64,
+    pub safepoint: Option<u64>,
     pub payload: Value,
 }
 
 impl StatemapItem {
-    pub fn new(action: String, version: u64, payload: Value) -> Self {
-        StatemapItem { action, version, payload }
+    pub fn new(action: String, version: u64, payload: Value, safepoint: Option<u64>) -> Self {
+        StatemapItem {
+            action,
+            version,
+            payload,
+            safepoint,
+        }
     }
 }
 
 #[async_trait]
 pub trait ReplicatorInstaller {
-    async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error>;
+    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

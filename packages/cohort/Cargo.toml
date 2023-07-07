@@ -35,6 +35,13 @@ rust_decimal =      { version = "1.30.0", features = ["db-tokio-postgres", "serd
 strum =             { version = "0.24", features = ["derive"] }
 uuid =              { version = "1.2.2", features = ["v4"] }
 
+#  indexmap
+indexmap = "2.0.0"
+ahash = "0.8.3"
+
+#  tokio-utils
+tokio-util = "0.7.8"
+
 # local package dependecies
 metrics =                    { path = "../metrics" }
 talos_agent =                { path = "../talos_agent" }

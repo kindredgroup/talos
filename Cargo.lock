@@ -367,11 +367,13 @@ dependencies = [
 name = "cohort"
 version = "0.0.1"
 dependencies = [
+ "ahash",
  "async-trait",
  "csv",
  "deadpool-postgres",
  "env_logger",
  "futures",
+ "indexmap 2.0.0",
  "log",
  "metrics",
  "mockall",
@@ -393,6 +395,7 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tokio-test",
+ "tokio-util",
  "uuid",
 ]
 
