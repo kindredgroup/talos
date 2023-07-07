@@ -8,7 +8,10 @@ use cohort::{
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
-        services::{replicator_service::replicator_service, statemap_installer_service::installer_service},
+        services::{
+            replicator_service::replicator_service,
+            statemap_installer_service::{installation_service, installer_queue_service, installer_service},
+        },
     },
     state::postgres::{data_access::PostgresApi, database::Database},
 };
@@ -27,6 +30,8 @@ use tokio::{signal, sync::Mutex, task::JoinHandle, try_join};
 
 type ReplicatorTaskHandle = JoinHandle<Result<(), String>>;
 type InstallerTaskHandle = JoinHandle<Result<(), String>>;
+type InstallerQueuTaskHandle = JoinHandle<Result<(), String>>;
+type InstallationTaskHandle = JoinHandle<Result<(), String>>;
 type HeartBeatReceiver = tokio::sync::watch::Receiver<u64>;
 
 #[derive(Clone)]
@@ -71,7 +76,7 @@ async fn main() -> Result<(), String> {
     );
 
     // TODO: extract 100_000 into command line parameter - channel_size between replicator and installer tasks
-    let (h_replicator, h_installer, rx_heartbeat) = start_replicator(params.replicator_metrics, db_ref2, 100_000).await;
+    let (h_replicator, h_installer, h_installation, rx_heartbeat) = start_replicator(params.replicator_metrics, db_ref2, 100_000).await;
 
     let metrics_data = Arc::new(Mutex::new(Vec::new()));
     let metrics_data = Arc::clone(&metrics_data);
@@ -85,7 +90,7 @@ async fn main() -> Result<(), String> {
     );
 
     let all_async_services = tokio::spawn(async move {
-        let result = try_join!(h_generator, h_replicator, h_installer, h_cohort, h_metrics_collector);
+        let result = try_join!(h_generator, h_replicator, h_installer, h_installation, h_cohort, h_metrics_collector);
         log::warn!("Result from the services ={result:?}");
     });
 
@@ -136,21 +141,21 @@ fn start_queue_monitor(
                 (*reference, reference.has_changed())
             };
 
-            if queue.is_empty() && !is_count_changed {
-                // queue is empty and there are no signals from other workers, reduce window and try again
-                remaining_attempts -= 1;
-                log::warn!(
-                    "Workers queue is empty and there is no activity signal from replicator. Finishing in: {} seconds...",
-                    remaining_attempts * check_frequency.as_secs()
-                );
-            } else {
-                remaining_attempts = total_attempts;
-                log::warn!(
-                    "Counts. Remaining: {}, processed by replicator and installer: {}",
-                    queue.len(),
-                    recent_heartbeat_value
-                );
-            }
+            // if queue.is_empty() && !is_count_changed {
+            //     // queue is empty and there are no signals from other workers, reduce window and try again
+            //     remaining_attempts -= 1;
+            //     log::warn!(
+            //         "Workers queue is empty and there is no activity signal from replicator. Finishing in: {} seconds...",
+            //         remaining_attempts * check_frequency.as_secs()
+            //     );
+            // } else {
+            //     remaining_attempts = total_attempts;
+            //     log::warn!(
+            //         "Counts. Remaining: {}, processed by replicator and installer: {}",
+            //         queue.len(),
+            //         recent_heartbeat_value
+            //     );
+            // }
 
             tokio::time::sleep(check_frequency).await;
         }
@@ -179,7 +184,7 @@ async fn start_replicator(
     replicator_metrics: Option<i128>,
     database: Arc<Database>,
     channel_size: usize,
-) -> (ReplicatorTaskHandle, InstallerTaskHandle, HeartBeatReceiver) {
+) -> (ReplicatorTaskHandle, InstallerQueuTaskHandle, InstallationTaskHandle, HeartBeatReceiver) {
     let mut kafka_config = KafkaConfig::from_env();
     kafka_config.group_id = "talos-replicator-dev".to_string();
     let kafka_consumer = KafkaConsumer::new(&kafka_config);
@@ -191,10 +196,12 @@ async fn start_replicator(
     let (tx_install_req, rx_install_req) = tokio::sync::mpsc::channel(channel_size);
     let (tx_install_resp, rx_install_resp) = tokio::sync::mpsc::channel(channel_size);
 
-    let manual_tx_api = PostgresApi { client: database.get().await };
+    let (tx_installation_feedback_req, rx_installation_feedback_req) = tokio::sync::mpsc::channel(channel_size);
+    let (tx_installation_req, rx_installation_req) = tokio::sync::mpsc::channel(channel_size);
+    // let manual_tx_api = PostgresApi { client: database.get().await };
     let installer = PgReplicatorStatemapInstaller {
         metrics_frequency: replicator_metrics,
-        pg: manual_tx_api,
+        pg: database,
         metrics: MicroMetrics::new(1_000_000_000_f32, true),
         m_total: MinMax::default(),
         m1_tx: MinMax::default(),
@@ -212,12 +219,16 @@ async fn start_replicator(
     let talos_suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
     let replicator_v1 = Replicator::new(kafka_consumer, talos_suffix);
     let future_replicator = replicator_service(tx_install_req, rx_install_resp, replicator_v1);
-    let future_installer = installer_service(rx_install_req, tx_install_resp, installer);
+    // let future_installer = installer_service(rx_install_req, tx_install_resp, installer);
+    let future_installer_queue = installer_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req);
+    let future_installation = installation_service(tx_install_resp, Arc::new(installer), rx_installation_req, tx_installation_feedback_req);
 
     let h_replicator = tokio::spawn(future_replicator);
-    let h_installer = tokio::spawn(future_installer);
+    // let h_installer = tokio::spawn(future_installer);
+    let h_installer = tokio::spawn(future_installer_queue);
+    let h_installation = tokio::spawn(future_installation);
 
-    (h_replicator, h_installer, rx_heartbeat)
+    (h_replicator, h_installer, h_installation, rx_heartbeat)
 }
 
 fn create_transfer_request() -> TransferRequest {

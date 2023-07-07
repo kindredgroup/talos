@@ -44,11 +44,11 @@ async fn main() {
     // e. Create postgres statemap installer instance.
     let cfg_db = ConfigLoader::load_db_config().unwrap();
     let database = Database::init_db(cfg_db).await;
-    let manual_tx_api = PostgresApi { client: database.get().await };
+    // let manual_tx_api = PostgresApi { client: database.get().await };
 
     let pg_statemap_installer = PgReplicatorStatemapInstaller {
         metrics_frequency: None,
-        pg: manual_tx_api,
+        pg: database,
         metrics: MicroMetrics::new(1_000_000_000_f32, true),
         m_total: MinMax::default(),
         m1_tx: MinMax::default(),

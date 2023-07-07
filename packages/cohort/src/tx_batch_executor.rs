@@ -303,7 +303,7 @@ mod tests {
     }
 
     fn item<T: Serialize>(action: &str, version: u64, payload: T) -> StatemapItem {
-        StatemapItem::new(action.to_string(), version, serde_json::to_value(payload).unwrap())
+        StatemapItem::new(action.to_string(), version, serde_json::to_value(payload).unwrap(), None)
     }
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -

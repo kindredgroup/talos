@@ -23,6 +23,7 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
                     action: key,
                     payload,
                     version: m.item_ver,
+                    safepoint: m.item.get_safepoint().clone(),
                 }
             });
             acc.push((m.item_ver, state_maps_to_append.collect::<Vec<StatemapItem>>()));
