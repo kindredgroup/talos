@@ -1,11 +1,17 @@
 // $coverage:ignore-start
 
-use std::{sync::Arc, time::Instant};
+use std::{
+    hash::BuildHasherDefault,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use crate::replicator::core::{ReplicatorChannel, ReplicatorInstaller, StatemapItem};
 
+use ahash::RandomState;
 use indexmap::IndexMap;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
+use rayon::prelude::*;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, Semaphore};
 use tokio_util::sync::PollSemaphore;
@@ -27,7 +33,7 @@ pub struct StatemapInstallerHashmap {
 pub async fn installer_service<T>(
     mut statemaps_rx: mpsc::Receiver<Vec<(u64, Vec<StatemapItem>)>>,
     replicator_tx: mpsc::Sender<ReplicatorChannel>,
-    mut statemap_installer: T,
+    statemap_installer: T,
 ) -> Result<(), String>
 where
     T: ReplicatorInstaller,
@@ -65,7 +71,8 @@ pub async fn installer_queue_service(
 ) -> Result<(), String> {
     info!("Starting Installer Queue Service.... ");
     // let last_installed = 0_u64;
-    let mut statemap_queue: IndexMap<u64, StatemapInstallerHashmap> = IndexMap::new();
+    let mut statemap_queue = IndexMap::<u64, StatemapInstallerHashmap, RandomState>::default();
+    let mut interval = tokio::time::interval(Duration::from_millis(10_000));
 
     loop {
         tokio::select! {
@@ -101,20 +108,21 @@ pub async fn installer_queue_service(
                     let items = statemap_queue.get_range(..);
 
                     if let Some(statemap_items) = items {
+
                         items_to_install = statemap_items
-                            .iter()
+                            .par_values()
                             // Picking waiting items
-                            .filter(|i| i.1.status == StatemapInstallState::Awaiting)
+                            .filter(|v| v.status == StatemapInstallState::Awaiting)
                             // filter out the ones that can't be serialized
-                            .filter_map(|i| {
+                            .filter_map(|v| {
                                 // If no safepoint, this could be a abort item and is safe to install as statemap will be empty.
-                                let Some(safepoint) = i.1.safepoint else {
-                                    return Some(i.0.clone());
+                                let Some(safepoint) = v.safepoint else {
+                                    return Some(v.version);
                                 };
 
                                 // If there is no version matching the safepoint, then it is safe to install
-                                let Some(_) = statemap_queue.get(&safepoint) else {
-                                    return Some(i.0.clone());
+                                if !statemap_queue.contains_key(&safepoint) {
+                                    return Some(v.version);
                                 };
 
                                 None
@@ -132,6 +140,7 @@ pub async fn installer_queue_service(
                     // Sends for installation.
                     for key in items_to_install {
                         // Send for installation
+                        warn!("Sending... {key}");
                         installation_tx.send((key, statemap_queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
 
                         // Update the status flag
@@ -149,14 +158,40 @@ pub async fn installer_queue_service(
                         let start_time_success = Instant::now();
 
                         // installed successfully and will remove the item
-                        statemap_queue.shift_remove(&key);
+                        // statemap_queue.shift_remove(&key);
+                        let state_item = statemap_queue.get_mut(&key).unwrap();
+                        state_item.status = StatemapInstallState::Installed;
                         let end_time_success = start_time_success.elapsed();
                         error!("(Statmap queue success updation) for version={key} in {end_time_success:?}");
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         error!("Failed to install version={ver} due to error={error:?}");
+                        let items_in_flight: Vec<&StatemapInstallerHashmap> = statemap_queue
+                            .par_values()
+                            // Picking waiting items
+                            .filter_map(|v| {
+                                if v.status == StatemapInstallState::Inflight || v.status == StatemapInstallState::Installed {
+                                    Some(v)
+                                } else {
+                                    None
+                                }
+                        }).collect();
+                        panic!("[Panic Panic Panic] panic for ver={ver} with error={error} \n\n\n Items still in statemap \n\n\n {items_in_flight:#?}");
                     },
                 }
+            }
+            _ = interval.tick() => {
+
+                let installed_keys = statemap_queue.par_values().filter_map(|v| {if v.status == StatemapInstallState::Installed {
+                    Some(v.version)
+                } else {
+                    None
+                }})
+                .collect::<Vec<u64>>();
+
+                installed_keys.iter().for_each(|key| {
+                  statemap_queue.shift_remove(key);
+                })
             }
 
         }
@@ -207,6 +242,18 @@ pub async fn installation_service(
                                 "Installed failed for version={snapshot_version_to_update:?} with time ={:?}",
                                 start_installation_time.elapsed()
                             );
+                            replicator_tx_clone
+                                .send(ReplicatorChannel::InstallationFailure("Crash and Burn!!!".to_string()))
+                                .await
+                                .unwrap();
+                            statemap_installation_tx_clone
+                                .send(StatemapInstallationStatus::Error(
+                                    ver,
+                                    "Crash and burn the statemap installer queue service".to_string(),
+                                ))
+                                .await
+                                .unwrap();
+
                             return Ok(());
                         }
                         Err(err) => {

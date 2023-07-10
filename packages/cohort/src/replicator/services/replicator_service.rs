@@ -77,6 +77,9 @@ where
                         }
 
                     }
+                    ReplicatorChannel::InstallationFailure(_) => {
+                        // panic!("[panic panic panic] Installation Failed and replicator will panic and stop");
+                    }
                 }
             }
         }

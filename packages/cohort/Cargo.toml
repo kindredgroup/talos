@@ -36,8 +36,10 @@ strum =             { version = "0.24", features = ["derive"] }
 uuid =              { version = "1.2.2", features = ["v4"] }
 
 #  indexmap
-indexmap = "2.0.0"
+indexmap = { version = "2.0.0", features = ["rayon"]}
 ahash = "0.8.3"
+rayon = { version = "1.7.0"}
+
 
 #  tokio-utils
 tokio-util = "0.7.8"

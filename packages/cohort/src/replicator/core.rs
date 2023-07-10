@@ -17,7 +17,7 @@ use super::{
 #[derive(Debug)]
 pub enum ReplicatorChannel {
     InstallationSuccess(Vec<u64>),
-    // InstallationFailure(String),
+    InstallationFailure(String),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
