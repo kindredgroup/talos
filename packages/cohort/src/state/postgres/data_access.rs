@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use deadpool_postgres::{Object, Transaction};
 use tokio_postgres::types::ToSql;
+use tracing::instrument;
 
 use crate::state::data_access_api::{Connection, ConnectionApi, ManualTx, TxApi};
 
@@ -16,6 +17,7 @@ impl<'a> ManualTx for PostgresManualTx<'a> {
         self.tx.execute(&statement, params).await.map_err(|e| e.to_string())
     }
 
+    #[instrument(skip_all)]
     async fn commit(self) -> Result<(), String> {
         log::debug!("commit");
         let r = self.tx.commit().await.map_err(|e| e.to_string());
@@ -25,6 +27,7 @@ impl<'a> ManualTx for PostgresManualTx<'a> {
         r
     }
 
+    #[instrument(skip_all)]
     async fn rollback(self) -> Result<(), String> {
         log::debug!("rollback...");
         let r = self.tx.rollback().await.map_err(|e| e.to_string());

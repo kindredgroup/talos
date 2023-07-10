@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use tracing::instrument;
+
 use crate::actions::action::Action;
 use crate::actions::transfer::Transfer;
 
@@ -21,6 +23,7 @@ impl BankApi {
         Ok(list)
     }
 
+    #[instrument(skip_all)]
     pub async fn get_accounts_as_map(db: Arc<Database>, number_from: String, number_to: String) -> Result<HashMap<String, BankAccount>, String> {
         let mut map = HashMap::<String, BankAccount>::new();
 
@@ -36,6 +39,7 @@ impl BankApi {
         Ok(map)
     }
 
+    #[instrument(skip_all)]
     pub async fn transfer(db: Arc<Database>, data: TransferRequest, new_version: u64) -> Result<u64, String> {
         let affected_rows = Self::transfer_one(db, Transfer::new(data.clone(), new_version)).await?;
         if affected_rows == 0 || affected_rows == 2 {

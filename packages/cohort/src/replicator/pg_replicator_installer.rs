@@ -4,6 +4,7 @@ use std::{io::Error, time::Duration};
 use async_trait::async_trait;
 use log::debug;
 use metrics::model::{MicroMetrics, MinMax};
+use tracing::instrument;
 
 use crate::{state::postgres::data_access::PostgresApi, tx_batch_executor::BatchExecutor};
 
@@ -23,6 +24,7 @@ pub struct PgReplicatorStatemapInstaller {
 
 #[async_trait]
 impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
+    #[instrument(skip_all)]
     async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
         debug!("Last version ... {:#?} ", version);
         debug!("Original statemaps received ... {:#?} ", sm);

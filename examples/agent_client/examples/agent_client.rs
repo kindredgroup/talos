@@ -1,8 +1,15 @@
 use async_channel::Receiver;
 use examples_support::load_generator::generator::ControlledRateLoadGenerator;
 use examples_support::load_generator::models::StopType;
+use opentelemetry::global::shutdown_tracer_provider;
+use opentelemetry::sdk::export::trace::stdout;
+use opentelemetry::sdk::trace::BatchConfig;
+use opentelemetry_otlp::WithExportConfig;
 use std::num::ParseIntError;
 use std::{env, sync::Arc, time::Duration};
+use tracing_subscriber::prelude::__tracing_subscriber_SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Registry};
 
 use rdkafka::config::RDKafkaLogLevel;
 use std::env::{var, VarError};
@@ -31,13 +38,48 @@ struct LaunchParams {
     collect_metrics: bool,
 }
 
+fn init_telemetry_to_otlp_collector() {
+    let global_subscriber = Registry::default();
+    let otlp_tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_batch_config(BatchConfig::default().with_max_queue_size(1_000_000_000))
+        .with_exporter(opentelemetry_otlp::new_exporter().tonic().with_env())
+        .install_batch(opentelemetry::runtime::Tokio)
+        .unwrap();
+
+    global_subscriber
+        .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+        .with(tracing_opentelemetry::layer().with_tracer(otlp_tracer))
+        .init();
+}
+
+fn _init_telemetry_to_log() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+        .init();
+}
+
+fn _init_telemetry_to_stdout() {
+    let global_subscriber = Registry::default();
+    let printer = stdout::new_pipeline().with_pretty_print(true).install_simple();
+    global_subscriber
+        .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+        .with(tracing_opentelemetry::layer().with_tracer(printer))
+        .init();
+}
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    env_logger::builder().format_timestamp_millis().init();
-
+    init_telemetry_to_otlp_collector();
+    // init_telemetry_to_stdout();
+    // init_telemetry_to_log();
     log::info!("started program: {}", std::process::id());
 
-    certify().await
+    let r = certify().await;
+
+    shutdown_tracer_provider();
+
+    r
 }
 
 async fn certify() -> Result<(), String> {

@@ -3,6 +3,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc::error::SendError;
 
 /// Clone-friendly service which can be used to transmit signal into metrics system.
+#[derive(Debug)]
 pub struct MetricsClient<TSignalTx: crate::mpsc::core::Sender<Data = Signal>> {
     pub tx_destination: TSignalTx,
 }

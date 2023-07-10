@@ -1,5 +1,6 @@
 use crate::api::{CertificationRequest, CertificationResponse};
 use crate::mpsc::core::Sender;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 // Sent by agent to state manager
@@ -7,6 +8,12 @@ use std::sync::Arc;
 pub struct CertifyRequestChannelMessage {
     pub request: CertificationRequest,
     pub tx_answer: Arc<Box<dyn Sender<Data = CertificationResponse>>>,
+}
+
+impl Debug for CertifyRequestChannelMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "CertifyRequestChannelMessage: [request: {:?}]", self.request)
+    }
 }
 
 impl CertifyRequestChannelMessage {

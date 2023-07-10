@@ -306,14 +306,14 @@ impl CohortSuffix {
     }
 
     pub fn prune_till_version(&mut self, version: u64) -> Result<Vec<Option<SuffixItem>>, SuffixError> {
-        log::info!("Suffix before prune.... {}", self.suffix_length());
+        log::debug!("Suffix before prune.... {}", self.suffix_length());
         if let Some(index) = self.index_from_head(version) {
-            log::info!("Index send for pruning is {index} for version={version}");
+            log::debug!("Index send for pruning is {index} for version={version}");
             let prune_index = self.find_prune_till_index(index);
             let prune_result = self.prune_till_index(prune_index);
-            log::info!("Suffix items pruned.... {prune_result:?}");
-            log::info!("Suffix after prune.... {}", self.suffix_length());
-            log::info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
+            log::debug!("Suffix items pruned.... {prune_result:?}");
+            log::debug!("Suffix after prune.... {}", self.suffix_length());
+            // log::debug!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
             return prune_result;
         } else {
             log::warn!("Unable to prune as index not found for version {version}.")
@@ -346,7 +346,7 @@ impl CohortSuffix {
     ///     2. And there is atleast one suffix item remaining, which can be the new head.
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> Result<Vec<Option<SuffixItem>>, SuffixError> {
-        log::info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        log::debug!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
 
         let drained_entries = self.messages.drain(..index).collect();
         self.meta.prune_index = None;

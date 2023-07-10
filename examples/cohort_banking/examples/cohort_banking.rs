@@ -15,12 +15,16 @@ use examples_support::{
 };
 
 use metrics::model::{MicroMetrics, MinMax};
+use opentelemetry::{global::shutdown_tracer_provider, sdk::trace::BatchConfig};
+use opentelemetry_otlp::WithExportConfig;
 use rand::Rng;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::core::SuffixConfig;
 use tokio::{signal, sync::Mutex, task::JoinHandle, try_join};
+// use tracing_flame::FlameLayer;
+use tracing_subscriber::{prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt, EnvFilter, Registry};
 
 type ReplicatorTaskHandle = JoinHandle<Result<(), String>>;
 type InstallerTaskHandle = JoinHandle<Result<(), String>>;
@@ -36,10 +40,63 @@ struct LaunchParams {
     cohort_metrics: Option<i128>,
 }
 
+fn init_telemetry_to_otlp_collector_and_log() {
+    let otlp_tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_batch_config(BatchConfig::default().with_max_queue_size(1_000_000_000))
+        .with_exporter(opentelemetry_otlp::new_exporter().tonic().with_env())
+        .install_batch(opentelemetry::runtime::Tokio)
+        .unwrap();
+
+    tracing_subscriber::registry()
+        .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+        .with(tracing_opentelemetry::layer().with_tracer(otlp_tracer))
+        // Continue logging to stdout
+        .with(tracing_subscriber::fmt::Layer::default())
+        .init();
+}
+
+fn _init_telemetry_to_otlp_collector() {
+    let global_subscriber = Registry::default();
+    let otlp_tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_batch_config(BatchConfig::default().with_max_queue_size(1_000_000_000))
+        .with_exporter(opentelemetry_otlp::new_exporter().tonic().with_env())
+        .install_batch(opentelemetry::runtime::Tokio)
+        .unwrap();
+
+    global_subscriber
+        .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+        .with(tracing_opentelemetry::layer().with_tracer(otlp_tracer))
+        .init();
+}
+
+// fn _init_flamegraphs_tracing() -> impl Drop {
+//     let fmt_layer = tracing_subscriber::fmt::Layer::default();
+//     let (flame_layer, _guard) = FlameLayer::with_file("./logs/tracing.folded").unwrap();
+
+//     tracing_subscriber::registry()
+//         .with(EnvFilter::try_from_default_env().unwrap_or(EnvFilter::new("INFO")))
+//         .with(fmt_layer)
+//         .with(flame_layer)
+//         .init();
+
+//     _guard
+// }
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
+    // init_telemetry_to_otlp_collector();
+    // init_telemetry_to_otlp_collector_and_log();
     env_logger::builder().format_timestamp_millis().init();
+    let result = run().await;
 
+    shutdown_tracer_provider();
+
+    result
+}
+
+async fn run() -> Result<(), String> {
     log::info!("Started, pid: {}", std::process::id());
 
     let params = get_params().await?;

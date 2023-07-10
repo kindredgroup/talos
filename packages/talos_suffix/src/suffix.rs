@@ -291,7 +291,7 @@ where
     ///     2. And there is atleast one suffix item remaining, which can be the new head.
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
-        info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        debug!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
         // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
         // let k = self.retrieve_all_some_vec_items();
@@ -316,14 +316,14 @@ where
     }
 
     fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
-        info!("Suffix before prune.... {}", self.suffix_length());
+        debug!("Suffix before prune.... {}", self.suffix_length());
         if let Some(index) = self.index_from_head(version) {
-            info!("Index send for pruning is {index} for version={version}");
+            debug!("Index send for pruning is {index} for version={version}");
             let prune_index = self.find_prune_till_index(index);
             let prune_result = self.prune_till_index(prune_index);
-            info!("Suffix items pruned.... {prune_result:?}");
-            info!("Suffix after prune.... {}", self.suffix_length());
-            info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
+            debug!("Suffix items pruned.... {prune_result:?}");
+            debug!("Suffix after prune.... {}", self.suffix_length());
+            //debug!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
             return prune_result;
         } else {
             warn!("Unable to prune as index not found for version {version}.")

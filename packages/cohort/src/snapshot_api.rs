@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
+use tracing::instrument;
 
 use crate::model::snapshot::Snapshot;
 use crate::state::data_access_api::ManualTx;
@@ -14,6 +15,7 @@ pub static SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version"
 pub struct SnapshotApi {}
 
 impl SnapshotApi {
+    #[instrument(skip_all, name = "snapshot-query")]
     pub async fn query(db: Arc<Database>) -> Result<Snapshot, String> {
         let result = db
             .query_one(
@@ -25,6 +27,7 @@ impl SnapshotApi {
         Ok(result)
     }
 
+    #[instrument(skip_all)]
     pub async fn update_using<T: ManualTx>(client: &T, new_version: u64) -> Result<u64, String> {
         let mut udpate_was_successful = true;
         let affected_rows = client
@@ -47,6 +50,7 @@ impl SnapshotApi {
         Ok(affected_rows)
     }
 
+    #[instrument(skip_all, name = "waiting")]
     pub async fn await_until_safe(db: Arc<Database>, safepoint: u64) -> Result<(Duration, Duration, u64), String> {
         let mut iterations_used = 0_u64;
         let mut s1_db = Duration::from_nanos(0);

@@ -15,8 +15,9 @@ serde =         { workspace = true }
 serde_json =    { workspace = true }
 strum =         { version = "0.24", features = ["derive"] }
 thiserror =     { version = "1.0.31" }
-time =          { version = "0.3.17" }
+time =          { workspace = true }
 tokio =         { workspace = true, features = ["full"] }
+tracing =       { version = "0.1.37" }
 uuid =          { version = "1.2.2", features = ["v4"] }
 
 [dev-dependencies]

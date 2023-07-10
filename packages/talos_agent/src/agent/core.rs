@@ -10,10 +10,12 @@ use crate::metrics::core::Metrics;
 use crate::metrics::model::{EventName, MetricsReport, Signal};
 use crate::mpsc::core::{Receiver, Sender};
 use async_trait::async_trait;
+use std::fmt::Debug;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
+use tracing::instrument;
 
 pub struct TalosAgentImpl<TCancelTx, TSignalTx, TRespChFactory, TResponseTx, TResponseRx>
 where
@@ -29,6 +31,24 @@ where
     metrics: Option<Metrics>,
     metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     channel_factory: TRespChFactory,
+}
+
+impl<TCancelTx, TSignalTx, TRespChFactory, TResponseTx, TResponseRx> Debug for TalosAgentImpl<TCancelTx, TSignalTx, TRespChFactory, TResponseTx, TResponseRx>
+where
+    TCancelTx: Sender<Data = CancelRequestChannelMessage>,
+    TSignalTx: Sender<Data = Signal> + 'static,
+    TResponseTx: Sender<Data = CertificationResponse> + 'static,
+    TResponseRx: Receiver<Data = CertificationResponse> + 'static,
+    TRespChFactory: Fn() -> (TResponseTx, TResponseRx) + Send + Sync,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "TalosAgentImpl: [agent_config: {:?}, with_metrcis: {}]",
+            self.agent_config,
+            self.metrics.as_ref().map_or(false, |_| true)
+        )
+    }
 }
 
 impl<TCancelTx, TSignalTx, TRespChFactory, TResponseTx, TResponseRx> TalosAgentImpl<TCancelTx, TSignalTx, TRespChFactory, TResponseTx, TResponseRx>
@@ -103,10 +123,12 @@ where
     TResponseRx: Receiver<Data = CertificationResponse> + 'static,
     TRespChFactory: Fn() -> (TResponseTx, TResponseRx) + Send + Sync,
 {
+    #[instrument(skip_all, name = "agent-certify")]
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
         let (tx, mut rx) = (self.channel_factory)();
         if let Some(mc) = self.metrics_client.as_ref() {
             mc.new_event(EventName::Started, request.candidate.xid.clone()).await.unwrap();
+            // tracing::trace!(name="started", started = OffsetDateTime::now_utc().unix_timestamp_nanos(), xid = request.candidate.xid.clone());
         }
 
         let m = CertifyRequestChannelMessage::new(&request, Arc::new(Box::new(tx)));
@@ -121,16 +143,18 @@ where
                         if let Some(mc) = self.metrics_client.as_ref() {
                             mc.new_event(EventName::Finished, request.candidate.xid.clone()).await.unwrap();
                         }
-
                         Ok(response)
                     }
-                    None => Err(AgentError {
-                        kind: Certification {
-                            xid: request.candidate.xid.clone(),
-                        },
-                        reason: "No response from state manager".to_string(),
-                        cause: None,
-                    }),
+                    None => {
+                        let reason = "No response from state manager".to_string();
+                        Err(AgentError {
+                            kind: Certification {
+                                xid: request.candidate.xid.clone(),
+                            },
+                            reason,
+                            cause: None,
+                        })
+                    }
                 },
                 Err(e) => Err(e.into()),
             }

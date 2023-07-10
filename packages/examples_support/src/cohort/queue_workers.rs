@@ -17,6 +17,8 @@ use metrics::model::{MicroMetrics, MinMax};
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 
+use tracing::instrument;
+
 pub struct QueueProcessor {}
 impl QueueProcessor {
     pub async fn process(
@@ -176,6 +178,7 @@ impl QueueProcessor {
         })
     }
 
+    #[instrument(skip_all, name = "tx-request")]
     pub async fn execute_until_giveup(
         thread_number: u64,
         max_retry: u64,
@@ -185,10 +188,10 @@ impl QueueProcessor {
     ) -> Result<TxExecutionOutcome, String> {
         let mut delay_controller = Box::new(DelayController::new(1500));
         let mut stats = Stats::new();
-
         loop {
             let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
             let result = Self::execute_once(thread_number, &tx_request, Arc::clone(&agent), Arc::clone(&database)).await?;
+
             let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
             stats.total_count += 1;
             stats.on_tx_finished(started_at, finished_at);
@@ -226,6 +229,7 @@ impl QueueProcessor {
         }
     }
 
+    #[instrument(skip_all, name = "tx-request-attempt")]
     pub async fn execute_once(
         thread_number: u64,
         tx_request: &TransferRequest,

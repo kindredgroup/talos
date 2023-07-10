@@ -3,6 +3,7 @@ use talos_certifier::{
     ports::MessageReciever,
     ChannelMessage,
 };
+use tracing::instrument;
 
 use crate::replicator::core::StatemapItem;
 
@@ -29,6 +30,7 @@ where
         }
     }
 
+    #[instrument(skip_all)]
     fn process_consumer_message(&mut self, version: u64, message: CandidateMessage) {
         if version > 0 {
             if let Err(e) = self.suffix.insert(version, message.into()) {
@@ -39,6 +41,7 @@ where
         }
     }
 
+    #[instrument(skip_all)]
     fn process_decision_message<D: DecisionMessageTrait>(&mut self, decision_version: u64, decision_message: D) {
         let version = decision_message.get_candidate_version();
 
@@ -57,6 +60,7 @@ where
     }
 
     /// Return "true" if decision was received
+    #[instrument(skip_all, name = "replicator-receive")]
     pub(crate) async fn receive(&mut self) -> bool {
         if let Ok(Some(message)) = self.receiver.consume_message().await {
             match message {
@@ -83,6 +87,7 @@ where
         }
     }
 
+    #[instrument(skip_all)]
     pub(crate) fn get_next_statemap(&mut self) -> Option<(Vec<StatemapItem>, u64, Option<i128>)> {
         if let Some(decided) = self.suffix.find_new_decided(self.latest_in_flight, true) {
             let has_statemap = decided.item.candidate.statemap.is_some();
@@ -115,6 +120,7 @@ where
         }
     }
 
+    #[instrument(skip_all)]
     pub(crate) fn update_suffix(&mut self, version: u64) -> Result<bool, String> {
         self.suffix.set_item_installed(version);
         self.latest_in_flight = None;

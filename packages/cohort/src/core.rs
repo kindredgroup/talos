@@ -15,6 +15,7 @@ use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tracing::instrument;
 
 use crate::bank_api::BankApi;
 
@@ -80,6 +81,7 @@ impl Cohort {
         Box::new(agent)
     }
 
+    #[instrument(skip_all, name = "cohort-transfer")]
     pub async fn transfer(
         agent: Arc<AgentType>,
         database: Arc<Database>,

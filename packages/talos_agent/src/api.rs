@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
 use serde_json::Value;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::time::Duration;
 
 ///

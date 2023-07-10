@@ -8,10 +8,12 @@ use crate::snapshot_api::SnapshotApi;
 use crate::state::data_access_api::{ManualTx, TxApi};
 use futures::future::BoxFuture;
 use time::OffsetDateTime;
+use tracing::instrument;
 
 pub struct BatchExecutor {}
 
 impl BatchExecutor {
+    #[instrument(skip_all, name = "batch-executor")]
     pub async fn execute_instrumented<'a, T, A>(
         manual_tx_api: &'a mut A,
         batch: Vec<StatemapItem>,
@@ -33,6 +35,8 @@ impl BatchExecutor {
         let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         let s1_tx_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        // let span = tracing::span!(Level::INFO, "start-transaction");
+        // let _ = span.enter();
         let tx = manual_tx_api.transaction().await;
         let s1_tx_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
@@ -83,7 +87,7 @@ impl BatchExecutor {
 
         if let Some(new_version) = snapshot {
             if affected_rows == 0 {
-                log::info!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
+                log::debug!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
             }
 
             s4_snap_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
@@ -100,7 +104,7 @@ impl BatchExecutor {
                 ));
             }
         } else if affected_rows == 0 {
-            log::warn!("No rows were updated when executing batch.");
+            log::debug!("No rows were updated when executing batch.");
         }
 
         let s5_cm_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
@@ -176,7 +180,7 @@ impl BatchExecutor {
 
         if let Some(new_version) = snapshot {
             if affected_rows == 0 {
-                log::info!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
+                log::debug!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
             }
 
             let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
@@ -191,13 +195,14 @@ impl BatchExecutor {
                 ));
             }
         } else if affected_rows == 0 {
-            log::warn!("No rows were updated when executing batch.");
+            log::debug!("No rows were updated when executing batch.");
         }
 
         tx.commit().await.map_err(|tx_error| format!("Commit error: {}", tx_error))?;
         Ok(affected_rows)
     }
 
+    #[instrument(skip_all)]
     async fn execute_item<T>(item: &StatemapItem, client: &T) -> Result<Option<u64>, String>
     where
         T: ManualTx,
@@ -221,6 +226,7 @@ impl BatchExecutor {
         Ok(action_outcome)
     }
 
+    #[instrument(skip_all)]
     async fn update_version<T>(item: &StatemapItem, client: &T) -> Result<Option<u64>, String>
     where
         T: ManualTx,
@@ -244,6 +250,7 @@ impl BatchExecutor {
         Ok(action_outcome)
     }
 
+    #[instrument(skip_all)]
     fn handle_rollback(tx_res: Result<(), String>, context_error: String) -> String {
         if let Err(tx_error) = tx_res {
             format!("Cannot rollback failed action. Error: {:?}. Rollback error: {}", context_error, tx_error)

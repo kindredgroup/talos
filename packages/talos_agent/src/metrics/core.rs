@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// The internal Metrics service responsible for collecting and accumulating runtime events
+#[derive(Debug)]
 pub struct Metrics {
     state: Arc<Mutex<HashMap<String, HashMap<EventName, EventMetadata>>>>,
 }
