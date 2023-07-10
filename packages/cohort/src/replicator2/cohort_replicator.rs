@@ -101,6 +101,7 @@ where
                             action: key,
                             payload,
                             version: decided.item_ver,
+                            safepoint: Some(100),
                         }
                     })
                     .collect::<Vec<StatemapItem>>()
