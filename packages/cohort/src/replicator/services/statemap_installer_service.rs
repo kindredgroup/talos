@@ -6,10 +6,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::replicator::core::{ReplicatorChannel, ReplicatorInstaller, StatemapItem};
+use crate::{
+    model::requests::TransferRequest,
+    replicator::core::{ReplicatorChannel, ReplicatorInstaller, StatemapItem},
+};
 
-use ahash::RandomState;
-use indexmap::IndexMap;
+use ahash::{HashSet, HashSetExt, RandomState};
+use indexmap::{IndexMap, IndexSet};
 use log::{debug, error, info, warn};
 use rayon::prelude::*;
 use time::OffsetDateTime;
@@ -107,28 +110,53 @@ pub async fn installer_queue_service(
 
                     let items = statemap_queue.get_range(..);
 
+                    // TODO: Change to using ids instead of TransferRequest
+                    let in_flight_accounts:HashSet<String> = statemap_queue.values().filter(|v| v.status == StatemapInstallState::Inflight).fold( HashSet::new(),|mut acc,v| {
+                        v.statemaps.iter().for_each(|sm| {
+                            let data: TransferRequest = serde_json::from_value(sm.payload.clone()).unwrap();
+                            acc.insert(data.from);
+                            acc.insert(data.to);
+                        });
+                        acc
+                    });
+
+
                     if let Some(statemap_items) = items {
 
                         items_to_install = statemap_items
-                            .par_values()
-                            // Picking waiting items
-                            .filter(|v| v.status == StatemapInstallState::Awaiting)
-                            // filter out the ones that can't be serialized
-                            .filter_map(|v| {
-                                // If no safepoint, this could be a abort item and is safe to install as statemap will be empty.
-                                let Some(safepoint) = v.safepoint else {
-                                    return Some(v.version);
-                                };
+                        .values()
+                        // Picking waiting items
+                        .filter(|v| v.status == StatemapInstallState::Awaiting)
+                        //  TODO: use ids instead of direct check on TransferRequest
+                        //  Observed: Using filter instead of take_while, causes serious performance deterioration.
+                        .take_while(|v| {
+                            !v.statemaps.iter().any(|sm| {
+                                let data: TransferRequest = serde_json::from_value(sm.payload.clone()).unwrap();
+                                    // error!()
 
-                                // If there is no version matching the safepoint, then it is safe to install
-                                if !statemap_queue.contains_key(&safepoint) {
-                                    return Some(v.version);
-                                };
+                                    let res = in_flight_accounts.contains(&data.from) || in_flight_accounts.contains(&data.to);
+                                    if res {
+                                        error!("For version {} , found either {} or {} in an existing in-flight txn", v.version, data.from, data.to);
+                                    }
+                                    res
+                                 })
+                        })
+                        // filter out the ones that can't be serialized
+                        .filter_map(|v| {
+                            // If no safepoint, this could be a abort item and is safe to install as statemap will be empty.
+                            let Some(safepoint) = v.safepoint else {
+                                return Some(v.version);
+                            };
 
-                                None
-                            })
-                            // take the remaining we can install
-                            .collect::<Vec<u64>>();
+                            // If there is no version matching the safepoint, then it is safe to install
+                            if !statemap_queue.contains_key(&safepoint) {
+                                return Some(v.version);
+                            };
+
+                            None
+                        })
+                        // take the remaining we can install
+                        .collect::<Vec<u64>>();
                     }
 
                     let end_time_install_items = start_time_create_install_items.elapsed();
@@ -140,7 +168,7 @@ pub async fn installer_queue_service(
                     // Sends for installation.
                     for key in items_to_install {
                         // Send for installation
-                        warn!("Sending... {key}");
+                        // warn!("Sending... {key}");
                         installation_tx.send((key, statemap_queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
 
                         // Update the status flag
@@ -149,7 +177,7 @@ pub async fn installer_queue_service(
                     }
                     let end_time_send = start_time_send.elapsed();
 
-                    error!("Time taken to create versions from={first_version} to={last_version} in  {insert_elapsed:?}. Created batch of {install_len} in {end_time_install_items:?} and send with update items to inflight in {end_time_send:?}");
+                    // error!("Time taken to create versions from={first_version} to={last_version} in  {insert_elapsed:?}. Created batch of {install_len} in {end_time_install_items:?} and send with update items to inflight in {end_time_send:?}");
                 }
             }
             Some(install_result) = statemap_installation_rx.recv() => {
@@ -162,7 +190,7 @@ pub async fn installer_queue_service(
                         let state_item = statemap_queue.get_mut(&key).unwrap();
                         state_item.status = StatemapInstallState::Installed;
                         let end_time_success = start_time_success.elapsed();
-                        error!("(Statmap queue success updation) for version={key} in {end_time_success:?}");
+                        // error!("(Statemap successfully installed) for version={key} in {end_time_success:?}");
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         error!("Failed to install version={ver} due to error={error:?}");
@@ -208,7 +236,7 @@ pub async fn installation_service(
 //     T: ReplicatorInstaller,
 {
     // TODO: Pass the number of permits over an environment variable?
-    let semaphore = Arc::new(Semaphore::new(30));
+    let semaphore = Arc::new(Semaphore::new(50));
 
     loop {
         let available_permits = semaphore.available_permits();
@@ -226,10 +254,12 @@ pub async fn installation_service(
                     // TODO: Implement proper logic to update the snapshot
                     let snapshot_version_to_update = if ver % 5 == 0 { Some(ver) } else { None };
 
+                    // error!("Going to install statemaps for version={ver} with snapshot={snapshot_version_to_update:?}");
+
                     match installer.install(statemaps, snapshot_version_to_update).await {
                         Ok(true) => {
                             let end_installation_time = start_installation_time.elapsed();
-                            error!("Installed version={ver} in {end_installation_time:?}");
+                            // error!("[installation_service] Installed successfully version={ver} in {end_installation_time:?}");
                             replicator_tx_clone.send(ReplicatorChannel::InstallationSuccess(vec![ver])).await.unwrap();
                             statemap_installation_tx_clone.send(StatemapInstallationStatus::Success(ver)).await.unwrap();
                             drop(permit);
@@ -249,7 +279,7 @@ pub async fn installation_service(
                             statemap_installation_tx_clone
                                 .send(StatemapInstallationStatus::Error(
                                     ver,
-                                    "Crash and burn the statemap installer queue service".to_string(),
+                                    "🔥🔥🔥 Crash and burn the statemap installer queue service".to_string(),
                                 ))
                                 .await
                                 .unwrap();
