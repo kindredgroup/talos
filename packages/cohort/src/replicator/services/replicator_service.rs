@@ -6,7 +6,7 @@ use crate::replicator::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, info};
+use log::{debug, error, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use tokio::sync::mpsc;
 
@@ -41,11 +41,33 @@ where
 
 
                         // Get a batch of remaining versions with their statemaps to install.
-                        let statemaps_batch = replicator.generate_statemap_batch();
+                        let (all_versions_picked, statemaps_batch) = replicator.generate_statemap_batch();
+                        let statemap_batch_cloned = statemaps_batch.clone();
+                        let versions_not_send = all_versions_picked.into_iter().filter(|&v| {
+                            statemap_batch_cloned.iter().find(|&sm_b| sm_b.0 != v).is_none()
+                        });
 
+                        // Send statemaps batch to
                         if !statemaps_batch.is_empty() {
+                            // let versions_send:Vec<u64> = statemaps_batch.iter().map(|sm| {
+                            //     sm.0
+                            // }).collect();
+                            // let suffix_last_installed = if let Some(last_installed) = replicator.suffix.get_last_installed(None) {
+                            //     last_installed.item_ver
+                            // } else {
+                            //     0
+                            // };
+
+
+                            // error!("Replicator is sending !! last_version_installed={suffix_last_installed} and version send\n {versions_send:?}");
                             statemaps_tx.send(statemaps_batch).await.unwrap();
                         }
+
+                        // These versions are decided but they are not send to Statemap installer as they are either aborted or don't have statemap
+                        versions_not_send.for_each(|version| {
+                            replicator.suffix.set_item_installed(version);
+
+                        } )
 
                     },
                 }
@@ -57,32 +79,32 @@ where
         }
         // Receive feedback from installer.
         res = replicator_rx.recv() => {
-            if let Some(result) = res {
-                match result {
-                    // 4. Remove the versions if installations are complete.
-                    ReplicatorChannel::InstallationSuccess(vers) => {
+                if let Some(result) = res {
+                    match result {
+                        // 4. Remove the versions if installations are complete.
+                        ReplicatorChannel::InstallationSuccess(vers) => {
 
-                        let version = vers.last().unwrap().to_owned();
-                        debug!("Installated successfully till version={version:?}");
-                        // Mark the suffix item as installed.
-                        replicator.suffix.set_item_installed(version);
+                            let version = vers.last().unwrap().to_owned();
+                            debug!("Installated successfully till version={version:?}");
+                            // Mark the suffix item as installed.
+                            replicator.suffix.set_item_installed(version);
 
-                        // if all prior items are installed, then update the prune vers
-                        replicator.suffix.update_prune_index(version);
+                            // // if all prior items are installed, then update the prune vers
+                            replicator.suffix.update_prune_index(version);
 
 
-                        // Prune suffix and update suffix head.
-                        if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
-                            replicator.suffix.prune_till_version(version).unwrap();
+                            // // Prune suffix and update suffix head.
+                            if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                                replicator.suffix.prune_till_version(version).unwrap();
+                            }
+
                         }
-
-                    }
-                    ReplicatorChannel::InstallationFailure(_) => {
-                        // panic!("[panic panic panic] Installation Failed and replicator will panic and stop");
+                        ReplicatorChannel::InstallationFailure(_) => {
+                            // panic!("[panic panic panic] Installation Failed and replicator will panic and stop");
+                        }
                     }
                 }
             }
-        }
 
         }
     }

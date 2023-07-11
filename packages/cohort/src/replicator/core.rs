@@ -150,7 +150,7 @@ where
         }
     }
 
-    pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>)> {
+    pub(crate) fn generate_statemap_batch(&mut self) -> (Vec<u64>, Vec<(u64, Vec<StatemapItem>)>) {
         // let instance = OffsetDateTime::now_utc().unix_timestamp_nanos();
         // let msg_batch_instance = Instant::now();
         // get batch of items from suffix to install.
@@ -161,8 +161,10 @@ where
 
         // #[allow(unused_assignments)]
         // let mut msg_statemap_create_elapsed = Duration::from_nanos(0);
+        let mut all_version_picked: Vec<u64> = vec![];
 
         if let Some(items) = items_option {
+            all_version_picked = items.iter().map(|i| i.item_ver).collect();
             // let msg_batch_instance_filter = Instant::now();
             let filtered_message_batch = get_filtered_batch(items.iter().copied());
             // let msg_batch_instance_filter_elapsed = msg_batch_instance_filter.elapsed();
@@ -186,7 +188,7 @@ where
             //     debug!("[CREATE_STATEMAP] Processed total of count={} from_version={first_version:?} to_version={last_version:?} with batch_create_time={:?}, filter_time={msg_batch_instance_filter_elapsed:?}  statemap_create_time={msg_statemap_create_elapsed:?} and total_time={elapsed:?} {}", items.len(), msg_batch_instance_elapsed, elapsed);
             // };
         }
-        statemaps_batch
+        (all_version_picked, statemaps_batch)
     }
 
     pub(crate) async fn commit_till_last_installed(&mut self) {
