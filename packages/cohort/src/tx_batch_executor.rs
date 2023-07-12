@@ -7,7 +7,6 @@ use crate::replicator::core::StatemapItem;
 use crate::snapshot_api::SnapshotApi;
 use crate::state::data_access_api::{ManualTx, TxApi};
 use futures::future::BoxFuture;
-use log::warn;
 use time::OffsetDateTime;
 
 pub struct BatchExecutor {}
@@ -89,7 +88,6 @@ impl BatchExecutor {
                 log::info!("No rows were updated when executing batch. Snapshot will be set to: {}", new_version);
             }
 
-            let current_snapshot = SnapshotApi::get_snapshot_from_db(&tx).await;
             s4_snap_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
             let snapshot_update_result = SnapshotApi::update_using(&tx, new_version).await;
             s4_snap_f = OffsetDateTime::now_utc().unix_timestamp_nanos();

@@ -102,6 +102,7 @@ where
                             payload,
                             version: decided.item_ver,
                             safepoint: Some(100),
+                            lookup_keys: vec![],
                         }
                     })
                     .collect::<Vec<StatemapItem>>()

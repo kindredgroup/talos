@@ -6,6 +6,7 @@ use log::{debug, error};
 use metrics::model::{MicroMetrics, MinMax};
 
 use crate::{
+    replicator::core::ReplicatorInstallStatus,
     state::postgres::{data_access::PostgresApi, database::Database},
     tx_batch_executor::BatchExecutor,
 };
@@ -26,8 +27,9 @@ pub struct PgReplicatorStatemapInstaller {
 
 #[async_trait]
 impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
-    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
-        let mut retry_count = 3;
+    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<ReplicatorInstallStatus, String> {
+        let max_rety_count = 3;
+        let mut retry_count = max_rety_count;
         debug!("Last version ... {:#?} ", version);
         debug!("Original statemaps received ... {:#?} ", sm);
         let vers = if let Some(item) = sm.first() { Some(item.version) } else { None };
@@ -89,15 +91,18 @@ impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
                     //         self.m5_commit.reset();
                     //     }
                     // }
-                    return Ok(true);
+                    return Ok(ReplicatorInstallStatus::Success);
                 }
                 Err(err) => {
                     if err.contains("could not serialize access due to concurrent update") && retry_count > 0 {
                         retry_count -= 1;
+                        if retry_count == 0 {
+                            return Ok(ReplicatorInstallStatus::Gaveup(max_rety_count - retry_count));
+                        }
                         // error!("pr_replicator_installer - Retrying Installation for version={vers:?} due to serialization error");
                     } else {
                         error!("pr_replicator_installer - Installation failed for version={vers:?} with error={err}");
-                        return Ok(false);
+                        return Err(err);
                     }
                 }
             }

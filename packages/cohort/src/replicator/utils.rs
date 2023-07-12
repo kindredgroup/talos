@@ -19,11 +19,13 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
             let state_maps_to_append = sm_items.iter().map(|sm| {
                 let key = sm.keys().next().unwrap().to_string();
                 let payload = sm.get(&key).unwrap().clone();
+
                 StatemapItem {
                     action: key,
                     payload,
                     version: m.item_ver,
                     safepoint: m.item.get_safepoint().clone(),
+                    lookup_keys: m.item.get_statemap_lookup_keys().clone(),
                 }
             });
             acc.push((m.item_ver, state_maps_to_append.collect::<Vec<StatemapItem>>()));

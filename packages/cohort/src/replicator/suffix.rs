@@ -16,6 +16,7 @@ pub trait ReplicatorSuffixItemTrait {
     fn set_decision_outcome(&mut self, decision_outcome: Option<CandidateDecisionOutcome>);
     fn set_suffix_item_installed(&mut self);
     fn is_installed(&self) -> bool;
+    fn get_statemap_lookup_keys(&self) -> &Vec<String>;
 }
 
 pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
