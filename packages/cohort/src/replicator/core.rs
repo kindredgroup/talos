@@ -34,22 +34,30 @@ pub struct StatemapItem {
     pub version: u64,
     pub safepoint: Option<u64>,
     pub payload: Value,
+    pub lookup_keys: Vec<String>,
 }
 
 impl StatemapItem {
-    pub fn new(action: String, version: u64, payload: Value, safepoint: Option<u64>) -> Self {
+    pub fn new(action: String, version: u64, payload: Value, safepoint: Option<u64>, lookup_keys: Vec<String>) -> Self {
         StatemapItem {
             action,
             version,
             payload,
             safepoint,
+            lookup_keys,
         }
     }
 }
 
+pub type RetryCount = u32;
+pub enum ReplicatorInstallStatus {
+    Success,
+    Gaveup(RetryCount),
+}
+
 #[async_trait]
 pub trait ReplicatorInstaller {
-    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error>;
+    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<ReplicatorInstallStatus, String>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -64,15 +72,19 @@ pub struct ReplicatorCandidate {
 
     #[serde(skip_deserializing)]
     pub is_installed: bool,
+
+    pub writeset: Vec<String>,
 }
 
 impl From<CandidateMessage> for ReplicatorCandidate {
-    fn from(value: CandidateMessage) -> Self {
+    fn from(candidate: CandidateMessage) -> Self {
+        let writeset = candidate.writeset.clone();
         ReplicatorCandidate {
-            candidate: value,
+            candidate,
             safepoint: None,
             decision_outcome: None,
             is_installed: false,
+            writeset,
         }
     }
 }
@@ -95,6 +107,9 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
     }
     fn is_installed(&self) -> bool {
         self.is_installed
+    }
+    fn get_statemap_lookup_keys(&self) -> &Vec<String> {
+        &self.writeset
     }
 }
 

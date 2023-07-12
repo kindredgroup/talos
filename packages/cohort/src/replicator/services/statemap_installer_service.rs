@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
     model::requests::TransferRequest,
-    replicator::core::{ReplicatorChannel, ReplicatorInstaller, StatemapItem},
+    replicator::core::{ReplicatorChannel, ReplicatorInstallStatus, ReplicatorInstaller, StatemapItem},
 };
 
 use ahash::{HashSet, HashSetExt, RandomState};
@@ -16,7 +16,10 @@ use indexmap::{IndexMap, IndexSet};
 use log::{debug, error, info, warn};
 use rayon::prelude::*;
 use time::OffsetDateTime;
-use tokio::sync::{mpsc, Semaphore};
+use tokio::{
+    signal,
+    sync::{mpsc, Semaphore},
+};
 use tokio_util::sync::PollSemaphore;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -43,27 +46,30 @@ where
 {
     info!("Starting Installer Service.... ");
 
-    loop {
-        if let Some(batch) = statemaps_rx.recv().await {
-            for (ver, statemap_batch) in batch {
-                debug!("[Statemap Installer Service] Received statemap batch ={statemap_batch:?} and version={ver:?}");
-                match statemap_installer.install(statemap_batch, Some(ver)).await {
-                    Ok(true) => {
-                        replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![ver])).await.unwrap();
-                    }
-                    Ok(false) => {
-                        // Do nothing if result is false.
-                    }
-                    Err(err) => return Err(err.to_string()),
-                }
-            }
-        }
-    }
+    // loop {
+    //     if let Some(batch) = statemaps_rx.recv().await {
+    //         for (ver, statemap_batch) in batch {
+    //             debug!("[Statemap Installer Service] Received statemap batch ={statemap_batch:?} and version={ver:?}");
+    //             match statemap_installer.install(statemap_batch, Some(ver)).await {
+    //                 Ok(true) => {
+    //                     replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![ver])).await.unwrap();
+    //                 }
+    //                 Ok(false) => {
+    //                     // Do nothing if result is false.
+    //                 }
+    //                 Err(err) => return Err(err.to_string()),
+    //             }
+    //         }
+    //     }
+    // }
+
+    Ok(())
 }
 
 #[derive(Debug)]
 pub enum StatemapInstallationStatus {
     Success(u64),
+    GaveUp(u64),
     Error(u64, String),
 }
 
@@ -76,6 +82,12 @@ pub async fn installer_queue_service(
     // let last_installed = 0_u64;
     let mut statemap_queue = IndexMap::<u64, StatemapInstallerHashmap, RandomState>::default();
     let mut interval = tokio::time::interval(Duration::from_millis(10_000));
+
+    let mut installation_success_count = 0;
+    let mut installation_gaveup = 0;
+    let mut send_for_install_count = 0;
+    let mut first_install_start: i128 = 0; //
+    let mut last_install_end: i128 = 0; //  = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
     loop {
         tokio::select! {
@@ -110,13 +122,12 @@ pub async fn installer_queue_service(
 
                     let items = statemap_queue.get_range(..);
 
-                    // TODO: Change to using ids instead of TransferRequest
-                    let in_flight_accounts:HashSet<String> = statemap_queue.values().filter(|v| v.status == StatemapInstallState::Inflight).fold( HashSet::new(),|mut acc,v| {
-                        v.statemaps.iter().for_each(|sm| {
-                            let data: TransferRequest = serde_json::from_value(sm.payload.clone()).unwrap();
-                            acc.insert(data.from);
-                            acc.insert(data.to);
-                        });
+                    let in_flight_accounts:HashSet<&String> = statemap_queue.values().filter(|v| v.status == StatemapInstallState::Inflight).fold( HashSet::new(),|mut acc,v| {
+                        if let Some(first_statemap) = v.statemaps.first() {
+                            first_statemap.lookup_keys.iter().for_each(|k| {
+                                acc.insert(&k);
+                            })
+                        }
                         acc
                     });
 
@@ -128,18 +139,30 @@ pub async fn installer_queue_service(
                         // Picking waiting items
                         .filter(|v| v.status == StatemapInstallState::Awaiting)
                         //  TODO: use ids instead of direct check on TransferRequest
-                        //  Observed: Using filter instead of take_while, causes serious performance deterioration.
+                        //  Observed: Using filter instead of take_while, causes performance deterioration.
                         .take_while(|v| {
-                            !v.statemaps.iter().any(|sm| {
-                                let data: TransferRequest = serde_json::from_value(sm.payload.clone()).unwrap();
-                                    // error!()
+                            let res = !v.statemaps.iter().any(|sm| {
+                                sm.lookup_keys.iter().any(|lk| {
+                                    in_flight_accounts.contains(&lk)
+                                })
+                            });
 
-                                    let res = in_flight_accounts.contains(&data.from) || in_flight_accounts.contains(&data.to);
-                                    if res {
-                                        error!("For version {} , found either {} or {} in an existing in-flight txn", v.version, data.from, data.to);
-                                    }
-                                    res
-                                 })
+                            // if !res {
+                            //     let first_sm_of_picked = v.statemaps.first().unwrap();
+                            //     let inflight_clashes:HashSet<(u64,&String)> = statemap_queue.values().filter(|v| v.status == StatemapInstallState::Inflight).fold( HashSet::new(),|mut acc,inflight_v| {
+                            //         if let Some(first_statemap) = inflight_v.statemaps.first() {
+                            //             first_statemap.lookup_keys.iter().for_each(|k| {
+                            //                 if first_sm_of_picked.lookup_keys.contains(k) {
+                            //                     acc.insert((inflight_v.version,&k));
+                            //                 }
+                            //             })
+                            //         }
+                            //         acc
+                            //     });
+                            //     error!("[items_to_install] Not picking {} as found writeset in inflight {inflight_clashes:?} ", v.version);
+
+                            // }
+                            res
                         })
                         // filter out the ones that can't be serialized
                         .filter_map(|v| {
@@ -149,9 +172,13 @@ pub async fn installer_queue_service(
                             };
 
                             // If there is no version matching the safepoint, then it is safe to install
-                            if !statemap_queue.contains_key(&safepoint) {
+                            let Some(safepoint_pointing_item) = statemap_queue.get(&safepoint) else {
                                 return Some(v.version);
                             };
+                            if safepoint_pointing_item.status == StatemapInstallState::Installed {
+                                return Some(v.version);
+                            };
+                            // error!("[items_to_install] Not picking {} as safepoint={safepoint} criteria failed against={:?}", v.version, statemap_queue.get(&safepoint));
 
                             None
                         })
@@ -169,6 +196,10 @@ pub async fn installer_queue_service(
                     for key in items_to_install {
                         // Send for installation
                         // warn!("Sending... {key}");
+                        if send_for_install_count == 0 {
+                            first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                        }
+                        send_for_install_count += 1;
                         installation_tx.send((key, statemap_queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
 
                         // Update the status flag
@@ -189,8 +220,16 @@ pub async fn installer_queue_service(
                         // statemap_queue.shift_remove(&key);
                         let state_item = statemap_queue.get_mut(&key).unwrap();
                         state_item.status = StatemapInstallState::Installed;
+
+                        installation_success_count += 1;
+                        last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                        // error!("Installed successfully version={key} and total_installs={install_count}");
                         let end_time_success = start_time_success.elapsed();
                         // error!("(Statemap successfully installed) for version={key} in {end_time_success:?}");
+                    },
+                    StatemapInstallationStatus::GaveUp(_) => {
+                        installation_gaveup += 1;
+                        last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         error!("Failed to install version={ver} due to error={error:?}");
@@ -217,6 +256,28 @@ pub async fn installer_queue_service(
                 }})
                 .collect::<Vec<u64>>();
 
+                let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
+                let tps = installation_success_count as f32 / duration_sec;
+
+                let awaiting_count = statemap_queue.values().filter(|v| v.status == StatemapInstallState::Awaiting).count();
+                // let awaiting_install_versions: Vec<u64> = statemap_queue.values().filter_map(|v| { if v.status == StatemapInstallState::Awaiting {
+                //         Some(v.version)
+                //     } else {
+                //         None
+                //     }}).collect();
+                let inflight_count = statemap_queue.values().filter(|v| v.status == StatemapInstallState::Inflight).count();
+                error!("Currently Statemap installation tps={tps:.3}");
+                error!("
+                Statemap Installer Queue Stats:
+                      tps             : {tps:.3}
+                      counts          :
+                                      | success={installation_success_count}
+                                      | gaveup={installation_gaveup}
+                                      | awaiting_installs={awaiting_count}
+                                      | inflight_count={inflight_count}
+                                      \n ");
+                                      //   awaiting_install_versions
+                                      //   {awaiting_install_versions:?}
                 installed_keys.iter().for_each(|key| {
                   statemap_queue.shift_remove(key);
                 })
@@ -236,10 +297,12 @@ pub async fn installation_service(
 //     T: ReplicatorInstaller,
 {
     // TODO: Pass the number of permits over an environment variable?
-    let semaphore = Arc::new(Semaphore::new(50));
+    let permit_count = 50;
+    let semaphore = Arc::new(Semaphore::new(permit_count));
 
     loop {
         let available_permits = semaphore.available_permits();
+
         if available_permits > 0 {
             if let Some((ver, statemaps)) = installation_rx.recv().await {
                 let replicator_tx_clone = replicator_tx.clone();
@@ -252,24 +315,31 @@ pub async fn installation_service(
                     let start_installation_time = Instant::now();
 
                     // TODO: Implement proper logic to update the snapshot
-                    let snapshot_version_to_update = if ver % 5 == 0 { Some(ver) } else { None };
+                    let snapshot_version_to_update = Some(ver); //if ver % 5 == 0 { Some(ver) } else { None };
 
                     // error!("Going to install statemaps for version={ver} with snapshot={snapshot_version_to_update:?}");
 
                     match installer.install(statemaps, snapshot_version_to_update).await {
-                        Ok(true) => {
+                        Ok(status) => {
                             let end_installation_time = start_installation_time.elapsed();
                             // error!("[installation_service] Installed successfully version={ver} in {end_installation_time:?}");
                             replicator_tx_clone.send(ReplicatorChannel::InstallationSuccess(vec![ver])).await.unwrap();
-                            statemap_installation_tx_clone.send(StatemapInstallationStatus::Success(ver)).await.unwrap();
+                            match status {
+                                ReplicatorInstallStatus::Success => {
+                                    statemap_installation_tx_clone.send(StatemapInstallationStatus::Success(ver)).await.unwrap();
+                                }
+                                ReplicatorInstallStatus::Gaveup(_) => {
+                                    statemap_installation_tx_clone.send(StatemapInstallationStatus::GaveUp(ver)).await.unwrap();
+                                }
+                            }
+
                             drop(permit);
                             return Ok(());
                         }
-                        Ok(false) => {
-                            // Do nothing if result is false.
-                            drop(permit);
+
+                        Err(err) => {
                             error!(
-                                "Installed failed for version={snapshot_version_to_update:?} with time ={:?}",
+                                "Installed failed for version={snapshot_version_to_update:?} with time={:?} error={err:?}",
                                 start_installation_time.elapsed()
                             );
                             replicator_tx_clone
@@ -283,14 +353,6 @@ pub async fn installation_service(
                                 ))
                                 .await
                                 .unwrap();
-
-                            return Ok(());
-                        }
-                        Err(err) => {
-                            error!(
-                                "Installed failed for version={snapshot_version_to_update:?} with time={:?} error={err:?}",
-                                start_installation_time.elapsed()
-                            );
                             drop(permit);
 
                             return Err(err.to_string());

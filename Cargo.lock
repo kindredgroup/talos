@@ -367,7 +367,7 @@ dependencies = [
 name = "cohort"
 version = "0.0.1"
 dependencies = [
- "ahash",
+ "ahash 0.8.3",
  "async-trait",
  "csv",
  "deadpool-postgres",
