@@ -14,12 +14,9 @@ use crate::{
     ChannelMessage,
 };
 
-type PreviousCommitVers = u64;
-type LatestCommitVers = u64;
 pub struct MessageReceiverService {
     pub receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
     pub message_channel_tx: mpsc::Sender<ChannelMessage>,
-    pub commit_vers: (PreviousCommitVers, LatestCommitVers),
     pub commit_offset: Arc<AtomicI64>,
     pub system: System,
 }
@@ -35,7 +32,6 @@ impl MessageReceiverService {
             receiver,
             message_channel_tx,
             system,
-            commit_vers: (0, 0),
             commit_offset,
         }
     }
@@ -87,13 +83,8 @@ impl SystemService for MessageReceiverService {
           //** commit message
           _ = interval.tick() => {
             let offset = self.commit_offset.load(std::sync::atomic::Ordering::Relaxed);
-            self.commit_vers.1 = offset.try_into().unwrap();
-
-            let (prev_commit_vers, lastest_commit_vers) = self.commit_vers;
-            if prev_commit_vers < lastest_commit_vers {
-                self.receiver.commit(self.commit_vers.1).await?;
-                self.commit_vers.0 = lastest_commit_vers;
-            }
+            self.receiver.update_savepoint(offset).await?;
+            self.receiver.commit().await?;
           }
         }
 

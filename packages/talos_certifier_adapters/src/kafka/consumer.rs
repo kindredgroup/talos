@@ -48,15 +48,25 @@ impl KafkaConsumer {
 
         let offset_to_update = offset + 1;
 
-        if self.tpl.find_partition(&self.topic, partition).is_none() {
-            self.tpl
-                .add_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
-                .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
-        } else {
-            self.tpl
-                .set_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
-                .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
-        }
+        match self.tpl.find_partition(&self.topic, partition) {
+            Some(tpl) => {
+                let offset_in_tpl = tpl.offset().to_raw().unwrap_or_default();
+
+                // error!("Offset received ={offset} and offset in tpl ={offset_in_tpl}");
+                if offset_to_update > offset_in_tpl {
+                    // error!("Updating partition offset....");
+                    self.tpl
+                        .set_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
+                        .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
+                }
+            }
+            None => {
+                self.tpl
+                    .add_partition_offset(&self.topic, partition, rdkafka::Offset::Offset(offset_to_update))
+                    .map_err(|e| KafkaAdapterError::Commit(e, Some(offset_to_update)))?;
+            }
+        };
+
         Ok(())
     }
 }
@@ -127,15 +137,19 @@ impl MessageReciever for KafkaConsumer {
 
                 debug!("Decision received and the offset is {} !!!! ", offset);
 
+                let tpl = self.tpl.elements_for_topic(&self.topic);
+                if tpl.is_empty() {
+                    self.store_offsets(partition, offset_i64).map_err(|err| MessageReceiverError {
+                        kind: MessageReceiverErrorKind::SaveVersion,
+                        version: Some(offset),
+                        reason: err.to_string(),
+                        data: Some(format!("{}", offset)),
+                    })?;
+                }
+
                 ChannelMessage::Decision(offset, msg)
             }
         };
-        self.store_offsets(partition, offset_i64).map_err(|err| MessageReceiverError {
-            kind: MessageReceiverErrorKind::SaveVersion,
-            version: Some(offset),
-            reason: err.to_string(),
-            data: Some(format!("{}", offset)),
-        })?;
 
         Ok(Some(channel_msg))
     }
@@ -154,16 +168,33 @@ impl MessageReciever for KafkaConsumer {
         self.consumer.unsubscribe();
     }
 
-    async fn commit(&self, vers: u64) -> Result<(), SystemServiceError> {
-        let vers_i64: i64 = vers.try_into().unwrap_or_default();
-        self.consumer
-            .commit(&self.tpl, rdkafka::consumer::CommitMode::Sync)
-            .map_err(|err| MessageReceiverError {
-                kind: MessageReceiverErrorKind::CommitError,
-                version: Some(vers),
+    async fn commit(&self) -> Result<(), SystemServiceError> {
+        if self.tpl.count() > 0 {
+            self.consumer
+                .commit(&self.tpl, rdkafka::consumer::CommitMode::Async)
+                .map_err(|err| MessageReceiverError {
+                    kind: MessageReceiverErrorKind::CommitError,
+                    version: None,
+                    reason: err.to_string(),
+                    data: None,
+                })?;
+        }
+        Ok(())
+    }
+    async fn update_savepoint(&mut self, offset: i64) -> Result<(), SystemServiceError> {
+        // let partition = self.tpl.;
+        let tpl = self.tpl.elements_for_topic(&self.topic);
+        if !tpl.is_empty() {
+            let first = tpl.first().unwrap();
+            let partition = first.partition();
+
+            self.store_offsets(partition, offset).map_err(|err| MessageReceiverError {
+                kind: MessageReceiverErrorKind::SaveVersion,
+                version: None,
                 reason: err.to_string(),
-                data: Some(format!("{}", vers_i64)),
+                data: None,
             })?;
+        }
         Ok(())
     }
 }

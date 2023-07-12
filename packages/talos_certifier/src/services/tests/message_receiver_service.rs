@@ -38,7 +38,10 @@ impl MessageReciever for MockReciever {
         Ok(())
     }
 
-    async fn commit(&self, _vers: u64) -> Result<(), SystemServiceError> {
+    async fn commit(&self) -> Result<(), SystemServiceError> {
+        Ok(())
+    }
+    async fn update_savepoint(&mut self, _version: i64) -> Result<(), SystemServiceError> {
         Ok(())
     }
 

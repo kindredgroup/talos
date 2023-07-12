@@ -1,5 +1,5 @@
 // $coverage:ignore-start
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Duration};
 
 use crate::replicator::{
     core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
@@ -20,6 +20,7 @@ where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
 {
     info!("Starting Replicator Service.... ");
+    let mut interval = tokio::time::interval(Duration::from_millis(10_000));
 
     loop {
         tokio::select! {
@@ -50,6 +51,11 @@ where
                 }
             }
         }
+        // Commit offsets at interval.
+        _ = interval.tick() => {
+            replicator.commit_till_last_installed().await;
+        }
+        // Receive feedback from installer.
         res = replicator_rx.recv() => {
             if let Some(result) = res {
                 match result {
@@ -70,8 +76,6 @@ where
                             replicator.suffix.prune_till_version(version).unwrap();
                         }
 
-                        // commit the offset
-                        replicator.receiver.commit(version).await.unwrap();
                     }
                 }
             }

@@ -22,6 +22,7 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     fn set_decision_outcome(&mut self, version: u64, decision_outcome: Option<CandidateDecisionOutcome>);
     fn set_safepoint(&mut self, version: u64, safepoint: Option<u64>);
     fn set_item_installed(&mut self, version: u64);
+    fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
     fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn update_prune_index(&mut self, version: u64);
     /// Returns the items from suffix
@@ -102,5 +103,11 @@ where
 
     fn get_suffix_meta(&self) -> &SuffixMeta {
         &self.meta
+    }
+
+    fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>> {
+        let version = to_version?;
+        let to_index = self.index_from_head(version)?;
+        self.messages.range(..to_index).flatten().rev().find(|&i| i.is_decided && i.item.is_installed())
     }
 }
