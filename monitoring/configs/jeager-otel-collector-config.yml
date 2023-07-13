@@ -1,0 +1,51 @@
+receivers:
+  jaeger:
+    protocols:
+      thrift_http:
+        endpoint: "0.0.0.0:14278"
+
+  otlp:
+    protocols:
+      grpc:
+      http:
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
+  jaeger:
+    endpoint: "127.0.0.1:14250"
+    tls:
+      insecure: true
+
+  # file:
+  #   path: ./logs/metrics-spansmetrics.json
+
+ # file_spansmetrics:
+ #   path: ./logs/metrics-spansmetrics.json
+
+connectors:
+  spanmetrics/slow:
+    histogram:
+      explicit:
+        buckets: [ 50ms, 200ms, 500ms, 1000ms, 3000ms, 10000ms ]
+
+  spanmetrics/fast:
+    histogram:
+      explicit:
+        buckets: [ 10us, 100us, 500us, 1ms, 2ms, 5ms, 10ms, 50ms ]        
+
+processors:
+  batch:
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [spanmetrics/slow, spanmetrics/fast, jaeger]
+    # The exporter name in this pipeline must match the spanmetrics.metrics_exporter name.
+    # The receiver is just a dummy and never used; added to pass validation requiring at least one receiver in a pipeline.
+    metrics/spanmetrics:
+      receivers: [spanmetrics/slow, spanmetrics/fast]
+      exporters: [prometheus]

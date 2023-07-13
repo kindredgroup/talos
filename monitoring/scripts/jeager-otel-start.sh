@@ -1,9 +1,9 @@
 #!/bin/sh
 
-JEAGER_HOME=/Users/marekfedorovic/kindred/local-infra/jaeger-1.46.0-darwin-amd64
-COL_HOME=/Users/marekfedorovic/kindred/local-infra/otelcol-contrib_0.81.0_darwin_amd64
+JEAGER_HOME=... /jaeger-1.46.0-darwin-amd64
+COL_HOME=... /otelcol-contrib_0.81.0_darwin_amd64
 
-col_config=/Users/marekfedorovic/kindred/work/talos/opentelemetry/jeager-otel-collector-config.yml
+col_config=jeager-otel-collector-config.yml
 
 config_file=$1
 
