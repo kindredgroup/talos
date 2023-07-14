@@ -12,6 +12,7 @@ use crate::mpsc::core::{Receiver, Sender};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
 
@@ -67,7 +68,7 @@ where
         rx_decision: TDecisionRx,
         publisher: Arc<Box<PublisherType>>,
         consumer: Arc<Box<ConsumerType>>,
-    ) -> Result<(), AgentError>
+    ) -> AgentServices
     where
         TCertifyRx: Receiver<Data = CertifyRequestChannelMessage> + 'static,
         TCancelRx: Receiver<Data = CancelRequestChannelMessage> + 'static,
@@ -78,20 +79,28 @@ where
         log::info!("Publisher and Consumer are ready.");
 
         let metrics_client = Arc::clone(&self.metrics_client);
-        tokio::spawn(async move {
+        let handle_to_manager_task = tokio::spawn(async move {
             StateManager::new(agent_config, metrics_client)
                 .run(rx_certify, rx_cancel, rx_decision, publisher)
                 .await;
         });
 
         let consumer_ref = Arc::clone(&consumer);
-        tokio::spawn(async move {
+        let handle_to_decision_reader_task = tokio::spawn(async move {
             DecisionReaderService::new(consumer_ref, tx_decision).run().await;
         });
 
-        Ok(())
+        AgentServices {
+            state_manager: handle_to_manager_task,
+            decision_reader: handle_to_decision_reader_task,
+        }
     }
     // $coverage:ignore-end
+}
+
+pub struct AgentServices {
+    pub state_manager: JoinHandle<()>,
+    pub decision_reader: JoinHandle<()>,
 }
 
 #[async_trait]
@@ -112,7 +121,7 @@ where
         let m = CertifyRequestChannelMessage::new(&request, Arc::new(Box::new(tx)));
         let to_state_manager = Arc::clone(&self.tx_certify);
 
-        let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timout_ms));
+        let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timeout_ms));
 
         let result: Result<Result<CertificationResponse, AgentError>, Elapsed> = timeout(max_wait, async {
             match to_state_manager.send(m).await {
@@ -225,7 +234,7 @@ mod tests {
             agent: String::from("agent-1"),
             cohort: String::from("cohort-1"),
             buffer_size: 10_000,
-            timout_ms: 1,
+            timeout_ms: 1,
         }
     }
 

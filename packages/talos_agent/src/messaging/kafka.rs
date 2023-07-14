@@ -56,7 +56,7 @@ impl KafkaPublisher {
         cfg.set("bootstrap.servers", &kafka.brokers)
             .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
             .set("queue.buffering.max.messages", "1000000")
-            .set("topic.metadata.refresh.interval.ms", "5000")
+            .set("topic.metadata.refresh.interval.ms", "5")
             .set("socket.keepalive.enable", "true")
             .set("acks", "0")
             .set_log_level(kafka.log_level);

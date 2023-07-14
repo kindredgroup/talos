@@ -5,10 +5,15 @@ use time::OffsetDateTime;
 
 use crate::load_generator::models::{Progress, StopType};
 
+use super::models::Generator;
+
 pub struct ControlledRateLoadGenerator {}
 
 impl ControlledRateLoadGenerator {
-    pub async fn generate<T>(stop_type: StopType, target_rate: f32, fn_item_factory: &impl Fn() -> T, tx_output: Arc<Sender<T>>) -> Result<(), String> {
+    pub async fn generate<T, G>(stop_type: StopType, target_rate: f32, mut generator_impl: G, tx_output: Arc<Sender<T>>) -> Result<(), String>
+    where
+        G: Generator<T> + Sized + 'static,
+    {
         let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         if let StopType::LimitExecutionDuration { run_duration } = stop_type {
             let stop_at = started_at + run_duration.as_nanos() as i128;
@@ -69,7 +74,7 @@ impl ControlledRateLoadGenerator {
                 }
             }
 
-            let new_item: T = fn_item_factory();
+            let new_item: T = generator_impl.generate();
             let _ = tx_output.send(new_item).await;
             generated_count += 1;
 

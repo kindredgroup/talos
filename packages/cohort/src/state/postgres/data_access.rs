@@ -58,7 +58,7 @@ impl<'a> TxApi<'a, PostgresManualTx<'a>> for PostgresApi {
         let tx = self
             .client
             .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::Serializable)
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
             .start()
             .await
             .unwrap();

@@ -26,3 +26,7 @@ pub enum StopType {
     LimitExecutionDuration { run_duration: Duration },
     LimitGeneratedTransactions { count: u64 },
 }
+
+pub trait Generator<T> {
+    fn generate(&mut self) -> T;
+}

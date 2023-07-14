@@ -3,6 +3,7 @@ use std::{env, sync::Arc, time::Duration};
 use async_channel::Receiver;
 use cohort::{
     config_loader::ConfigLoader,
+    examples_support::queue_processor::QueueProcessor,
     metrics::Stats,
     model::requests::TransferRequest,
     replicator::{
@@ -12,11 +13,11 @@ use cohort::{
     },
     state::postgres::{data_access::PostgresApi, database::Database},
 };
-use examples_support::{
-    cohort::queue_workers::QueueProcessor,
-    load_generator::{generator::ControlledRateLoadGenerator, models::StopType},
-};
 
+use examples_support::load_generator::{
+    generator::ControlledRateLoadGenerator,
+    models::{Generator, StopType},
+};
 use metrics::model::{MicroMetrics, MinMax};
 use rand::Rng;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
@@ -31,6 +32,7 @@ type HeartBeatReceiver = tokio::sync::watch::Receiver<u64>;
 
 #[derive(Clone)]
 struct LaunchParams {
+    accounts: u64,
     stop_type: StopType,
     target_rate: f32,
     threads: u64,
@@ -51,7 +53,12 @@ async fn main() -> Result<(), String> {
     let rx_queue = Arc::new(rx_queue);
     let rx_queue_ref = Arc::clone(&rx_queue);
 
-    let generator = ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate, &create_transfer_request, Arc::new(tx_queue));
+    let generator_impl = TransferRequestGenerator {
+        available_accounts: params.accounts,
+        generated: Vec::new(),
+    };
+
+    let generator = ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate, generator_impl, Arc::new(tx_queue));
 
     let h_generator = tokio::spawn(generator);
     let (tx_metrics, rx_metrics) = async_channel::unbounded::<Stats>();
@@ -61,7 +68,7 @@ async fn main() -> Result<(), String> {
     let rx_metrics_ref2 = Arc::clone(&rx_metrics);
 
     let cfg_db = ConfigLoader::load_db_config()?;
-    let db = Database::init_db(cfg_db).await;
+    let db = Database::init_db(cfg_db).await.unwrap();
     let db_ref1 = Arc::clone(&db);
     let db_ref2 = Arc::clone(&db);
 
@@ -191,7 +198,9 @@ async fn start_replicator(
     let (tx_install_req, rx_install_req) = tokio::sync::mpsc::channel(channel_size);
     let (tx_install_resp, rx_install_resp) = tokio::sync::mpsc::channel(channel_size);
 
-    let manual_tx_api = PostgresApi { client: database.get().await };
+    let manual_tx_api = PostgresApi {
+        client: database.get().await.unwrap(),
+    };
     let installer = PgReplicatorStatemapInstaller {
         metrics_frequency: replicator_metrics,
         pg: manual_tx_api,
@@ -218,40 +227,6 @@ async fn start_replicator(
     let h_installer = tokio::spawn(future_installer);
 
     (h_replicator, h_installer, rx_heartbeat)
-}
-
-fn create_transfer_request() -> TransferRequest {
-    let mut available_accounts = 0_u64;
-    let args: Vec<String> = env::args().collect();
-    if args.len() >= 2 {
-        let mut i = 1;
-        while i < args.len() {
-            let param_name = &args[i];
-            if param_name.eq("--accounts") {
-                let param_value = &args[i + 1];
-                available_accounts = param_value.parse().unwrap();
-            }
-            i += 2;
-        }
-    }
-
-    let mut rnd = rand::thread_rng();
-    let mut to;
-
-    let from = rnd.gen_range(1..=available_accounts);
-    loop {
-        to = rnd.gen_range(1..=available_accounts);
-        if to == from {
-            continue;
-        }
-        break;
-    }
-
-    TransferRequest {
-        from: format!("{:<04}", from),
-        to: format!("{:<04}", to),
-        amount: Decimal::from_f32(1.0).unwrap(),
-    }
 }
 
 async fn get_params() -> Result<LaunchParams, String> {
@@ -322,6 +297,7 @@ async fn get_params() -> Result<LaunchParams, String> {
         Err("Parameter --rate is required".into())
     } else {
         Ok(LaunchParams {
+            accounts: accounts.unwrap(),
             target_rate: target_rate.unwrap(),
             stop_type: stop_type.unwrap(),
             threads: threads.unwrap(),
@@ -329,5 +305,47 @@ async fn get_params() -> Result<LaunchParams, String> {
             replicator_metrics,
             cohort_metrics,
         })
+    }
+}
+
+struct TransferRequestGenerator {
+    available_accounts: u64,
+    generated: Vec<(u64, u64)>,
+}
+
+impl Generator<TransferRequest> for TransferRequestGenerator {
+    fn generate(&mut self) -> TransferRequest {
+        let mut rnd = rand::thread_rng();
+        let mut to;
+
+        let from = rnd.gen_range(1..=self.available_accounts);
+        loop {
+            to = rnd.gen_range(1..=self.available_accounts);
+            if to == from {
+                continue;
+            }
+
+            let result = self
+                .generated
+                .iter()
+                .find(|(past_from, past_to)| *past_from == from && *past_to == to || *past_from == to && *past_to == from);
+
+            if result.is_none() {
+                if self.generated.len() < 100 {
+                    self.generated.push((from, to));
+                } else {
+                    self.generated.remove(0);
+                    self.generated.insert(0, (from, to));
+                }
+
+                break;
+            }
+        }
+
+        TransferRequest {
+            from: format!("{:<04}", from),
+            to: format!("{:<04}", to),
+            amount: Decimal::from_f32(1.0).unwrap(),
+        }
     }
 }

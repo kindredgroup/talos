@@ -8,6 +8,7 @@ pub struct DelayController {
     max_sleep_ms: u64,
 }
 
+// TODO: move me into cohort_sdk package
 impl DelayController {
     pub fn new(max_sleep_ms: u64) -> Self {
         Self {

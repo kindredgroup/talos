@@ -151,10 +151,15 @@ dev.preload_db:
 	$(call pp,run preload_db...)
 	cargo run --bin preload_db -- $(args)
 
-## dev.cohort_banking: 🧪 Runs Cohort with built-it replicator and executes banking transactions
+## dev.cohort_banking: 🧪 Runs Cohort with built-in replicator and executes banking transactions
 dev.cohort_banking:
 	$(call pp,run cohort_banking...)
 	cargo run --example cohort_banking --release -- $(args)
+
+## dev.cohort_banking_with_sdk: 🧪 Runs an example of rust app "Cohort Banking" which use cohort_sdk.
+dev.cohort_banking_with_sdk:
+	$(call pp,run cohort_banking...)
+	cargo run --example cohort_banking_with_sdk --release -- $(args)
 
 ## dev.histogram_decision_timeline_from_kafka: 🧪 Reads all decisions from kafka and prints processing timeline as csv
 dev.histogram_decision_timeline_from_kafka:
