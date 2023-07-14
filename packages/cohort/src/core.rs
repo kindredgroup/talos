@@ -73,9 +73,7 @@ impl Cohort {
             },
         );
 
-        agent
-            .start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer)
-            .expect("unable to start agent");
+        let _ = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
 
         Box::new(agent)
     }

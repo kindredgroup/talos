@@ -189,6 +189,7 @@ impl QueueProcessor {
         loop {
             let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
             let result = Self::execute_once(thread_number, &tx_request, Arc::clone(&agent), Arc::clone(&database)).await?;
+
             let finished_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
             stats.total_count += 1;
             stats.on_tx_finished(started_at, finished_at);
@@ -234,7 +235,10 @@ impl QueueProcessor {
     ) -> Result<TxExecutionResult, String> {
         // span 1 (get_accounts_as_map)
         let s1_getacc_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        let all_accounts = BankApi::get_accounts_as_map(Arc::clone(&database), tx_request.from.clone(), tx_request.to.clone()).await?;
+        let all_accounts = BankApi::get_accounts_as_map(Arc::clone(&database), tx_request.from.clone(), tx_request.to.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+
         let s1_getacc_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         let account_from = all_accounts.get(&tx_request.from).unwrap();
@@ -257,7 +261,8 @@ impl QueueProcessor {
 
         // span 2 (SnapshotApi::query)
         let s2_getsnap_s = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        let cpt_snapshot = SnapshotApi::query(Arc::clone(&database)).await?;
+        let cpt_snapshot = SnapshotApi::query(Arc::clone(&database)).await.map_err(|e| e.to_string())?;
+
         let s2_getsnap_f = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         let mut bank_result = Cohort::transfer(

@@ -10,7 +10,6 @@ pub enum AgentErrorKind {
     Certification { xid: String },
     CertificationTimeout { xid: String, elapsed_ms: u128 },
     Messaging,
-    Internal,
 }
 
 #[derive(Debug, ThisError)]

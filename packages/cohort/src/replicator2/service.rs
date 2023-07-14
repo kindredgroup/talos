@@ -63,7 +63,7 @@ impl ReplicatorService2 {
                         version: item.version,
                         started_at,
                         finished_at,
-                        error: format!("{}", error),
+                        error,
                     }
                 } else {
                     InstallOutcome::Success {

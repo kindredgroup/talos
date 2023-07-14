@@ -1,5 +1,6 @@
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
+    pub pool_size: usize,
     pub user: String,
     pub password: String,
     pub host: String,
@@ -25,6 +26,7 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_model() {
         let cfg = DatabaseConfig {
+            pool_size: 1,
             user: "USER1".into(),
             password: "1234".into(),
             host: "localhost".into(),
@@ -33,13 +35,14 @@ mod tests {
         };
         assert_eq!(
             format!("{:?}", cfg.clone()),
-            r#"DatabaseConfig { user: "USER1", password: "1234", host: "localhost", port: "1010", database: "db_admin" }"#,
+            r#"DatabaseConfig { pool_size: 1, user: "USER1", password: "1234", host: "localhost", port: "1010", database: "db_admin" }"#,
         );
     }
 
     #[test]
     fn should_generate_valid_connection_string() {
         let cfg = DatabaseConfig {
+            pool_size: 1,
             user: "USER1".into(),
             password: "1234".into(),
             host: "localhost".into(),

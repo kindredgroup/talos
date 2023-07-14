@@ -61,7 +61,7 @@ async fn main() -> Result<(), String> {
     let rx_metrics_ref2 = Arc::clone(&rx_metrics);
 
     let cfg_db = ConfigLoader::load_db_config()?;
-    let db = Database::init_db(cfg_db).await;
+    let db = Database::init_db(cfg_db).await.unwrap();
     let db_ref1 = Arc::clone(&db);
     let db_ref2 = Arc::clone(&db);
 

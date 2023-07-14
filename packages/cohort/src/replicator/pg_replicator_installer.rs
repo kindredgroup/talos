@@ -1,5 +1,5 @@
 // $coverage:ignore-start
-use std::{io::Error, time::Duration};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use log::debug;
@@ -23,7 +23,7 @@ pub struct PgReplicatorStatemapInstaller {
 
 #[async_trait]
 impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
-    async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error> {
+    async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, String> {
         debug!("Last version ... {:#?} ", version);
         debug!("Original statemaps received ... {:#?} ", sm);
         self.metrics.clock_start();

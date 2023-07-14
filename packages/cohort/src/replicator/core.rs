@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, io::Error, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData};
 use talos_certifier::{
     model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
@@ -43,7 +43,7 @@ impl StatemapItem {
 
 #[async_trait]
 pub trait ReplicatorInstaller {
-    async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, Error>;
+    async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, String>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]

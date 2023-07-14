@@ -13,7 +13,7 @@ async fn main() -> Result<(), String> {
 
     let cfg_db = ConfigLoader::load_db_config()?;
 
-    let database = Database::init_db(cfg_db.clone()).await;
+    let database = Database::init_db(cfg_db.clone()).await.map_err(|e| e.to_string())?;
 
     prefill_db(snapshots_file, accounts_file, Arc::clone(&database)).await;
 
