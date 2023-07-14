@@ -155,7 +155,7 @@ fn load_configs() -> Result<(AgentConfig, KafkaConfig), String> {
         agent: read_var("AGENT_NAME").unwrap(),
         cohort: read_var("COHORT_NAME").unwrap(),
         buffer_size: read_var("AGENT_BUFFER_SIZE").unwrap().parse().unwrap(),
-        timout_ms: read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
+        timeout_ms: read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
     };
 
     let cfg_kafka = KafkaConfig {
@@ -260,9 +260,7 @@ async fn make_agent(params: LaunchParams) -> impl TalosAgent {
         },
     );
 
-    agent
-        .start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer)
-        .expect("unable to start agent");
+    let _ = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
     agent
 }
 

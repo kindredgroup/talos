@@ -1,43 +1,42 @@
 // $coverage:ignore-start
-use rust_decimal::Decimal;
 use std::sync::Arc;
-use tokio_postgres::Row;
 
+use crate::bank_api::BankApi;
 use crate::model::bank_account::BankAccount;
 use crate::model::snapshot::Snapshot;
+use crate::snapshot_api::SnapshotApi;
 use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
+
+use super::database::DatabaseError;
 
 pub struct DataStore {}
 impl DataStore {
-    pub async fn prefill_snapshot(db: Arc<Database>, snapshot: Snapshot) -> Result<Snapshot, String> {
+    pub async fn prefill_snapshot(db: Arc<Database>, snapshot: Snapshot) -> Result<Snapshot, DatabaseError> {
         let rslt = db
             .query_opt(
                 r#"SELECT "version" FROM cohort_snapshot WHERE id = $1 AND "version" > $2"#,
                 &[&SNAPSHOT_SINGLETON_ROW_ID, &(snapshot.version as i64)],
-                Self::snapshot_from_row,
+                SnapshotApi::from_row,
             )
-            .await;
+            .await?;
 
         if let Some(snapshot) = rslt {
             Ok(snapshot)
         } else {
-            let updated = db
-                .query_one(
-                    r#"
-                        INSERT INTO cohort_snapshot ("id", "version") VALUES ($1, $2)
-                        ON CONFLICT(id) DO
-                            UPDATE SET version = $2 RETURNING version
-                    "#,
-                    &[&SNAPSHOT_SINGLETON_ROW_ID, &(snapshot.version as i64)],
-                    Self::snapshot_from_row,
-                )
-                .await;
-
-            Ok(updated)
+            db.query_one(
+                r#"
+                    INSERT INTO cohort_snapshot ("id", "version") VALUES ($1, $2)
+                    ON CONFLICT(id) DO
+                        UPDATE SET version = $2 RETURNING version
+                "#,
+                &[&SNAPSHOT_SINGLETON_ROW_ID, &(snapshot.version as i64)],
+                SnapshotApi::from_row,
+            )
+            .await
         }
     }
 
-    pub async fn prefill_accounts(db: Arc<Database>, accounts: Vec<BankAccount>) -> Result<Vec<BankAccount>, String> {
+    pub async fn prefill_accounts(db: Arc<Database>, accounts: Vec<BankAccount>) -> Result<Vec<BankAccount>, DatabaseError> {
         let client = db.pool.get().await.unwrap();
         let mut updated_accounts = Vec::<BankAccount>::new();
         for acc in accounts.iter() {
@@ -51,7 +50,7 @@ impl DataStore {
                     .unwrap();
 
                 if rslt.is_some() {
-                    Self::account_from_row(&rslt.unwrap())
+                    BankApi::account_from_row(&rslt.unwrap())?
                 } else {
                     // update db with new account data
                     let updated_row = client
@@ -66,7 +65,7 @@ impl DataStore {
                         .await
                         .unwrap();
 
-                    Self::account_from_row(&updated_row)
+                    BankApi::account_from_row(&updated_row)?
                 }
             };
 
@@ -74,20 +73,6 @@ impl DataStore {
         }
 
         Ok(updated_accounts)
-    }
-
-    pub fn account_from_row(row: &Row) -> BankAccount {
-        BankAccount {
-            name: row.get::<&str, String>("name"),
-            number: row.get::<&str, String>("number"),
-            version: row.get::<&str, i64>("version") as u64,
-            balance: row.get::<&str, Decimal>("amount"),
-        }
-    }
-
-    pub fn snapshot_from_row(row: &Row) -> Snapshot {
-        let updated = row.get::<&str, i64>("version");
-        Snapshot { version: updated as u64 }
     }
 }
 // $coverage:ignore-end

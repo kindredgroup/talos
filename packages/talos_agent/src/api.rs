@@ -48,7 +48,7 @@ pub struct AgentConfig {
     pub cohort: String,
     // The size of internal buffer for candidates
     pub buffer_size: usize,
-    pub timout_ms: u64,
+    pub timeout_ms: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -77,6 +77,20 @@ pub struct KafkaConfig {
     pub password: Option<String>,
 }
 
+impl KafkaConfig {
+    pub fn map_log_level(level: u64) -> RDKafkaLogLevel {
+        match level {
+            0 => RDKafkaLogLevel::Emerg,
+            1 => RDKafkaLogLevel::Alert,
+            2 => RDKafkaLogLevel::Critical,
+            3 => RDKafkaLogLevel::Error,
+            4 => RDKafkaLogLevel::Warning,
+            5 => RDKafkaLogLevel::Notice,
+            6 => RDKafkaLogLevel::Info,
+            _ => RDKafkaLogLevel::Debug,
+        }
+    }
+}
 /// The agent interface exposed to the client
 #[async_trait]
 pub trait TalosAgent {

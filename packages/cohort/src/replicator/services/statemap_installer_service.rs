@@ -28,7 +28,7 @@ where
                 Ok(false) => {
                     // Do nothing if result is false.
                 }
-                Err(err) => return Err(err.to_string()),
+                Err(err) => return Err(err),
             }
         }
     }
