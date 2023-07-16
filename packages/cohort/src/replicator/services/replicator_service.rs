@@ -12,7 +12,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 pub async fn replicator_service<S, M>(
-    statemaps_tx: mpsc::Sender<Vec<(u64, Vec<StatemapItem>)>>,
+    statemaps_tx: mpsc::Sender<Vec<StatemapItem>>,
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
 ) -> Result<(), String>
@@ -72,10 +72,11 @@ where
                             // } else {
                             //     0
                             // };
-
+                            for (_, statemap_vec) in statemaps_batch {
+                                statemaps_tx.send(statemap_vec).await.unwrap();
+                            }
 
                             // error!("Replicator is sending !! last_version_installed={suffix_last_installed} and version send\n {versions_send:?}");
-                            statemaps_tx.send(statemaps_batch).await.unwrap();
                         }
 
                         // These versions are decided but they are not send to Statemap installer as they are either aborted or don't have statemap
