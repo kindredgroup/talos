@@ -8,10 +8,7 @@ use cohort::{
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
-        services::{
-            replicator_service::replicator_service,
-            statemap_installer_service::{installation_service, installer_queue_service},
-        },
+        services::{replicator_service::replicator_service, statemap_installer_service::installation_service, statemap_queue_service::statemap_queue_service},
         utils::installer_utils::get_snapshot_callback,
     },
     snapshot_api::SnapshotApi,
@@ -225,7 +222,7 @@ async fn start_replicator(
     // let future_installer = installer_service(rx_install_req, tx_install_resp, installer);
 
     let get_snapshot_fn = get_snapshot_callback(SnapshotApi::query(database.clone()));
-    let future_installer_queue = installer_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
+    let future_installer_queue = statemap_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
     let future_installation = installation_service(tx_install_resp, Arc::new(installer), rx_installation_req, tx_installation_feedback_req);
 
     let h_replicator = tokio::spawn(future_replicator);

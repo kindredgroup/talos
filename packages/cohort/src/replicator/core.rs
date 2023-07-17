@@ -14,6 +14,27 @@ use super::{
     utils::replicator_utils::{get_filtered_batch, get_statemap_from_suffix_items},
 };
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum StatemapInstallState {
+    Awaiting,
+    Inflight,
+    Installed,
+}
+#[derive(Debug, Clone)]
+pub struct StatemapInstallerHashmap {
+    pub statemaps: Vec<StatemapItem>,
+    pub version: u64,
+    pub safepoint: Option<u64>,
+    pub state: StatemapInstallState,
+}
+
+#[derive(Debug)]
+pub enum StatemapInstallationStatus {
+    Success(u64),
+    GaveUp(u64),
+    Error(u64, String),
+}
+
 #[derive(Debug)]
 pub enum ReplicatorChannel {
     InstallationSuccess(Vec<u64>),

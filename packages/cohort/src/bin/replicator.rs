@@ -7,10 +7,7 @@ use cohort::{
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
-        services::{
-            replicator_service::replicator_service,
-            statemap_installer_service::{installation_service, installer_queue_service},
-        },
+        services::{replicator_service::replicator_service, statemap_installer_service::installation_service, statemap_queue_service::statemap_queue_service},
         utils::installer_utils::get_snapshot_callback,
     },
     snapshot_api::SnapshotApi,
@@ -75,7 +72,7 @@ async fn main() {
     let replicator_service = replicator_service(statemap_installer_tx, replicator_rx, replicator);
 
     let get_snapshot_fn = get_snapshot_callback(SnapshotApi::query(database.clone()));
-    let future_installer_queue = installer_queue_service(statemap_installer_rx, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
+    let future_installer_queue = statemap_queue_service(statemap_installer_rx, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
     let future_installation = installation_service(
         replicator_tx,
         Arc::new(pg_statemap_installer),
