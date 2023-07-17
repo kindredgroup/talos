@@ -10,8 +10,9 @@ use cohort::{
         pg_replicator_installer::PgReplicatorStatemapInstaller,
         services::{
             replicator_service::replicator_service,
-            statemap_installer_service::{get_snapshot_callback, installation_service, installer_queue_service},
+            statemap_installer_service::{installation_service, installer_queue_service},
         },
+        utils::installer_utils::get_snapshot_callback,
     },
     snapshot_api::SnapshotApi,
     state::postgres::database::Database,

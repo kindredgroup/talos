@@ -11,7 +11,7 @@ use talos_certifier::{
 
 use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
-    utils::{get_filtered_batch, get_statemap_from_suffix_items},
+    utils::replicator_utils::{get_filtered_batch, get_statemap_from_suffix_items},
 };
 
 #[derive(Debug)]

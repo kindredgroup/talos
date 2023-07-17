@@ -1,6 +1,6 @@
 use crate::replicator::{
     tests::test_utils::{build_test_suffix_item, BankStatemapTestCandidate},
-    utils::{get_filtered_batch, get_statemap_from_suffix_items},
+    utils::replicator_utils::{get_filtered_batch, get_statemap_from_suffix_items},
 };
 
 #[test]

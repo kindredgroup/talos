@@ -1,6 +1,6 @@
 use talos_suffix::SuffixItem;
 
-use super::{core::StatemapItem, suffix::ReplicatorSuffixItemTrait};
+use crate::replicator::{core::StatemapItem, suffix::ReplicatorSuffixItemTrait};
 
 pub fn get_filtered_batch<'a, T: ReplicatorSuffixItemTrait + 'a>(messages: impl Iterator<Item = &'a SuffixItem<T>>) -> impl Iterator<Item = &'a SuffixItem<T>> {
     messages
