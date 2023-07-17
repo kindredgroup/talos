@@ -1,5 +1,5 @@
 // $coverage:ignore-start
-use std::{io::Error, sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::{debug, error};
@@ -32,12 +32,10 @@ impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
         let mut retry_count = max_rety_count;
         debug!("Last version ... {:#?} ", version);
         debug!("Original statemaps received ... {:#?} ", sm);
-        let vers = if let Some(item) = sm.first() { Some(item.version) } else { None };
+        let vers = sm.first().map(|item| item.version);
 
         loop {
             let client = self.pg.get().await;
-            let rs = client.query_one("show transaction_isolation", &[]).await.unwrap();
-            let value: String = rs.get(0);
             let mut manual_tx_api = PostgresApi { client };
 
             // error!("[Replicator Installer] Isolation level {value} used for installing version={vers:?}");
@@ -46,7 +44,7 @@ impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
             // let elapsed = self.metrics.clock_end();
 
             match result {
-                Ok(data) => {
+                Ok(_) => {
                     // let (s_total, tx, exec, ver, snap, commit) = data.1;
                     // // Total duration
                     // self.m_total.add(s_total.1 - s_total.0);

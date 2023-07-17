@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{collections::HashMap, io::Error, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData};
 use talos_certifier::{
     model::{CandidateMessage, DecisionMessageTrait},
     ports::MessageReciever,
@@ -34,17 +34,15 @@ pub struct StatemapItem {
     pub version: u64,
     pub safepoint: Option<u64>,
     pub payload: Value,
-    pub lookup_keys: Vec<String>,
 }
 
 impl StatemapItem {
-    pub fn new(action: String, version: u64, payload: Value, safepoint: Option<u64>, lookup_keys: Vec<String>) -> Self {
+    pub fn new(action: String, version: u64, payload: Value, safepoint: Option<u64>) -> Self {
         StatemapItem {
             action,
             version,
             payload,
             safepoint,
-            lookup_keys,
         }
     }
 }
@@ -72,19 +70,15 @@ pub struct ReplicatorCandidate {
 
     #[serde(skip_deserializing)]
     pub is_installed: bool,
-
-    pub writeset: Vec<String>,
 }
 
 impl From<CandidateMessage> for ReplicatorCandidate {
     fn from(candidate: CandidateMessage) -> Self {
-        let writeset = candidate.writeset.clone();
         ReplicatorCandidate {
             candidate,
             safepoint: None,
             decision_outcome: None,
             is_installed: false,
-            writeset,
         }
     }
 }
@@ -107,9 +101,6 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
     }
     fn is_installed(&self) -> bool {
         self.is_installed
-    }
-    fn get_statemap_lookup_keys(&self) -> &Vec<String> {
-        &self.writeset
     }
 }
 

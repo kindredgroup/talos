@@ -1,13 +1,19 @@
 // $coverage:ignore-start
 
+use std::sync::Arc;
+
 use cohort::{
     config_loader::ConfigLoader,
     replicator::{
         core::{Replicator, ReplicatorCandidate},
         pg_replicator_installer::PgReplicatorStatemapInstaller,
-        services::{replicator_service::replicator_service, statemap_installer_service::installer_service},
+        services::{
+            replicator_service::replicator_service,
+            statemap_installer_service::{get_snapshot_callback, installation_service, installer_queue_service},
+        },
     },
-    state::postgres::{data_access::PostgresApi, database::Database},
+    snapshot_api::SnapshotApi,
+    state::postgres::database::Database,
 };
 use log::{info, warn};
 use metrics::model::{MicroMetrics, MinMax};
@@ -48,7 +54,7 @@ async fn main() {
 
     let pg_statemap_installer = PgReplicatorStatemapInstaller {
         metrics_frequency: None,
-        pg: database,
+        pg: database.clone(),
         metrics: MicroMetrics::new(1_000_000_000_f32, true),
         m_total: MinMax::default(),
         m1_tx: MinMax::default(),
@@ -62,17 +68,27 @@ async fn main() {
     // run_talos_replicator(&mut replicator, &mut pg_statemap_installer).await;
     let (replicator_tx, replicator_rx) = mpsc::channel(3_000);
     let (statemap_installer_tx, statemap_installer_rx) = mpsc::channel(3_000);
-
-    let pg_statemap_installer_service = installer_service(statemap_installer_rx, replicator_tx, pg_statemap_installer);
+    let (tx_installation_req, rx_installation_req) = mpsc::channel(3_000);
+    let (tx_installation_feedback_req, rx_installation_feedback_req) = mpsc::channel(3_000);
 
     let replicator_service = replicator_service(statemap_installer_tx, replicator_rx, replicator);
 
+    let get_snapshot_fn = get_snapshot_callback(SnapshotApi::query(database.clone()));
+    let future_installer_queue = installer_queue_service(statemap_installer_rx, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
+    let future_installation = installation_service(
+        replicator_tx,
+        Arc::new(pg_statemap_installer),
+        rx_installation_req,
+        tx_installation_feedback_req,
+    );
+
     let replicator_handle = tokio::spawn(replicator_service);
-    let installer_handle = tokio::spawn(pg_statemap_installer_service);
+    let h_installer = tokio::spawn(future_installer_queue);
+    let h_installation = tokio::spawn(future_installation);
 
     let handle = tokio::spawn(async move {
-        // g. Run the 2 services.
-        let result = try_join!(replicator_handle, installer_handle,);
+        // g. Run the services.
+        let result = try_join!(replicator_handle, h_installer, h_installation);
         // h. Both the services are in infinite loops.
         //    We reach here only if there was an error in either of the service.
         warn!("Result from the services ={result:?}");

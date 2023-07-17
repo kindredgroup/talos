@@ -58,7 +58,7 @@ where
 
                         let statemap_batch_cloned = statemaps_batch.clone();
                         let versions_not_send = all_versions_picked.into_iter().filter(|&v| {
-                            statemap_batch_cloned.iter().find(|&sm_b| sm_b.0 != v).is_none()
+                            !statemap_batch_cloned.iter().any(|sm_b| sm_b.0 != v)
                         });
 
 

@@ -17,7 +17,7 @@ impl ReplicatorService2 {
     pub async fn start_installer(
         mut rx: tokio::sync::mpsc::Receiver<(StateMapWithVersion, i128)>,
         tx_response: tokio::sync::mpsc::Sender<InstallOutcome>,
-        mut installer: PgReplicatorStatemapInstaller,
+        installer: PgReplicatorStatemapInstaller,
         tx_heartbeat: Arc<tokio::sync::watch::Sender<u64>>,
         metrics_print_frequency: Option<i128>,
     ) -> Result<(), String> {
@@ -63,7 +63,7 @@ impl ReplicatorService2 {
                         version: item.version,
                         started_at,
                         finished_at,
-                        error: format!("{}", error),
+                        error: error.to_string(),
                     }
                 } else {
                     InstallOutcome::Success {

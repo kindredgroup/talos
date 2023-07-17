@@ -10,10 +10,11 @@ use cohort::{
         pg_replicator_installer::PgReplicatorStatemapInstaller,
         services::{
             replicator_service::replicator_service,
-            statemap_installer_service::{installation_service, installer_queue_service, installer_service},
+            statemap_installer_service::{get_snapshot_callback, installation_service, installer_queue_service},
         },
     },
-    state::postgres::{data_access::PostgresApi, database::Database},
+    snapshot_api::SnapshotApi,
+    state::postgres::database::Database,
 };
 use examples_support::{
     cohort::queue_workers::QueueProcessor,
@@ -29,7 +30,6 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{signal, sync::Mutex, task::JoinHandle, try_join};
 
 type ReplicatorTaskHandle = JoinHandle<Result<(), String>>;
-type InstallerTaskHandle = JoinHandle<Result<(), String>>;
 type InstallerQueuTaskHandle = JoinHandle<Result<(), String>>;
 type InstallationTaskHandle = JoinHandle<Result<(), String>>;
 type HeartBeatReceiver = tokio::sync::watch::Receiver<u64>;
@@ -120,6 +120,8 @@ async fn main() -> Result<(), String> {
     Ok(())
 }
 
+// TODO: Fix and enable these lints
+#[allow(unused_variables, unused_mut)]
 fn start_queue_monitor(
     queue: Arc<Receiver<TransferRequest>>,
     mut rx_heartbeat: tokio::sync::watch::Receiver<u64>,
@@ -201,7 +203,7 @@ async fn start_replicator(
     // let manual_tx_api = PostgresApi { client: database.get().await };
     let installer = PgReplicatorStatemapInstaller {
         metrics_frequency: replicator_metrics,
-        pg: database,
+        pg: database.clone(),
         metrics: MicroMetrics::new(1_000_000_000_f32, true),
         m_total: MinMax::default(),
         m1_tx: MinMax::default(),
@@ -220,11 +222,12 @@ async fn start_replicator(
     let replicator_v1 = Replicator::new(kafka_consumer, talos_suffix);
     let future_replicator = replicator_service(tx_install_req, rx_install_resp, replicator_v1);
     // let future_installer = installer_service(rx_install_req, tx_install_resp, installer);
-    let future_installer_queue = installer_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req);
+
+    let get_snapshot_fn = get_snapshot_callback(SnapshotApi::query(database.clone()));
+    let future_installer_queue = installer_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
     let future_installation = installation_service(tx_install_resp, Arc::new(installer), rx_installation_req, tx_installation_feedback_req);
 
     let h_replicator = tokio::spawn(future_replicator);
-    // let h_installer = tokio::spawn(future_installer);
     let h_installer = tokio::spawn(future_installer_queue);
     let h_installation = tokio::spawn(future_installation);
 
