@@ -4,13 +4,12 @@ use std::time::Duration;
 
 use futures::Future;
 use log::{error, info};
-use rayon::prelude::ParallelIterator;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::replicator::{
     core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
-    utils::installer_utils::StatemapInstallerQueue,
+    models::StatemapInstallerQueue,
 };
 
 pub async fn statemap_queue_service(
@@ -36,7 +35,7 @@ pub async fn statemap_queue_service(
     //Gets snapshot initial version from db.
     statemap_installer_queue.update_snapshot(get_snapshot_fn.await.unwrap_or(0));
 
-    let mut last_item_send_for_install = 0;
+    // let mut last_item_send_for_install = 0;
 
     loop {
         tokio::select! {
@@ -67,7 +66,7 @@ pub async fn statemap_queue_service(
                         send_for_install_count += 1;
                         installation_tx.send((key, statemap_installer_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
 
-                        last_item_send_for_install = key;
+                        // last_item_send_for_install = key;
 
                         // Update the status flag
                         statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
@@ -80,7 +79,6 @@ pub async fn statemap_queue_service(
                         // let start_time_success = Instant::now();
 
                         // installed successfully and will remove the item
-                        // statemap_queue.shift_remove(&key);
                         statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
 
                         // let index = statemap_queue.get_index_of(&key).unwrap();
@@ -102,17 +100,8 @@ pub async fn statemap_queue_service(
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         error!("Failed to install version={ver} due to error={error:?}");
-                        let items_in_flight: Vec<&StatemapInstallerHashmap> = statemap_installer_queue.queue
-                            .par_values()
-                            // Picking waiting items
-                            .filter_map(|v| {
-                                if v.state == StatemapInstallState::Inflight || v.state == StatemapInstallState::Installed {
-                                    Some(v)
-                                } else {
-                                    None
-                                }
-                        }).collect();
-                        panic!("[Panic Panic Panic] panic for ver={ver} with error={error} \n\n\n Items still in statemap \n\n\n {items_in_flight:#?}");
+                        // set the item back to awaiting so that it will be picked again for installation.
+                        statemap_installer_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
                     },
                 }
             }
@@ -134,8 +123,8 @@ pub async fn statemap_queue_service(
                                       | inflight_count={inflight_count}
                                       | installation_gaveup={installation_gaveup}
                       current snapshot: {}
-                      last vers send to install : {last_item_send_for_install}
-                                      \n ", statemap_installer_queue.snapshot_version);
+                      \n ", statemap_installer_queue.snapshot_version);
+                      //   last vers send to install : {last_item_send_for_install}
 
                 statemap_installer_queue.remove_installed();
             }
@@ -143,4 +132,5 @@ pub async fn statemap_queue_service(
         }
     }
 }
+
 // $coverage:ignore-end

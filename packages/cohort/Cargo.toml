@@ -38,7 +38,7 @@ uuid =              { version = "1.2.2", features = ["v4"] }
 #  indexmap
 indexmap = { version = "2.0.0", features = ["rayon"]}
 ahash = "0.8.3"
-rayon = { version = "1.7.0"}
+# rayon = { version = "1.7.0"}
 
 
 #  tokio-utils

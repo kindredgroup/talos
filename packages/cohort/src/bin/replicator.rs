@@ -5,10 +5,11 @@ use std::sync::Arc;
 use cohort::{
     config_loader::ConfigLoader,
     replicator::{
-        core::{Replicator, ReplicatorCandidate},
+        core::Replicator,
+        models::ReplicatorCandidate,
         pg_replicator_installer::PgReplicatorStatemapInstaller,
         services::{replicator_service::replicator_service, statemap_installer_service::installation_service, statemap_queue_service::statemap_queue_service},
-        utils::installer_utils::get_snapshot_callback,
+        utils::get_snapshot_callback,
     },
     snapshot_api::SnapshotApi,
     state::postgres::database::Database,

@@ -2,7 +2,8 @@
 use std::{fmt::Debug, time::Duration};
 
 use crate::replicator::{
-    core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
+    core::{Replicator, ReplicatorChannel, StatemapItem},
+    models::ReplicatorCandidate,
     suffix::ReplicatorSuffixTrait,
 };
 
