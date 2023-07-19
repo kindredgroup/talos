@@ -3,6 +3,7 @@ use std::{env, sync::Arc, time::Duration};
 use async_channel::Receiver;
 use cohort::{
     config_loader::ConfigLoader,
+    examples_support::queue_processor::QueueProcessor,
     metrics::Stats,
     model::requests::TransferRequest,
     replicator::{
@@ -12,11 +13,8 @@ use cohort::{
     },
     state::postgres::{data_access::PostgresApi, database::Database},
 };
-use examples_support::{
-    cohort::queue_workers::QueueProcessor,
-    load_generator::{generator::ControlledRateLoadGenerator, models::StopType},
-};
 
+use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 use metrics::model::{MicroMetrics, MinMax};
 use rand::Rng;
 use rust_decimal::{prelude::FromPrimitive, Decimal};

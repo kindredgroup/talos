@@ -76,8 +76,6 @@ where
                             replicator.suffix.prune_till_version(version).unwrap();
                         }
 
-                        // commit the offset
-                        replicator.receiver.commit().await.unwrap();
                     }
                 }
             }

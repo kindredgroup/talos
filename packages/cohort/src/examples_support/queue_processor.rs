@@ -1,6 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
-use cohort::{
+use metrics::model::{MicroMetrics, MinMax};
+use time::OffsetDateTime;
+use tokio::task::JoinHandle;
+
+use crate::{
     bank_api::BankApi,
     config_loader::ConfigLoader,
     core::{AgentType, Cohort},
@@ -13,9 +17,6 @@ use cohort::{
     snapshot_api::SnapshotApi,
     state::postgres::database::Database,
 };
-use metrics::model::{MicroMetrics, MinMax};
-use time::OffsetDateTime;
-use tokio::task::JoinHandle;
 
 pub struct QueueProcessor {}
 impl QueueProcessor {

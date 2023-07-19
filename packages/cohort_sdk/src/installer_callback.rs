@@ -1,20 +1,17 @@
+use crate::{
+    model::callbacks::StatemapInstaller,
+    replicator::core::{ReplicatorInstaller, StatemapItem},
+};
 use async_trait::async_trait;
-use cohort::replicator::core::{ReplicatorInstaller, StatemapItem};
-use futures::future::BoxFuture;
 
-pub struct ReplicatorInstallerImpl {
-    pub external_impl: Box<dyn Fn(Vec<StatemapItem>, u64) -> BoxFuture<'static, String> + Sync + Send>,
+pub struct ReplicatorInstallerImpl<S: StatemapInstaller + Sync + Send> {
+    pub installer_impl: S,
 }
 
 #[async_trait]
-impl ReplicatorInstaller for ReplicatorInstallerImpl {
+impl<S: StatemapInstaller + Sync + Send> ReplicatorInstaller for ReplicatorInstallerImpl<S> {
     async fn install(&mut self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<bool, String> {
-        let mut error = (self.external_impl)(sm, version.unwrap_or(0)).await;
-        error = error.trim().into();
-        if error.is_empty() {
-            Ok(true)
-        } else {
-            Err(error)
-        }
+        let _ = self.installer_impl.install(sm, version.unwrap_or(0)).await?;
+        Ok(true)
     }
 }

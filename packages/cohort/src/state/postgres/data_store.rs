@@ -39,6 +39,7 @@ impl DataStore {
     pub async fn prefill_accounts(db: Arc<Database>, accounts: Vec<BankAccount>) -> Result<Vec<BankAccount>, DatabaseError> {
         let client = db.pool.get().await.unwrap();
         let mut updated_accounts = Vec::<BankAccount>::new();
+        let frequency: u64 = (accounts.len() as f32 * 15.0 / 100.0) as u64;
         for acc in accounts.iter() {
             let updated = {
                 let rslt = client
@@ -68,6 +69,10 @@ impl DataStore {
                     BankApi::account_from_row(&updated_row)?
                 }
             };
+
+            if updated_accounts.len() as f32 % frequency as f32 == 0.0 {
+                log::warn!("Inserted: {} accounts of {}", updated_accounts.len(), accounts.len());
+            }
 
             updated_accounts.push(updated);
         }

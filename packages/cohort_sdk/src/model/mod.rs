@@ -1,9 +1,8 @@
 pub mod callbacks;
 pub mod internal;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
-use cohort::state::postgres::{database::DatabaseError, database_config::DatabaseConfig};
 use serde_json::Value;
 use talos_agent::{
     agent::errors::{AgentError, AgentErrorKind},
@@ -17,7 +16,6 @@ use tokio::task::JoinHandle;
 // #[napi]
 #[derive(Clone)]
 pub struct CandidateData {
-    pub xid: String,
     pub readset: Vec<String>,
     pub writeset: Vec<String>,
     pub statemap: Option<Vec<HashMap<String, Value>>>,
@@ -27,7 +25,6 @@ pub struct CandidateData {
 // #[napi]
 #[derive(Clone)]
 pub struct CertificationRequest {
-    pub xid: String,
     pub candidate: CandidateData,
     pub timeout_ms: u64,
 }
@@ -45,6 +42,8 @@ pub struct ResponseMetadata {
     pub attempts: u64,
     pub duration_ms: u64,
 }
+
+#[derive(strum::Display)]
 // #[napi]
 // this is napi friendly copy of talos_agent::agent::errors::AgentErrorKind
 pub enum ClientErrorKind {
@@ -54,6 +53,7 @@ pub enum ClientErrorKind {
     Persistence,
     Internal,
     OutOfOrderCallbackFailed,
+    OutOfOrderSnapshotTimeout,
 }
 
 // #[napi]
@@ -203,28 +203,28 @@ impl From<Config> for TalosKafkaConfig {
     }
 }
 
-impl From<Config> for DatabaseConfig {
-    fn from(val: Config) -> Self {
-        DatabaseConfig {
-            pool_size: val.db_pool_size,
-            user: val.db_user,
-            password: val.db_password,
-            host: val.db_host,
-            port: val.db_port,
-            database: val.db_database,
-        }
-    }
-}
+// impl From<Config> for DatabaseConfig {
+//     fn from(val: Config) -> Self {
+//         DatabaseConfig {
+//             pool_size: val.db_pool_size,
+//             user: val.db_user,
+//             password: val.db_password,
+//             host: val.db_host,
+//             port: val.db_port,
+//             database: val.db_database,
+//         }
+//     }
+// }
 
-impl From<DatabaseError> for ClientError {
-    fn from(value: DatabaseError) -> Self {
-        Self {
-            kind: ClientErrorKind::Persistence,
-            reason: value.reason,
-            cause: value.cause,
-        }
-    }
-}
+// impl From<DatabaseError> for ClientError {
+//     fn from(value: DatabaseError) -> Self {
+//         Self {
+//             kind: ClientErrorKind::Persistence,
+//             reason: value.reason,
+//             cause: value.cause,
+//         }
+//     }
+// }
 
 impl From<AgentError> for ClientError {
     fn from(agent_error: AgentError) -> Self {
@@ -246,5 +246,11 @@ impl From<AgentError> for ClientError {
             reason,
             cause: agent_error.cause,
         }
+    }
+}
+
+impl Display for ClientError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ClientError: [kind: {}, reason: {}, cause: {:?}]", self.kind, self.reason, self.cause)
     }
 }

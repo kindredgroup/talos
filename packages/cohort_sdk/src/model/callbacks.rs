@@ -1,20 +1,34 @@
-use cohort::replicator::core::StatemapItem;
-use futures::future::BoxFuture;
+use crate::replicator::core::StatemapItem;
+use async_trait::async_trait;
 
 pub struct CapturedState {
     pub snapshot_version: u64,
     pub items: Vec<CapturedItemState>,
 }
 
+#[derive(Debug)]
 pub struct CapturedItemState {
     pub id: String,
     pub version: u64,
 }
 
-pub type GetStateFunction = Box<dyn Fn() -> BoxFuture<'static, CapturedState> + Sync + Send>;
+#[async_trait]
+pub trait ItemStateProvider {
+    async fn get_state(&self) -> Result<CapturedState, String>;
+}
 
-// statemap: Vec<StatemapItem>, snapshot_version: u64
-pub type InstallerFunction = Box<dyn Fn(Vec<StatemapItem>, u64) -> BoxFuture<'static, String> + Sync + Send>;
+#[async_trait]
+pub trait OutOfOrderInstaller {
+    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String>;
+}
 
-// xid: String, safepoint: u64, attempt: u64
-pub type OutOfOrderInstallerFunction = Box<dyn Fn(String, u64, u64) -> BoxFuture<'static, String> + Sync + Send>;
+#[async_trait]
+pub trait StatemapInstaller {
+    async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<(), String>;
+}
+
+pub enum OutOfOrderInstallOutcome {
+    Installed,
+    InstalledAlready,
+    SafepointCondition,
+}

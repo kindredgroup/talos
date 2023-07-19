@@ -3,14 +3,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use cohort::{
-    delay_controller::DelayController,
-    replicator::{
-        core::{Replicator, ReplicatorCandidate, ReplicatorChannel, StatemapItem},
-        services::{replicator_service::replicator_service, statemap_installer_service::installer_service},
-    },
+use opentelemetry_api::{
+    global,
+    metrics::{Counter, Histogram, Unit},
+    Context,
 };
-use futures::future::BoxFuture;
 use talos_agent::{
     agent::{
         core::{AgentServices, TalosAgentImpl},
@@ -26,17 +23,18 @@ use talos_agent::{
 };
 
 use talos_certifier_adapters::{kafka::config::KafkaConfig as TalosKafkaConfig, KafkaConsumer};
-use talos_suffix::Suffix;
 use tokio::sync::mpsc;
 
 use crate::{
+    delay_controller::DelayController,
     installer_callback::ReplicatorInstallerImpl,
     model::{
         self,
-        callbacks::{CapturedState, GetStateFunction, InstallerFunction, OutOfOrderInstallerFunction},
+        callbacks::{ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller, StatemapInstaller},
         internal::CertificationAttemptOutcome,
         CertificationResponse, ClientError, Config, ReplicatorServices, ResponseMetadata,
     },
+    replicator2::{cohort_replicator::CohortReplicator, cohort_suffix::CohortSuffix, service::ReplicatorService2},
 };
 
 use talos_certifier::ports::MessageReciever;
@@ -46,22 +44,32 @@ use talos_agent::api::CertificationResponse as InternalCertificationResponse;
 // #[napi]
 pub struct Cohort {
     config: Config,
-    // database: Arc<Database>,
     talos_agent: Box<dyn TalosAgent + Sync + Send>,
     agent_services: AgentServices,
     replicator_services: ReplicatorServices,
+    oo_retry_counter: Arc<Counter<u64>>,
+    oo_giveups_counter: Arc<Counter<u64>>,
+    oo_not_safe_counter: Arc<Counter<u64>>,
+    oo_install_histogram: Arc<Histogram<f64>>,
+    oo_attempts_histogram: Arc<Histogram<u64>>,
+    oo_install_and_wait_histogram: Arc<Histogram<f64>>,
+    oo_wait_histogram: Arc<Histogram<f64>>,
+    talos_histogram: Arc<Histogram<f64>>,
 }
 
 // #[napi]
 impl Cohort {
     // #[napi]
-    pub async fn create(
+    pub async fn create<S>(
         config: Config,
         // Param1: The list of statemap items.
         // Param2: Version to install.
         // Returns error descrition. If string is empty it means there was no error installing
-        installer_function: InstallerFunction,
-    ) -> Result<Self, ClientError> {
+        statemap_installer: S,
+    ) -> Result<Self, ClientError>
+    where
+        S: StatemapInstaller + Sync + Send + 'static,
+    {
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.clone().into();
         let talos_kafka_config: TalosKafkaConfig = config.clone().into();
@@ -109,44 +117,89 @@ impl Cohort {
         let agent_services = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
 
         //
-        // start replicator
+        // Code below is to start replicator from master branch...
         //
 
-        let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(config.clone().into());
+        // //
+        // // start replicator
+        // //
 
+        // let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(config.clone().into());
+
+        // let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
+        // kafka_consumer.subscribe().await.unwrap();
+        //
+        // let replicator = Replicator::new(kafka_consumer, suffix);
+        // let (tx_statemaps_ch, rx_statemaps_ch) = mpsc::channel::<Vec<(u64, Vec<StatemapItem>)>>(config.replicator_buffer_size);
+        // let (tx_install_result_ch, rx_install_result) = mpsc::channel::<ReplicatorChannel>(config.replicator_buffer_size);
+
+        // let replicator_handle = tokio::spawn(replicator_service(tx_statemaps_ch, rx_install_result, replicator));
+        // let replicator_impl = ReplicatorInstallerImpl {
+        //     installer_impl: statemap_installer,
+        // };
+        // let installer_handle = tokio::spawn(installer_service(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
+
+        let suffix = CohortSuffix::with_config(config.clone().into());
         let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
         kafka_consumer.subscribe().await.unwrap();
+        let replicator = CohortReplicator::new(kafka_consumer, suffix);
 
-        let replicator = Replicator::new(kafka_consumer, suffix);
-        let (tx_statemaps_ch, rx_statemaps_ch) = mpsc::channel::<(Vec<StatemapItem>, Option<u64>)>(config.replicator_buffer_size);
-        let (tx_install_result_ch, rx_install_result) = mpsc::channel::<ReplicatorChannel>(config.replicator_buffer_size);
-
-        let replicator_handle = tokio::spawn(replicator_service(tx_statemaps_ch, rx_install_result, replicator));
+        let (tx_install_req, rx_statemaps_ch) = mpsc::channel(config.replicator_buffer_size);
+        let (tx_install_result_ch, rx_install_result) = tokio::sync::mpsc::channel(config.replicator_buffer_size);
+        let replicator_handle = tokio::spawn(ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_result));
         let replicator_impl = ReplicatorInstallerImpl {
-            external_impl: installer_function,
+            installer_impl: statemap_installer,
         };
+        let installer_handle = tokio::spawn(ReplicatorService2::start_installer(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
 
-        let installer_handle = tokio::spawn(installer_service(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
+        let meter = global::meter("cohort_sdk");
+        let oo_install_histogram = meter.f64_histogram("metric_oo_install_duration").with_unit(Unit::new("ms")).init();
+        let oo_attempts_histogram = meter.u64_histogram("metric_oo_attempts").with_unit(Unit::new("tx")).init();
+        let oo_install_and_wait_histogram = meter.f64_histogram("metric_oo_install_and_wait_duration").with_unit(Unit::new("ms")).init();
+        let oo_wait_histogram = meter.f64_histogram("metric_oo_wait_duration").with_unit(Unit::new("ms")).init();
+        let talos_histogram = meter.f64_histogram("metric_talos").with_unit(Unit::new("ms")).init();
+        let oo_retry_counter = meter.u64_counter("metric_oo_retry_count").with_unit(Unit::new("tx")).init();
+        let oo_giveups_counter = meter.u64_counter("metric_oo_giveups_count").with_unit(Unit::new("tx")).init();
+        let oo_not_safe_counter = meter.u64_counter("metric_oo_not_safe_count").with_unit(Unit::new("tx")).init();
 
         Ok(Self {
             config,
-            // database,
             talos_agent: Box::new(agent),
             agent_services,
             replicator_services: ReplicatorServices {
                 replicator_handle,
                 installer_handle,
             },
+            oo_install_histogram: Arc::new(oo_install_histogram),
+            oo_install_and_wait_histogram: Arc::new(oo_install_and_wait_histogram),
+            oo_wait_histogram: Arc::new(oo_wait_histogram),
+            oo_retry_counter: Arc::new(oo_retry_counter),
+            oo_giveups_counter: Arc::new(oo_giveups_counter),
+            oo_not_safe_counter: Arc::new(oo_not_safe_counter),
+            oo_attempts_histogram: Arc::new(oo_attempts_histogram),
+            talos_histogram: Arc::new(talos_histogram),
         })
     }
 
-    pub async fn certify(
+    pub async fn certify<S, O>(
         &self,
         request: model::CertificationRequest,
-        get_state_function: GetStateFunction,
-        installer_function: OutOfOrderInstallerFunction,
-    ) -> Result<model::CertificationResponse, ClientError> {
-        let response = self.send_to_talos(request, get_state_function).await?;
+        state_provider: &S,
+        oo_installer: &O,
+    ) -> Result<model::CertificationResponse, ClientError>
+    where
+        S: ItemStateProvider,
+        O: OutOfOrderInstaller,
+    {
+        let span_1 = Instant::now();
+        let response = self.send_to_talos(request, state_provider).await?;
+        let v = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
+
+        let h_talos = Arc::clone(&self.talos_histogram);
+        let _ = tokio::spawn(async move {
+            h_talos.record(&Context::current(), v, &[]);
+        })
+        .await;
 
         if response.decision == Decision::Aborted {
             return Ok(response);
@@ -154,40 +207,101 @@ impl Cohort {
 
         // system error if we have Commit decision but no safepoint is given
         let safepoint = response.safepoint.unwrap();
+        let new_version = response.version;
 
-        // await until safe, then install out of order
         let mut controller = DelayController::new(self.config.retry_oo_backoff_max_ms);
-        let installer_function = Arc::new(installer_function);
         let mut attempt = 0;
+        let span_2 = Instant::now();
+        let mut is_not_safe_reported = false;
         loop {
             attempt += 1;
-            let mut error = installer_function(response.xid.clone(), safepoint, attempt).await;
-            error = error.trim().into();
 
-            if error.is_empty() {
-                return Ok(response);
-            }
+            let span_3 = Instant::now();
+            let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
+            let v = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
-            if attempt >= self.config.retry_oo_attempts_max {
-                return Err(ClientError {
+            let h_install = Arc::clone(&self.oo_install_histogram);
+            let c_retry = Arc::clone(&self.oo_retry_counter);
+            let c_not_safe = Arc::clone(&self.oo_not_safe_counter);
+
+            let _ = tokio::spawn(async move {
+                h_install.record(&Context::current(), v, &[]);
+                if attempt > 1 {
+                    c_retry.add(&Context::current(), 1, &[]);
+                }
+            })
+            .await;
+
+            let error = match install_result {
+                Ok(OutOfOrderInstallOutcome::Installed) => None,
+                Ok(OutOfOrderInstallOutcome::InstalledAlready) => None,
+                Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
+                    if !is_not_safe_reported {
+                        let _ = tokio::spawn(async move {
+                            c_not_safe.add(&Context::current(), 1, &[]);
+                        })
+                        .await;
+                        is_not_safe_reported = true;
+                    }
+
+                    // We create this error as "safepoint timout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
+                    Some(ClientError {
+                        kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
+                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
+                        cause: None,
+                    })
+                }
+                Err(error) => Some(ClientError {
                     kind: model::ClientErrorKind::OutOfOrderCallbackFailed,
                     reason: error,
                     cause: None,
-                });
-            }
+                }),
+            };
 
-            controller.sleep().await;
+            let h_i_wait = Arc::clone(&self.oo_install_and_wait_histogram);
+            let h_wait = Arc::clone(&self.oo_wait_histogram);
+            let h_attempts = Arc::clone(&self.oo_attempts_histogram);
+            let c_giveups = Arc::clone(&self.oo_giveups_counter);
+            let total_sleep = controller.total_sleep_time;
+
+            if let Some(client_error) = error {
+                if attempt >= self.config.retry_oo_attempts_max {
+                    let v = span_2.elapsed().as_nanos() as f64 / 1_000_000_f64;
+                    let _ = tokio::spawn(async move {
+                        h_i_wait.record(&Context::current(), v, &[]);
+                        h_attempts.record(&Context::current(), attempt, &[]);
+                        c_giveups.add(&Context::current(), 1, &[]);
+                        if total_sleep > 0 {
+                            h_wait.record(&Context::current(), total_sleep as f64, &[]);
+                        }
+                    })
+                    .await;
+
+                    return Err(client_error);
+                }
+
+                // try again
+                controller.sleep().await;
+            } else {
+                let v = span_2.elapsed().as_nanos() as f64 / 1_000_000_f64;
+                let _ = tokio::spawn(async move {
+                    h_i_wait.record(&Context::current(), v, &[]);
+                    h_attempts.record(&Context::current(), attempt, &[]);
+                    if total_sleep > 0 {
+                        h_wait.record(&Context::current(), total_sleep as f64, &[]);
+                    }
+                })
+                .await;
+                return Ok(response);
+            }
         }
     }
 
-    async fn send_to_talos(
-        &self,
-        request: model::CertificationRequest,
-        get_state_function: Box<dyn Fn() -> BoxFuture<'static, CapturedState> + Sync + Send>,
-    ) -> Result<model::CertificationResponse, ClientError> {
+    async fn send_to_talos<S>(&self, request: model::CertificationRequest, state_provider: &S) -> Result<model::CertificationResponse, ClientError>
+    where
+        S: ItemStateProvider,
+    {
         let started_at = Instant::now();
-
-        let get_state_function = Arc::new(get_state_function);
         let mut attempts = 0;
 
         let mut delay_controller = Box::new(DelayController::new(self.config.retry_backoff_max_ms));
@@ -197,7 +311,7 @@ impl Cohort {
             let recent_response: Option<CertificationResponse>;
 
             attempts += 1;
-            let is_success = match self.send_to_talos_attempt(request.clone(), Arc::clone(&get_state_function)).await {
+            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = Instant::now().duration_since(started_at).as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -212,8 +326,17 @@ impl Cohort {
                     recent_response = Some(response);
                     false
                 }
-                CertificationAttemptOutcome::Error { error } => {
+                CertificationAttemptOutcome::AgentError { error } => {
                     recent_error = Some(ClientError::from(error));
+                    recent_response = None;
+                    false
+                }
+                CertificationAttemptOutcome::DataError { reason } => {
+                    recent_error = Some(ClientError {
+                        kind: model::ClientErrorKind::Persistence,
+                        reason,
+                        cause: None,
+                    });
                     recent_response = None;
                     false
                 }
@@ -229,25 +352,46 @@ impl Cohort {
                 } else if let Some(error) = recent_error {
                     break Err(error);
                 }
+            } else if let Some(response) = recent_response {
+                log::debug!(
+                    "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
+                    request.candidate.statemap,
+                    response.decision,
+                    attempts
+                );
+            } else if let Some(error) = recent_error {
+                log::debug!(
+                    "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
+                    request.candidate.statemap,
+                    error,
+                    attempts
+                );
             }
 
             delay_controller.sleep().await;
         }
     }
 
-    async fn send_to_talos_attempt(
-        &self,
-        request: model::CertificationRequest,
-        get_state_function: Arc<Box<dyn Fn() -> BoxFuture<'static, CapturedState> + Sync + Send>>,
-    ) -> CertificationAttemptOutcome {
-        let local_state = get_state_function().await;
+    async fn send_to_talos_attempt<S>(&self, request: model::CertificationRequest, state_provider: &S) -> CertificationAttemptOutcome
+    where
+        S: ItemStateProvider,
+    {
+        let result_local_state = state_provider.get_state().await;
+        if let Err(reason) = result_local_state {
+            return CertificationAttemptOutcome::DataError { reason };
+        }
+
+        let local_state = result_local_state.unwrap();
+
+        log::debug!("loaded state: {}, {:?}", local_state.snapshot_version, local_state.items);
 
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(local_state.snapshot_version, local_state.items.iter().map(|i| i.version).collect());
 
+        let xid = uuid::Uuid::new_v4().to_string();
         let agent_request = CertificationRequest {
-            message_key: request.xid,
+            message_key: xid.clone(),
             candidate: CandidateData {
-                xid: request.candidate.xid,
+                xid: xid.clone(),
                 statemap: request.candidate.statemap,
                 readset: request.candidate.readset,
                 writeset: request.candidate.writeset,
@@ -277,12 +421,11 @@ impl Cohort {
                     CertificationAttemptOutcome::Success { response }
                 }
             }
-            Err(error) => CertificationAttemptOutcome::Error { error },
+            Err(error) => CertificationAttemptOutcome::AgentError { error },
         }
     }
 
     fn select_snapshot_and_readvers(cpt_snapshot: u64, cpt_versions: Vec<u64>) -> (u64, Vec<u64>) {
-        log::debug!("select_snapshot_and_readvers({}, {:?})", cpt_snapshot, cpt_versions);
         if cpt_versions.is_empty() {
             log::debug!(
                 "select_snapshot_and_readvers({}, {:?}): {:?}",

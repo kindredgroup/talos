@@ -30,7 +30,7 @@ dependencies = [
  "rdkafka-sys",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.24.1",
  "talos_agent",
  "time 0.3.23",
  "tokio",
@@ -403,6 +403,7 @@ dependencies = [
 name = "cohort"
 version = "0.0.1"
 dependencies = [
+ "async-channel",
  "async-trait",
  "csv",
  "deadpool",
@@ -420,7 +421,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.24.1",
  "talos_agent",
  "talos_certifier",
  "talos_certifier_adapters",
@@ -435,6 +436,36 @@ dependencies = [
 
 [[package]]
 name = "cohort_banking"
+version = "0.0.1"
+dependencies = [
+ "async-channel",
+ "async-trait",
+ "cohort_sdk",
+ "deadpool",
+ "deadpool-postgres",
+ "env_logger",
+ "futures",
+ "log",
+ "metrics",
+ "opentelemetry",
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+ "rand",
+ "refinery",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "strum 0.25.0",
+ "talos_agent",
+ "talos_certifier",
+ "talos_suffix",
+ "tokio",
+ "tokio-postgres",
+ "uuid",
+]
+
+[[package]]
+name = "cohort_banking_example"
 version = "0.0.1"
 dependencies = [
  "async-channel",
@@ -463,23 +494,61 @@ dependencies = [
 ]
 
 [[package]]
-name = "cohort_sdk"
+name = "cohort_banking_with_sdk"
 version = "0.0.1"
 dependencies = [
+ "async-channel",
  "async-trait",
- "cohort",
+ "cohort_banking",
+ "cohort_sdk",
+ "deadpool-postgres",
  "env_logger",
- "futures",
+ "examples_support",
  "log",
- "rdkafka 0.33.2",
+ "metrics",
+ "opentelemetry",
+ "opentelemetry-prometheus",
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+ "rand",
+ "rdkafka 0.29.0",
  "rdkafka-sys",
+ "rust_decimal",
  "serde",
  "serde_json",
  "talos_agent",
  "talos_certifier",
  "talos_certifier_adapters",
  "talos_suffix",
+ "time 0.3.23",
  "tokio",
+ "tokio-postgres",
+ "uuid",
+]
+
+[[package]]
+name = "cohort_sdk"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "env_logger",
+ "futures",
+ "log",
+ "opentelemetry",
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+ "rand",
+ "rdkafka 0.33.2",
+ "rdkafka-sys",
+ "serde",
+ "serde_json",
+ "strum 0.25.0",
+ "talos_agent",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "talos_suffix",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -772,7 +841,7 @@ dependencies = [
  "metrics",
  "refinery",
  "rust_decimal",
- "strum",
+ "strum 0.24.1",
  "thiserror",
  "time 0.3.23",
  "tokio",
@@ -794,6 +863,12 @@ checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "fnv"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "form_urlencoded"
@@ -1324,6 +1399,65 @@ dependencies = [
 ]
 
 [[package]]
+name = "opentelemetry"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f4b8347cc26099d3aeee044065ecc3ae11469796b4d65d065a23a584ed92a6f"
+dependencies = [
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+]
+
+[[package]]
+name = "opentelemetry-prometheus"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a9f186f6293ebb693caddd0595e66b74a6068fa51048e26e0bf9c95478c639c"
+dependencies = [
+ "opentelemetry",
+ "prometheus",
+ "protobuf",
+]
+
+[[package]]
+name = "opentelemetry_api"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed41783a5bf567688eb38372f2b7a8530f5a607a4b49d38dd7573236c23ca7e2"
+dependencies = [
+ "fnv",
+ "futures-channel",
+ "futures-util",
+ "indexmap 1.9.3",
+ "once_cell",
+ "pin-project-lite",
+ "thiserror",
+ "urlencoding",
+]
+
+[[package]]
+name = "opentelemetry_sdk"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b3a2a91fdbfdd4d212c0dcc2ab540de2c2bcbbd90be17de7a7daf8822d010c1"
+dependencies = [
+ "async-trait",
+ "crossbeam-channel",
+ "dashmap",
+ "fnv",
+ "futures-channel",
+ "futures-executor",
+ "futures-util",
+ "once_cell",
+ "opentelemetry_api",
+ "percent-encoding",
+ "rand",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+]
+
+[[package]]
 name = "os_pipe"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1541,6 +1675,27 @@ checksum = "18fb31db3f9bddb2ea821cde30a9f70117e3f119938b5ee630b7403aa6e2ead9"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "prometheus"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "449811d15fbdf5ceb5c1144416066429cf82316e2ec8ce0c1f6f8a02e7bbcf8c"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror",
+]
+
+[[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "ptr_meta"
@@ -2056,7 +2211,16 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.24.3",
+]
+
+[[package]]
+name = "strum"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+dependencies = [
+ "strum_macros 0.25.1",
 ]
 
 [[package]]
@@ -2070,6 +2234,19 @@ dependencies = [
  "quote",
  "rustversion",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.25.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6069ca09d878a33f883cc06aaa9718ede171841d3832450354410b718b097232"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.26",
 ]
 
 [[package]]
@@ -2181,7 +2358,7 @@ dependencies = [
  "rdkafka-sys",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.24.1",
  "thiserror",
  "time 0.3.23",
  "tokio",
@@ -2203,7 +2380,7 @@ dependencies = [
  "logger",
  "serde",
  "serde_json",
- "strum",
+ "strum 0.24.1",
  "talos_suffix",
  "thiserror",
  "time 0.3.23",
@@ -2556,6 +2733,12 @@ dependencies = [
  "idna",
  "percent-encoding",
 ]
+
+[[package]]
+name = "urlencoding"
+version = "2.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8db7427f936968176eaa7cdf81b7f98b980b18495ec28f1b5791ac3bfe3eea9"
 
 [[package]]
 name = "uuid"
