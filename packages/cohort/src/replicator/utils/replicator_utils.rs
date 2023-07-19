@@ -11,6 +11,7 @@ pub fn get_filtered_batch<'a, T: ReplicatorSuffixItemTrait + 'a>(messages: impl 
     // .filter(|&m| m.item.get_statemap().is_some()) // select only the messages that have statemap.
 }
 
+/// Takes an iterator of suffix items and returns a vector of versions and statemaps
 pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
     messages: impl Iterator<Item = &'a SuffixItem<T>>,
 ) -> Vec<(u64, Vec<StatemapItem>)> {

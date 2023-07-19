@@ -7,14 +7,19 @@ use crate::replicator::core::{ReplicatorChannel, ReplicatorInstallStatus, Replic
 use log::{debug, error};
 use tokio::sync::{mpsc, Semaphore};
 
+pub struct StatemapInstallerConfig {
+    pub parallel_thread_count: Option<u16>,
+}
+
 pub async fn installation_service(
     replicator_tx: mpsc::Sender<ReplicatorChannel>,
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
     mut installation_rx: mpsc::Receiver<(u64, Vec<StatemapItem>)>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
+    config: StatemapInstallerConfig,
 ) -> Result<(), String> {
     // TODO: Pass the number of permits over an environment variable?
-    let permit_count = 50;
+    let permit_count = config.parallel_thread_count.unwrap_or(50) as usize;
     let semaphore = Arc::new(Semaphore::new(permit_count));
 
     loop {

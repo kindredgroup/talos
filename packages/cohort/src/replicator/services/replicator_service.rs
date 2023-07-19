@@ -11,18 +11,23 @@ use log::{debug, error, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+pub struct ReplicatorServiceConfig {
+    pub commit_frequency_ms: u64,
+    pub enable_stats: bool,
+}
 
 pub async fn replicator_service<S, M>(
     statemaps_tx: mpsc::Sender<Vec<StatemapItem>>,
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
+    config: ReplicatorServiceConfig,
 ) -> Result<(), String>
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
 {
     info!("Starting Replicator Service.... ");
-    let mut interval = tokio::time::interval(Duration::from_millis(10_000));
+    let mut interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
 
     let mut total_items_send = 0;
     let mut total_items_processed = 0;
@@ -64,20 +69,8 @@ where
 
 
                         // Send statemaps batch to
-                        if !statemaps_batch.is_empty() {
-                            // let versions_send:Vec<u64> = statemaps_batch.iter().map(|sm| {
-                            //     sm.0
-                            // }).collect();
-                            // let suffix_last_installed = if let Some(last_installed) = replicator.suffix.get_last_installed(None) {
-                            //     last_installed.item_ver
-                            // } else {
-                            //     0
-                            // };
-                            for (_, statemap_vec) in statemaps_batch {
-                                statemaps_tx.send(statemap_vec).await.unwrap();
-                            }
-
-                            // error!("Replicator is sending !! last_version_installed={suffix_last_installed} and version send\n {versions_send:?}");
+                        for (_, statemap_vec) in statemaps_batch {
+                            statemaps_tx.send(statemap_vec).await.unwrap();
                         }
 
                         // These versions are decided but they are not send to Statemap installer as they are either aborted or don't have statemap
@@ -85,6 +78,7 @@ where
                             replicator.suffix.set_item_installed(version);
 
                         });
+
                         time_last_item_send_end_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
                     },
@@ -93,21 +87,23 @@ where
         }
         // Commit offsets at interval.
         _ = interval.tick() => {
-            let duration_sec = Duration::from_nanos((time_last_item_send_end_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
-            let tps_send = total_items_send as f32 / duration_sec;
-            let tps_processed = total_items_processed as f32 / duration_sec;
+            if config.enable_stats {
+                let duration_sec = Duration::from_nanos((time_last_item_send_end_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
+                let tps_send = total_items_send as f32 / duration_sec;
+                let tps_processed = total_items_processed as f32 / duration_sec;
 
 
-            let duration_installed_sec = Duration::from_nanos((time_last_item_installed_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
-            let tps_install = total_items_installed as f32 / duration_installed_sec;
-            // let tps_install_feedback =
+                let duration_installed_sec = Duration::from_nanos((time_last_item_installed_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
+                let tps_install = total_items_installed as f32 / duration_installed_sec;
+                // let tps_install_feedback =
 
-            error!("
-            Replicator Stats:
-                  processed             : tps={tps_processed:.3}    | count={total_items_processed}
-                  send for install      : tps={tps_send:.3}    | count={total_items_send}
-                  installed             : tps={tps_install:.3}    | count={total_items_installed}
-                \n ");
+                error!("
+                Replicator Stats:
+                      processed             : tps={tps_processed:.3}    | count={total_items_processed}
+                      send for install      : tps={tps_send:.3}    | count={total_items_send}
+                      installed             : tps={tps_install:.3}    | count={total_items_installed}
+                    \n ");
+            }
 
             replicator.commit_till_last_installed().await;
         }
@@ -127,7 +123,7 @@ where
                             replicator.suffix.update_prune_index(version);
 
 
-                            // // Prune suffix and update suffix head.
+                            // Prune suffix and update suffix head.
                             if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
                                 replicator.suffix.prune_till_version(version).unwrap();
                             }

@@ -12,17 +12,31 @@ use crate::replicator::{
     models::StatemapInstallerQueue,
 };
 
+#[derive(Debug)]
+pub struct StatemapQueueServiceConfig {
+    pub queue_cleanup_frequency_ms: u64,
+    pub enable_stats: bool,
+}
+
+impl Default for StatemapQueueServiceConfig {
+    fn default() -> Self {
+        Self {
+            queue_cleanup_frequency_ms: 10_000,
+            enable_stats: true,
+        }
+    }
+}
+
 pub async fn statemap_queue_service(
     mut statemaps_rx: mpsc::Receiver<Vec<StatemapItem>>,
     mut statemap_installation_rx: mpsc::Receiver<StatemapInstallationStatus>,
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
     // Get snapshot callback fn
     get_snapshot_fn: impl Future<Output = Result<u64, String>>,
+    config: StatemapQueueServiceConfig,
 ) -> Result<(), String> {
     info!("Starting Installer Queue Service.... ");
-    // let last_installed = 0_u64;
-    // let mut statemap_queue = IndexMap::<u64, StatemapInstallerHashmap, RandomState>::default();
-    let mut interval = tokio::time::interval(Duration::from_millis(10_000));
+    let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
 
     let mut installation_success_count = 0;
     let mut installation_gaveup = 0;
@@ -105,26 +119,26 @@ pub async fn statemap_queue_service(
                     },
                 }
             }
-            _ = interval.tick() => {
+            _ = cleanup_interval.tick() => {
+                if config.enable_stats {
+                    let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
+                    let tps = installation_success_count as f32 / duration_sec;
 
-                let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
-                let tps = installation_success_count as f32 / duration_sec;
-
-                let awaiting_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
-                let inflight_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
-                error!("Currently Statemap installation tps={tps:.3}");
-                error!("
-                Statemap Installer Queue Stats:
-                      tps             : {tps:.3}
-                      counts          :
-                                      | success={installation_success_count}
-                                      | gaveup={installation_gaveup}
-                                      | awaiting_installs={awaiting_count}
-                                      | inflight_count={inflight_count}
-                                      | installation_gaveup={installation_gaveup}
-                      current snapshot: {}
-                      \n ", statemap_installer_queue.snapshot_version);
-                      //   last vers send to install : {last_item_send_for_install}
+                    let awaiting_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
+                    let inflight_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
+                    error!("
+                    Statemap Installer Queue Stats:
+                        tps             : {tps:.3}
+                        counts          :
+                                        | success={installation_success_count}
+                                        | gaveup={installation_gaveup}
+                                        | awaiting_installs={awaiting_count}
+                                        | inflight_count={inflight_count}
+                                        | installation_gaveup={installation_gaveup}
+                        current snapshot: {}
+                        \n ", statemap_installer_queue.snapshot_version);
+                    //   last vers send to install : {last_item_send_for_install}
+                }
 
                 statemap_installer_queue.remove_installed();
             }

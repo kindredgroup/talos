@@ -9,7 +9,11 @@ use cohort::{
         core::Replicator,
         models::ReplicatorCandidate,
         pg_replicator_installer::PgReplicatorStatemapInstaller,
-        services::{replicator_service::replicator_service, statemap_installer_service::installation_service, statemap_queue_service::statemap_queue_service},
+        services::{
+            replicator_service::{replicator_service, ReplicatorServiceConfig},
+            statemap_installer_service::{installation_service, StatemapInstallerConfig},
+            statemap_queue_service::{statemap_queue_service, StatemapQueueServiceConfig},
+        },
         utils::get_snapshot_callback,
     },
     snapshot_api::SnapshotApi,
@@ -23,7 +27,7 @@ use examples_support::{
 use metrics::model::{MicroMetrics, MinMax};
 use rand::Rng;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
-use talos_certifier::ports::MessageReciever;
+use talos_certifier::{env_var_with_defaults, ports::MessageReciever};
 use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{signal, sync::Mutex, task::JoinHandle, try_join};
@@ -212,19 +216,42 @@ async fn start_replicator(
         m5_commit: MinMax::default(),
     };
 
-    let suffix_config = SuffixConfig {
-        capacity: 10,
-        prune_start_threshold: Some(2000),
-        min_size_after_prune: None,
+    // Replicator Service
+    let replicator_config = ReplicatorServiceConfig {
+        commit_frequency_ms: env_var_with_defaults!("REPLICATOR_KAFKA_COMMIT_FREQ_MS", u64, 10_000),
+        enable_stats: env_var_with_defaults!("REPLICATOR_ENABLE_STATS", bool, true),
     };
-    let talos_suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
-    let replicator_v1 = Replicator::new(kafka_consumer, talos_suffix);
-    let future_replicator = replicator_service(tx_install_req, rx_install_resp, replicator_v1);
-    // let future_installer = installer_service(rx_install_req, tx_install_resp, installer);
+    let suffix_config = SuffixConfig {
+        capacity: env_var_with_defaults!("REPLICATOR_SUFFIX_CAPACITY", usize, 100_000),
+        prune_start_threshold: env_var_with_defaults!("REPLICATOR_SUFFIX_PRUNE_THRESHOLD", Option::<usize>, 2_000),
+        min_size_after_prune: env_var_with_defaults!("REPLICATOR_SUFFIX_MIN_SIZE", Option::<usize>),
+    };
 
+    let talos_suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
+    let replicator = Replicator::new(kafka_consumer, talos_suffix);
+    let future_replicator = replicator_service(tx_install_req, rx_install_resp, replicator, replicator_config);
+
+    // Statemap Queue Service
     let get_snapshot_fn = get_snapshot_callback(SnapshotApi::query(database.clone()));
-    let future_installer_queue = statemap_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn);
-    let future_installation = installation_service(tx_install_resp, Arc::new(installer), rx_installation_req, tx_installation_feedback_req);
+
+    let enable_stats = env_var_with_defaults!("COHORT_SQ_ENABLE_STATS", bool, true);
+    let queue_cleanup_frequency_ms = env_var_with_defaults!("COHORT_SQ_QUEUE_CLEANUP_FREQUENCY_MS", u64, 10_000);
+    let queue_config = StatemapQueueServiceConfig {
+        enable_stats,
+        queue_cleanup_frequency_ms,
+    };
+    let future_installer_queue = statemap_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn, queue_config);
+
+    // Installation Service
+    let parallel_thread_count = env_var_with_defaults!("COHORT_INSTALLER_PARALLEL_COUNT", Option::<u16>, 50);
+    let installer_config = StatemapInstallerConfig { parallel_thread_count };
+    let future_installation = installation_service(
+        tx_install_resp,
+        Arc::new(installer),
+        rx_installation_req,
+        tx_installation_feedback_req,
+        installer_config,
+    );
 
     let h_replicator = tokio::spawn(future_replicator);
     let h_installer = tokio::spawn(future_installer_queue);
