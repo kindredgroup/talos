@@ -192,7 +192,7 @@ impl Stats {
         report += " - candidate roundtrip\n";
         for p_label in p_lables {
             report += &format!(
-                "\n     p{}      : {}",
+                "\n     p{:<6}: {}",
                 p_label,
                 p_durations
                     .get(&p_label.to_string())

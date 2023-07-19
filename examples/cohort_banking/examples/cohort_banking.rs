@@ -234,8 +234,8 @@ async fn start_replicator(
     // Statemap Queue Service
     let get_snapshot_fn = get_snapshot_callback(SnapshotApi::query(database.clone()));
 
-    let enable_stats = env_var_with_defaults!("COHORT_SQ_ENABLE_STATS", bool, true);
-    let queue_cleanup_frequency_ms = env_var_with_defaults!("COHORT_SQ_QUEUE_CLEANUP_FREQUENCY_MS", u64, 10_000);
+    let enable_stats = env_var_with_defaults!("STATEMAP_QUEUE_ENABLE_STATS", bool, true);
+    let queue_cleanup_frequency_ms = env_var_with_defaults!("STATEMAP_QUEUE_CLEANUP_FREQUENCY_MS", u64, 10_000);
     let queue_config = StatemapQueueServiceConfig {
         enable_stats,
         queue_cleanup_frequency_ms,
@@ -243,7 +243,7 @@ async fn start_replicator(
     let future_installer_queue = statemap_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn, queue_config);
 
     // Installation Service
-    let parallel_thread_count = env_var_with_defaults!("COHORT_INSTALLER_PARALLEL_COUNT", Option::<u16>, 50);
+    let parallel_thread_count = env_var_with_defaults!("STATEMAP_INSTALLER_PARALLEL_COUNT", Option::<u16>, 50);
     let installer_config = StatemapInstallerConfig { parallel_thread_count };
     let future_installation = installation_service(
         tx_install_resp,
