@@ -1,6 +1,6 @@
 use async_channel::Receiver;
 use examples_support::load_generator::generator::ControlledRateLoadGenerator;
-use examples_support::load_generator::models::StopType;
+use examples_support::load_generator::models::{Generator, StopType};
 use std::num::ParseIntError;
 use std::{env, sync::Arc, time::Duration};
 
@@ -57,7 +57,7 @@ async fn certify() -> Result<(), String> {
 
     let h_workload_generator = tokio::spawn(async move {
         let params = params.clone();
-        ControlledRateLoadGenerator::generate::<CertificationRequest>(params.stop_type, params.target_rate as f32, &create_new_candidate, tx_generated).await
+        ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate as f32, RequestGenerator {}, tx_generated).await
     });
 
     let all_async_services = tokio::spawn(async move {
@@ -264,23 +264,6 @@ async fn make_agent(params: LaunchParams) -> impl TalosAgent {
     agent
 }
 
-fn create_new_candidate() -> CertificationRequest {
-    let tx_data = CandidateData {
-        xid: Uuid::new_v4().to_string(),
-        readset: Vec::new(),
-        readvers: Vec::new(),
-        snapshot: 5,
-        writeset: Vec::from(["3".to_string()]),
-        statemap: None,
-    };
-
-    CertificationRequest {
-        message_key: "12345".to_string(),
-        candidate: tx_data,
-        timeout: None, // this will use the default global value as defined in AgentConfig
-    }
-}
-
 fn create_stop_controller(params: LaunchParams, queue: Arc<Receiver<CertificationRequest>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         let mut remaining_checks = params.stop_max_empty_checks;
@@ -365,5 +348,26 @@ async fn get_params() -> Result<LaunchParams, String> {
             stop_check_delay: Duration::from_secs(stop_check_delay.unwrap()),
             collect_metrics: collect_metrics.unwrap(),
         })
+    }
+}
+
+struct RequestGenerator {}
+
+impl Generator<CertificationRequest> for RequestGenerator {
+    fn generate(&mut self) -> CertificationRequest {
+        let tx_data = CandidateData {
+            xid: Uuid::new_v4().to_string(),
+            readset: Vec::new(),
+            readvers: Vec::new(),
+            snapshot: 5,
+            writeset: Vec::from(["3".to_string()]),
+            statemap: None,
+        };
+
+        CertificationRequest {
+            message_key: "12345".to_string(),
+            candidate: tx_data,
+            timeout: None, // this will use the default global value as defined in AgentConfig
+        }
     }
 }

@@ -4,6 +4,7 @@ use std::{collections::HashMap, env, sync::Arc, time::Duration};
 use async_channel::Receiver;
 use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueueProcessor, model::requests::TransferRequest};
 use cohort_sdk::model::Config;
+use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 
 use opentelemetry_api::KeyValue;
@@ -23,6 +24,7 @@ struct LaunchParams {
     stop_type: StopType,
     target_rate: f32,
     threads: u64,
+    accounts: u64,
 }
 
 #[tokio::main]
@@ -36,7 +38,12 @@ async fn main() -> Result<(), String> {
     let rx_queue = Arc::new(rx_queue);
     let rx_queue_ref = Arc::clone(&rx_queue);
 
-    let generator = ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate, &create_transfer_request, Arc::new(tx_queue));
+    let generator_impl = TransferRequestGenerator {
+        available_accounts: params.accounts,
+        generated: Vec::new(),
+    };
+
+    let generator = ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate, generator_impl, Arc::new(tx_queue));
     let h_generator = tokio::spawn(generator);
 
     let config = Config {
@@ -222,40 +229,6 @@ fn start_queue_monitor(queue: Arc<Receiver<TransferRequest>>) -> JoinHandle<Resu
     })
 }
 
-fn create_transfer_request() -> TransferRequest {
-    let mut available_accounts = 0_u64;
-    let args: Vec<String> = env::args().collect();
-    if args.len() >= 2 {
-        let mut i = 1;
-        while i < args.len() {
-            let param_name = &args[i];
-            if param_name.eq("--accounts") {
-                let param_value = &args[i + 1];
-                available_accounts = param_value.parse().unwrap();
-            }
-            i += 2;
-        }
-    }
-
-    let mut rnd = rand::thread_rng();
-    let mut to;
-
-    let from = rnd.gen_range(1..=available_accounts);
-    loop {
-        to = rnd.gen_range(1..=available_accounts);
-        if to == from {
-            continue;
-        }
-        break;
-    }
-
-    TransferRequest {
-        from: format!("{:<04}", from),
-        to: format!("{:<04}", to),
-        amount: Decimal::from_f32(1.0).unwrap(),
-    }
-}
-
 async fn get_params() -> Result<LaunchParams, String> {
     let args: Vec<String> = env::args().collect();
     let mut threads: Option<u64> = Some(1);
@@ -305,6 +278,7 @@ async fn get_params() -> Result<LaunchParams, String> {
             target_rate: target_rate.unwrap(),
             stop_type: stop_type.unwrap(),
             threads: threads.unwrap(),
+            accounts: accounts.unwrap(),
         })
     }
 }
@@ -436,5 +410,47 @@ fn extract_num_value<T: FromStr + Clone>(report: &[&str], value: &str) -> Option
         Some(extracted_as_list[0].clone())
     } else {
         None
+    }
+}
+
+struct TransferRequestGenerator {
+    available_accounts: u64,
+    generated: Vec<(u64, u64)>,
+}
+
+impl Generator<TransferRequest> for TransferRequestGenerator {
+    fn generate(&mut self) -> TransferRequest {
+        let mut rnd = rand::thread_rng();
+        let mut to;
+
+        let from = rnd.gen_range(1..=self.available_accounts);
+        loop {
+            to = rnd.gen_range(1..=self.available_accounts);
+            if to == from {
+                continue;
+            }
+
+            let result = self
+                .generated
+                .iter()
+                .find(|(past_from, past_to)| *past_from == from && *past_to == to || *past_from == to && *past_to == from);
+
+            if result.is_none() {
+                if self.generated.len() < 100 {
+                    self.generated.push((from, to));
+                } else {
+                    self.generated.remove(0);
+                    self.generated.insert(0, (from, to));
+                }
+
+                break;
+            }
+        }
+
+        TransferRequest {
+            from: format!("{:<04}", from),
+            to: format!("{:<04}", to),
+            amount: Decimal::from_f32(1.0).unwrap(),
+        }
     }
 }

@@ -26,6 +26,7 @@ dependencies = [
  "env_logger",
  "examples_support",
  "log",
+ "rand",
  "rdkafka 0.29.0",
  "rdkafka-sys",
  "serde",
