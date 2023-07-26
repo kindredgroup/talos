@@ -217,6 +217,7 @@ mod tests {
         env::set_var("COHORT_PG_HOST", "some host");
         env::set_var("COHORT_PG_PORT", "0");
         env::set_var("COHORT_PG_DATABASE", "not-existing");
+        env::set_var("COHORT_PG_POOL_SIZE", "10");
 
         let result = ConfigLoader::load();
         let (a, k, _) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
