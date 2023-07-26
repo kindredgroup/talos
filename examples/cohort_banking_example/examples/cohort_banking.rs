@@ -189,7 +189,9 @@ async fn start_replicator(
     let (tx_install_req, rx_install_req) = tokio::sync::mpsc::channel(channel_size);
     let (tx_install_resp, rx_install_resp) = tokio::sync::mpsc::channel(channel_size);
 
-    let manual_tx_api = PostgresApi { client: database.get().await };
+    let manual_tx_api = PostgresApi {
+        client: database.get().await.unwrap(),
+    };
     let installer = PgReplicatorStatemapInstaller {
         metrics_frequency: replicator_metrics,
         pg: manual_tx_api,
