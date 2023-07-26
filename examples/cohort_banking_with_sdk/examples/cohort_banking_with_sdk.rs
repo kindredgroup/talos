@@ -61,7 +61,7 @@ async fn main() -> Result<(), String> {
         agent: "cohort-banking".into(),
         cohort: "cohort-banking".into(),
         // The size of internal buffer for candidates
-        buffer_size: 10_000,
+        buffer_size: 100_000,
         timeout_ms: 15_000,
 
         //
@@ -318,14 +318,18 @@ fn print_prometheus_report_as_text(exporter: PrometheusExporter, threads: u64) {
     let oo_installs = extract_num_value::<u64>(&report, "metric_oo_installs_total");
     let oo_no_data_found = extract_num_value::<u64>(&report, "metric_oo_no_data_found_total");
     let oo_not_safe = extract_num_value::<u64>(&report, "metric_oo_not_safe_count_total");
+    let agent_errors = extract_num_value::<u64>(&report, "metric_agent_errors_count_total");
+    let db_errors = extract_num_value::<u64>(&report, "metric_db_errors_count_total");
 
     log::warn!("Commits     : {}", if let Some(v) = commits { v } else { 0 });
     log::warn!("OO installs : {}", if let Some(v) = oo_installs { v } else { 0 });
     log::warn!("OO no data  : {}", if let Some(v) = oo_no_data_found { v } else { 0 });
     log::warn!("OO not safe : {}", if let Some(v) = oo_not_safe { v } else { 0 });
+    log::warn!("OO retries  : {}", if let Some(v) = oo_retries { v } else { 0 });
+    log::warn!("OO giveups  : {}", if let Some(v) = oo_giveups { v } else { 0 });
     log::warn!("Aborts      : {}", if let Some(v) = aborts { v } else { 0 });
-    log::warn!("Retries     : {}", if let Some(v) = oo_retries { v } else { 0 });
-    log::warn!("Giveups     : {}", if let Some(v) = oo_giveups { v } else { 0 });
+    log::warn!("Agent Errors: {}", if let Some(v) = agent_errors { v } else { 0 });
+    log::warn!("DB Errors   : {}", if let Some(v) = db_errors { v } else { 0 });
 }
 
 fn print_histogram(name: &str, id: &str, unit: &str, report: &[&str], threads: u64, print_tps: bool) {

@@ -55,6 +55,8 @@ pub struct Cohort {
     oo_install_and_wait_histogram: Arc<Histogram<f64>>,
     oo_wait_histogram: Arc<Histogram<f64>>,
     talos_histogram: Arc<Histogram<f64>>,
+    agent_errors_counter: Arc<Counter<u64>>,
+    db_errors_counter: Arc<Counter<u64>>,
 }
 
 // #[napi]
@@ -161,6 +163,8 @@ impl Cohort {
         let oo_retry_counter = meter.u64_counter("metric_oo_retry_count").with_unit(Unit::new("tx")).init();
         let oo_giveups_counter = meter.u64_counter("metric_oo_giveups_count").with_unit(Unit::new("tx")).init();
         let oo_not_safe_counter = meter.u64_counter("metric_oo_not_safe_count").with_unit(Unit::new("tx")).init();
+        let agent_errors_counter = meter.u64_counter("metric_agent_errors_count").with_unit(Unit::new("tx")).init();
+        let db_errors_counter = meter.u64_counter("metric_db_errors_counter").with_unit(Unit::new("tx")).init();
 
         Ok(Self {
             config,
@@ -178,6 +182,8 @@ impl Cohort {
             oo_not_safe_counter: Arc::new(oo_not_safe_counter),
             oo_attempts_histogram: Arc::new(oo_attempts_histogram),
             talos_histogram: Arc::new(talos_histogram),
+            agent_errors_counter: Arc::new(agent_errors_counter),
+            db_errors_counter: Arc::new(db_errors_counter),
         })
     }
 
@@ -305,7 +311,11 @@ impl Cohort {
         let mut attempts = 0;
 
         let mut delay_controller = Box::new(DelayController::new(self.config.retry_backoff_max_ms));
-        loop {
+
+        let mut agent_errors = 0_u64;
+        let mut db_errors = 0_u64;
+
+        let result = loop {
             // One of these will be sent to client if we failed
             let recent_error: Option<ClientError>;
             let recent_response: Option<CertificationResponse>;
@@ -313,14 +323,14 @@ impl Cohort {
             attempts += 1;
             let is_success = match self.send_to_talos_attempt(request.clone(), state_provider).await {
                 CertificationAttemptOutcome::Success { mut response } => {
-                    response.metadata.duration_ms = Instant::now().duration_since(started_at).as_millis() as u64;
+                    response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
                     recent_error = None;
                     recent_response = Some(response);
                     true
                 }
                 CertificationAttemptOutcome::Aborted { mut response } => {
-                    response.metadata.duration_ms = Instant::now().duration_since(started_at).as_millis() as u64;
+                    response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
                     recent_error = None;
                     recent_response = Some(response);
@@ -329,6 +339,7 @@ impl Cohort {
                 CertificationAttemptOutcome::AgentError { error } => {
                     recent_error = Some(ClientError::from(error));
                     recent_response = None;
+                    agent_errors += 1;
                     false
                 }
                 CertificationAttemptOutcome::DataError { reason } => {
@@ -338,6 +349,7 @@ impl Cohort {
                         cause: None,
                     });
                     recent_response = None;
+                    db_errors += 1;
                     false
                 }
             };
@@ -369,7 +381,24 @@ impl Cohort {
             }
 
             delay_controller.sleep().await;
+        };
+
+        let c_agent_errors = Arc::clone(&self.agent_errors_counter);
+        let c_db_errors = Arc::clone(&self.db_errors_counter);
+
+        if agent_errors > 0 || db_errors > 0 {
+            let _ = tokio::spawn(async move {
+                if agent_errors > 0 {
+                    c_agent_errors.add(&Context::current(), agent_errors, &[]);
+                }
+                if db_errors > 0 {
+                    c_db_errors.add(&Context::current(), db_errors, &[]);
+                }
+            })
+            .await;
         }
+
+        result
     }
 
     async fn send_to_talos_attempt<S>(&self, request: model::CertificationRequest, state_provider: &S) -> CertificationAttemptOutcome
