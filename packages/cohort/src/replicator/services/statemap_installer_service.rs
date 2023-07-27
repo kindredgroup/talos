@@ -8,7 +8,7 @@ use log::{debug, error};
 use tokio::sync::{mpsc, Semaphore};
 
 pub struct StatemapInstallerConfig {
-    pub parallel_thread_count: Option<u16>,
+    pub thread_pool: Option<u16>,
 }
 
 pub async fn installation_service(
@@ -18,8 +18,7 @@ pub async fn installation_service(
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
     config: StatemapInstallerConfig,
 ) -> Result<(), String> {
-    // TODO: Pass the number of permits over an environment variable?
-    let permit_count = config.parallel_thread_count.unwrap_or(50) as usize;
+    let permit_count = config.thread_pool.unwrap_or(50) as usize;
     let semaphore = Arc::new(Semaphore::new(permit_count));
 
     loop {

@@ -63,8 +63,8 @@ where
                         total_items_processed += all_versions_picked.len();
 
                         let statemap_batch_cloned = statemaps_batch.clone();
-                        let versions_not_send = all_versions_picked.into_iter().filter(|&v| {
-                            !statemap_batch_cloned.iter().any(|sm_b| sm_b.0 != v)
+                        let versions_not_sent = all_versions_picked.into_iter().filter(|&v| {
+                            !statemap_batch_cloned.iter().any(|(ver, _)| ver != &v)
                         });
 
 
@@ -74,7 +74,7 @@ where
                         }
 
                         // These versions are decided but they are not send to Statemap installer as they are either aborted or don't have statemap
-                        versions_not_send.for_each(|version| {
+                        versions_not_sent.for_each(|version| {
                             replicator.suffix.set_item_installed(version);
 
                         });

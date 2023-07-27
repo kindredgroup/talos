@@ -97,7 +97,7 @@ pub async fn statemap_queue_service(
 
                         // let index = statemap_queue.get_index_of(&key).unwrap();
 
-                        if let Some(last_contiguous_install_item) = statemap_installer_queue.queue.iter().take_while(|item| item.1.state == StatemapInstallState::Installed).last(){
+                        if let Some(last_contiguous_install_item) = statemap_installer_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
                             statemap_installer_queue.update_snapshot(last_contiguous_install_item.1.version) ;
                         };
 

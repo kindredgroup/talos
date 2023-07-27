@@ -33,7 +33,7 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{signal, sync::Mutex, task::JoinHandle, try_join};
 
 type ReplicatorTaskHandle = JoinHandle<Result<(), String>>;
-type InstallerQueuTaskHandle = JoinHandle<Result<(), String>>;
+type InstallerQueueTaskHandle = JoinHandle<Result<(), String>>;
 type InstallationTaskHandle = JoinHandle<Result<(), String>>;
 type HeartBeatReceiver = tokio::sync::watch::Receiver<u64>;
 
@@ -189,7 +189,7 @@ async fn start_replicator(
     replicator_metrics: Option<i128>,
     database: Arc<Database>,
     channel_size: usize,
-) -> (ReplicatorTaskHandle, InstallerQueuTaskHandle, InstallationTaskHandle, HeartBeatReceiver) {
+) -> (ReplicatorTaskHandle, InstallerQueueTaskHandle, InstallationTaskHandle, HeartBeatReceiver) {
     let mut kafka_config = KafkaConfig::from_env();
     kafka_config.group_id = "talos-replicator-dev".to_string();
     let kafka_consumer = KafkaConsumer::new(&kafka_config);
@@ -243,8 +243,10 @@ async fn start_replicator(
     let future_installer_queue = statemap_queue_service(rx_install_req, rx_installation_feedback_req, tx_installation_req, get_snapshot_fn, queue_config);
 
     // Installation Service
-    let parallel_thread_count = env_var_with_defaults!("STATEMAP_INSTALLER_PARALLEL_COUNT", Option::<u16>, 50);
-    let installer_config = StatemapInstallerConfig { parallel_thread_count };
+    let installer_thread_pool = env_var_with_defaults!("STATEMAP_INSTALLER_THREAD_POOL", Option::<u16>, 50);
+    let installer_config = StatemapInstallerConfig {
+        thread_pool: installer_thread_pool,
+    };
     let future_installation = installation_service(
         tx_install_resp,
         Arc::new(installer),

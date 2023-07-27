@@ -95,8 +95,8 @@ async fn main() {
         queue_config,
     );
 
-    let parallel_thread_count = env_var_with_defaults!("COHORT_INSTALLER_PARALLEL_COUNT", Option::<u16>, 50);
-    let installer_config = StatemapInstallerConfig { parallel_thread_count };
+    let thread_pool = env_var_with_defaults!("COHORT_INSTALLER_PARALLEL_COUNT", Option::<u16>, 50);
+    let installer_config = StatemapInstallerConfig { thread_pool };
     let future_installation = installation_service(
         replicator_tx,
         Arc::new(pg_statemap_installer),
