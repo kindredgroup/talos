@@ -28,6 +28,7 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     /// Returns the items from suffix
     fn get_suffix_meta(&self) -> &SuffixMeta;
     fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>>;
+    fn installed_all_prior_decided_items(&self, version: u64) -> bool;
 }
 
 impl<T> ReplicatorSuffixTrait<T> for Suffix<T>
@@ -68,8 +69,18 @@ where
         }
     }
 
+    fn installed_all_prior_decided_items(&self, version: u64) -> bool {
+        if version >= self.meta.head {
+            let index = self.index_from_head(version).unwrap();
+
+            return self.messages.range(..index).flatten().all(|i| i.is_decided && i.item.is_installed());
+        }
+
+        false
+    }
+
     fn update_prune_index(&mut self, version: u64) {
-        if self.are_prior_items_decided(version) {
+        if self.installed_all_prior_decided_items(version) {
             let index = self.index_from_head(version).unwrap();
             self.update_prune_index(Some(index));
         }
@@ -89,7 +100,9 @@ where
             .filter(|m| !m.item.is_installed()) // remove already installed items.
             .take(batch_size)
             .collect::<Vec<&SuffixItem<T>>>();
+        // let items_picked_in_suffix_batch = items.iter().map(|&item| item.item_ver).collect::<Vec<u64>>();
 
+        // error!("Items picked in this batch from_version={from} as index={from_index} \n versions={items_picked_in_suffix_batch:?}");
         if !items.is_empty() {
             Some(items)
         } else {

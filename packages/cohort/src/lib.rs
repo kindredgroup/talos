@@ -6,7 +6,6 @@ pub mod delay_controller;
 pub mod metrics;
 pub mod model;
 pub mod replicator;
-pub mod replicator2;
 pub mod snapshot_api;
 pub mod state; // TODO: move to /packages/src/core/
 pub mod tx_batch_executor; // TODO: move to /packages/src/core/
