@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
+use tokio_postgres::Row;
 
 use crate::model::snapshot::Snapshot;
 use crate::state::data_access_api::ManualTx;
-use crate::state::postgres::data_store::DataStore;
-use crate::state::postgres::database::{Database, SNAPSHOT_SINGLETON_ROW_ID};
+use crate::state::postgres::database::{Database, DatabaseError, SNAPSHOT_SINGLETON_ROW_ID};
 
 pub static SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = ($1)::BIGINT WHERE id = $2 AND "version" < ($1)::BIGINT"#;
 
@@ -15,15 +15,21 @@ pub static SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version"
 pub struct SnapshotApi {}
 
 impl SnapshotApi {
-    pub async fn query(db: Arc<Database>) -> Result<Snapshot, String> {
-        let result = db
-            .query_one(
-                r#"SELECT "version" FROM cohort_snapshot WHERE id = $1"#,
-                &[&SNAPSHOT_SINGLETON_ROW_ID],
-                DataStore::snapshot_from_row,
-            )
-            .await;
-        Ok(result)
+    pub fn from_row(row: &Row) -> Result<Snapshot, DatabaseError> {
+        let updated = row
+            .try_get::<&str, i64>("version")
+            .map_err(|e| DatabaseError::deserialise_payload(e.to_string(), "Cannot read snapshot".into()))?;
+
+        Ok(Snapshot { version: updated as u64 })
+    }
+
+    pub async fn query(db: Arc<Database>) -> Result<Snapshot, DatabaseError> {
+        db.query_one(
+            r#"SELECT "version" FROM cohort_snapshot WHERE id = $1"#,
+            &[&SNAPSHOT_SINGLETON_ROW_ID],
+            SnapshotApi::from_row,
+        )
+        .await
     }
 
     pub async fn update_using<T: ManualTx>(client: &T, new_version: u64) -> Result<u64, String> {

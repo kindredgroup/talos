@@ -3,6 +3,7 @@ pub mod bank_api;
 pub mod config_loader;
 pub mod core; // TODO: move to /packages/src/core/
 pub mod delay_controller;
+pub mod examples_support;
 pub mod metrics;
 pub mod model;
 pub mod replicator;

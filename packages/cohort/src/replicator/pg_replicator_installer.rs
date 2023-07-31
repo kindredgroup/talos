@@ -35,7 +35,7 @@ impl ReplicatorInstaller for PgReplicatorStatemapInstaller {
         let vers = sm.first().map(|item| item.version);
 
         loop {
-            let client = self.pg.get().await;
+            let client = self.pg.get().await.map_err(|e| e.to_string())?;
             let mut manual_tx_api = PostgresApi { client };
 
             // error!("[Replicator Installer] Isolation level {value} used for installing version={vers:?}");

@@ -1,0 +1,27 @@
+[package]
+name = "cohort_sdk"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+
+async-trait =               { workspace = true }
+env_logger =                { workspace = true }
+log =                       { workspace = true }
+futures =                   { version = "0.3.28" }
+opentelemetry_api =         { version = "0.19.0" }
+opentelemetry_sdk =         { version = "0.19.0", features = ["metrics", "rt-tokio"] }
+opentelemetry =             { version = "0.19.0" }
+rand =                      { version = "0.8.5" }
+rdkafka =                   { version = "0.33.0", features = ["sasl"] }
+rdkafka-sys =               { version = "4.3.0" }
+serde =                     { workspace = true }
+serde_json =                { workspace = true }
+strum =                    { version = "0.25", features = ["derive"] }
+talos_agent =               { path = "../talos_agent" }
+talos_suffix =              { path = "../talos_suffix" }
+talos_certifier =           { path = "../talos_certifier" }
+talos_certifier_adapters =  { path = "../talos_certifier_adapters" }
+uuid =                      { version = "1.2.2", features = ["v4"] }
+
+tokio =                     { workspace = true, features = ["full"] }

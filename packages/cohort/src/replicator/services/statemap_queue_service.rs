@@ -7,9 +7,12 @@ use log::{error, info};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use crate::replicator::{
-    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
-    models::StatemapInstallerQueue,
+use crate::{
+    replicator::{
+        core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+        models::StatemapInstallerQueue,
+    },
+    state::postgres::database::DatabaseError,
 };
 
 #[derive(Debug)]
@@ -32,7 +35,7 @@ pub async fn statemap_queue_service(
     mut statemap_installation_rx: mpsc::Receiver<StatemapInstallationStatus>,
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
     // Get snapshot callback fn
-    get_snapshot_fn: impl Future<Output = Result<u64, String>>,
+    get_snapshot_fn: impl Future<Output = Result<u64, DatabaseError>>,
     config: StatemapQueueServiceConfig,
 ) -> Result<(), String> {
     info!("Starting Installer Queue Service.... ");

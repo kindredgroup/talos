@@ -26,7 +26,7 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{signal, sync::mpsc, try_join};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
 
     // 0. Create required items.
@@ -56,8 +56,7 @@ async fn main() {
 
     // e. Create postgres statemap installer instance.
     let cfg_db = ConfigLoader::load_db_config().unwrap();
-    let database = Database::init_db(cfg_db).await;
-    // let manual_tx_api = PostgresApi { client: database.get().await };
+    let database = Database::init_db(cfg_db).await.map_err(|e| e.to_string())?;
 
     let pg_statemap_installer = PgReplicatorStatemapInstaller {
         metrics_frequency: None,
@@ -128,5 +127,7 @@ async fn main() {
     }
 
     info!("Exiting Cohort Replicator!!");
+
+    Ok(())
 }
 // $coverage:ignore-end

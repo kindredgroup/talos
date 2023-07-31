@@ -309,7 +309,7 @@ mod tests {
             agent: String::from("agent-1"),
             cohort: String::from("cohort-1"),
             buffer_size: 10_000,
-            timout_ms: 1,
+            timeout_ms: 1,
         }
     }
 

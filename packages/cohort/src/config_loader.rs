@@ -74,6 +74,7 @@ impl ConfigLoader {
 
     pub fn load_db_config() -> Result<DatabaseConfig, String> {
         Ok(DatabaseConfig {
+            pool_size: Self::read_var("COHORT_PG_POOL_SIZE")?.parse().map_err(|e: ParseIntError| e.to_string())?,
             user: Self::read_var("COHORT_PG_USER")?,
             password: Self::read_var("COHORT_PG_PASSWORD")?,
             host: Self::read_var("COHORT_PG_HOST")?,
@@ -103,7 +104,7 @@ impl ConfigLoader {
             agent: Self::read_var("AGENT_NAME").unwrap(),
             cohort: Self::read_var("COHORT_NAME").unwrap(),
             buffer_size: Self::read_var("AGENT_BUFFER_SIZE").unwrap().parse().unwrap(),
-            timout_ms: Self::read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
+            timeout_ms: Self::read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
         })
     }
 }
@@ -216,13 +217,14 @@ mod tests {
         env::set_var("COHORT_PG_HOST", "some host");
         env::set_var("COHORT_PG_PORT", "0");
         env::set_var("COHORT_PG_DATABASE", "not-existing");
+        env::set_var("COHORT_PG_POOL_SIZE", "10");
 
         let result = ConfigLoader::load();
         let (a, k, _) = result.map_err(|e| assert_eq!("no error is expected", e)).unwrap();
 
         assert_eq!(a.agent, "aName".to_string());
         assert_eq!(a.cohort, "cName".to_string());
-        assert_eq!(a.timout_ms, 2_u64);
+        assert_eq!(a.timeout_ms, 2_u64);
         assert_eq!(a.buffer_size, 1_usize);
 
         assert_eq!(k.brokers, "kBrokers".to_string());
