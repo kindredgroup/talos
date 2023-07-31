@@ -7,10 +7,13 @@ use log::{error, info};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use crate::{replicator::{
-    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
-    models::StatemapInstallerQueue,
-}, state::postgres::database::DatabaseError};
+use crate::{
+    replicator::{
+        core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+        models::StatemapInstallerQueue,
+    },
+    state::postgres::database::DatabaseError,
+};
 
 #[derive(Debug)]
 pub struct StatemapQueueServiceConfig {
