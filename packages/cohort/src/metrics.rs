@@ -152,7 +152,7 @@ impl Stats {
     }
 
     pub fn generate_report(&mut self, threads: u64, max_retry: u64) -> String {
-        let p_lables = vec![50, 75, 90, 95, 99];
+        let p_lables: Vec<f32> = vec![50_f32, 75_f32, 90_f32, 95_f32, 99_f32, 99.9];
         let p_durations = Self::compute_percentiles::<i128>(&p_lables, &mut self.durations);
 
         let duration_sec = Duration::from_nanos((self.max_finished_at - self.min_started_at) as u64).as_secs_f32();
@@ -192,10 +192,10 @@ impl Stats {
         report += " - candidate roundtrip\n";
         for p_label in p_lables {
             report += &format!(
-                "\n     p{}    : {}",
+                "\n     p{:<6}: {}",
                 p_label,
                 p_durations
-                    .get(&p_label)
+                    .get(&p_label.to_string())
                     .map_or("".to_string(), |v| format!("{:.3} (sec)", (*v) as f32 / 1_000_000_000.0))
             );
         }
@@ -226,14 +226,14 @@ impl Stats {
         report
     }
 
-    pub fn compute_percentiles<T: Ord + Clone>(p_list: &Vec<u8>, values: &mut Vec<T>) -> HashMap<u8, T> {
-        let mut result = HashMap::<u8, T>::new();
+    pub fn compute_percentiles<T: Ord + Clone>(p_list: &Vec<f32>, values: &mut Vec<T>) -> HashMap<String, T> {
+        let mut result = HashMap::<String, T>::new();
         values.sort();
         let count = values.len() as f32;
         for p_ref in p_list {
             let p = *p_ref;
-            let p_index = (count * p as f32 / 100.0) as usize - 1;
-            result.insert(p, values[p_index].clone());
+            let p_index = (count * p / 100.0) as usize - 1;
+            result.insert(p.to_string(), values[p_index].clone());
         }
         result
     }

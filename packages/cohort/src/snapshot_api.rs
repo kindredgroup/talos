@@ -11,6 +11,7 @@ use crate::state::postgres::database::{Database, DatabaseError, SNAPSHOT_SINGLET
 
 pub static SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = ($1)::BIGINT WHERE id = $2 AND "version" < ($1)::BIGINT"#;
 
+// #[derive(Debug, Clone)]
 pub struct SnapshotApi {}
 
 impl SnapshotApi {
