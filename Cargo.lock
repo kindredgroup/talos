@@ -2425,6 +2425,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "talos_replicator"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.3",
+ "async-trait",
+ "csv",
+ "env_logger",
+ "futures",
+ "indexmap 2.0.0",
+ "log",
+ "metrics",
+ "mockall",
+ "multimap 0.9.0",
+ "rand",
+ "rdkafka 0.29.0",
+ "rdkafka-sys",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "strum 0.24.1",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "talos_suffix",
+ "thiserror",
+ "time 0.3.24",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
 name = "talos_suffix"
 version = "0.1.0"
 dependencies = [
