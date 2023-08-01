@@ -2,13 +2,12 @@
 
 use std::time::Duration;
 
-use futures::Future;
 use log::{error, info};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+    core::{ReplicatorSnapshot, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
     models::StatemapInstallerQueue,
 };
 
@@ -27,14 +26,18 @@ impl Default for StatemapQueueServiceConfig {
     }
 }
 
-pub async fn statemap_queue_service(
+pub async fn statemap_queue_service<S>(
     mut statemaps_rx: mpsc::Receiver<Vec<StatemapItem>>,
     mut statemap_installation_rx: mpsc::Receiver<StatemapInstallationStatus>,
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+    snapshot_api: S,
     // Get snapshot callback fn
-    get_snapshot_fn: impl Future<Output = Result<u64, String>>,
+    // get_snapshot_fn: impl Future<Output = Result<u64, String>>,
     config: StatemapQueueServiceConfig,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    S: ReplicatorSnapshot + Send + Sync,
+{
     info!("Starting Installer Queue Service.... ");
     let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
 
@@ -47,7 +50,7 @@ pub async fn statemap_queue_service(
     let mut statemap_installer_queue = StatemapInstallerQueue::default();
 
     //Gets snapshot initial version from db.
-    statemap_installer_queue.update_snapshot(get_snapshot_fn.await.unwrap_or(0));
+    statemap_installer_queue.update_snapshot(snapshot_api.get_snapshot().await.unwrap_or(0));
 
     // let mut last_item_send_for_install = 0;
 

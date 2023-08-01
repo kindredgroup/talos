@@ -35,7 +35,7 @@ pub async fn installation_service(
                     debug!("[Statemap Installer Service] Received statemap batch ={statemaps:?} and version={ver:?}");
                     let start_installation_time = Instant::now();
 
-                    match installer.install(statemaps, Some(ver)).await {
+                    match installer.install(statemaps, ver).await {
                         Ok(status) => {
                             // let end_installation_time = start_installation_time.elapsed();
                             // error!("[installation_service] Installed successfully version={ver} in {end_installation_time:?}");

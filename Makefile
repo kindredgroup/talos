@@ -166,6 +166,11 @@ dev.histogram_decision_timeline_from_kafka:
 	$(call pp,histogram_decision_timeline_from_kafka...)
 	cargo run --bin histogram_decision_timeline_from_kafka --release -- $(args)
 
+## example.replicator_kafka_pg: 🧪 Runs the example replicator with installer for Kafka and Postgres
+example.replicator_kafka_pg:
+	$(call pp,run app...)
+	cargo run -r --example cohort_replicator_kafka_pg
+
 ## dev.run_replicator: 🧪 Runs replicator
 dev.run_replicator:
 	$(call pp,run replicator...)

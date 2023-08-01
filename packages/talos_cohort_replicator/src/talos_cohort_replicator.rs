@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use futures::Future;
-use talos_certifier::{ env_var_with_defaults, ports::MessageReciever, ChannelMessage};
+use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 use crate::{
-    core::{Replicator,  ReplicatorInstaller, },
+    core::{Replicator, ReplicatorInstaller, ReplicatorSnapshot},
     models::ReplicatorCandidate,
     services::{
         replicator_service::{replicator_service, ReplicatorServiceConfig},
@@ -15,58 +14,60 @@ use crate::{
     },
 };
 
-
 fn create_channel<T>(channel_size: usize) -> (tokio::sync::mpsc::Sender<T>, tokio::sync::mpsc::Receiver<T>) {
-     mpsc::channel::<T>(channel_size)
+    mpsc::channel::<T>(channel_size)
 }
 
 /// Configs used by the Cohort Replicator
-pub struct CohortReplicatorConfigBuilder {
-    /// Replicator and Installer stats. Defaults to `false`.
-    enable_stats: Option<bool>,
-    /// Size of channel used to communicate between threads. Defaults to `100_000`
-    channel_size: Option<u64>,
+// pub struct CohortReplicatorConfigBuilder {
+//     /// Replicator and Installer stats. Defaults to `false`.
+//     enable_stats: Option<bool>,
+//     /// Size of channel used to communicate between threads. Defaults to `100_000`
+//     channel_size: Option<u64>,
 
-    suffix_capacity: Option<u64>,
-    suffix_prune_threshold: Option<u64>,
-    suffix_minimum_size_on_prune: Option<u64>,
+//     suffix_capacity: Option<u64>,
+//     suffix_prune_threshold: Option<u64>,
+//     suffix_minimum_size_on_prune: Option<u64>,
 
-    certifier_message_receiver_commit_freq_ms: Option<u64>,
+//     certifier_message_receiver_commit_freq_ms: Option<u64>,
 
-    statemap_queue_cleanup_freq_ms: Option<u64>,
+//     statemap_queue_cleanup_freq_ms: Option<u64>,
 
-    statemap_installer_threadpool: Option<u64>
-}
+//     statemap_installer_threadpool: Option<u64>,
+// }
 
 /// Configs used by the Cohort Replicator
 pub struct CohortReplicatorConfig {
     /// Replicator and Installer stats. Defaults to `false`.
-    enable_stats: bool,
+    pub enable_stats: bool,
     /// Size of channel used to communicate between threads. Defaults to `100_000`
-    channel_size: usize,
+    pub channel_size: usize,
 
-    suffix_capacity: usize,
-    suffix_prune_threshold: Option<usize>,
-    suffix_minimum_size_on_prune: Option<usize>,
+    pub suffix_capacity: usize,
+    pub suffix_prune_threshold: Option<usize>,
+    pub suffix_minimum_size_on_prune: Option<usize>,
 
-    certifier_message_receiver_commit_freq_ms: u64,
+    pub certifier_message_receiver_commit_freq_ms: u64,
 
-    statemap_queue_cleanup_freq_ms: u64,
+    pub statemap_queue_cleanup_freq_ms: u64,
 
-    statemap_installer_threadpool: u64
+    pub statemap_installer_threadpool: u64,
 }
+
+type ReturnHandle = JoinHandle<Result<(), String>>;
 
 /// Entry point to replicator and statemap installer
 ///
 
-pub async fn talos_cohort_replicator<M>(
+pub async fn talos_cohort_replicator<M, Snap>(
     certifier_message_receiver: M,                                  //used by Replicator service
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>, // Used by Statemap queue service
-    get_snapshot_fn: impl Future<Output = Result<u64, String>> + std::marker::Sync + std::marker::Send + 'static, // Used by Statemap Installer service.
-    config: CohortReplicatorConfig
-) -> Vec<JoinHandle<Result<(), String>>>
+    snapshot_api: Snap,                                             // Used by Statemap Installer service.
+    config: CohortReplicatorConfig,
+) -> (ReturnHandle, ReturnHandle, ReturnHandle)
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    Snap: ReplicatorSnapshot + Send + Sync + 'static,
 {
     // ---------- Channels to communicate between threads. ----------
 
@@ -81,12 +82,7 @@ where
 
     //  ---------------------------------------------------------------
 
-    let mut handles = vec![];
-    // Replicator task
-    // let mut kafka_config = KafkaConfig::from_env();
-    // kafka_config.group_id = env_var!("REPLICATOR_KAFKA_CONSUMER_GROUP");
-    // let kafka_consumer = KafkaConsumer::new(&kafka_config);
-
+    // Replicator Service
     let suffix_config = SuffixConfig {
         capacity: config.suffix_capacity,
         prune_start_threshold: config.suffix_prune_threshold,
@@ -98,7 +94,7 @@ where
 
     let replicator_service_configs = ReplicatorServiceConfig {
         commit_frequency_ms: config.certifier_message_receiver_commit_freq_ms,
-        enable_stats: config.enable_stats
+        enable_stats: config.enable_stats,
     };
     let replicator_handle = tokio::spawn(replicator_service(
         tx_replicator_to_statemap_queue,
@@ -106,7 +102,6 @@ where
         replicator,
         replicator_service_configs,
     ));
-
 
     // Statemap Queue Service
     let queue_config = StatemapQueueServiceConfig {
@@ -117,7 +112,7 @@ where
         rx_replicator_to_statemap_queue,
         rx_statemaps_install_feedback,
         tx_statemaps_to_install,
-        get_snapshot_fn,
+        snapshot_api,
         queue_config,
     ));
 
@@ -134,9 +129,5 @@ where
         installer_config,
     ));
 
-    handles.push(replicator_handle);
-    handles.push(statemap_queue_handle);
-    handles.push(statemap_installer_handle);
-
-    handles
+    (replicator_handle, statemap_queue_handle, statemap_installer_handle)
 }

@@ -71,7 +71,7 @@ async fn main() -> Result<(), String> {
     };
 
     // f. Create the replicator and statemap installer services.
-    // run_talos_replicator(&mut replicator, &mut pg_statemap_installer).await;
+    // run_talos_cohort_replicator(&mut replicator, &mut pg_statemap_installer).await;
     let (replicator_tx, replicator_rx) = mpsc::channel(3_000);
     let (statemap_installer_tx, statemap_installer_rx) = mpsc::channel(3_000);
     let (tx_installation_req, rx_installation_req) = mpsc::channel(3_000);

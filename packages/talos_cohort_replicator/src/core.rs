@@ -72,7 +72,11 @@ pub enum ReplicatorInstallStatus {
 
 #[async_trait]
 pub trait ReplicatorInstaller {
-    async fn install(&self, sm: Vec<StatemapItem>, version: Option<u64>) -> Result<ReplicatorInstallStatus, String>;
+    async fn install(&self, sm: Vec<StatemapItem>, version: u64) -> Result<ReplicatorInstallStatus, String>;
+}
+#[async_trait]
+pub trait ReplicatorSnapshot {
+    async fn get_snapshot(&self) -> Result<u64, String>;
 }
 
 pub struct Replicator<T, S, M>

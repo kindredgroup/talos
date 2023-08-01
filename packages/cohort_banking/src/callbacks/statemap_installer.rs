@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cohort_sdk::{model::callbacks::StatemapInstaller, replicator::core::StatemapItem};
+use talos_cohort_replicator::{ReplicatorInstallStatus, ReplicatorInstaller, StatemapItem};
 use tokio_postgres::types::ToSql;
 
 use crate::{model::requests::TransferRequest, state::postgres::database::Database};
@@ -11,8 +11,8 @@ pub struct StatemapInstallerImpl {
 }
 
 #[async_trait]
-impl StatemapInstaller for StatemapInstallerImpl {
-    async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<(), String> {
+impl ReplicatorInstaller for StatemapInstallerImpl {
+    async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<ReplicatorInstallStatus, String> {
         // from      = 1
         // to        = 2
         // amount    = 3
@@ -72,6 +72,6 @@ impl StatemapInstaller for StatemapInstallerImpl {
             .await
             .map_err(|tx_error| format!("Commit error for statemap. Error: {}", tx_error))?;
 
-        Ok(())
+        Ok(ReplicatorInstallStatus::Success)
     }
 }

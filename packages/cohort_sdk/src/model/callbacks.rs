@@ -1,5 +1,5 @@
-use crate::replicator::core::StatemapItem;
 use async_trait::async_trait;
+use talos_cohort_replicator::StatemapItem;
 
 pub struct CapturedState {
     pub snapshot_version: u64,
