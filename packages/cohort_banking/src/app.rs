@@ -57,6 +57,8 @@ impl BankingApp {
     pub async fn init(&mut self) -> Result<(), String> {
         let installer = StatemapInstallerImpl {
             database: Arc::clone(&self.database),
+            max_retry: 3,
+            retry_wait_ms: 2,
         };
 
         let cohort_api = Cohort::create(self.config.clone(), installer).await.map_err(|e| e.to_string())?;

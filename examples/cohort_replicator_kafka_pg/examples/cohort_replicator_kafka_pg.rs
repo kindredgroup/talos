@@ -26,7 +26,7 @@ impl ReplicatorSnapshot for SnapshotApi {
         let sql = r#"SELECT "version" FROM cohort_snapshot WHERE id = $1"#;
 
         let _prepare = client
-            .prepare_cached(&sql)
+            .prepare_cached(sql)
             .await
             .map_err(|e| DatabaseError::prepare(e.to_string(), sql.to_string()).to_string())?;
         let snapshot_row = client.query_one(sql, &[&SNAPSHOT_SINGLETON_ROW_ID]).await.map_err(|e| e.to_string())?;
@@ -63,6 +63,8 @@ async fn main() {
 
     let pg_statemap_installer = StatemapInstallerImpl {
         database: Arc::clone(&database),
+        max_retry: env_var_with_defaults!("BANK_STATEMAP_INSTALLER_MAX_RETRY", u32, 3),
+        retry_wait_ms: env_var_with_defaults!("BANK_STATEMAP_INSTALL_RETRY_WAIT_MS", u64, 2),
     };
 
     let config = CohortReplicatorConfig {

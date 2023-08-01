@@ -58,13 +58,15 @@ pub async fn installation_service(
                                 start_installation_time.elapsed()
                             );
                             replicator_tx_clone
-                                .send(ReplicatorChannel::InstallationFailure("Crash and Burn!!!".to_string()))
+                                .send(ReplicatorChannel::InstallationFailure(format!(
+                                    "Crash and Burn!!! Installed failed for version={ver:?} error={err:?}"
+                                )))
                                 .await
                                 .unwrap();
                             statemap_installation_tx_clone
                                 .send(StatemapInstallationStatus::Error(
                                     ver,
-                                    "🔥🔥🔥 Crash and burn the statemap installer queue service".to_string(),
+                                    format!("🔥🔥🔥 Crash and burn the statemap installer queue service Installed failed for version={ver:?} error={err:?}"),
                                 ))
                                 .await
                                 .unwrap();

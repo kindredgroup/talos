@@ -22,21 +22,18 @@ use talos_agent::{
     mpsc::core::{ReceiverWrapper, SenderWrapper},
 };
 
-use talos_certifier_adapters::{kafka::config::KafkaConfig as TalosKafkaConfig, KafkaConsumer};
+use talos_certifier_adapters::kafka::config::KafkaConfig as TalosKafkaConfig;
 use talos_cohort_replicator::ReplicatorInstaller;
-use tokio::sync::mpsc;
 
 use crate::{
     delay_controller::DelayController,
     model::{
         self,
-        callbacks::{ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller, StatemapInstaller},
+        callbacks::{ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
         internal::CertificationAttemptOutcome,
-        CertificationResponse, ClientError, Config, ReplicatorServices, ResponseMetadata,
+        CertificationResponse, ClientError, Config, ResponseMetadata,
     },
 };
-
-use talos_certifier::ports::MessageReciever;
 
 use talos_agent::api::CertificationResponse as InternalCertificationResponse;
 
@@ -68,14 +65,14 @@ impl Cohort {
         // Param1: The list of statemap items.
         // Param2: Version to install.
         // Returns error descrition. If string is empty it means there was no error installing
-        statemap_installer: S,
+        __statemap_installer: S,
     ) -> Result<Self, ClientError>
     where
         S: ReplicatorInstaller + Sync + Send + 'static,
     {
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.clone().into();
-        let talos_kafka_config: TalosKafkaConfig = config.clone().into();
+        let __talos_kafka_config: TalosKafkaConfig = config.clone().into();
 
         //
         // Create instance of Agent
