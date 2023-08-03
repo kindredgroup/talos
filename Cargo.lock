@@ -506,7 +506,6 @@ dependencies = [
  "talos_agent",
  "talos_certifier",
  "talos_certifier_adapters",
- "talos_cohort_replicator",
  "talos_suffix",
  "tokio",
  "uuid",

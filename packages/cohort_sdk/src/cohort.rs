@@ -22,9 +22,6 @@ use talos_agent::{
     mpsc::core::{ReceiverWrapper, SenderWrapper},
 };
 
-use talos_certifier_adapters::kafka::config::KafkaConfig as TalosKafkaConfig;
-use talos_cohort_replicator::ReplicatorInstaller;
-
 use crate::{
     delay_controller::DelayController,
     model::{
@@ -60,19 +57,15 @@ pub struct Cohort {
 // #[napi]
 impl Cohort {
     // #[napi]
-    pub async fn create<S>(
+    pub async fn create(
         config: Config,
         // Param1: The list of statemap items.
         // Param2: Version to install.
         // Returns error descrition. If string is empty it means there was no error installing
-        __statemap_installer: S,
     ) -> Result<Self, ClientError>
-    where
-        S: ReplicatorInstaller + Sync + Send + 'static,
-    {
+where {
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.clone().into();
-        let __talos_kafka_config: TalosKafkaConfig = config.clone().into();
 
         //
         // Create instance of Agent
