@@ -6,7 +6,7 @@ use std::{
 
 use async_trait::async_trait;
 use cohort_sdk::model::callbacks::{OutOfOrderInstallOutcome, OutOfOrderInstaller};
-use opentelemetry_api::{metrics::Counter, Context};
+use opentelemetry_api::metrics::Counter;
 use tokio::task::JoinHandle;
 use tokio_postgres::types::ToSql;
 
@@ -156,7 +156,7 @@ impl OutOfOrderInstallerImpl {
             );
             let c = Arc::clone(&self.counter_oo_no_data_found);
             tokio::spawn(async move {
-                c.add(&Context::current(), 1, &[]);
+                c.add(1, &[]);
             });
             return Ok(OutOfOrderInstallOutcome::InstalledAlready);
         }

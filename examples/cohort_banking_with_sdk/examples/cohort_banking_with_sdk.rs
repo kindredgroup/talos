@@ -1,4 +1,3 @@
-use std::str::FromStr;
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use async_channel::Receiver;
@@ -8,17 +7,21 @@ use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 
 use metrics::model::MinMax;
-use opentelemetry_api::KeyValue;
-use opentelemetry_sdk::Resource;
+use metrics::opentel::aggregation_selector::CustomHistogramSelector;
+use metrics::opentel::printer::MetricsToStringPrinter;
+use metrics::opentel::scaling::ScalingConfig;
+use opentelemetry_api::metrics::MetricsError;
+use opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector;
+use opentelemetry_sdk::metrics::{MeterProvider, PeriodicReader};
+use opentelemetry_sdk::runtime;
+use opentelemetry_stdout::MetricsExporterBuilder;
 use rand::Rng;
-use rust_decimal::{prelude::FromPrimitive, Decimal};
+
+use rust_decimal::prelude::FromPrimitive;
 use tokio::{signal, task::JoinHandle, try_join};
 
-use opentelemetry::global;
+use metrics::opentel::global;
 use opentelemetry::global::shutdown_tracer_provider;
-use opentelemetry::sdk::metrics::{controllers, processors, selectors};
-
-use opentelemetry_prometheus::{Encoder, ExporterConfig, PrometheusExporter, TextEncoder};
 
 #[derive(Clone)]
 struct LaunchParams {
@@ -26,8 +29,28 @@ struct LaunchParams {
     target_rate: f32,
     threads: u64,
     accounts: u64,
+    scaling_config: HashMap<String, f32>,
+    metric_print_raw: bool,
 }
 
+/// Connects to database, to kafka certification topic as talso agent and as cohort replicator.
+/// Generates some number of banking transactions and passes then all to Talos for certification.
+/// Once all transactions have been processed, it prints some output metrics to console.
+/// Metric logging is set to WARN. If RUST_LOG is set to stricter than WARN then no metrics will be printed.
+/// Preprequisite:
+///     Talos, Kafka and DB must be running
+///     Kafka topic must be empty.
+///     DB should have snapshot table initialised with zero version
+///     Banking database should have some accounts ready.
+///
+/// Lauch parameters:
+/// --accounts - How many accouts are avaiable in database.
+/// --threads - How many threads to use.
+/// --rate - In TPS, at what rate to generate transactions.
+/// --volume - How many transaction to generate or "--volume 10-sec" for how long to generate transactions.
+/// --metric_print_raw - When present, raw metric histograms will be printed. The value of this param is ignored.
+/// --metric_scaling - The default scaling is 1.0; this parameter controls scaling factor for individual metric.
+///                    Format is: "--metric_scaling metric-name1=scaling-factor,metric-name2=scaling-factor,..."
 #[tokio::main]
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
@@ -128,25 +151,23 @@ async fn main() -> Result<(), String> {
         db_database: "talos-sample-cohort-dev".into(),
     };
 
-    let buckets = [
-        0.1, 1.0, 2.0, 3.0, 4.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 200.0, 300.0, 400.0, 500.0, 1000.0,
-        1500.0, 2000.0, 2500.0, 3000.0, 3500.0, 4000.0, 4500.0, 5000.0, 10000.0,
-    ];
-
-    let factory = processors::factory(
-        selectors::simple::histogram(buckets),
-        opentelemetry::sdk::export::metrics::aggregation::cumulative_temporality_selector(),
-    );
-
-    let controller = controllers::basic(factory)
-        .with_collect_period(Duration::from_secs(20))
-        .with_resource(Resource::new([KeyValue::new("service_name", "banking_with_cohort_sdk")]))
+    let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw);
+    let (tx_metrics, rx_metrics) = tokio::sync::watch::channel("".to_string());
+    let exporter = MetricsExporterBuilder::default()
+        .with_aggregation_selector(CustomHistogramSelector::new_with_4k_buckets()?)
+        .with_temporality_selector(DefaultTemporalitySelector::new())
+        .with_encoder(move |_writer, data| {
+            let report = printer.print(&data).map_err(MetricsError::Other)?;
+            tx_metrics.send(report).map_err(|e| MetricsError::Other(e.to_string()))?;
+            Ok(())
+        })
         .build();
 
-    // this exporter can export into file
-    let exporter = opentelemetry_prometheus::exporter(controller)
-        .with_config(ExporterConfig::default().with_scope_info(true))
-        .init();
+    let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
+
+    let meter_provider = Arc::new(MeterProvider::builder().with_reader(reader).build());
+    global::set_meter_provider(Arc::clone(&meter_provider));
+    global::set_scaling_config(ScalingConfig { ratios: params.scaling_config });
 
     let meter = global::meter("banking_cohort");
     let meter = Arc::new(meter);
@@ -199,9 +220,9 @@ async fn main() -> Result<(), String> {
     }
 
     shutdown_tracer_provider();
-
-    print_prometheus_report_as_text(exporter, params.threads);
-
+    let _ = meter_provider.shutdown();
+    let report = rx_metrics.borrow();
+    log::warn!("{}", *report);
     Ok(())
 }
 
@@ -244,6 +265,8 @@ async fn get_params() -> Result<LaunchParams, String> {
     let mut accounts: Option<u64> = None;
     let mut target_rate: Option<f32> = None;
     let mut stop_type: Option<StopType> = None;
+    let mut scaling_config: Option<HashMap<String, f32>> = None;
+    let mut metric_print_raw = None;
 
     if args.len() >= 3 {
         let mut i = 1;
@@ -270,6 +293,34 @@ async fn get_params() -> Result<LaunchParams, String> {
                     let count: u64 = param_value.parse().unwrap();
                     stop_type = Some(StopType::LimitGeneratedTransactions { count })
                 }
+            } else if param_name.eq("--metric_print_raw") {
+                metric_print_raw = Some(true);
+            } else if param_name.eq("--metric_scaling") {
+                let param_value = &args[i + 1];
+                let mut cfg: HashMap<String, f32> = HashMap::new();
+                for spec in param_value.replace(' ', "").split(',') {
+                    if let Some(i) = spec.find('=') {
+                        let metric: String = spec[..i].into();
+                        let scale_factor_raw: String = spec[i + 1..].into();
+                        let scale_factor = match scale_factor_raw.parse::<f32>() {
+                            Err(e) => {
+                                log::error!(
+                                    "Unable to parse scaling factor for metric '{}'. No scaling will be applied. Pasing: '{}'. Error: {}.",
+                                    metric,
+                                    scale_factor_raw,
+                                    e
+                                );
+                                1_f32
+                            }
+                            Ok(scale_factor) => scale_factor,
+                        };
+                        cfg.insert(metric, scale_factor);
+                    }
+                }
+
+                if !cfg.is_empty() {
+                    scaling_config = Some(cfg);
+                }
             }
 
             i += 2;
@@ -288,146 +339,9 @@ async fn get_params() -> Result<LaunchParams, String> {
             stop_type: stop_type.unwrap(),
             threads: threads.unwrap(),
             accounts: accounts.unwrap(),
+            scaling_config: scaling_config.unwrap(),
+            metric_print_raw: metric_print_raw.is_some(),
         })
-    }
-}
-
-fn print_prometheus_report_as_text(exporter: PrometheusExporter, threads: u64) {
-    let encoder = TextEncoder::new();
-    let metric_families = exporter.registry().gather();
-    let mut report_buffer = Vec::<u8>::new();
-    encoder.encode(&metric_families, &mut report_buffer).unwrap();
-
-    let report: Vec<&str> = match std::str::from_utf8(&report_buffer) {
-        Ok(v) => v.split('\n').collect(),
-        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    };
-    // for line in report.iter().filter(|v| v.starts_with("metric_")) {
-    //     log::warn!("Printing results = {}", line);
-    // }
-
-    print_histogram("Out of Order Install (DB work)", "metric_oo_install_duration", "ms", &report, threads, true);
-    print_histogram("Out of Order Install (sleeps)", "metric_oo_wait_duration", "ms", &report, threads, true);
-    print_histogram(
-        "Out of Order Install (full span)",
-        "metric_oo_install_and_wait_duration",
-        "ms",
-        &report,
-        threads,
-        true,
-    );
-    print_histogram("Out of Order Install attempts used", "metric_oo_attempts", "attempts", &report, threads, false);
-    print_histogram("Talos roundtrip", "metric_talos", "ms", &report, threads, true);
-    print_histogram("Candidate roundtrip", "metric_duration", "ms", &report, threads, true);
-
-    let aborts = extract_num_value::<u64>(&report, "metric_aborts_total");
-    let commits = extract_num_value::<u64>(&report, "metric_commits_total");
-    let oo_retries = extract_num_value::<u64>(&report, "metric_oo_retry_count_total");
-    let oo_giveups = extract_num_value::<u64>(&report, "metric_oo_giveups_count_total");
-    let oo_no_data_found = extract_num_value::<u64>(&report, "metric_oo_no_data_found_total");
-    let oo_not_safe = extract_num_value::<u64>(&report, "metric_oo_not_safe_count_total");
-    let talos_aborts = extract_num_value::<u64>(&report, "metric_talos_aborts_count_total");
-    let agent_retries = extract_num_value::<u64>(&report, "metric_agent_retries_count_total");
-    let agent_errors = extract_num_value::<u64>(&report, "metric_agent_errors_count_total");
-    let db_errors = extract_num_value::<u64>(&report, "metric_db_errors_count_total");
-
-    log::warn!("Commits        : {}", if let Some(v) = commits { v } else { 0 });
-    log::warn!("Aborts         : {}", if let Some(v) = aborts { v } else { 0 });
-
-    log::warn!("OO no data     : {}", if let Some(v) = oo_no_data_found { v } else { 0 });
-    log::warn!("OO not safe    : {}", if let Some(v) = oo_not_safe { v } else { 0 });
-    log::warn!("OO retries     : {}", if let Some(v) = oo_retries { v } else { 0 });
-    log::warn!("OO giveups     : {}", if let Some(v) = oo_giveups { v } else { 0 });
-
-    log::warn!("Talos aborts   : {}", if let Some(v) = talos_aborts { v } else { 0 });
-    log::warn!("Agent retries  : {}", if let Some(v) = agent_retries { v } else { 0 });
-    log::warn!("Agent errors   : {}", if let Some(v) = agent_errors { v } else { 0 });
-
-    log::warn!("DB errors      : {}", if let Some(v) = db_errors { v } else { 0 });
-}
-
-fn print_histogram(name: &str, id: &str, unit: &str, report: &[&str], threads: u64, print_tps: bool) {
-    let histogram: Vec<(f64, u64)> = report
-        .iter()
-        .filter(|v| v.starts_with(format!("{}_bucket", id).as_str()))
-        .filter_map(|line| {
-            let bucket_label_start_index = line.find("le=\"");
-            bucket_label_start_index?;
-
-            let line_remainder = &line[bucket_label_start_index.unwrap() + 4..];
-            let bucket_label_end_index = line_remainder.find("\"}");
-            bucket_label_end_index?;
-
-            let bucket_label = &line_remainder[..bucket_label_end_index.unwrap()];
-            let bucket_label_value = if bucket_label == "+Inf" {
-                f64::MAX
-            } else {
-                bucket_label.parse::<f64>().unwrap()
-            };
-            let count_in_bucket = &line_remainder[bucket_label_end_index.unwrap() + 3..];
-            Some((bucket_label_value, count_in_bucket.parse::<u64>().unwrap()))
-        })
-        .collect();
-
-    let extracted_count = extract_num_value::<u64>(report, format!("{}_count", id).as_str());
-    if let Some(total_count) = extracted_count {
-        log::warn!("---------------------------------------------------------");
-        log::warn!("{}", name);
-        for (bucket, count_in_bucket) in histogram {
-            let percents_in_bucket = (100.0 * count_in_bucket as f64) / total_count as f64;
-            if bucket == f64::MAX {
-                log::warn!("< {:>8} {} : {:>9} : {:>6.2}%", "10000+", unit, count_in_bucket, percents_in_bucket);
-            } else {
-                log::warn!("< {:>8} {} : {:>9} : {:>6.2}%", bucket, unit, count_in_bucket, percents_in_bucket);
-            }
-        }
-
-        let rslt_sum = extract_num_value::<f64>(report, format!("{}_sum", id).as_str());
-        if let Some(sum) = rslt_sum {
-            if unit == "ms" {
-                if sum > 1000.0 {
-                    log::warn!("Total (sec)             : {:.1}", sum / 1_000_f64);
-                    log::warn!("Total (sec) avg per th  : {:.1}", sum / 1_000_f64 / threads as f64);
-                } else {
-                    log::warn!("Total (ms)              : {:.1}", sum);
-                    log::warn!("Total (ms) avg per th   : {:.1}", sum / threads as f64);
-                }
-            } else {
-                log::warn!("Total ({})              : {:.1}", unit, sum);
-                log::warn!("Total ({}) avg per th   : {:.1}", unit, sum / threads as f64);
-            }
-
-            log::warn!("Count                   : {}", total_count);
-            if print_tps {
-                log::warn!("Approx throughput (tps) : {:.1}", (total_count as f64) / sum * 1000.0 * threads as f64);
-            }
-        }
-        log::warn!("---------------------------------------------------------\n");
-    }
-}
-
-fn extract_num_value<T: FromStr + Clone>(report: &[&str], value: &str) -> Option<T> {
-    let extracted_as_list: Vec<T> = report
-        .iter()
-        .filter(|i| i.starts_with(value))
-        .filter_map(|i| {
-            if let Some(pos) = i.find(' ') {
-                let parsed = i[pos + 1..].parse::<T>();
-                if let Ok(num) = parsed {
-                    Some(num)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    if extracted_as_list.len() == 1 {
-        Some(extracted_as_list[0].clone())
-    } else {
-        None
     }
 }
 
@@ -468,7 +382,7 @@ impl Generator<TransferRequest> for TransferRequestGenerator {
         TransferRequest {
             from: format!("{:<04}", from),
             to: format!("{:<04}", to),
-            amount: Decimal::from_f32(1.0).unwrap(),
+            amount: rust_decimal::Decimal::from_f32(1.0).unwrap(),
         }
     }
 }

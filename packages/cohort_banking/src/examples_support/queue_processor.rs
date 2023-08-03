@@ -3,11 +3,8 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use metrics::model::MinMax;
-use opentelemetry_api::{
-    metrics::{Meter, Unit},
-    Context,
-};
+use metrics::{model::MinMax, opentel::global};
+use opentelemetry_api::metrics::{Meter, Unit};
 use tokio::task::JoinHandle;
 
 use async_trait::async_trait;
@@ -47,11 +44,12 @@ impl QueueProcessor {
                         Ok(item) => {
                             timeline.add(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128);
                             handled_count += 1;
-                            let span_1 = Instant::now();
+                            let span_dur_start = Instant::now();
                             let result = item_handler.handle(item).await;
-                            let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
+                            let span_dur_value = span_dur_start.elapsed().as_nanos() as f64 / 1_000_000_f64;
                             tokio::spawn(async move {
-                                histogram_ref.record(&Context::current(), span_1_val, &[]);
+                                let scale = global::scaling_config().get_scale_factor("metric_duration");
+                                histogram_ref.record(span_dur_value * scale as f64, &[]);
                             });
 
                             if let Err(e) = result {
@@ -70,7 +68,7 @@ impl QueueProcessor {
                 timeline.add(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128);
 
                 tokio::spawn(async move {
-                    counter.add(&Context::current(), handled_count, &[]);
+                    counter.add(handled_count, &[]);
                 });
                 log::debug!("Thread {:>2} stopped. Processed items: {}.", thread_number, handled_count);
 

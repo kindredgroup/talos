@@ -3,11 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use opentelemetry_api::{
-    global,
-    metrics::{Counter, Histogram, Unit},
-    Context,
-};
+use metrics::opentel::global;
+use opentelemetry_api::metrics::{Counter, Histogram, Unit};
 use talos_agent::{
     agent::{
         core::{AgentServices, TalosAgentImpl},
@@ -121,9 +118,9 @@ impl Cohort {
         // Code below is to start replicator from master branch...
         //
 
-        // //
-        // // start replicator
-        // //
+        //
+        // start replicator
+        //
 
         let suffix = CohortSuffix::with_config(config.clone().into());
         let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
@@ -150,7 +147,7 @@ impl Cohort {
         let talos_aborts_counter = meter.u64_counter("metric_talos_aborts_count").with_unit(Unit::new("tx")).init();
         let agent_errors_counter = meter.u64_counter("metric_agent_errors_count").with_unit(Unit::new("tx")).init();
         let agent_retries_counter = meter.u64_counter("metric_agent_retries_count").with_unit(Unit::new("tx")).init();
-        let db_errors_counter = meter.u64_counter("metric_db_errors_counter").with_unit(Unit::new("tx")).init();
+        let db_errors_counter = meter.u64_counter("metric_db_errors_count").with_unit(Unit::new("tx")).init();
 
         Ok(Self {
             config,
@@ -191,7 +188,8 @@ impl Cohort {
 
         let h_talos = Arc::clone(&self.talos_histogram);
         tokio::spawn(async move {
-            h_talos.record(&Context::current(), span_1_val, &[]);
+            let scale = global::scaling_config().get_scale_factor("metric_talos");
+            h_talos.record(span_1_val * scale as f64, &[]);
         });
 
         if response.decision == Decision::Aborted {
@@ -219,8 +217,8 @@ impl Cohort {
             let h_install = Arc::clone(&self.oo_install_histogram);
 
             tokio::spawn(async move {
-                let ctx = &Context::current();
-                h_install.record(ctx, span_3_val, &[]);
+                let scale = global::scaling_config().get_scale_factor("metric_oo_install_duration");
+                h_install.record(span_3_val * scale as f64, &[]);
             });
 
             let error = match install_result {
@@ -266,23 +264,23 @@ impl Cohort {
         let c_retry = Arc::clone(&self.oo_retry_counter);
 
         tokio::spawn(async move {
-            let ctx = &Context::current();
-
             if is_not_save > 0 {
-                c_not_safe.add(ctx, is_not_save, &[]);
+                c_not_safe.add(is_not_save, &[]);
             }
             if total_sleep > 0 {
-                h_total_sleep.record(ctx, total_sleep as f64, &[]);
+                let scale = global::scaling_config().get_scale_factor("metric_oo_wait_duration");
+                h_total_sleep.record(total_sleep as f64 * scale as f64, &[]);
             }
             if giveups > 0 {
-                c_giveups.add(ctx, giveups, &[]);
+                c_giveups.add(giveups, &[]);
             }
             if attempt > 1 {
-                c_retry.add(ctx, attempt - 1, &[]);
+                c_retry.add(attempt - 1, &[]);
             }
 
-            h_attempts.record(ctx, attempt, &[]);
-            h_span_2.record(ctx, span_2_val, &[]);
+            h_attempts.record(attempt, &[]);
+            let scale = global::scaling_config().get_scale_factor("metric_oo_install_and_wait_duration");
+            h_span_2.record(span_2_val * scale as f64, &[]);
         });
         result
     }
@@ -376,11 +374,10 @@ impl Cohort {
 
         if agent_errors > 0 || db_errors > 0 || attempts > 1 || talos_aborts > 0 {
             tokio::spawn(async move {
-                let ctx = &Context::current();
-                c_talos_aborts.add(ctx, talos_aborts, &[]);
-                c_agent_retries.add(ctx, attempts, &[]);
-                c_agent_errors.add(ctx, agent_errors, &[]);
-                c_db_errors.add(ctx, db_errors, &[]);
+                c_talos_aborts.add(talos_aborts, &[]);
+                c_agent_retries.add(attempts, &[]);
+                c_agent_errors.add(agent_errors, &[]);
+                c_db_errors.add(db_errors, &[]);
             });
         }
 

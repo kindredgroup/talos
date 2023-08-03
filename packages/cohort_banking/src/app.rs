@@ -5,11 +5,8 @@ use cohort_sdk::{
     cohort::Cohort,
     model::{CandidateData, CertificationRequest, ClientErrorKind, Config},
 };
-use opentelemetry_api::{
-    global,
-    metrics::{Counter, Unit},
-    Context,
-};
+use metrics::opentel::global;
+use opentelemetry_api::metrics::{Counter, Unit};
 use talos_agent::messaging::api::Decision;
 
 use crate::{
@@ -116,9 +113,9 @@ impl Handler<TransferRequest> for BankingApp {
                 let is_abort = rsp.decision == Decision::Aborted;
                 tokio::spawn(async move {
                     if is_abort {
-                        ca.add(&Context::current(), 1, &[]);
+                        ca.add(1, &[]);
                     } else {
-                        cc.add(&Context::current(), 1, &[]);
+                        cc.add(1, &[]);
                     }
                 });
 
