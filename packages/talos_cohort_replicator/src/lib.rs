@@ -1,4 +1,5 @@
 mod core;
+pub mod errors;
 mod models;
 mod services;
 mod suffix;

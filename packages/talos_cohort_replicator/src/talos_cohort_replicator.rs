@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixConfig, Suffix};
-use tokio::{sync::mpsc, task::JoinHandle};
+use tokio::{sync::mpsc, task::JoinHandle, try_join};
 
 use crate::{
     core::{Replicator, ReplicatorInstaller, ReplicatorSnapshotProvider},
+    errors::ServiceError,
     models::ReplicatorCandidate,
     services::{
         replicator_service::{replicator_service, ReplicatorServiceConfig},
@@ -54,8 +55,15 @@ pub struct CohortReplicatorConfig {
     pub statemap_installer_threadpool: u64,
 }
 
-type ReturnHandle = JoinHandle<Result<(), String>>;
-
+async fn flatten_service_result<T>(handle: JoinHandle<Result<T, ServiceError>>) -> Result<T, ServiceError> {
+    match handle.await {
+        Ok(Ok(result)) => Ok(result),
+        Ok(Err(err)) => Err(err),
+        Err(err) => Err(ServiceError {
+            reason: format!("handling failed with error={err:?}"),
+        }),
+    }
+}
 /// Entry point to replicator and statemap installer
 ///
 
@@ -64,7 +72,7 @@ pub async fn talos_cohort_replicator<M, Snap>(
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>, // Used by Statemap queue service
     snapshot_api: Snap,                                             // Used by Statemap Installer service.
     config: CohortReplicatorConfig,
-) -> (ReturnHandle, ReturnHandle, ReturnHandle)
+) -> Result<((), (), ()), ServiceError>
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
     Snap: ReplicatorSnapshotProvider + Send + Sync + 'static,
@@ -129,5 +137,9 @@ where
         installer_config,
     ));
 
-    (replicator_handle, statemap_queue_handle, statemap_installer_handle)
+    try_join!(
+        flatten_service_result(replicator_handle),
+        flatten_service_result(statemap_queue_handle),
+        flatten_service_result(statemap_installer_handle)
+    )
 }

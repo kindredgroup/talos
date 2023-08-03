@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     core::{ReplicatorSnapshotProvider, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+    errors::ServiceError,
     models::StatemapInstallerQueue,
 };
 
@@ -34,7 +35,7 @@ pub async fn statemap_queue_service<S>(
     // Get snapshot callback fn
     // get_snapshot_fn: impl Future<Output = Result<u64, String>>,
     config: StatemapQueueServiceConfig,
-) -> Result<(), String>
+) -> Result<(), ServiceError>
 where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
