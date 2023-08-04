@@ -5,7 +5,7 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{sync::mpsc, task::JoinHandle};
 
 use crate::{
-    core::{Replicator, ReplicatorInstaller, ReplicatorSnapshot},
+    core::{Replicator, ReplicatorInstaller, ReplicatorSnapshotProvider},
     models::ReplicatorCandidate,
     services::{
         replicator_service::{replicator_service, ReplicatorServiceConfig},
@@ -67,7 +67,7 @@ pub async fn talos_cohort_replicator<M, Snap>(
 ) -> (ReturnHandle, ReturnHandle, ReturnHandle)
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
-    Snap: ReplicatorSnapshot + Send + Sync + 'static,
+    Snap: ReplicatorSnapshotProvider + Send + Sync + 'static,
 {
     // ---------- Channels to communicate between threads. ----------
 

@@ -10,7 +10,7 @@ use deadpool_postgres::{Config, CreatePoolError, GenericClient, ManagerConfig, O
 
 use crate::state::postgres::database_config::DatabaseConfig;
 
-pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
+pub const SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 
 pub struct Database {
     pub pool: Arc<Pool>,

@@ -75,7 +75,7 @@ pub trait ReplicatorInstaller {
     async fn install(&self, sm: Vec<StatemapItem>, version: u64) -> Result<ReplicatorInstallStatus, String>;
 }
 #[async_trait]
-pub trait ReplicatorSnapshot {
+pub trait ReplicatorSnapshotProvider {
     async fn get_snapshot(&self) -> Result<u64, String>;
 }
 

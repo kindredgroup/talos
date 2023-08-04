@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{ReplicatorSnapshot, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+    core::{ReplicatorSnapshotProvider, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
     models::StatemapInstallerQueue,
 };
 
@@ -36,7 +36,7 @@ pub async fn statemap_queue_service<S>(
     config: StatemapQueueServiceConfig,
 ) -> Result<(), String>
 where
-    S: ReplicatorSnapshot + Send + Sync,
+    S: ReplicatorSnapshotProvider + Send + Sync,
 {
     info!("Starting Installer Queue Service.... ");
     let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
