@@ -13,7 +13,7 @@ use opentelemetry_api::{
 use talos_agent::messaging::api::Decision;
 
 use crate::{
-    callbacks::{oo_installer::OutOfOrderInstallerImpl, state_provider::StateProviderImpl, statemap_installer::StatemapInstallerImpl},
+    callbacks::{oo_installer::OutOfOrderInstallerImpl, state_provider::StateProviderImpl},
     examples_support::queue_processor::Handler,
     model::requests::{BusinessActionType, TransferRequest},
     state::postgres::{database::Database, database_config::DatabaseConfig},
@@ -55,11 +55,7 @@ impl BankingApp {
     }
 
     pub async fn init(&mut self) -> Result<(), String> {
-        let installer = StatemapInstallerImpl {
-            database: Arc::clone(&self.database),
-        };
-
-        let cohort_api = Cohort::create(self.config.clone(), installer).await.map_err(|e| e.to_string())?;
+        let cohort_api = Cohort::create(self.config.clone()).await.map_err(|e| e.to_string())?;
 
         self.cohort_api = Some(cohort_api);
 

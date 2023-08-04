@@ -22,22 +22,15 @@ use talos_agent::{
     mpsc::core::{ReceiverWrapper, SenderWrapper},
 };
 
-use talos_certifier_adapters::{kafka::config::KafkaConfig as TalosKafkaConfig, KafkaConsumer};
-use tokio::sync::mpsc;
-
 use crate::{
     delay_controller::DelayController,
-    installer_callback::ReplicatorInstallerImpl,
     model::{
         self,
-        callbacks::{ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller, StatemapInstaller},
+        callbacks::{ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
         internal::CertificationAttemptOutcome,
-        CertificationResponse, ClientError, Config, ReplicatorServices, ResponseMetadata,
+        CertificationResponse, ClientError, Config, ResponseMetadata,
     },
-    replicator2::{cohort_replicator::CohortReplicator, cohort_suffix::CohortSuffix, service::ReplicatorService2},
 };
-
-use talos_certifier::ports::MessageReciever;
 
 use talos_agent::api::CertificationResponse as InternalCertificationResponse;
 
@@ -46,7 +39,7 @@ pub struct Cohort {
     config: Config,
     talos_agent: Box<dyn TalosAgent + Sync + Send>,
     agent_services: AgentServices,
-    replicator_services: ReplicatorServices,
+    // replicator_services: ReplicatorServices,
     oo_retry_counter: Arc<Counter<u64>>,
     oo_giveups_counter: Arc<Counter<u64>>,
     oo_not_safe_counter: Arc<Counter<u64>>,
@@ -64,19 +57,15 @@ pub struct Cohort {
 // #[napi]
 impl Cohort {
     // #[napi]
-    pub async fn create<S>(
+    pub async fn create(
         config: Config,
         // Param1: The list of statemap items.
         // Param2: Version to install.
         // Returns error descrition. If string is empty it means there was no error installing
-        statemap_installer: S,
     ) -> Result<Self, ClientError>
-    where
-        S: StatemapInstaller + Sync + Send + 'static,
-    {
+where {
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.clone().into();
-        let talos_kafka_config: TalosKafkaConfig = config.clone().into();
 
         //
         // Create instance of Agent
@@ -125,18 +114,18 @@ impl Cohort {
         // // start replicator
         // //
 
-        let suffix = CohortSuffix::with_config(config.clone().into());
-        let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
-        kafka_consumer.subscribe().await.unwrap();
-        let replicator = CohortReplicator::new(kafka_consumer, suffix);
+        // let suffix = CohortSuffix::with_config(config.clone().into());
+        // let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
+        // kafka_consumer.subscribe().await.unwrap();
+        // let replicator = CohortReplicator::new(kafka_consumer, suffix);
 
-        let (tx_install_req, rx_statemaps_ch) = mpsc::channel(config.replicator_buffer_size);
-        let (tx_install_result_ch, rx_install_result) = tokio::sync::mpsc::channel(config.replicator_buffer_size);
-        let replicator_handle = tokio::spawn(ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_result));
-        let replicator_impl = ReplicatorInstallerImpl {
-            installer_impl: statemap_installer,
-        };
-        let installer_handle = tokio::spawn(ReplicatorService2::start_installer(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
+        // let (tx_install_req, rx_statemaps_ch) = mpsc::channel(config.replicator_buffer_size);
+        // let (tx_install_result_ch, rx_install_result) = tokio::sync::mpsc::channel(config.replicator_buffer_size);
+        // let replicator_handle = tokio::spawn(ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_result));
+        // let replicator_impl = ReplicatorInstallerImpl {
+        //     installer_impl: statemap_installer,
+        // };
+        // let installer_handle = tokio::spawn(ReplicatorService2::start_installer(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
 
         let meter = global::meter("cohort_sdk");
         let oo_install_histogram = meter.f64_histogram("metric_oo_install_duration").with_unit(Unit::new("ms")).init();
@@ -156,10 +145,10 @@ impl Cohort {
             config,
             talos_agent: Box::new(agent),
             agent_services,
-            replicator_services: ReplicatorServices {
-                replicator_handle,
-                installer_handle,
-            },
+            // replicator_services: ReplicatorServices {
+            //     replicator_handle,
+            //     installer_handle,
+            // },
             oo_install_histogram: Arc::new(oo_install_histogram),
             oo_install_and_wait_histogram: Arc::new(oo_install_and_wait_histogram),
             oo_wait_histogram: Arc::new(oo_wait_histogram),
@@ -479,7 +468,7 @@ impl Cohort {
         // while self.channel_tx_certify.capacity() != MAX { wait() }
         self.agent_services.decision_reader.abort();
         self.agent_services.state_manager.abort();
-        self.replicator_services.replicator_handle.abort();
-        self.replicator_services.installer_handle.abort();
+        // self.replicator_services.replicator_handle.abort();
+        // self.replicator_services.installer_handle.abort();
     }
 }
