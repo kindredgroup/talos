@@ -72,7 +72,7 @@ async fn main() {
         channel_size: env_var_with_defaults!("REPLICATOR_CHANNEL_SIZE", usize, 100_000),
         suffix_capacity: env_var_with_defaults!("REPLICATOR_SUFFIX_CAPACITY", usize, 10_000),
         suffix_prune_threshold: env_var_with_defaults!("REPLICATOR_SUFFIX_PRUNE_THRESHOLD", Option::<usize>, 1),
-        suffix_minimum_size_on_prune: env_var_with_defaults!("REPLICATOR_SUFFIX_PRUNE_THRESHOLD", Option::<usize>),
+        suffix_minimum_size_on_prune: env_var_with_defaults!("REPLICATOR_SUFFIX_MIN_SIZE", Option::<usize>),
         certifier_message_receiver_commit_freq_ms: env_var_with_defaults!("REPLICATOR_COMMIT_FREQ_MS", u64, 10_000),
         statemap_queue_cleanup_freq_ms: env_var_with_defaults!("STATEMAP_QUEUE_CLEANUP_FREQUENCY_MS", u64, 10_000),
         statemap_installer_threadpool: env_var_with_defaults!("STATEMAP_INSTALLER_THREAD_POOL", u64, 50),

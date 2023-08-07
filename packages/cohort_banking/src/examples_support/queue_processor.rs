@@ -32,7 +32,7 @@ impl QueueProcessor {
             let meter = Arc::clone(&meter);
             let task_h: JoinHandle<MinMax> = tokio::spawn(async move {
                 let mut timeline = MinMax::default();
-                let histogram = Arc::new(meter.f64_histogram("metric_duration").with_unit(Unit::new("ms")).init());
+                let histogram = Arc::new(meter.f64_histogram("metric_candidate_roundtrip").with_unit(Unit::new("ms")).init());
                 let counter = Arc::new(meter.u64_counter("metric_count").with_unit(Unit::new("tx")).init());
 
                 let mut handled_count = 0;
@@ -48,7 +48,7 @@ impl QueueProcessor {
                             let result = item_handler.handle(item).await;
                             let span_dur_value = span_dur_start.elapsed().as_nanos() as f64 / 1_000_000_f64;
                             tokio::spawn(async move {
-                                let scale = global::scaling_config().get_scale_factor("metric_duration");
+                                let scale = global::scaling_config().get_scale_factor("metric_candidate_roundtrip");
                                 histogram_ref.record(span_dur_value * scale as f64, &[]);
                             });
 

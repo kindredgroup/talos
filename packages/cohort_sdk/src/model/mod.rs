@@ -9,8 +9,6 @@ use talos_agent::{
     api::{AgentConfig, KafkaConfig, TalosType},
     messaging::api::Decision,
 };
-use talos_certifier_adapters::kafka::config::KafkaConfig as TalosKafkaConfig;
-use talos_suffix::core::SuffixConfig;
 use tokio::task::JoinHandle;
 
 // #[napi]
@@ -106,33 +104,6 @@ pub struct Config {
     pub agent_log_level: u64,
 
     //
-    // Kafka configs for Replicator
-    //
-    pub replicator_client_id: String,
-    pub replicator_group_id: String,
-    pub producer_config_overrides: HashMap<&'static str, &'static str>,
-    pub consumer_config_overrides: HashMap<&'static str, &'static str>,
-
-    //
-    // Suffix config values
-    //
-    /// Initial capacity of the suffix
-    pub suffix_size_max: usize,
-    /// - The suffix prune threshold from when we start checking if the suffix
-    /// should prune.
-    /// - Set to None if pruning is not required.
-    /// - Defaults to None.
-    pub suffix_prune_at_size: Option<usize>,
-    /// Minimum size of suffix after prune.
-    /// - Defaults to None.
-    pub suffix_size_min: Option<usize>,
-
-    //
-    // Replicator config values
-    //
-    pub replicator_buffer_size: usize,
-
-    //
     // Database config
     //
     pub db_pool_size: usize,
@@ -158,16 +129,6 @@ impl From<Config> for AgentConfig {
     }
 }
 
-impl From<Config> for SuffixConfig {
-    fn from(val: Config) -> Self {
-        SuffixConfig {
-            capacity: val.suffix_size_max,
-            prune_start_threshold: val.suffix_prune_at_size,
-            min_size_after_prune: val.suffix_size_min,
-        }
-    }
-}
-
 impl From<Config> for KafkaConfig {
     fn from(val: Config) -> Self {
         KafkaConfig {
@@ -182,23 +143,6 @@ impl From<Config> for KafkaConfig {
             enqueue_timeout_ms: val.agent_enqueue_timeout_ms,
             log_level: KafkaConfig::map_log_level(val.agent_log_level),
             talos_type: TalosType::External,
-        }
-    }
-}
-
-impl From<Config> for TalosKafkaConfig {
-    fn from(val: Config) -> Self {
-        TalosKafkaConfig {
-            brokers: val.brokers.split(',').map(|i| i.to_string()).collect(),
-            topic: val.topic,
-            // TODO: not sure how napi will handle Option<> fields, if it can process them then we dont need to use this mapping.
-            username: val.kafka_username.unwrap_or_else(|| "".into()),
-            // TODO: not sure how napi will handle Option<> fields, if it can process them then we dont need to use this mapping.
-            password: val.kafka_password.unwrap_or_else(|| "".into()),
-            client_id: val.replicator_client_id,
-            group_id: val.replicator_group_id,
-            producer_config_overrides: val.producer_config_overrides,
-            consumer_config_overrides: val.consumer_config_overrides,
         }
     }
 }

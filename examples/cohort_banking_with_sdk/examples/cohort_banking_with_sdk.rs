@@ -111,39 +111,9 @@ async fn main() -> Result<(), String> {
         agent_log_level: 6,
 
         //
-        // Kafka configs for Replicator
-        //
-        replicator_client_id: "cohort-banking".into(),
-        replicator_group_id: "cohort-banking-replicator".into(),
-        producer_config_overrides: HashMap::new(),
-        consumer_config_overrides: HashMap::new(),
-
-        //
-        // Suffix config values
-        //
-        /// Initial capacity of the suffix
-        // suffix_size_max: 500_000,
-        suffix_size_max: 10,
-        /// - The suffix prune threshold from when we start checking if the suffix
-        /// should prune.
-        /// - Set to None if pruning is not required.
-        /// - Defaults to None.
-        // suffix_prune_at_size: Some(300_000),
-        suffix_prune_at_size: Some(2000),
-        /// Minimum size of suffix after prune.
-        /// - Defaults to None.
-        // suffix_size_min: Some(100_000),
-        suffix_size_min: None,
-
-        //
-        // Replicator config values
-        //
-        replicator_buffer_size: 100_000,
-
-        //
         // Database config
         //
-        db_pool_size: 200,
+        db_pool_size: 100,
         db_user: "postgres".into(),
         db_password: "admin".into(),
         db_host: "127.0.0.1".into(),
