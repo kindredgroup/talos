@@ -31,4 +31,5 @@ talos_agent =                { path = "../talos_agent" }
 cohort_sdk =                 { path = "../cohort_sdk" }
 metrics =                    { path = "../metrics" }
 talos_certifier =            { path = "../talos_certifier" }
+talos_cohort_replicator =            { path = "../talos_cohort_replicator" }
 talos_suffix =               { path = "../talos_suffix" }

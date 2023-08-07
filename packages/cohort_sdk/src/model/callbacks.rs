@@ -1,4 +1,3 @@
-use crate::replicator::core::StatemapItem;
 use async_trait::async_trait;
 
 pub struct CapturedState {
@@ -20,11 +19,6 @@ pub trait ItemStateProvider {
 #[async_trait]
 pub trait OutOfOrderInstaller {
     async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String>;
-}
-
-#[async_trait]
-pub trait StatemapInstaller {
-    async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<(), String>;
 }
 
 pub enum OutOfOrderInstallOutcome {
