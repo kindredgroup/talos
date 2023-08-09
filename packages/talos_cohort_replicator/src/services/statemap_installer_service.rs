@@ -40,7 +40,7 @@ async fn statemap_install_future(
             );
             replicator_tx
                 .send(ReplicatorChannel::InstallationFailure(format!(
-                    "Installed failed for version={version:?} error={err:?}"
+                    "Failed to install version={version:?} with error={err:?}"
                 )))
                 .await
                 .unwrap();
