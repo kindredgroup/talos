@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use cohort_banking::{
-    callbacks::statemap_installer::StatemapInstallerImpl,
+    callbacks::statemap_installer::BankStatemapInstaller,
     state::postgres::{database::Database, database_config::DatabaseConfig},
 };
 use talos_certifier::{env_var, env_var_with_defaults, ports::MessageReciever};
@@ -10,7 +10,7 @@ use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
 use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, ReplicatorSnapshotProvider};
 
 use cohort_banking::state::postgres::database::DatabaseError;
-use tokio::{signal, try_join};
+use tokio::signal;
 
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 
@@ -61,7 +61,7 @@ async fn main() {
     };
     let database = Database::init_db(cfg_db).await.map_err(|e| e.to_string()).unwrap();
 
-    let pg_statemap_installer = StatemapInstallerImpl {
+    let pg_statemap_installer = BankStatemapInstaller {
         database: Arc::clone(&database),
         max_retry: env_var_with_defaults!("BANK_STATEMAP_INSTALLER_MAX_RETRY", u32, 3),
         retry_wait_ms: env_var_with_defaults!("BANK_STATEMAP_INSTALL_RETRY_WAIT_MS", u64, 2),
@@ -80,11 +80,8 @@ async fn main() {
 
     let snapshot_api = SnapshotApi { db: Arc::clone(&database) };
 
-    let (replicator_handle, statemap_queue_handle, statemap_installer_handle) =
-        talos_cohort_replicator(kafka_consumer, Arc::new(pg_statemap_installer), snapshot_api, config).await;
-
     let all_async_services = tokio::spawn(async move {
-        let result = try_join!(replicator_handle, statemap_queue_handle, statemap_installer_handle);
+        let result = talos_cohort_replicator(kafka_consumer, Arc::new(pg_statemap_installer), snapshot_api, config).await;
         log::info!("Result from the services ={result:?}");
     });
 

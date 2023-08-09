@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     core::{ReplicatorSnapshotProvider, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+    errors::ServiceError,
     models::StatemapInstallerQueue,
 };
 
@@ -31,10 +32,8 @@ pub async fn statemap_queue_service<S>(
     mut statemap_installation_rx: mpsc::Receiver<StatemapInstallationStatus>,
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
     snapshot_api: S,
-    // Get snapshot callback fn
-    // get_snapshot_fn: impl Future<Output = Result<u64, String>>,
     config: StatemapQueueServiceConfig,
-) -> Result<(), String>
+) -> Result<(), ServiceError>
 where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
@@ -42,7 +41,6 @@ where
     let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
 
     let mut installation_success_count = 0;
-    let mut installation_gaveup = 0;
     let mut send_for_install_count = 0;
     let mut first_install_start: i128 = 0; //
     let mut last_install_end: i128 = 0; //  = OffsetDateTime::now_utc().unix_timestamp_nanos();
@@ -76,14 +74,11 @@ where
                     // Sends for installation.
                     for key in items_to_install {
                         // Send for installation
-                        // warn!("Sending... {key}");
                         if send_for_install_count == 0 {
                             first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
                         }
                         send_for_install_count += 1;
                         installation_tx.send((key, statemap_installer_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
-
-                        // last_item_send_for_install = key;
 
                         // Update the status flag
                         statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
@@ -93,12 +88,10 @@ where
             Some(install_result) = statemap_installation_rx.recv() => {
                 match install_result {
                     StatemapInstallationStatus::Success(key) => {
-                        // let start_time_success = Instant::now();
 
                         // installed successfully and will remove the item
                         statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
 
-                        // let index = statemap_queue.get_index_of(&key).unwrap();
 
                         if let Some(last_contiguous_install_item) = statemap_installer_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
                             statemap_installer_queue.update_snapshot(last_contiguous_install_item.1.version) ;
@@ -107,13 +100,7 @@ where
 
                         installation_success_count += 1;
                         last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                        // error!("Installed successfully version={key} and total_installs={install_count}");
-                        // let end_time_success = start_time_success.elapsed();
-                        // error!("(Statemap successfully installed) for version={key} in {end_time_success:?}");
-                    },
-                    StatemapInstallationStatus::GaveUp(_) => {
-                        installation_gaveup += 1;
-                        last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         error!("Failed to install version={ver} due to error={error:?}");
@@ -134,10 +121,8 @@ where
                         tps             : {tps:.3}
                         counts          :
                                         | success={installation_success_count}
-                                        | gaveup={installation_gaveup}
                                         | awaiting_installs={awaiting_count}
                                         | inflight_count={inflight_count}
-                                        | installation_gaveup={installation_gaveup}
                         current snapshot: {}
                         \n ", statemap_installer_queue.snapshot_version);
                     //   last vers send to install : {last_item_send_for_install}

@@ -27,7 +27,6 @@ pub struct StatemapInstallerHashmap {
 #[derive(Debug)]
 pub enum StatemapInstallationStatus {
     Success(u64),
-    GaveUp(u64),
     Error(u64, String),
 }
 
@@ -64,15 +63,9 @@ impl StatemapItem {
     }
 }
 
-pub type RetryCount = u32;
-pub enum ReplicatorInstallStatus {
-    Success,
-    Gaveup(RetryCount),
-}
-
 #[async_trait]
 pub trait ReplicatorInstaller {
-    async fn install(&self, sm: Vec<StatemapItem>, version: u64) -> Result<ReplicatorInstallStatus, String>;
+    async fn install(&self, sm: Vec<StatemapItem>, version: u64) -> Result<(), String>;
 }
 #[async_trait]
 pub trait ReplicatorSnapshotProvider {

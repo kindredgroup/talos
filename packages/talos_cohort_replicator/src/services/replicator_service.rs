@@ -3,6 +3,7 @@ use std::{fmt::Debug, time::Duration};
 
 use crate::{
     core::{Replicator, ReplicatorChannel, StatemapItem},
+    errors::ServiceError,
     models::ReplicatorCandidate,
     suffix::ReplicatorSuffixTrait,
 };
@@ -21,7 +22,7 @@ pub async fn replicator_service<S, M>(
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
     config: ReplicatorServiceConfig,
-) -> Result<(), String>
+) -> Result<(), ServiceError>
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
@@ -129,7 +130,6 @@ where
                             }
                             total_items_installed += 1;
                             time_last_item_installed_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
-
 
                         }
                         ReplicatorChannel::InstallationFailure(_) => {

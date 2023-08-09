@@ -62,8 +62,7 @@ impl Cohort {
         // Param1: The list of statemap items.
         // Param2: Version to install.
         // Returns error descrition. If string is empty it means there was no error installing
-    ) -> Result<Self, ClientError>
-where {
+    ) -> Result<Self, ClientError> {
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.clone().into();
 
