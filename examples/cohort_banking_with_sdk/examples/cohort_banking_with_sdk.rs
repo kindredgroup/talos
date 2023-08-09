@@ -16,7 +16,6 @@ use opentelemetry_sdk::metrics::{MeterProvider, PeriodicReader};
 use opentelemetry_sdk::runtime;
 use opentelemetry_stdout::MetricsExporterBuilder;
 use rand::Rng;
-
 use rust_decimal::prelude::FromPrimitive;
 use tokio::{signal, task::JoinHandle, try_join};
 
@@ -199,7 +198,7 @@ async fn main() -> Result<(), String> {
 fn start_queue_monitor(queue: Arc<Receiver<TransferRequest>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         let check_frequency = Duration::from_secs(10);
-        let total_attempts = 3;
+        let total_attempts = 10;
 
         let mut remaining_attempts = total_attempts;
         loop {
@@ -212,12 +211,12 @@ fn start_queue_monitor(queue: Arc<Receiver<TransferRequest>>) -> JoinHandle<Resu
                 // queue is empty and there are no signals from other workers, reduce window and try again
                 remaining_attempts -= 1;
                 log::warn!(
-                    "Workers queue is empty and there is no activity signal from replicator. Finishing in: {} seconds...",
-                    remaining_attempts * check_frequency.as_secs()
+                    "Workers queue is empty. Finishing in: {} seconds...",
+                    (remaining_attempts + 1) * check_frequency.as_secs()
                 );
             } else {
                 remaining_attempts = total_attempts;
-                log::warn!("Counts. Remaining: {}", queue.len(),);
+                log::warn!("Remaining requests: {}", queue.len());
             }
 
             tokio::time::sleep(check_frequency).await;
