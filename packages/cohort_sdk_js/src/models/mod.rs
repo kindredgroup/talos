@@ -1,0 +1,169 @@
+// use std::collections::HashMap;
+// // $coverage:ignore-start
+// use napi_derive::napi;
+// use cohort_sdk::model::Config;
+//
+//
+// #[napi(object)]
+// pub struct JsConfig {
+//     //
+//     // cohort configs
+//     //
+//     pub retry_attempts_max: u64,
+//     pub retry_backoff_max_ms: u64,
+//     pub retry_oo_backoff_max_ms: u64,
+//     pub retry_oo_attempts_max: u64,
+//
+//     //
+//     // agent config values
+//     //
+//     pub agent: String,
+//     pub cohort: String,
+//     // The size of internal buffer for candidates
+//     pub buffer_size: usize,
+//     pub timeout_ms: u64,
+//
+//     //
+//     // Common to kafka configs values
+//     //
+//     pub brokers: String,
+//     pub topic: String,
+//     pub sasl_mechanisms: Option<String>,
+//     pub kafka_username: Option<String>,
+//     pub kafka_password: Option<String>,
+//
+//     //
+//     // Kafka configs for Agent
+//     //
+//     // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
+//     pub agent_group_id: String,
+//     pub agent_fetch_wait_max_ms: u64,
+//     // The maximum time librdkafka may use to deliver a message (including retries)
+//     pub agent_message_timeout_ms: u64,
+//     // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
+//     pub agent_enqueue_timeout_ms: u64,
+//     // should be mapped to rdkafka::config::RDKafkaLogLevel
+//     pub agent_log_level: u64,
+//
+//     //
+//     // Kafka configs for Replicator
+//     //
+//     pub replicator_client_id: String,
+//     pub replicator_group_id: String,
+//     pub producer_config_overrides: HashMap<&'static str, &'static str>,
+//     pub consumer_config_overrides: HashMap<&'static str, &'static str>,
+//
+//     //
+//     // Suffix config values
+//     //
+//     /// Initial capacity of the suffix
+//     pub suffix_size_max: usize,
+//     /// - The suffix prune threshold from when we start checking if the suffix
+//     /// should prune.
+//     /// - Set to None if pruning is not required.
+//     /// - Defaults to None.
+//     pub suffix_prune_at_size: Option<usize>,
+//     /// Minimum size of suffix after prune.
+//     /// - Defaults to None.
+//     pub suffix_size_min: Option<usize>,
+//
+//     //
+//     // Replicator config values
+//     //
+//     pub replicator_buffer_size: usize,
+//
+//     //
+//     // Database config
+//     //
+//     pub db_pool_size: usize,
+//     pub db_user: String,
+//     pub db_password: String,
+//     pub db_host: String,
+//     pub db_port: String,
+//     pub db_database: String,
+// }
+//
+// impl Into<Config> for JsConfig {
+//     fn into(self) -> Config {
+//         Config {
+//             //
+//             // cohort configs
+//             //
+//             retry_attempts_max: self.retry_attempts_max,
+//             retry_backoff_max_ms: self.retry_backoff_max_ms,
+//             retry_oo_backoff_max_ms: self.retry_oo_backoff_max_ms,
+//             retry_oo_attempts_max: self.retry_oo_attempts_max,
+//
+//             //
+//             // agent config values
+//             //
+//             agent: self.agent,
+//             cohort: self.cohort,
+//             // The size of internal buffer for candidates
+//             buffer_size: self.buffer_size,
+//             timeout_ms: self.timeout_ms,
+//
+//             //
+//             // Common to kafka configs values
+//             //
+//             brokers: self.brokers,
+//             topic: self.topic,
+//             sasl_mechanisms: self.sasl_mechanisms,
+//             kafka_username: self.kafka_username,
+//             kafka_password: self.kafka_password,
+//
+//             //
+//             // Kafka configs for Agent
+//             //
+//             // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
+//             agent_group_id: self.agent_group_id,
+//             agent_fetch_wait_max_ms: self.agent_fetch_wait_max_ms,
+//             // The maximum time librdkafka may use to deliver a message (including retries)
+//             agent_message_timeout_ms: self.agent_message_timeout_ms,
+//             // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
+//             agent_enqueue_timeout_ms: self.agent_enqueue_timeout_ms,
+//             // should be mapped to rdkafka::config::RDKafkaLogLevel
+//             agent_log_level: self.agent_log_level,
+//
+//             //
+//             // Kafka configs for Replicator
+//             //
+//             replicator_client_id: self.replicator_client_id,
+//             replicator_group_id: self.replicator_group_id,
+//             producer_config_overrides: self.producer_config_overrides,
+//             consumer_config_overrides: self.consumer_config_overrides,
+//
+//             //
+//             // Suffix config values
+//             //
+//             /// Initial capacity of the suffix
+//             // suffix_size_max: 500_000,
+//             suffix_size_max: self.suffix_size_max,
+//             /// - The suffix prune threshold from when we start checking if the suffix
+//             /// should prune.
+//             /// - Set to None if pruning is not required.
+//             /// - Defaults to None.
+//             // suffix_prune_at_size: Some(300_000),
+//             suffix_prune_at_size: self.suffix_prune_at_size,
+//             /// Minimum size of suffix after prune.
+//             /// - Defaults to None.
+//             // suffix_size_min: Some(100_000),
+//             suffix_size_min: self.suffix_size_min,
+//
+//             //
+//             // Replicator config values
+//             //
+//             replicator_buffer_size: self.replicator_buffer_size,
+//
+//             //
+//             // Database config
+//             //
+//             db_pool_size: self.db_pool_size,
+//             db_user: self.db_user,
+//             db_password: self.db_password,
+//             db_host: self.db_host,
+//             db_port: self.db_port,
+//             db_database: self.db_database,
+//         }
+//     }
+// }
