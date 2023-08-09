@@ -3,7 +3,7 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-    core::{ReplicatorChannel, ReplicatorInstallStatus, ReplicatorInstaller, StatemapInstallationStatus, StatemapItem},
+    core::{ReplicatorChannel, ReplicatorInstaller, StatemapInstallationStatus, StatemapItem},
     errors::ServiceError,
 };
 
@@ -28,26 +28,9 @@ async fn statemap_install_future(
     let permit = semaphore.clone().acquire_owned().await.unwrap();
 
     match installer.install(statemaps, version).await {
-        Ok(status) => {
-            // let end_installation_time = start_installation_time.elapsed();
-            // error!("[installation_service] Installed successfully version={ver} in {end_installation_time:?}");
+        Ok(_) => {
             replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![version])).await.unwrap();
-            match status {
-                ReplicatorInstallStatus::Installed => {
-                    statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
-                }
-                ReplicatorInstallStatus::InstalledWithoutSnapshotUpdate => {
-                    statemap_installation_tx
-                        .send(StatemapInstallationStatus::SuccessWithoutSnapshotUpdate(version))
-                        .await
-                        .unwrap();
-                }
-                ReplicatorInstallStatus::Gaveup(count) => {
-                    statemap_installation_tx.send(StatemapInstallationStatus::GaveUp(version, count)).await.unwrap();
-                }
-            }
-
-            // drop(permit);
+            statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
         }
 
         Err(err) => {
@@ -57,14 +40,14 @@ async fn statemap_install_future(
             );
             replicator_tx
                 .send(ReplicatorChannel::InstallationFailure(format!(
-                    "Crash and Burn!!! Installed failed for version={version:?} error={err:?}"
+                    "Installed failed for version={version:?} error={err:?}"
                 )))
                 .await
                 .unwrap();
             statemap_installation_tx
                 .send(StatemapInstallationStatus::Error(
                     version,
-                    format!("🔥🔥🔥 Crash and burn the statemap installer queue service Installed failed for version={version:?} error={err:?}"),
+                    format!("🔥🔥🔥 The statemap installer queue service install failed for version={version:?} error={err:?}"),
                 ))
                 .await
                 .unwrap();

@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use deadpool_postgres::Transaction;
-use talos_cohort_replicator::{ReplicatorInstallStatus, ReplicatorInstaller, StatemapItem};
+use talos_cohort_replicator::{ReplicatorInstaller, StatemapItem};
 use tokio_postgres::types::ToSql;
 
 use crate::{model::requests::TransferRequest, state::postgres::database::Database};
@@ -21,19 +21,11 @@ UPDATE bank_accounts ba SET
 
 const SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = ($1)::BIGINT WHERE id = $2 AND "version" < ($1)::BIGINT"#;
 
-/// This function returns a closure to be used to check when there is an error,
-/// whether retry is allowed, along with the number of retry attempts
-fn retry_allowed_on_error(max_retry: u32) -> impl FnMut(&str) -> Option<u32> {
-    let mut remaining_retries = max_retry;
-    move |err: &str| {
-        if err.contains("could not serialize access due to concurrent update") {
-            remaining_retries -= 1;
-            Some(remaining_retries)
-        } else {
-            None
-        }
-    }
+fn is_retriable_error(error: &str) -> bool {
+    // TODO: improve retriable error detection when error moves from String to enum or struct.
+    error.contains("could not serialize access due to concurrent update")
 }
+
 pub struct BankStatemapInstaller {
     pub database: Arc<Database>,
     pub max_retry: u32,
@@ -62,22 +54,17 @@ impl BankStatemapInstaller {
 impl ReplicatorInstaller for BankStatemapInstaller {
     /// Install statemaps and version for respective rows in the `bank_accounts` table and update the `snapshot_version` in `cohort_snapshot` table.
     ///
-    /// Certain errors like `could not serialize access due to concurrent update` in postgres are retryable.
+    /// Certain errors like `could not serialize access due to concurrent update` in postgres are retriable.
     /// - Updating `bank_account` workflow.
     ///     - On successful completion, we proceed to update the `snapshot_version` in `cohort_snapshot`.
-    ///     - When there is a retryable error, we wait for `retry_wait_ms` milliseconds and go to the start of the loop to retry. `(Txn aborts and retries)`
-    ///     - If all the retries are exhausted, we return `ReplicatorInstallStatus::Gaveup`. `(Txn aborts and returns)`
+    ///     - When there is a retryable error, go to the start of the loop to retry. `(Txn aborts and retries)`
     ///     - For non-retryable error, we return the `Error`.
     /// - Updating `cohort_snapshot` workflow.
-    ///     - On successful completion, we commit the transaction and return `ReplicatorInstallStatus::Installed`. `(Txn Commits and returns)`
-    ///     - When there is a retryable error, we wait for `retry_wait_ms` milliseconds and go to the start of the loop to retry. `(Txn aborts and retries)`
-    ///     - If all the retries are exhausted, we return `ReplicatorInstallStatus::InstalledWithoutSnapshotUpdate`, denoting a updates for bank_transfer went through but snapshot wasn't updated. `(Txn Commits and returns)`
+    ///     - On successful completion, we commit the transaction and return. `(Txn Commits and returns)`
+    ///     - When there is a retryable error, go to the start of the loop to retry. `(Txn aborts and retries)`
     ///     - For non-retryable error, we return the `Error`.
 
-    async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<ReplicatorInstallStatus, String> {
-        let mut bank_transfer_error_retry_check = retry_allowed_on_error(self.max_retry);
-        let mut snapshot_retry_check = retry_allowed_on_error(self.max_retry);
-
+    async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<(), String> {
         let mut cnn = self.database.get().await.map_err(|e| e.to_string())?;
         loop {
             let tx = cnn.transaction().await.map_err(|e| e.to_string())?;
@@ -103,18 +90,11 @@ impl ReplicatorInstaller for BankStatemapInstaller {
                     }
                     Err(bank_transfer_db_error) => {
                         //  Check if retry is allowed on the error.
-                        match bank_transfer_error_retry_check(&bank_transfer_db_error) {
-                            Some(remaining_count) => {
-                                if remaining_count > 0 {
-                                    tokio::time::sleep(Duration::from_millis(self.retry_wait_ms)).await;
-                                    continue;
-                                }
-
-                                return Ok(ReplicatorInstallStatus::Gaveup(remaining_count));
-                            }
-                            None => {
-                                return Err(bank_transfer_db_error);
-                            }
+                        if is_retriable_error(&bank_transfer_db_error) {
+                            tokio::time::sleep(Duration::from_millis(self.retry_wait_ms)).await;
+                            continue;
+                        } else {
+                            return Err(bank_transfer_db_error);
                         }
                     }
                 }
@@ -137,21 +117,18 @@ impl ReplicatorInstaller for BankStatemapInstaller {
                         .await
                         .map_err(|tx_error| format!("Commit error for statemap. Error: {}", tx_error))?;
 
-                    return Ok(ReplicatorInstallStatus::Installed);
+                    return Ok(());
                 }
-                Err(error) => match snapshot_retry_check(&error) {
-                    Some(remaining_count) => {
-                        if remaining_count > 0 {
-                            tokio::time::sleep(Duration::from_millis(self.retry_wait_ms)).await;
-                            continue;
-                        }
-
-                        return Ok(ReplicatorInstallStatus::InstalledWithoutSnapshotUpdate);
-                    }
-                    None => {
+                Err(error) =>
+                //  Check if retry is allowed on the error.
+                {
+                    if is_retriable_error(&error) {
+                        tokio::time::sleep(Duration::from_millis(self.retry_wait_ms)).await;
+                        continue;
+                    } else {
                         return Err(error);
                     }
-                },
+                }
             };
         }
     }
