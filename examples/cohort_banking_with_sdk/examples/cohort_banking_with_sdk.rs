@@ -171,15 +171,11 @@ async fn main() -> Result<(), String> {
     let h_stop: JoinHandle<Result<(), String>> = start_queue_monitor(rx_queue_ref);
 
     let all_async_services = tokio::spawn(async move {
-        let result = try_join!(h_generator, h_cohort);
+        let result = try_join!(h_generator, h_cohort, h_stop);
         log::warn!("Result from services ={result:?}");
     });
 
     tokio::select! {
-        _ = h_stop => {
-            log::warn!("Stop manager is active...");
-        }
-
         _ = all_async_services => {}
 
         // CTRL + C termination signal
@@ -198,7 +194,7 @@ async fn main() -> Result<(), String> {
 fn start_queue_monitor(queue: Arc<Receiver<TransferRequest>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         let check_frequency = Duration::from_secs(10);
-        let total_attempts = 10;
+        let total_attempts = 3;
 
         let mut remaining_attempts = total_attempts;
         loop {
