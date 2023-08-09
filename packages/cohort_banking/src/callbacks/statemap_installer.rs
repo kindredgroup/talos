@@ -33,7 +33,7 @@ pub struct BankStatemapInstaller {
 }
 
 impl BankStatemapInstaller {
-    async fn update_bank_transfer_request(tx: &Transaction<'_>, statemap: &[StatemapItem], _snapshot_version: u64) -> Result<u64, String> {
+    async fn install_bank_transfer_statemap(tx: &Transaction<'_>, statemap: &[StatemapItem], _snapshot_version: u64) -> Result<u64, String> {
         let sti = statemap[0].clone();
 
         let request: TransferRequest = serde_json::from_value(sti.payload.clone()).map_err(|e| e.to_string())?;
@@ -69,7 +69,7 @@ impl ReplicatorInstaller for BankStatemapInstaller {
         loop {
             let tx = cnn.transaction().await.map_err(|e| e.to_string())?;
             if !statemap.is_empty() {
-                let updated_rows_res = BankStatemapInstaller::update_bank_transfer_request(&tx, &statemap, snapshot_version).await;
+                let updated_rows_res = BankStatemapInstaller::install_bank_transfer_statemap(&tx, &statemap, snapshot_version).await;
 
                 match updated_rows_res {
                     Ok(updated_rows) => {
