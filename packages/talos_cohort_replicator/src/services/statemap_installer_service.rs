@@ -33,11 +33,17 @@ async fn statemap_install_future(
             // error!("[installation_service] Installed successfully version={ver} in {end_installation_time:?}");
             replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![version])).await.unwrap();
             match status {
-                ReplicatorInstallStatus::Success => {
+                ReplicatorInstallStatus::Installed => {
                     statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
                 }
-                ReplicatorInstallStatus::Gaveup(_) => {
-                    statemap_installation_tx.send(StatemapInstallationStatus::GaveUp(version)).await.unwrap();
+                ReplicatorInstallStatus::InstalledWithoutSnapshotUpdate => {
+                    statemap_installation_tx
+                        .send(StatemapInstallationStatus::SuccessWithoutSnapshotUpdate(version))
+                        .await
+                        .unwrap();
+                }
+                ReplicatorInstallStatus::Gaveup(count) => {
+                    statemap_installation_tx.send(StatemapInstallationStatus::GaveUp(version, count)).await.unwrap();
                 }
             }
 

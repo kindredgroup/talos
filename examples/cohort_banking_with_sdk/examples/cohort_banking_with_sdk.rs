@@ -1,7 +1,6 @@
 use std::str::FromStr;
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
-use async_channel::Receiver;
 use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueueProcessor, model::requests::TransferRequest};
 use cohort_sdk::model::Config;
 use examples_support::load_generator::models::Generator;
@@ -12,7 +11,7 @@ use opentelemetry_api::KeyValue;
 use opentelemetry_sdk::Resource;
 use rand::Rng;
 use rust_decimal::{prelude::FromPrimitive, Decimal};
-use tokio::{signal, task::JoinHandle, try_join};
+use tokio::{signal, try_join};
 
 use opentelemetry::global;
 use opentelemetry::global::shutdown_tracer_provider;
@@ -37,7 +36,6 @@ async fn main() -> Result<(), String> {
 
     let (tx_queue, rx_queue) = async_channel::unbounded::<TransferRequest>();
     let rx_queue = Arc::new(rx_queue);
-    let rx_queue_ref = Arc::clone(&rx_queue);
 
     let generator_impl = TransferRequestGenerator {
         available_accounts: params.accounts,
@@ -178,17 +176,12 @@ async fn main() -> Result<(), String> {
         log::info!("Finished. errors count: {}", errors_count);
     });
 
-    let h_stop: JoinHandle<Result<(), String>> = start_queue_monitor(rx_queue_ref);
-
     let all_async_services = tokio::spawn(async move {
         let result = try_join!(h_generator, h_cohort);
         log::warn!("Result from services ={result:?}");
     });
 
     tokio::select! {
-        _ = h_stop => {
-            log::warn!("Stop manager is active...");
-        }
 
         _ = all_async_services => {}
 
@@ -203,39 +196,6 @@ async fn main() -> Result<(), String> {
     print_prometheus_report_as_text(exporter, params.threads);
 
     Ok(())
-}
-
-fn start_queue_monitor(queue: Arc<Receiver<TransferRequest>>) -> JoinHandle<Result<(), String>> {
-    tokio::spawn(async move {
-        let check_frequency = Duration::from_secs(10);
-        let total_attempts = 3;
-
-        let mut remaining_attempts = total_attempts;
-        loop {
-            if remaining_attempts == 0 {
-                // we consumed all attempts
-                break;
-            }
-
-            if queue.is_empty() {
-                // queue is empty and there are no signals from other workers, reduce window and try again
-                remaining_attempts -= 1;
-                log::warn!(
-                    "Workers queue is empty and there is no activity signal from replicator. Finishing in: {} seconds...",
-                    remaining_attempts * check_frequency.as_secs()
-                );
-            } else {
-                remaining_attempts = total_attempts;
-                log::warn!("Counts. Remaining: {}", queue.len(),);
-            }
-
-            tokio::time::sleep(check_frequency).await;
-        }
-
-        queue.close();
-
-        Err("Signal from StopController".into())
-    })
 }
 
 async fn get_params() -> Result<LaunchParams, String> {

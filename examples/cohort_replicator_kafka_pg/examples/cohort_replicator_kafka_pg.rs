@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use cohort_banking::{
-    callbacks::statemap_installer::StatemapInstallerImpl,
+    callbacks::statemap_installer::BankStatemapInstaller,
     state::postgres::{database::Database, database_config::DatabaseConfig},
 };
 use talos_certifier::{env_var, env_var_with_defaults, ports::MessageReciever};
@@ -61,7 +61,7 @@ async fn main() {
     };
     let database = Database::init_db(cfg_db).await.map_err(|e| e.to_string()).unwrap();
 
-    let pg_statemap_installer = StatemapInstallerImpl {
+    let pg_statemap_installer = BankStatemapInstaller {
         database: Arc::clone(&database),
         max_retry: env_var_with_defaults!("BANK_STATEMAP_INSTALLER_MAX_RETRY", u32, 3),
         retry_wait_ms: env_var_with_defaults!("BANK_STATEMAP_INSTALL_RETRY_WAIT_MS", u64, 2),

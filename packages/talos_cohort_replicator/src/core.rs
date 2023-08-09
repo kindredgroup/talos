@@ -10,6 +10,8 @@ use super::{
     utils::{get_filtered_batch, get_statemap_from_suffix_items},
 };
 
+pub type RetryCount = u32;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatemapInstallState {
     Awaiting,
@@ -27,7 +29,8 @@ pub struct StatemapInstallerHashmap {
 #[derive(Debug)]
 pub enum StatemapInstallationStatus {
     Success(u64),
-    GaveUp(u64),
+    SuccessWithoutSnapshotUpdate(u64),
+    GaveUp(u64, RetryCount),
     Error(u64, String),
 }
 
@@ -64,9 +67,9 @@ impl StatemapItem {
     }
 }
 
-pub type RetryCount = u32;
 pub enum ReplicatorInstallStatus {
-    Success,
+    Installed,
+    InstalledWithoutSnapshotUpdate,
     Gaveup(RetryCount),
 }
 

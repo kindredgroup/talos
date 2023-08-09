@@ -18,3 +18,14 @@ pub struct ServiceError {
     // pub data: Option<String>,
     // pub service: String,
 }
+
+// enum ReplicatorInstallerError {
+//     DBConnectionError
+//     DB
+//     // DB Connection Error
+//     // DB Transaction Error
+//     // Data deserialization Error
+//     // Update table - Cohort related or snapshot ([table name], retry count)
+//     // Exhausted retry and no install
+
+// }

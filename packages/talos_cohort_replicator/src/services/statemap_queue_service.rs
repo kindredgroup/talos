@@ -43,6 +43,7 @@ where
     let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
 
     let mut installation_success_count = 0;
+    let mut installation_success_without_snapshot_count = 0;
     let mut installation_gaveup = 0;
     let mut send_for_install_count = 0;
     let mut first_install_start: i128 = 0; //
@@ -112,9 +113,22 @@ where
                         // let end_time_success = start_time_success.elapsed();
                         // error!("(Statemap successfully installed) for version={key} in {end_time_success:?}");
                     },
-                    StatemapInstallationStatus::GaveUp(_) => {
+                    StatemapInstallationStatus::SuccessWithoutSnapshotUpdate(key) => {
+                        // let start_time_success = Instant::now();
+
+                        // installed successfully and will remove the item
+                        statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
+
+                        // let index = statemap_queue.get_index_of(&key).unwrap();
+
+                        installation_success_without_snapshot_count += 1;
+                        last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    }
+
+                    StatemapInstallationStatus::GaveUp(ver, _) => {
                         installation_gaveup += 1;
                         last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                        statemap_installer_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         error!("Failed to install version={ver} due to error={error:?}");
@@ -135,6 +149,7 @@ where
                         tps             : {tps:.3}
                         counts          :
                                         | success={installation_success_count}
+                                        | success without snapshot update={installation_success_without_snapshot_count}
                                         | gaveup={installation_gaveup}
                                         | awaiting_installs={awaiting_count}
                                         | inflight_count={inflight_count}
