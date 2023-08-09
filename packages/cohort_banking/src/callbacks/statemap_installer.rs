@@ -73,7 +73,7 @@ impl ReplicatorInstaller for BankStatemapInstaller {
 
                 match updated_rows_res {
                     Ok(updated_rows) => {
-                        if updated_rows > 0 {
+                        if updated_rows == 0 {
                             log::debug!(
                                 "No rows were updated when installing: {:?}. Snapshot will be set to: {}",
                                 statemap,
