@@ -108,6 +108,20 @@ where
                         statemap_installer_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
                     },
                 }
+
+                let  items_to_install: Vec<u64> = statemap_installer_queue.get_versions_to_install();
+                // Sends for installation.
+                for key in items_to_install {
+                    // Send for installation
+                    if send_for_install_count == 0 {
+                        first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    }
+                    send_for_install_count += 1;
+                    installation_tx.send((key, statemap_installer_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
+
+                    // Update the status flag
+                    statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
+                }
             }
             _ = cleanup_interval.tick() => {
                 if config.enable_stats {
