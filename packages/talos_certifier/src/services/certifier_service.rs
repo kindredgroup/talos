@@ -10,7 +10,6 @@ use tokio::sync::mpsc;
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
 use crate::{
-    certifier::Outcome,
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
     errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
     model::{CandidateMessage, DecisionMessage},
@@ -59,20 +58,6 @@ impl CertifierService {
         }
     }
 
-    fn get_conflict_candidates(&mut self, outcome: &Outcome) -> Option<CandidateMessage> {
-        match outcome {
-            Outcome::Aborted { version, discord: _ } => {
-                if version.is_some() {
-                    if let Ok(Some(msg)) = self.suffix.get(version.unwrap()) {
-                        return Some(msg.item);
-                    }
-                }
-                None
-            }
-            _ => None,
-        }
-    }
-
     /// Process CandidateMessage to provide the DecisionMessage
     ///
     /// * Inserts the message into suffix.
@@ -94,11 +79,8 @@ impl CertifierService {
             .certifier
             .certify_transaction(suffix_head, message.convert_into_certifier_candidate(message.version));
 
-        // If abort get the conflict record from suffix
-        let conflict_candidate: Option<CandidateMessage> = self.get_conflict_candidates(&outcome);
-
         // Create the Decision Message
-        let mut dm = DecisionMessage::new(message, conflict_candidate, outcome, suffix_head);
+        let mut dm = DecisionMessage::new(message, outcome, suffix_head);
         let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
         dm.metrics.candidate_published = message.published_at;
         dm.metrics.candidate_received = message.received_at;
