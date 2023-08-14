@@ -134,9 +134,11 @@ async fn main() -> Result<(), String> {
 
     let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
 
-    let meter_provider = Arc::new(MeterProvider::builder().with_reader(reader).build());
-    global::set_meter_provider(Arc::clone(&meter_provider));
-    global::set_scaling_config(ScalingConfig { ratios: params.scaling_config });
+    let meter_provider = MeterProvider::builder().with_reader(reader).build();
+    global::set_meter_provider(meter_provider.clone());
+
+    let scaling_config = ScalingConfig { ratios: params.scaling_config };
+    global::set_scaling_config(scaling_config);
 
     let meter = global::meter("banking_cohort");
     let meter = Arc::new(meter);
@@ -186,6 +188,7 @@ async fn main() -> Result<(), String> {
 
     shutdown_tracer_provider();
     let _ = meter_provider.shutdown();
+
     let report = rx_metrics.borrow();
     log::warn!("{}", *report);
     Ok(())

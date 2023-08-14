@@ -20,8 +20,7 @@ use super::scaling::ScalingConfig;
 ///
 
 /// The global `Meter` provider singleton.
-static GLOBAL_METER_PROVIDER: Lazy<RwLock<GlobalMeterProvider>> =
-    Lazy::new(|| RwLock::new(GlobalMeterProvider::new(Arc::new(metrics::noop::NoopMeterProvider::new()))));
+static GLOBAL_METER_PROVIDER: Lazy<RwLock<GlobalMeterProvider>> = Lazy::new(|| RwLock::new(GlobalMeterProvider::new(metrics::noop::NoopMeterProvider::new())));
 
 static GLOBAL_SCALING_CONFIG: Lazy<RwLock<Arc<ScalingConfig>>> = Lazy::new(|| RwLock::new(Arc::new(ScalingConfig::default())));
 
@@ -77,11 +76,11 @@ impl MeterProvider for GlobalMeterProvider {
 
 impl GlobalMeterProvider {
     /// Create a new global meter provider
-    pub fn new<P>(provider: Arc<P>) -> Self
+    pub fn new<P>(provider: P) -> Self
     where
         P: MeterProvider + Send + Sync + 'static,
     {
-        GlobalMeterProvider { provider }
+        GlobalMeterProvider { provider: Arc::new(provider) }
     }
 }
 
@@ -90,7 +89,7 @@ pub fn set_scaling_config(new_config: ScalingConfig) {
     *cfg = Arc::new(new_config);
 }
 
-pub fn set_meter_provider<P>(new_provider: Arc<P>)
+pub fn set_meter_provider<P>(new_provider: P)
 where
     P: metrics::MeterProvider + Send + Sync + 'static,
 {

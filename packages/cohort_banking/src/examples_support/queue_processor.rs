@@ -3,7 +3,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-use metrics::{model::MinMax, opentel::global};
+use metrics::model::MinMax;
 use opentelemetry_api::metrics::{Meter, Unit};
 use tokio::task::JoinHandle;
 
@@ -46,10 +46,10 @@ impl QueueProcessor {
                             handled_count += 1;
                             let span_dur_start = Instant::now();
                             let result = item_handler.handle(item).await;
-                            let span_dur_value = span_dur_start.elapsed().as_nanos() as f64 / 1_000_000_f64;
+                            let span_dur_value = span_dur_start.elapsed().as_nanos() as f64 / 1_000_f64;
                             tokio::spawn(async move {
-                                let scale = global::scaling_config().get_scale_factor("metric_candidate_roundtrip");
-                                histogram_ref.record(span_dur_value * scale as f64, &[]);
+                                // let scale = global::scaling_config().get_scale_factor("metric_candidate_roundtrip");
+                                histogram_ref.record(span_dur_value, &[]);
                             });
 
                             if let Err(e) = result {

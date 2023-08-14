@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 /// The config for metrics scaling as map where metric name is mapped to its scaling factor.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ScalingConfig {
     pub ratios: HashMap<String, f32>,
 }

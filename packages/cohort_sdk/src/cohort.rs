@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use log::error;
 use metrics::opentel::global;
 use opentelemetry_api::metrics::{Counter, Histogram, Unit};
 use talos_agent::{
@@ -172,12 +173,11 @@ impl Cohort {
     {
         let span_1 = Instant::now();
         let response = self.send_to_talos(request, state_provider).await?;
-        let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
+        let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
         tokio::spawn(async move {
-            let scale = global::scaling_config().get_scale_factor("metric_talos");
-            h_talos.record(span_1_val * scale as f64, &[]);
+            h_talos.record(span_1_val, &[]);
         });
 
         if response.decision == Decision::Aborted {
@@ -200,13 +200,12 @@ impl Cohort {
 
             let span_3 = Instant::now();
             let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
-            let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
+            let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
 
             tokio::spawn(async move {
-                let scale = global::scaling_config().get_scale_factor("metric_oo_install_duration");
-                h_install.record(span_3_val * scale as f64, &[]);
+                h_install.record(span_3_val, &[]);
             });
 
             let error = match install_result {
@@ -241,7 +240,7 @@ impl Cohort {
             }
         };
 
-        let span_2_val = span_2.elapsed().as_nanos() as f64 / 1_000_000_f64;
+        let span_2_val = span_2.elapsed().as_nanos() as f64 / 1_000_f64;
         let total_sleep = controller.total_sleep_time;
 
         let c_not_safe = Arc::clone(&self.oo_not_safe_counter);
@@ -256,8 +255,8 @@ impl Cohort {
                 c_not_safe.add(is_not_save, &[]);
             }
             if total_sleep > 0 {
-                let scale = global::scaling_config().get_scale_factor("metric_oo_wait_duration");
-                h_total_sleep.record(total_sleep as f64 * scale as f64, &[]);
+                error!("Total Sleep time={total_sleep} ");
+                h_total_sleep.record(total_sleep as f64 * 1_000_f64, &[]);
             }
             if giveups > 0 {
                 c_giveups.add(giveups, &[]);
@@ -267,8 +266,7 @@ impl Cohort {
             }
 
             h_attempts.record(attempt, &[]);
-            let scale = global::scaling_config().get_scale_factor("metric_oo_install_and_wait_duration");
-            h_span_2.record(span_2_val * scale as f64, &[]);
+            h_span_2.record(span_2_val, &[]);
         });
         result
     }
