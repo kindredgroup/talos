@@ -120,7 +120,7 @@ async fn test_candidate_message_create_decision_message() {
                 version: 4,
                 duplicate_version: None,
                 safepoint: Some(3),
-                conflicts: None,
+                conflict_version: None,
                 metrics: TxProcessingTimeline::default(),
             }))
             .await
@@ -179,7 +179,7 @@ async fn test_save_and_publish_multiple_decisions() {
                 version: 4,
                 duplicate_version: None,
                 safepoint: Some(3),
-                conflicts: None,
+                conflict_version: None,
                 metrics: TxProcessingTimeline::default(),
             }))
             .await
@@ -197,7 +197,7 @@ async fn test_save_and_publish_multiple_decisions() {
                 version: 4,
                 duplicate_version: None,
                 safepoint: Some(3),
-                conflicts: None,
+                conflict_version: None,
                 metrics: TxProcessingTimeline::default(),
             }))
             .await
@@ -293,7 +293,7 @@ async fn test_capture_child_thread_dberror() {
                 version: 4,
                 duplicate_version: None,
                 safepoint: Some(3),
-                conflicts: None,
+                conflict_version: None,
                 metrics: TxProcessingTimeline::default(),
             }))
             .await
@@ -345,7 +345,7 @@ async fn test_capture_publish_error() {
         version: 4,
         duplicate_version: None,
         safepoint: Some(3),
-        conflicts: None,
+        conflict_version: None,
         metrics: TxProcessingTimeline::default(),
     };
 
@@ -405,7 +405,7 @@ async fn test_duplicate_version_found_in_db() {
         version: 4,
         duplicate_version: None,
         safepoint: Some(3),
-        conflicts: None,
+        conflict_version: None,
         metrics: TxProcessingTimeline::default(),
     };
 
@@ -422,7 +422,7 @@ async fn test_duplicate_version_found_in_db() {
         version: 8,
         duplicate_version: None,
         safepoint: Some(3),
-        conflicts: None,
+        conflict_version: None,
         metrics: TxProcessingTimeline::default(),
     };
     let result_duplicate_decision = DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message_duplicate_same_xid).await;
