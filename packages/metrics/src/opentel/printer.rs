@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use opentelemetry_stdout::MetricsData;
 
 use super::{
-    global,
     model::{Attribute, MetricsDataContainer},
+    scaling::ScalingConfig,
 };
 
 pub struct MetricsToStringPrinter {
@@ -43,7 +43,7 @@ impl MetricsToStringPrinter {
     }
 
     #[allow(clippy::single_char_add_str)]
-    pub fn print(&self, metrics: &MetricsData) -> Result<String, String> {
+    pub fn print(&self, metrics: &MetricsData, scale_config: &ScalingConfig) -> Result<String, String> {
         let mut out: String = "".to_owned();
         let serde_value = serde_json::to_value(metrics).map_err(|e| e.to_string())?;
         let container = serde_json::from_value::<MetricsDataContainer>(serde_value).map_err(|e| e.to_string())?;
@@ -82,7 +82,7 @@ impl MetricsToStringPrinter {
                 if let Some(hist_c) = &metric.histogram {
                     let hist = hist_c.histogram();
                     let buckets = hist.compact();
-                    let scale_factor = global::scaling_config().get_scale_factor(metric.name.as_str());
+                    let scale_factor = scale_config.get_scale_factor(metric.name.as_str());
 
                     out.push_str("\n---------------------------------------");
                     out.push_str(format!("\nHistogram: \"{}\"\n", metric.name).as_str());

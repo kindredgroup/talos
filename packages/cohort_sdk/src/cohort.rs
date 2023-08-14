@@ -4,8 +4,11 @@ use std::{
 };
 
 use log::error;
-use metrics::opentel::global;
-use opentelemetry_api::metrics::{Counter, Histogram, Unit};
+// use metrics::opentel::global;
+use opentelemetry_api::{
+    global,
+    metrics::{Counter, Histogram, Unit},
+};
 use talos_agent::{
     agent::{
         core::{AgentServices, TalosAgentImpl},

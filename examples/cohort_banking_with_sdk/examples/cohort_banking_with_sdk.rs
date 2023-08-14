@@ -10,6 +10,7 @@ use metrics::model::MinMax;
 use metrics::opentel::aggregation_selector::CustomHistogramSelector;
 use metrics::opentel::printer::MetricsToStringPrinter;
 use metrics::opentel::scaling::ScalingConfig;
+use opentelemetry_api::global;
 use opentelemetry_api::metrics::MetricsError;
 use opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector;
 use opentelemetry_sdk::metrics::{MeterProvider, PeriodicReader};
@@ -19,7 +20,7 @@ use rand::Rng;
 use rust_decimal::prelude::FromPrimitive;
 use tokio::{signal, task::JoinHandle, try_join};
 
-use metrics::opentel::global;
+// use metrics::opentel::global;
 use opentelemetry::global::shutdown_tracer_provider;
 
 #[derive(Clone)]
@@ -113,20 +114,21 @@ async fn main() -> Result<(), String> {
         // Database config
         //
         db_pool_size: 100,
-        db_user: "postgres".into(),
+        db_user: "admin".into(),
         db_password: "admin".into(),
         db_host: "127.0.0.1".into(),
         db_port: "5432".into(),
         db_database: "talos-sample-cohort-dev".into(),
     };
 
+    let scaling_config = ScalingConfig { ratios: params.scaling_config };
     let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw);
     let (tx_metrics, rx_metrics) = tokio::sync::watch::channel("".to_string());
     let exporter = MetricsExporterBuilder::default()
         .with_aggregation_selector(CustomHistogramSelector::new_with_4k_buckets()?)
         .with_temporality_selector(DefaultTemporalitySelector::new())
         .with_encoder(move |_writer, data| {
-            let report = printer.print(&data).map_err(MetricsError::Other)?;
+            let report = printer.print(&data, &scaling_config).map_err(MetricsError::Other)?;
             tx_metrics.send(report).map_err(|e| MetricsError::Other(e.to_string()))?;
             Ok(())
         })
@@ -137,8 +139,8 @@ async fn main() -> Result<(), String> {
     let meter_provider = MeterProvider::builder().with_reader(reader).build();
     global::set_meter_provider(meter_provider.clone());
 
-    let scaling_config = ScalingConfig { ratios: params.scaling_config };
-    global::set_scaling_config(scaling_config);
+    // let scaling_config = ScalingConfig { ratios: params.scaling_config };
+    // global::set_scaling_config(scaling_config);
 
     let meter = global::meter("banking_cohort");
     let meter = Arc::new(meter);
