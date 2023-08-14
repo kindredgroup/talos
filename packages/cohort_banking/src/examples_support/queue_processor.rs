@@ -1,9 +1,9 @@
 use std::{
     sync::Arc,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
-use metrics::{model::MinMax, opentel::global};
+use metrics::opentel::global;
 use opentelemetry_api::metrics::{Meter, Unit};
 use tokio::task::JoinHandle;
 
@@ -18,38 +18,60 @@ pub trait Handler<T: Send + Sync + 'static>: Sync + Send {
 
 impl QueueProcessor {
     pub async fn process<T: Send + Sync + 'static, H: Handler<T> + 'static>(
-        queue: Arc<async_channel::Receiver<T>>,
+        queue: Arc<async_channel::Receiver<(T, f64)>>,
         meter: Arc<Meter>,
         threads: u64,
         item_handler: Arc<H>,
-    ) -> Vec<JoinHandle<MinMax>> {
+    ) -> Vec<JoinHandle<()>> {
         let item_handler = Arc::new(item_handler);
-        let mut tasks = Vec::<JoinHandle<MinMax>>::new();
+        let mut tasks = Vec::<JoinHandle<()>>::new();
 
         for thread_number in 1..=threads {
             let queue_ref = Arc::clone(&queue);
             let item_handler = Arc::clone(&item_handler);
             let meter = Arc::clone(&meter);
-            let task_h: JoinHandle<MinMax> = tokio::spawn(async move {
-                let mut timeline = MinMax::default();
-                let histogram = Arc::new(meter.f64_histogram("metric_candidate_roundtrip").with_unit(Unit::new("ms")).init());
+
+            let task_h: JoinHandle<()> = tokio::spawn(async move {
                 let counter = Arc::new(meter.u64_counter("metric_count").with_unit(Unit::new("tx")).init());
+                let histogram = Arc::new(meter.f64_histogram("metric_candidate_roundtrip").with_unit(Unit::new("ms")).init());
+                let histogram_sys = Arc::new(meter.f64_histogram("metric_candidate_roundtrip_sys").with_unit(Unit::new("ms")).init());
+                let histogram_throughput = Arc::new(meter.f64_histogram("metric_throughput").with_unit(Unit::new("ms")).init());
 
                 let mut handled_count = 0;
+                let mut errors_count = 0;
 
                 loop {
                     let histogram_ref = Arc::clone(&histogram);
+                    let histogram_sys_ref = Arc::clone(&histogram_sys);
+                    let histogram_throughput_ref = Arc::clone(&histogram_throughput);
+                    let counter_ref = Arc::clone(&counter);
+
                     match queue_ref.recv().await {
-                        Err(_) => break,
-                        Ok(item) => {
-                            timeline.add(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128);
+                        Err(_) => {
+                            errors_count += 1;
+                            break;
+                        }
+                        Ok((item, scheduled_at_ms)) => {
                             handled_count += 1;
-                            let span_dur_start = Instant::now();
+
+                            let started_at_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as f64 / 1_000_000_f64;
                             let result = item_handler.handle(item).await;
-                            let span_dur_value = span_dur_start.elapsed().as_nanos() as f64 / 1_000_000_f64;
+
+                            let processing_finished_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as f64 / 1_000_000_f64;
                             tokio::spawn(async move {
-                                let scale = global::scaling_config().get_scale_factor("metric_candidate_roundtrip");
-                                histogram_ref.record(span_dur_value * scale as f64, &[]);
+                                let scale = global::scaling_config().get_scale_factor("metric_candidate_roundtrip") as f64;
+                                histogram_ref.record((processing_finished_ms - started_at_ms) * scale, &[]);
+
+                                let scale_sys = global::scaling_config().get_scale_factor("metric_candidate_roundtrip_sys") as f64;
+                                histogram_sys_ref.record((processing_finished_ms - scheduled_at_ms) * scale_sys, &[]);
+
+                                // Record start and stop times of each transaction.
+                                // This histogram will track min and max values, giving us the total duration of the test, excluding test specific code.
+                                // The count value in this histogram will be 2x inflated, which will need to be accounted for.
+                                histogram_throughput_ref.record(scheduled_at_ms, &[]);
+                                histogram_throughput_ref.record(processing_finished_ms, &[]);
+
+                                counter_ref.add(1, &[]);
                             });
 
                             if let Err(e) = result {
@@ -65,14 +87,12 @@ impl QueueProcessor {
                     }
                 }
 
-                timeline.add(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as i128);
-
-                tokio::spawn(async move {
-                    counter.add(handled_count, &[]);
-                });
-                log::debug!("Thread {:>2} stopped. Processed items: {}.", thread_number, handled_count);
-
-                timeline
+                log::debug!(
+                    "Thread {:>2} stopped. Processed items: {}. Errors: {}",
+                    thread_number,
+                    handled_count,
+                    errors_count
+                );
             });
             tasks.push(task_h);
         }

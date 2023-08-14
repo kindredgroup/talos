@@ -22,6 +22,14 @@ pub struct CandidateData {
 
 // #[napi]
 #[derive(Clone)]
+pub struct Conflict {
+    pub xid: String,
+    pub version: u64,
+    pub readvers: Vec<u64>,
+}
+
+// #[napi]
+#[derive(Clone)]
 pub struct CertificationRequest {
     pub candidate: CandidateData,
     pub timeout_ms: u64,
@@ -33,6 +41,7 @@ pub struct CertificationResponse {
     pub decision: Decision,
     pub version: u64,
     pub safepoint: Option<u64>,
+    pub conflict: Option<Conflict>,
     pub metadata: ResponseMetadata,
 }
 
@@ -62,14 +71,28 @@ pub struct ClientError {
 }
 
 #[derive(Clone)]
+pub struct BackoffConfig {
+    pub min_ms: u64,
+    pub max_ms: u64,
+}
+
+impl BackoffConfig {
+    pub fn new(min_ms: u64, max_ms: u64) -> Self {
+        Self { min_ms, max_ms }
+    }
+}
+
+#[derive(Clone)]
 // #[napi]
 pub struct Config {
     //
     // cohort configs
     //
+    pub backoff_on_conflict: BackoffConfig,
+    pub retry_backoff: BackoffConfig,
+
     pub retry_attempts_max: u64,
-    pub retry_backoff_max_ms: u64,
-    pub retry_oo_backoff_max_ms: u64,
+    pub retry_oo_backoff: BackoffConfig,
     pub retry_oo_attempts_max: u64,
 
     //

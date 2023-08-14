@@ -47,7 +47,7 @@ impl MetricsToStringPrinter {
         let mut out: String = "".to_owned();
         let serde_value = serde_json::to_value(metrics).map_err(|e| e.to_string())?;
         let container = serde_json::from_value::<MetricsDataContainer>(serde_value).map_err(|e| e.to_string())?;
-        let percentile_labels = vec![25.0, 50.0, 75.0, 90.0, 95.0, 98.0, 99.0, 99.9, 99.99];
+        let percentile_labels = vec![25.0, 50.0, 75.0, 90.0, 95.0, 98.0, 99.0, 99.9, 99.99, 100.0];
 
         if let Some(ref filter) = self.resource_filter {
             let mut filter_passed = filter.is_empty();
@@ -81,6 +81,20 @@ impl MetricsToStringPrinter {
 
                 if let Some(hist_c) = &metric.histogram {
                     let hist = hist_c.histogram();
+
+                    if metric.name == "metric_throughput" {
+                        // this is secial case metric used to track total time span of the test
+                        out.push_str("\n---------------------------------------");
+                        out.push_str(format!("\n{:>11} : {}", "Metric name", "throughput").as_str());
+
+                        let dur_sec = metric.to_seconds(hist.max - hist.min).unwrap();
+                        let value = (hist.count as f64 / 2_f64) / dur_sec;
+                        out.push_str(format!("\n{:>11} : {:.2} TPS", "Value", value).as_str());
+                        if !self.print_raw_histogram {
+                            continue;
+                        }
+                    }
+
                     let buckets = hist.compact();
                     let scale_factor = global::scaling_config().get_scale_factor(metric.name.as_str());
 
@@ -114,7 +128,7 @@ impl MetricsToStringPrinter {
                                 let scaled_label = bucket.label as f32 / scale_factor;
                                 out.push_str(
                                     format!(
-                                        "\n{:>5.2}% | {:>7.2} {} | samples: {:>7}",
+                                        "\n{:>6.2}% | {:>7.2} {} | samples: {:>7}",
                                         percentile_label, scaled_label, metric.unit, bucket.sum
                                     )
                                     .as_str(),
@@ -130,8 +144,8 @@ impl MetricsToStringPrinter {
                     out.push_str(format!("\n{:>10} : {}", "Count", hist.count).as_str());
                     if metric.is_time_unit() {
                         if let Some(duration_sec) = metric.to_seconds(hist.sum / self.parallel_threads as f64 / scale_factor as f64) {
-                            out.push_str(format!("\n{:>10} : {:.2} sec", "Duration", duration_sec).as_str());
-                            out.push_str(format!("\n{:>10} : {:.2} avg tps", "Throughput", hist.count as f64 / duration_sec).as_str());
+                            out.push_str(format!("\n{:>10} : {:.2} sec (avg per thread)", "Duration", duration_sec).as_str());
+                            out.push_str(format!("\n{:>10} : {:.2} tps (avg per thread)", "Throughput", hist.count as f64 / duration_sec).as_str());
                         } else {
                             out.push_str(format!("\n{:>10} : ERROR. Unable to determine time unit from this: '{}')", "Duration", metric.unit).as_str());
                             out.push_str("\nThroughput : N/A");

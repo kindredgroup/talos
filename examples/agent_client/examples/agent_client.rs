@@ -43,7 +43,7 @@ async fn main() -> Result<(), String> {
 async fn certify() -> Result<(), String> {
     let params = get_params().await?;
 
-    let generated = async_channel::unbounded::<CertificationRequest>();
+    let generated = async_channel::unbounded::<(CertificationRequest, f64)>();
     let tx_generated = Arc::new(generated.0);
 
     // give this to worker threads
@@ -81,7 +81,7 @@ async fn certify() -> Result<(), String> {
     Ok(())
 }
 
-fn init_workers(params: LaunchParams, queue: Arc<Receiver<CertificationRequest>>) -> JoinHandle<()> {
+fn init_workers(params: LaunchParams, queue: Arc<Receiver<(CertificationRequest, f64)>>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let agent = Arc::new(make_agent(params.clone()).await);
 
@@ -96,7 +96,7 @@ fn init_workers(params: LaunchParams, queue: Arc<Receiver<CertificationRequest>>
                 loop {
                     let queue = Arc::clone(&queue_ref);
                     let agent = Arc::clone(&agent_ref);
-                    if let Ok(tx_req) = queue.recv().await {
+                    if let Ok((tx_req, _)) = queue.recv().await {
                         if (agent.certify(tx_req).await).is_err() {
                             errors_count += 1
                         }
@@ -264,7 +264,7 @@ async fn make_agent(params: LaunchParams) -> impl TalosAgent {
     agent
 }
 
-fn create_stop_controller(params: LaunchParams, queue: Arc<Receiver<CertificationRequest>>) -> JoinHandle<Result<(), String>> {
+fn create_stop_controller(params: LaunchParams, queue: Arc<Receiver<(CertificationRequest, f64)>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         let mut remaining_checks = params.stop_max_empty_checks;
         loop {

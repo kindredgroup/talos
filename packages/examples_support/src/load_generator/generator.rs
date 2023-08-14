@@ -10,7 +10,7 @@ use super::models::Generator;
 pub struct ControlledRateLoadGenerator {}
 
 impl ControlledRateLoadGenerator {
-    pub async fn generate<T, G>(stop_type: StopType, target_rate: f32, mut generator_impl: G, tx_output: Arc<Sender<T>>) -> Result<(), String>
+    pub async fn generate<T, G>(stop_type: StopType, target_rate: f32, mut generator_impl: G, tx_output: Arc<Sender<(T, f64)>>) -> Result<(), String>
     where
         G: Generator<T> + Sized + 'static,
     {
@@ -75,7 +75,8 @@ impl ControlledRateLoadGenerator {
             }
 
             let new_item: T = generator_impl.generate();
-            let _ = tx_output.send(new_item).await;
+            let now_ms = OffsetDateTime::now_utc().unix_timestamp_nanos() as f64 / 1_000_000_f64;
+            let _ = tx_output.send((new_item, now_ms)).await;
             generated_count += 1;
 
             let now = OffsetDateTime::now_utc().unix_timestamp_nanos();

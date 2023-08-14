@@ -2,14 +2,14 @@ use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use async_channel::Receiver;
 use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueueProcessor, model::requests::TransferRequest};
-use cohort_sdk::model::Config;
+use cohort_sdk::model::{BackoffConfig, Config};
 use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 
-use metrics::model::MinMax;
 use metrics::opentel::aggregation_selector::CustomHistogramSelector;
 use metrics::opentel::printer::MetricsToStringPrinter;
 use metrics::opentel::scaling::ScalingConfig;
+use opentelemetry_api::global;
 use opentelemetry_api::metrics::MetricsError;
 use opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector;
 use opentelemetry_sdk::metrics::{MeterProvider, PeriodicReader};
@@ -19,7 +19,6 @@ use rand::Rng;
 use rust_decimal::prelude::FromPrimitive;
 use tokio::{signal, task::JoinHandle, try_join};
 
-use metrics::opentel::global;
 use opentelemetry::global::shutdown_tracer_provider;
 
 #[derive(Clone)]
@@ -57,7 +56,7 @@ async fn main() -> Result<(), String> {
 
     let params = get_params().await?;
 
-    let (tx_queue, rx_queue) = async_channel::unbounded::<TransferRequest>();
+    let (tx_queue, rx_queue) = async_channel::unbounded::<(TransferRequest, f64)>();
     let rx_queue = Arc::new(rx_queue);
     let rx_queue_ref = Arc::clone(&rx_queue);
 
@@ -73,9 +72,10 @@ async fn main() -> Result<(), String> {
         //
         // cohort configs
         //
+        backoff_on_conflict: BackoffConfig::new(1, 1500),
+        retry_backoff: BackoffConfig::new(20, 1500),
         retry_attempts_max: 10,
-        retry_backoff_max_ms: 1500,
-        retry_oo_backoff_max_ms: 1000,
+        retry_oo_backoff: BackoffConfig::new(20, 1000),
         retry_oo_attempts_max: 10,
 
         //
@@ -134,9 +134,10 @@ async fn main() -> Result<(), String> {
 
     let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
 
-    let meter_provider = Arc::new(MeterProvider::builder().with_reader(reader).build());
-    global::set_meter_provider(Arc::clone(&meter_provider));
-    global::set_scaling_config(ScalingConfig { ratios: params.scaling_config });
+    let meter_provider = MeterProvider::builder().with_reader(reader).build();
+    let meter_provider_copy = meter_provider.clone();
+    global::set_meter_provider(meter_provider);
+    metrics::opentel::global::set_scaling_config(ScalingConfig { ratios: params.scaling_config });
 
     let meter = global::meter("banking_cohort");
     let meter = Arc::new(meter);
@@ -148,14 +149,10 @@ async fn main() -> Result<(), String> {
 
         let mut i = 1;
         let mut errors_count = 0;
-        let mut timeline = MinMax::default();
         for task in tasks {
-            match task.await {
-                Err(e) => {
-                    errors_count += 1;
-                    log::error!("{:?}", e);
-                }
-                Ok(thread_timeline) => timeline.merge(thread_timeline),
+            if let Err(e) = task.await {
+                errors_count += 1;
+                log::error!("{:?}", e);
             }
             if i % 10 == 0 {
                 log::warn!("Initiator thread {} of {} finished.", i, params.threads);
@@ -163,19 +160,18 @@ async fn main() -> Result<(), String> {
 
             i += 1;
         }
-
-        log::warn!("Duration: {}", Duration::from_nanos((timeline.max - timeline.min) as u64).as_secs_f32());
         log::info!("Finished. errors count: {}", errors_count);
     });
 
     let h_stop: JoinHandle<Result<(), String>> = start_queue_monitor(rx_queue_ref);
 
     let all_async_services = tokio::spawn(async move {
-        let result = try_join!(h_generator, h_cohort, h_stop);
+        let result = try_join!(h_generator, h_cohort);
         log::warn!("Result from services ={result:?}");
     });
 
     tokio::select! {
+        _ = h_stop => {}
         _ = all_async_services => {}
 
         // CTRL + C termination signal
@@ -185,13 +181,13 @@ async fn main() -> Result<(), String> {
     }
 
     shutdown_tracer_provider();
-    let _ = meter_provider.shutdown();
+    let _ = meter_provider_copy.shutdown();
     let report = rx_metrics.borrow();
     log::warn!("{}", *report);
     Ok(())
 }
 
-fn start_queue_monitor(queue: Arc<Receiver<TransferRequest>>) -> JoinHandle<Result<(), String>> {
+fn start_queue_monitor(queue: Arc<Receiver<(TransferRequest, f64)>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         let check_frequency = Duration::from_secs(10);
         let total_attempts = 3;

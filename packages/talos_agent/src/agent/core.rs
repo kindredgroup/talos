@@ -279,6 +279,7 @@ mod tests {
                 decision: Committed,
                 version: 1,
                 safepoint: None,
+                conflict: None,
             })
         });
         (tx_response, rx_response)

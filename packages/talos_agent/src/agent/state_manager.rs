@@ -180,6 +180,16 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 decision: message.decision.clone(),
                 version: message.version,
                 safepoint: message.safepoint,
+                conflict: match message.conflicts {
+                    None => None,
+                    Some(ref list) => {
+                        if list.is_empty() {
+                            None
+                        } else {
+                            Some(list[0].clone())
+                        }
+                    }
+                },
             };
 
             let error_message = format!(
@@ -234,6 +244,7 @@ mod tests_waiting_client {
             decision: Committed,
             version: 1,
             safepoint: None,
+            conflict: None,
         };
 
         let client = WaitingClient::new(Arc::new(Box::new(sender)));
@@ -250,6 +261,7 @@ mod tests_waiting_client {
             decision: Committed,
             version: 1,
             safepoint: None,
+            conflict: None,
         };
 
         let response = response_sample.clone();
@@ -527,6 +539,7 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
+            conflicts: None,
             metrics: None,
         };
 
@@ -554,6 +567,7 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
+            conflicts: None,
             metrics: None,
         };
 
@@ -623,6 +637,7 @@ mod tests {
             suffix_start: 2,
             version: 2,
             safepoint: None,
+            conflicts: None,
             metrics: Some(TxProcessingTimeline {
                 candidate_published: candidate_time_at as i128,
                 candidate_received: candidate_received_at as i128,

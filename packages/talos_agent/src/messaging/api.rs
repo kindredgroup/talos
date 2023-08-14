@@ -54,8 +54,17 @@ pub enum Decision {
     Aborted,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct ConflictMessage {
+    pub xid: String,
+    pub version: u64,
+    pub readset: Vec<String>,
+    pub readvers: Vec<u64>,
+    pub writeset: Vec<String>,
+}
+
 /// Kafka message which will be published to Talos queue
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "_typ")]
 pub struct DecisionMessage {
     pub xid: String,
@@ -67,9 +76,8 @@ pub struct DecisionMessage {
     #[serde(skip_deserializing)]
     pub suffix_start: u64,
     pub version: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub safepoint: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conflicts: Option<Vec<ConflictMessage>>,
     pub metrics: Option<TxProcessingTimeline>,
 }
 
