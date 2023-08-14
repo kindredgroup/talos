@@ -83,7 +83,7 @@ impl MetricsToStringPrinter {
                     let hist = hist_c.histogram();
 
                     if metric.name == "metric_throughput" {
-                        // this is secial case metric used to track total time span of the test
+                        // this is special case metric used to track total time span of the test
                         out.push_str("\n---------------------------------------");
                         out.push_str(format!("\n{:>11} : {}", "Metric name", "throughput").as_str());
 
