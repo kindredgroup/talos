@@ -369,7 +369,7 @@ impl Cohort {
             Duration::from_millis(self.config.snapshot_wait_timeout_ms)
         };
 
-        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict.clone(), timeout).await {
+        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {
             Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
             Err(SnapshotPollErrorType::Timeout { waited }) => {
                 return CertificationAttemptOutcome::SnapshotTimeout {

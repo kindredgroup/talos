@@ -129,7 +129,7 @@ impl MetricsToStringPrinter {
                             bucket_index += 1;
                             if *percentile_label <= bucket.percentage {
                                 bucket_index -= 1;
-                                let scaled_label = bucket.label as f32 / scale_factor;
+                                let scaled_label = bucket.label / scale_factor as f64;
                                 out.push_str(
                                     format!(
                                         "\n{:>6.2}% | {:>7.2} {} | samples: {:>7}",
