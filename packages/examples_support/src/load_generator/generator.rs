@@ -94,6 +94,8 @@ impl ControlledRateLoadGenerator {
             }
         }
 
+        tx_output.close();
+
         let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let duration = Duration::from_nanos((now - started_at) as u64).as_secs_f32();
         log::warn!(

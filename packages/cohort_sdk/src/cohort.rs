@@ -38,7 +38,6 @@ pub struct Cohort {
     config: Config,
     talos_agent: Box<dyn TalosAgent + Sync + Send>,
     agent_services: AgentServices,
-    // replicator_services: ReplicatorServices,
     oo_retry_counter: Arc<Counter<u64>>,
     oo_giveups_counter: Arc<Counter<u64>>,
     oo_not_safe_counter: Arc<Counter<u64>>,
@@ -103,27 +102,6 @@ impl Cohort {
             })?;
 
         let agent_services = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
-
-        //
-        // Code below is to start replicator from master branch...
-        //
-
-        //
-        // start replicator
-        //
-
-        // let suffix = CohortSuffix::with_config(config.clone().into());
-        // let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
-        // kafka_consumer.subscribe().await.unwrap();
-        // let replicator = CohortReplicator::new(kafka_consumer, suffix);
-
-        // let (tx_install_req, rx_statemaps_ch) = mpsc::channel(config.replicator_buffer_size);
-        // let (tx_install_result_ch, rx_install_result) = tokio::sync::mpsc::channel(config.replicator_buffer_size);
-        // let replicator_handle = tokio::spawn(ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_result));
-        // let replicator_impl = ReplicatorInstallerImpl {
-        //     installer_impl: statemap_installer,
-        // };
-        // let installer_handle = tokio::spawn(ReplicatorService2::start_installer(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
 
         let meter = global::meter("cohort_sdk");
         let oo_install_histogram = meter.f64_histogram("metric_oo_install_duration").with_unit(Unit::new("ms")).init();
@@ -291,71 +269,73 @@ impl Cohort {
         let mut db_errors = 0_u64;
 
         let mut recent_conflict: Option<Conflict> = None;
+        let mut recent_abort: Option<CertificationResponse> = None;
+
         let result = loop {
             // One of these will be sent to client if we failed
-            let recent_error: Option<ClientError>;
-            let recent_response: Option<CertificationResponse>;
+            let result: Option<Result<CertificationResponse, ClientError>>;
 
             attempts += 1;
             let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict.clone()).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
-                    recent_error = None;
-                    recent_response = Some(response);
+                    result = Some(Ok(response));
                     true
                 }
                 CertificationAttemptOutcome::Aborted { mut response } => {
                     talos_aborts += 1;
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
-                    recent_error = None;
                     recent_conflict = response.conflict.clone();
-                    recent_response = Some(response);
+                    recent_abort = Some(response.clone());
+                    // result = recent_abort.map(|a| Ok(a));
+                    result = Some(Ok(response));
+                    false
+                }
+                CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
+                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
+                    result = recent_abort.clone().map(Ok);
                     false
                 }
                 CertificationAttemptOutcome::AgentError { error } => {
-                    recent_error = Some(ClientError::from(error));
-                    recent_response = None;
+                    result = Some(Err(ClientError::from(error)));
                     agent_errors += 1;
                     false
                 }
                 CertificationAttemptOutcome::DataError { reason } => {
-                    recent_error = Some(ClientError {
+                    result = Some(Err(ClientError {
                         kind: model::ClientErrorKind::Persistence,
                         reason,
                         cause: None,
-                    });
-                    recent_response = None;
+                    }));
                     db_errors += 1;
                     false
                 }
             };
 
-            if is_success {
-                break Ok(recent_response.unwrap());
+            let rslt_response = result.unwrap();
+            if is_success || self.config.retry_attempts_max <= attempts {
+                break rslt_response;
             }
 
-            if self.config.retry_attempts_max <= attempts {
-                if let Some(response) = recent_response {
-                    break Ok(response);
-                } else if let Some(error) = recent_error {
-                    break Err(error);
+            match rslt_response {
+                Ok(response) => {
+                    log::debug!(
+                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
+                        request.candidate.statemap,
+                        response.decision,
+                        attempts
+                    );
                 }
-            } else if let Some(response) = recent_response {
-                log::debug!(
-                    "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
-                    request.candidate.statemap,
-                    response.decision,
-                    attempts
-                );
-            } else if let Some(error) = recent_error {
-                log::debug!(
-                    "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
-                    request.candidate.statemap,
-                    error,
-                    attempts
-                );
+                Err(error) => {
+                    log::debug!(
+                        "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
+                        request.candidate.statemap,
+                        error,
+                        attempts
+                    );
+                }
             }
 
             delay_controller.sleep().await;
@@ -387,8 +367,20 @@ impl Cohort {
     where
         S: ItemStateProvider,
     {
-        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict).await {
-            Err(reason) => return CertificationAttemptOutcome::DataError { reason },
+        let timeout = if request.timeout_ms > 0 {
+            Duration::from_millis(request.timeout_ms)
+        } else {
+            Duration::from_millis(self.config.snapshot_wait_timeout_ms)
+        };
+
+        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict.clone(), timeout).await {
+            Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
+            Err(SnapshotPollErrorType::Timeout { waited }) => {
+                return CertificationAttemptOutcome::SnapshotTimeout {
+                    waited,
+                    conflict: previous_conflict.unwrap(),
+                }
+            }
             Ok(local_state) => local_state,
         };
 
@@ -439,21 +431,31 @@ impl Cohort {
         }
     }
 
-    async fn await_for_snapshot<S>(&self, state_provider: &S, previous_conflict: Option<Conflict>) -> Result<CapturedState, String>
+    async fn await_for_snapshot<S>(
+        &self,
+        state_provider: &S,
+        previous_conflict: Option<Conflict>,
+        timeout: Duration,
+    ) -> Result<CapturedState, SnapshotPollErrorType>
     where
         S: ItemStateProvider,
     {
         match previous_conflict {
-            None => state_provider.get_state().await,
+            None => state_provider.get_state().await.map_err(|reason| SnapshotPollErrorType::FetchError { reason }),
             Some(ref conflict) => {
                 let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
+                let poll_started_at = Instant::now();
                 loop {
                     let result_local_state = state_provider.get_state().await;
                     match result_local_state {
-                        Err(reason) => return Err(reason),
+                        Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
                         Ok(current_state) => {
                             if current_state.snapshot_version < conflict.version {
                                 // not safe yet
+                                let waited = poll_started_at.elapsed();
+                                if waited >= timeout {
+                                    return Err(SnapshotPollErrorType::Timeout { waited });
+                                }
                                 delay_controller.sleep().await;
                                 continue;
                             } else {
@@ -501,11 +503,11 @@ impl Cohort {
     }
 
     pub async fn shutdown(&self) {
-        // TODO implement graceful shutdown with timeout? Wait for channels to be drained and then exit.
-        // while self.channel_tx_certify.capacity() != MAX { wait() }
         self.agent_services.decision_reader.abort();
         self.agent_services.state_manager.abort();
-        // self.replicator_services.replicator_handle.abort();
-        // self.replicator_services.installer_handle.abort();
     }
+}
+pub enum SnapshotPollErrorType {
+    Timeout { waited: Duration },
+    FetchError { reason: String },
 }

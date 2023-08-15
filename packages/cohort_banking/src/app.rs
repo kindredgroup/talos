@@ -119,7 +119,6 @@ impl Handler<TransferRequest> for BankingApp {
                         c_aborts.add(1, &[]);
                     } else {
                         c_commits.add(1, &[]);
-                        c_aborts.add(0, &[]);
                     }
                 });
 

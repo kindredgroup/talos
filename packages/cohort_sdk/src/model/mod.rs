@@ -11,7 +11,6 @@ use talos_agent::{
 };
 use tokio::task::JoinHandle;
 
-// #[napi]
 #[derive(Clone)]
 pub struct CandidateData {
     pub readset: Vec<String>,
@@ -20,22 +19,20 @@ pub struct CandidateData {
     // The "snapshot" is intentionally messing here. We will compute it ourselves before feeding this data to Talos
 }
 
-// #[napi]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Conflict {
     pub xid: String,
     pub version: u64,
     pub readvers: Vec<u64>,
 }
 
-// #[napi]
 #[derive(Clone)]
 pub struct CertificationRequest {
     pub candidate: CandidateData,
     pub timeout_ms: u64,
 }
 
-// #[napi]
+#[derive(Clone)]
 pub struct CertificationResponse {
     pub xid: String,
     pub decision: Decision,
@@ -45,13 +42,13 @@ pub struct CertificationResponse {
     pub metadata: ResponseMetadata,
 }
 
+#[derive(Clone)]
 pub struct ResponseMetadata {
     pub attempts: u64,
     pub duration_ms: u64,
 }
 
 #[derive(strum::Display)]
-// #[napi]
 // this is napi friendly copy of talos_agent::agent::errors::AgentErrorKind
 pub enum ClientErrorKind {
     Certification,
@@ -63,7 +60,6 @@ pub enum ClientErrorKind {
     OutOfOrderSnapshotTimeout,
 }
 
-// #[napi]
 pub struct ClientError {
     pub kind: ClientErrorKind,
     pub reason: String,
@@ -83,7 +79,6 @@ impl BackoffConfig {
 }
 
 #[derive(Clone)]
-// #[napi]
 pub struct Config {
     //
     // cohort configs
@@ -94,6 +89,8 @@ pub struct Config {
     pub retry_attempts_max: u64,
     pub retry_oo_backoff: BackoffConfig,
     pub retry_oo_attempts_max: u64,
+
+    pub snapshot_wait_timeout_ms: u64,
 
     //
     // agent config values

@@ -78,6 +78,8 @@ async fn main() -> Result<(), String> {
         retry_oo_backoff: BackoffConfig::new(20, 1000),
         retry_oo_attempts_max: 10,
 
+        snapshot_wait_timeout_ms: 10_000,
+
         //
         // agent config values
         //
@@ -160,10 +162,10 @@ async fn main() -> Result<(), String> {
 
             i += 1;
         }
-        log::info!("Finished. errors count: {}", errors_count);
+        log::info!("Finished. Errors count: {}", errors_count);
     });
 
-    let h_stop: JoinHandle<Result<(), String>> = start_queue_monitor(rx_queue_ref);
+    let queue_monitor: JoinHandle<Result<(), String>> = start_queue_monitor(rx_queue_ref);
 
     let all_async_services = tokio::spawn(async move {
         let result = try_join!(h_generator, h_cohort);
@@ -171,7 +173,7 @@ async fn main() -> Result<(), String> {
     });
 
     tokio::select! {
-        _ = h_stop => {}
+        _ = queue_monitor => {}
         _ = all_async_services => {}
 
         // CTRL + C termination signal
@@ -190,33 +192,10 @@ async fn main() -> Result<(), String> {
 fn start_queue_monitor(queue: Arc<Receiver<(TransferRequest, f64)>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
         let check_frequency = Duration::from_secs(10);
-        let total_attempts = 3;
-
-        let mut remaining_attempts = total_attempts;
         loop {
-            if remaining_attempts == 0 {
-                // we consumed all attempts
-                break;
-            }
-
-            if queue.is_empty() {
-                // queue is empty and there are no signals from other workers, reduce window and try again
-                remaining_attempts -= 1;
-                log::warn!(
-                    "Workers queue is empty. Finishing in: {} seconds...",
-                    (remaining_attempts + 1) * check_frequency.as_secs()
-                );
-            } else {
-                remaining_attempts = total_attempts;
-                log::warn!("Remaining requests: {}", queue.len());
-            }
-
+            log::warn!("Remaining requests: {}", queue.len());
             tokio::time::sleep(check_frequency).await;
         }
-
-        queue.close();
-
-        Err("Signal from StopController".into())
     })
 }
 
