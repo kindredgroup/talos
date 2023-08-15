@@ -159,8 +159,7 @@ impl Cohort {
 
         let h_talos = Arc::clone(&self.talos_histogram);
         tokio::spawn(async move {
-            let scale = metrics::opentel::global::scaling_config().get_scale_factor("metric_talos");
-            h_talos.record(span_1_val * scale as f64, &[]);
+            h_talos.record(span_1_val * 100.0, &[]);
         });
 
         if response.decision == Decision::Aborted {
@@ -188,8 +187,7 @@ impl Cohort {
             let h_install = Arc::clone(&self.oo_install_histogram);
 
             tokio::spawn(async move {
-                let scale = metrics::opentel::global::scaling_config().get_scale_factor("metric_oo_install_duration");
-                h_install.record(span_3_val * scale as f64, &[]);
+                h_install.record(span_3_val * 100.0, &[]);
             });
 
             let error = match install_result {
@@ -239,8 +237,7 @@ impl Cohort {
                 c_not_safe.add(is_not_save, &[]);
             }
             if total_sleep > 0 {
-                let scale = metrics::opentel::global::scaling_config().get_scale_factor("metric_oo_wait_duration");
-                h_total_sleep.record(total_sleep as f64 * scale as f64, &[]);
+                h_total_sleep.record(total_sleep as f64 * 100.0, &[]);
             }
             if giveups > 0 {
                 c_giveups.add(giveups, &[]);
@@ -250,8 +247,7 @@ impl Cohort {
             }
 
             h_attempts.record(attempt, &[]);
-            let scale = metrics::opentel::global::scaling_config().get_scale_factor("metric_oo_install_and_wait_duration");
-            h_span_2.record(span_2_val * scale as f64, &[]);
+            h_span_2.record(span_2_val * 100.0, &[]);
         });
         result
     }

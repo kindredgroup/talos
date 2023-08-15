@@ -122,7 +122,7 @@ async fn main() -> Result<(), String> {
         db_database: "talos-sample-cohort-dev".into(),
     };
 
-    let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw);
+    let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw, ScalingConfig { ratios: params.scaling_config });
     let (tx_metrics, rx_metrics) = tokio::sync::watch::channel("".to_string());
     let exporter = MetricsExporterBuilder::default()
         .with_aggregation_selector(CustomHistogramSelector::new_with_4k_buckets()?)
@@ -139,7 +139,6 @@ async fn main() -> Result<(), String> {
     let meter_provider = MeterProvider::builder().with_reader(reader).build();
     let meter_provider_copy = meter_provider.clone();
     global::set_meter_provider(meter_provider);
-    metrics::opentel::global::set_scaling_config(ScalingConfig { ratios: params.scaling_config });
 
     let meter = global::meter("banking_cohort");
     let meter = Arc::new(meter);

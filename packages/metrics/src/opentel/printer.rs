@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use opentelemetry_stdout::MetricsData;
 
 use super::{
-    global,
     model::{Attribute, MetricsDataContainer},
+    scaling::ScalingConfig,
 };
 
 pub struct MetricsToStringPrinter {
@@ -13,17 +13,19 @@ pub struct MetricsToStringPrinter {
     resource_filter: Option<HashSet<Attribute>>,
     scope_filter: Option<HashSet<&'static str>>,
     metrics_filter: Option<HashSet<&'static str>>,
+    scaling_config: ScalingConfig,
 }
 
 /// Prints metrics as formatted text
 impl MetricsToStringPrinter {
-    pub fn new(threads: u64, print_raw_histogram: bool) -> Self {
+    pub fn new(threads: u64, print_raw_histogram: bool, scaling_config: ScalingConfig) -> Self {
         Self {
             print_raw_histogram,
             parallel_threads: threads,
             resource_filter: None,
             scope_filter: None,
             metrics_filter: None,
+            scaling_config,
         }
     }
 
@@ -32,6 +34,7 @@ impl MetricsToStringPrinter {
         resource_filter: Option<HashSet<Attribute>>,
         scope_filter: Option<HashSet<&'static str>>,
         metrics_filter: Option<HashSet<&'static str>>,
+        scaling_config: ScalingConfig,
     ) -> Self {
         Self {
             print_raw_histogram: false,
@@ -39,6 +42,7 @@ impl MetricsToStringPrinter {
             resource_filter,
             scope_filter,
             metrics_filter,
+            scaling_config,
         }
     }
 
@@ -96,7 +100,7 @@ impl MetricsToStringPrinter {
                     }
 
                     let buckets = hist.compact();
-                    let scale_factor = global::scaling_config().get_scale_factor(metric.name.as_str());
+                    let scale_factor = self.scaling_config.get_scale_factor(metric.name.as_str());
 
                     out.push_str("\n---------------------------------------");
                     out.push_str(format!("\nHistogram: \"{}\"\n", metric.name).as_str());

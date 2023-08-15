@@ -3,7 +3,6 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use metrics::opentel::global;
 use opentelemetry_api::metrics::{Meter, Unit};
 use tokio::task::JoinHandle;
 
@@ -59,11 +58,8 @@ impl QueueProcessor {
 
                             let processing_finished_ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos() as f64 / 1_000_000_f64;
                             tokio::spawn(async move {
-                                let scale = global::scaling_config().get_scale_factor("metric_candidate_roundtrip") as f64;
-                                histogram_ref.record((processing_finished_ms - started_at_ms) * scale, &[]);
-
-                                let scale_sys = global::scaling_config().get_scale_factor("metric_candidate_roundtrip_sys") as f64;
-                                histogram_sys_ref.record((processing_finished_ms - scheduled_at_ms) * scale_sys, &[]);
+                                histogram_ref.record((processing_finished_ms - started_at_ms) * 100.0, &[]);
+                                histogram_sys_ref.record((processing_finished_ms - scheduled_at_ms) * 100.0, &[]);
 
                                 // Record start and stop times of each transaction.
                                 // This histogram will track min and max values, giving us the total duration of the test, excluding test specific code.
