@@ -39,7 +39,7 @@ impl SystemService for MockCertifierService {
                             xid: message.xid,
                             suffix_start: 0,
                             safepoint: Some(0),
-                            conflicts: None,
+                            conflict_version: None,
                             duplicate_version: None,
                             metrics: TxProcessingTimeline::default(),
                         };

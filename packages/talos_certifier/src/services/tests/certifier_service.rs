@@ -100,12 +100,12 @@ async fn test_certification_rule_2() {
 
     // Rule 1
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
-        assert!(decision.conflicts.is_none());
+        assert!(decision.conflict_version.is_none());
         assert_eq!(decision.decision, Decision::Committed);
     };
     // Rule 2
     if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
-        assert!(decision.conflicts.is_none());
+        assert!(decision.conflict_version.is_none());
         assert_eq!(decision.decision, Decision::Aborted);
     };
 }
