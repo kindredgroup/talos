@@ -27,7 +27,7 @@ use crate::{
         self,
         callbacks::{CapturedState, ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
         internal::CertificationAttemptOutcome,
-        CertificationResponse, ClientError, Config, Conflict, ResponseMetadata,
+        CertificationResponse, ClientError, Config, ResponseMetadata,
     },
 };
 
@@ -264,7 +264,7 @@ impl Cohort {
         let mut agent_errors = 0_u64;
         let mut db_errors = 0_u64;
 
-        let mut recent_conflict: Option<Conflict> = None;
+        let mut recent_conflict: Option<u64> = None;
         let mut recent_abort: Option<CertificationResponse> = None;
 
         let result = loop {
@@ -272,7 +272,7 @@ impl Cohort {
             let result: Option<Result<CertificationResponse, ClientError>>;
 
             attempts += 1;
-            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict.clone()).await {
+            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -283,7 +283,7 @@ impl Cohort {
                     talos_aborts += 1;
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
-                    recent_conflict = response.conflict.clone();
+                    recent_conflict = response.conflict;
                     recent_abort = Some(response.clone());
                     // result = recent_abort.map(|a| Ok(a));
                     result = Some(Ok(response));
@@ -358,7 +358,7 @@ impl Cohort {
         &self,
         request: model::CertificationRequest,
         state_provider: &S,
-        previous_conflict: Option<Conflict>,
+        previous_conflict: Option<u64>,
     ) -> CertificationAttemptOutcome
     where
         S: ItemStateProvider,
@@ -410,11 +410,7 @@ impl Cohort {
                     safepoint: agent_response.safepoint,
                     version: agent_response.version,
                     metadata: ResponseMetadata { duration_ms: 0, attempts: 0 },
-                    conflict: agent_response.conflict.map(|ac| Conflict {
-                        xid: ac.xid,
-                        version: ac.version,
-                        readvers: ac.readvers,
-                    }),
+                    conflict: agent_response.conflict.map(|cm| cm.version),
                 };
 
                 if response.decision == Decision::Aborted {
@@ -427,18 +423,13 @@ impl Cohort {
         }
     }
 
-    async fn await_for_snapshot<S>(
-        &self,
-        state_provider: &S,
-        previous_conflict: Option<Conflict>,
-        timeout: Duration,
-    ) -> Result<CapturedState, SnapshotPollErrorType>
+    async fn await_for_snapshot<S>(&self, state_provider: &S, previous_conflict: Option<u64>, timeout: Duration) -> Result<CapturedState, SnapshotPollErrorType>
     where
         S: ItemStateProvider,
     {
         match previous_conflict {
             None => state_provider.get_state().await.map_err(|reason| SnapshotPollErrorType::FetchError { reason }),
-            Some(ref conflict) => {
+            Some(conflict) => {
                 let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
                 let poll_started_at = Instant::now();
                 loop {
@@ -446,7 +437,7 @@ impl Cohort {
                     match result_local_state {
                         Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
                         Ok(current_state) => {
-                            if current_state.snapshot_version < conflict.version {
+                            if current_state.snapshot_version < conflict {
                                 // not safe yet
                                 let waited = poll_started_at.elapsed();
                                 if waited >= timeout {

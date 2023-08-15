@@ -19,13 +19,6 @@ pub struct CandidateData {
     // The "snapshot" is intentionally messing here. We will compute it ourselves before feeding this data to Talos
 }
 
-#[derive(Clone, Debug)]
-pub struct Conflict {
-    pub xid: String,
-    pub version: u64,
-    pub readvers: Vec<u64>,
-}
-
 #[derive(Clone)]
 pub struct CertificationRequest {
     pub candidate: CandidateData,
@@ -38,7 +31,7 @@ pub struct CertificationResponse {
     pub decision: Decision,
     pub version: u64,
     pub safepoint: Option<u64>,
-    pub conflict: Option<Conflict>,
+    pub conflict: Option<u64>,
     pub metadata: ResponseMetadata,
 }
 
