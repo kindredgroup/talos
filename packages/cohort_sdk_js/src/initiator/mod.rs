@@ -59,7 +59,7 @@ impl Initiator {
         println!("certify being called");
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         let item_state_provider_impl = ItemStateProviderImpl {
-            _get_state_callback: get_state_callback
+            _get_state_callback: get_state_callback,
         };
         let _res = self
             .cohort
