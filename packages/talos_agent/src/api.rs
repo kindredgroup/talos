@@ -1,5 +1,5 @@
 use crate::agent::errors::AgentError;
-use crate::messaging::api::Decision;
+use crate::messaging::api::{ConflictMessage, Decision};
 use crate::metrics::model::MetricsReport;
 use async_trait::async_trait;
 use rdkafka::config::RDKafkaLogLevel;
@@ -39,6 +39,7 @@ pub struct CertificationResponse {
     pub decision: Decision,
     pub version: u64,
     pub safepoint: Option<u64>,
+    pub conflict: Option<ConflictMessage>,
 }
 
 #[derive(Clone, Debug)]

@@ -6,7 +6,6 @@ use std::{
 use opentelemetry_api::{
     global,
     metrics::{Counter, Histogram, Unit},
-    Context,
 };
 use talos_agent::{
     agent::{
@@ -26,7 +25,7 @@ use crate::{
     delay_controller::DelayController,
     model::{
         self,
-        callbacks::{ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
+        callbacks::{CapturedState, ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
         internal::CertificationAttemptOutcome,
         CertificationResponse, ClientError, Config, ResponseMetadata,
     },
@@ -39,7 +38,6 @@ pub struct Cohort {
     config: Config,
     talos_agent: Box<dyn TalosAgent + Sync + Send>,
     agent_services: AgentServices,
-    // replicator_services: ReplicatorServices,
     oo_retry_counter: Arc<Counter<u64>>,
     oo_giveups_counter: Arc<Counter<u64>>,
     oo_not_safe_counter: Arc<Counter<u64>>,
@@ -49,7 +47,7 @@ pub struct Cohort {
     oo_wait_histogram: Arc<Histogram<f64>>,
     talos_histogram: Arc<Histogram<f64>>,
     talos_aborts_counter: Arc<Counter<u64>>,
-    agent_retries_counter: Arc<Counter<u64>>,
+    agent_retries_histogram: Arc<Histogram<u64>>,
     agent_errors_counter: Arc<Counter<u64>>,
     db_errors_counter: Arc<Counter<u64>>,
 }
@@ -105,27 +103,6 @@ impl Cohort {
 
         let agent_services = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
 
-        //
-        // Code below is to start replicator from master branch...
-        //
-
-        // //
-        // // start replicator
-        // //
-
-        // let suffix = CohortSuffix::with_config(config.clone().into());
-        // let kafka_consumer = KafkaConsumer::new(&talos_kafka_config);
-        // kafka_consumer.subscribe().await.unwrap();
-        // let replicator = CohortReplicator::new(kafka_consumer, suffix);
-
-        // let (tx_install_req, rx_statemaps_ch) = mpsc::channel(config.replicator_buffer_size);
-        // let (tx_install_result_ch, rx_install_result) = tokio::sync::mpsc::channel(config.replicator_buffer_size);
-        // let replicator_handle = tokio::spawn(ReplicatorService2::start_replicator(replicator, tx_install_req, rx_install_result));
-        // let replicator_impl = ReplicatorInstallerImpl {
-        //     installer_impl: statemap_installer,
-        // };
-        // let installer_handle = tokio::spawn(ReplicatorService2::start_installer(rx_statemaps_ch, tx_install_result_ch, replicator_impl));
-
         let meter = global::meter("cohort_sdk");
         let oo_install_histogram = meter.f64_histogram("metric_oo_install_duration").with_unit(Unit::new("ms")).init();
         let oo_attempts_histogram = meter.u64_histogram("metric_oo_attempts").with_unit(Unit::new("tx")).init();
@@ -137,17 +114,20 @@ impl Cohort {
         let oo_not_safe_counter = meter.u64_counter("metric_oo_not_safe_count").with_unit(Unit::new("tx")).init();
         let talos_aborts_counter = meter.u64_counter("metric_talos_aborts_count").with_unit(Unit::new("tx")).init();
         let agent_errors_counter = meter.u64_counter("metric_agent_errors_count").with_unit(Unit::new("tx")).init();
-        let agent_retries_counter = meter.u64_counter("metric_agent_retries_count").with_unit(Unit::new("tx")).init();
-        let db_errors_counter = meter.u64_counter("metric_db_errors_counter").with_unit(Unit::new("tx")).init();
+        let agent_retries_histogram = meter.u64_histogram("metric_agent_retries").with_unit(Unit::new("tx")).init();
+        let db_errors_counter = meter.u64_counter("metric_db_errors_count").with_unit(Unit::new("tx")).init();
+
+        oo_retry_counter.add(0, &[]);
+        oo_giveups_counter.add(0, &[]);
+        oo_not_safe_counter.add(0, &[]);
+        talos_aborts_counter.add(0, &[]);
+        agent_errors_counter.add(0, &[]);
+        db_errors_counter.add(0, &[]);
 
         Ok(Self {
             config,
             talos_agent: Box::new(agent),
             agent_services,
-            // replicator_services: ReplicatorServices {
-            //     replicator_handle,
-            //     installer_handle,
-            // },
             oo_install_histogram: Arc::new(oo_install_histogram),
             oo_install_and_wait_histogram: Arc::new(oo_install_and_wait_histogram),
             oo_wait_histogram: Arc::new(oo_wait_histogram),
@@ -156,8 +136,8 @@ impl Cohort {
             oo_not_safe_counter: Arc::new(oo_not_safe_counter),
             oo_attempts_histogram: Arc::new(oo_attempts_histogram),
             talos_histogram: Arc::new(talos_histogram),
+            agent_retries_histogram: Arc::new(agent_retries_histogram),
             talos_aborts_counter: Arc::new(talos_aborts_counter),
-            agent_retries_counter: Arc::new(agent_retries_counter),
             agent_errors_counter: Arc::new(agent_errors_counter),
             db_errors_counter: Arc::new(db_errors_counter),
         })
@@ -179,7 +159,7 @@ impl Cohort {
 
         let h_talos = Arc::clone(&self.talos_histogram);
         tokio::spawn(async move {
-            h_talos.record(&Context::current(), span_1_val, &[]);
+            h_talos.record(span_1_val * 100.0, &[]);
         });
 
         if response.decision == Decision::Aborted {
@@ -190,7 +170,7 @@ impl Cohort {
         let safepoint = response.safepoint.unwrap();
         let new_version = response.version;
 
-        let mut controller = DelayController::new(20, self.config.retry_oo_backoff_max_ms);
+        let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
         let mut attempt = 0;
         let span_2 = Instant::now();
 
@@ -207,8 +187,7 @@ impl Cohort {
             let h_install = Arc::clone(&self.oo_install_histogram);
 
             tokio::spawn(async move {
-                let ctx = &Context::current();
-                h_install.record(ctx, span_3_val, &[]);
+                h_install.record(span_3_val * 100.0, &[]);
             });
 
             let error = match install_result {
@@ -254,23 +233,21 @@ impl Cohort {
         let c_retry = Arc::clone(&self.oo_retry_counter);
 
         tokio::spawn(async move {
-            let ctx = &Context::current();
-
             if is_not_save > 0 {
-                c_not_safe.add(ctx, is_not_save, &[]);
+                c_not_safe.add(is_not_save, &[]);
             }
             if total_sleep > 0 {
-                h_total_sleep.record(ctx, total_sleep as f64, &[]);
+                h_total_sleep.record(total_sleep as f64 * 100.0, &[]);
             }
             if giveups > 0 {
-                c_giveups.add(ctx, giveups, &[]);
+                c_giveups.add(giveups, &[]);
             }
             if attempt > 1 {
-                c_retry.add(ctx, attempt - 1, &[]);
+                c_retry.add(attempt - 1, &[]);
             }
 
-            h_attempts.record(ctx, attempt, &[]);
-            h_span_2.record(ctx, span_2_val, &[]);
+            h_attempts.record(attempt, &[]);
+            h_span_2.record(span_2_val * 100.0, &[]);
         });
         result
     }
@@ -282,109 +259,126 @@ impl Cohort {
         let started_at = Instant::now();
         let mut attempts = 0;
 
-        // let mut delay_controller = Box::new(DelayController::new(20, self.config.retry_backoff_max_ms));
-        let mut delay_controller = DelayController::new(20, self.config.retry_backoff_max_ms);
+        let mut delay_controller = DelayController::new(self.config.retry_backoff.min_ms, self.config.retry_backoff.max_ms);
         let mut talos_aborts = 0_u64;
         let mut agent_errors = 0_u64;
         let mut db_errors = 0_u64;
 
+        let mut recent_conflict: Option<u64> = None;
+        let mut recent_abort: Option<CertificationResponse> = None;
+
         let result = loop {
             // One of these will be sent to client if we failed
-            let recent_error: Option<ClientError>;
-            let recent_response: Option<CertificationResponse>;
+            let result: Option<Result<CertificationResponse, ClientError>>;
 
             attempts += 1;
-            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider).await {
+            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
-                    recent_error = None;
-                    recent_response = Some(response);
+                    result = Some(Ok(response));
                     true
                 }
                 CertificationAttemptOutcome::Aborted { mut response } => {
                     talos_aborts += 1;
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
-                    recent_error = None;
-                    recent_response = Some(response);
+                    recent_conflict = response.conflict;
+                    recent_abort = Some(response.clone());
+                    // result = recent_abort.map(|a| Ok(a));
+                    result = Some(Ok(response));
+                    false
+                }
+                CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
+                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
+                    result = recent_abort.clone().map(Ok);
                     false
                 }
                 CertificationAttemptOutcome::AgentError { error } => {
-                    recent_error = Some(ClientError::from(error));
-                    recent_response = None;
+                    result = Some(Err(ClientError::from(error)));
                     agent_errors += 1;
                     false
                 }
                 CertificationAttemptOutcome::DataError { reason } => {
-                    recent_error = Some(ClientError {
+                    result = Some(Err(ClientError {
                         kind: model::ClientErrorKind::Persistence,
                         reason,
                         cause: None,
-                    });
-                    recent_response = None;
+                    }));
                     db_errors += 1;
                     false
                 }
             };
 
-            if is_success {
-                break Ok(recent_response.unwrap());
+            let rslt_response = result.unwrap();
+            if is_success || self.config.retry_attempts_max <= attempts {
+                break rslt_response;
             }
 
-            if self.config.retry_attempts_max <= attempts {
-                if let Some(response) = recent_response {
-                    break Ok(response);
-                } else if let Some(error) = recent_error {
-                    break Err(error);
+            match rslt_response {
+                Ok(response) => {
+                    log::debug!(
+                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
+                        request.candidate.statemap,
+                        response.decision,
+                        attempts
+                    );
                 }
-            } else if let Some(response) = recent_response {
-                log::debug!(
-                    "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
-                    request.candidate.statemap,
-                    response.decision,
-                    attempts
-                );
-            } else if let Some(error) = recent_error {
-                log::debug!(
-                    "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
-                    request.candidate.statemap,
-                    error,
-                    attempts
-                );
+                Err(error) => {
+                    log::debug!(
+                        "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
+                        request.candidate.statemap,
+                        error,
+                        attempts
+                    );
+                }
             }
 
             delay_controller.sleep().await;
         };
 
         let c_talos_aborts = Arc::clone(&self.talos_aborts_counter);
-        let c_agent_retries = Arc::clone(&self.agent_retries_counter);
         let c_agent_errors = Arc::clone(&self.agent_errors_counter);
         let c_db_errors = Arc::clone(&self.db_errors_counter);
+        let h_agent_retries = Arc::clone(&self.agent_retries_histogram);
 
-        if agent_errors > 0 || db_errors > 0 || attempts > 1 || talos_aborts > 0 {
+        if agent_errors > 0 || db_errors > 0 || talos_aborts > 0 || attempts > 0 {
             tokio::spawn(async move {
-                let ctx = &Context::current();
-                c_talos_aborts.add(ctx, talos_aborts, &[]);
-                c_agent_retries.add(ctx, attempts, &[]);
-                c_agent_errors.add(ctx, agent_errors, &[]);
-                c_db_errors.add(ctx, db_errors, &[]);
+                c_talos_aborts.add(talos_aborts, &[]);
+                c_agent_errors.add(agent_errors, &[]);
+                c_db_errors.add(db_errors, &[]);
+                h_agent_retries.record(attempts, &[]);
             });
         }
 
         result
     }
 
-    async fn send_to_talos_attempt<S>(&self, request: model::CertificationRequest, state_provider: &S) -> CertificationAttemptOutcome
+    async fn send_to_talos_attempt<S>(
+        &self,
+        request: model::CertificationRequest,
+        state_provider: &S,
+        previous_conflict: Option<u64>,
+    ) -> CertificationAttemptOutcome
     where
         S: ItemStateProvider,
     {
-        let result_local_state = state_provider.get_state().await;
-        if let Err(reason) = result_local_state {
-            return CertificationAttemptOutcome::DataError { reason };
-        }
+        let timeout = if request.timeout_ms > 0 {
+            Duration::from_millis(request.timeout_ms)
+        } else {
+            Duration::from_millis(self.config.snapshot_wait_timeout_ms)
+        };
 
-        let local_state = result_local_state.unwrap();
+        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {
+            Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
+            Err(SnapshotPollErrorType::Timeout { waited }) => {
+                return CertificationAttemptOutcome::SnapshotTimeout {
+                    waited,
+                    conflict: previous_conflict.unwrap(),
+                }
+            }
+            Ok(local_state) => local_state,
+        };
 
         log::debug!("loaded state: {}, {:?}", local_state.snapshot_version, local_state.items);
 
@@ -416,6 +410,7 @@ impl Cohort {
                     safepoint: agent_response.safepoint,
                     version: agent_response.version,
                     metadata: ResponseMetadata { duration_ms: 0, attempts: 0 },
+                    conflict: agent_response.conflict.map(|cm| cm.version),
                 };
 
                 if response.decision == Decision::Aborted {
@@ -425,6 +420,38 @@ impl Cohort {
                 }
             }
             Err(error) => CertificationAttemptOutcome::AgentError { error },
+        }
+    }
+
+    async fn await_for_snapshot<S>(&self, state_provider: &S, previous_conflict: Option<u64>, timeout: Duration) -> Result<CapturedState, SnapshotPollErrorType>
+    where
+        S: ItemStateProvider,
+    {
+        match previous_conflict {
+            None => state_provider.get_state().await.map_err(|reason| SnapshotPollErrorType::FetchError { reason }),
+            Some(conflict) => {
+                let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
+                let poll_started_at = Instant::now();
+                loop {
+                    let result_local_state = state_provider.get_state().await;
+                    match result_local_state {
+                        Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
+                        Ok(current_state) => {
+                            if current_state.snapshot_version < conflict {
+                                // not safe yet
+                                let waited = poll_started_at.elapsed();
+                                if waited >= timeout {
+                                    return Err(SnapshotPollErrorType::Timeout { waited });
+                                }
+                                delay_controller.sleep().await;
+                                continue;
+                            } else {
+                                break Ok(current_state);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -463,11 +490,11 @@ impl Cohort {
     }
 
     pub async fn shutdown(&self) {
-        // TODO implement graceful shutdown with timeout? Wait for channels to be drained and then exit.
-        // while self.channel_tx_certify.capacity() != MAX { wait() }
         self.agent_services.decision_reader.abort();
         self.agent_services.state_manager.abort();
-        // self.replicator_services.replicator_handle.abort();
-        // self.replicator_services.installer_handle.abort();
     }
+}
+pub enum SnapshotPollErrorType {
+    Timeout { waited: Duration },
+    FetchError { reason: String },
 }

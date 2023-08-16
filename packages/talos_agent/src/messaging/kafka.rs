@@ -299,6 +299,7 @@ fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: D
             suffix_start: 0,
             version: 0,
             safepoint: None,
+            conflicts: None,
             metrics: Some(metrics),
         })
 }

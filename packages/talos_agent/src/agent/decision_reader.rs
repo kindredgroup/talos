@@ -211,6 +211,7 @@ mod tests {
             suffix_start: 0_u64,
             version: 0_u64,
             safepoint: None,
+            conflicts: None,
             metrics: None,
         }
     }

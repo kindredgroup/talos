@@ -63,7 +63,6 @@ impl ReplicatorInstaller for BankStatemapInstaller {
     ///     - On successful completion, we commit the transaction and return. `(Txn Commits and returns)`
     ///     - When there is a retryable error, go to the start of the loop to retry. `(Txn aborts and retries)`
     ///     - For non-retryable error, we return the `Error`.
-
     async fn install(&self, statemap: Vec<StatemapItem>, snapshot_version: u64) -> Result<(), String> {
         let mut cnn = self.database.get().await.map_err(|e| e.to_string())?;
         loop {

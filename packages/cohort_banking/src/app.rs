@@ -5,10 +5,10 @@ use cohort_sdk::{
     cohort::Cohort,
     model::{CandidateData, CertificationRequest, ClientErrorKind, Config},
 };
+
 use opentelemetry_api::{
     global,
     metrics::{Counter, Unit},
-    Context,
 };
 use talos_agent::messaging::api::Decision;
 
@@ -56,6 +56,10 @@ impl BankingApp {
 
     pub async fn init(&mut self) -> Result<(), String> {
         let cohort_api = Cohort::create(self.config.clone()).await.map_err(|e| e.to_string())?;
+        // if no metrics are reported to meter then it will not be visible in the final report.
+        self.counter_aborts.add(0, &[]);
+        self.counter_commits.add(0, &[]);
+        self.counter_oo_no_data_found.add(0, &[]);
 
         self.cohort_api = Some(cohort_api);
 
@@ -107,14 +111,14 @@ impl Handler<TransferRequest> for BankingApp {
             .await
         {
             Ok(rsp) => {
-                let ca = Arc::clone(&self.counter_aborts);
-                let cc = Arc::clone(&self.counter_commits);
+                let c_aborts = Arc::clone(&self.counter_aborts);
+                let c_commits = Arc::clone(&self.counter_commits);
                 let is_abort = rsp.decision == Decision::Aborted;
                 tokio::spawn(async move {
                     if is_abort {
-                        ca.add(&Context::current(), 1, &[]);
+                        c_aborts.add(1, &[]);
                     } else {
-                        cc.add(&Context::current(), 1, &[]);
+                        c_commits.add(1, &[]);
                     }
                 });
 
