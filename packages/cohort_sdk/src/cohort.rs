@@ -153,8 +153,9 @@ impl Cohort {
         S: ItemStateProvider,
         O: OutOfOrderInstaller,
     {
+        println!("in certify");
         let span_1 = Instant::now();
-        let response = self.send_to_talos(request, state_provider).await?;
+       // let response = self.send_to_talos(request, state_provider).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -162,13 +163,13 @@ impl Cohort {
             h_talos.record(span_1_val * 100.0, &[]);
         });
 
-        if response.decision == Decision::Aborted {
-            return Ok(response);
-        }
+        // if response.decision == Decision::Aborted {
+        //     return Ok(response);
+        // }
 
         // system error if we have Commit decision but no safepoint is given
-        let safepoint = response.safepoint.unwrap();
-        let new_version = response.version;
+        // let safepoint = response.safepoint.unwrap();
+        // let new_version = response.version;
 
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
         let mut attempt = 0;
@@ -181,7 +182,10 @@ impl Cohort {
             attempt += 1;
 
             let span_3 = Instant::now();
-            let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
+            println!("install will be called");
+            // let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
+            let install_result = oo_installer.install("22".to_string(), 10, 22, attempt).await;
+
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
@@ -198,7 +202,7 @@ impl Cohort {
                     // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
                     Some(ClientError {
                         kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
-                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
+                        reason: format!("Timeout waitig for safepoint:"),
                         cause: None,
                     })
                 }
@@ -218,7 +222,16 @@ impl Cohort {
                 // try again
                 controller.sleep().await;
             } else {
-                break Ok(response);
+                break Ok(CertificationResponse {
+                    safepoint: Some(2),
+                    xid: "wqe".to_string(),
+                    version: 2,
+                    metadata: ResponseMetadata {
+                        attempts: 2,
+                        duration_ms: 222
+                    },
+                    decision: Decision::Committed
+                });
             }
         };
 
