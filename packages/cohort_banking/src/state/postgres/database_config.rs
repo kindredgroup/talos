@@ -1,6 +1,6 @@
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
-    pub pool_size: usize,
+    pub pool_size: u32,
     pub user: String,
     pub password: String,
     pub host: String,

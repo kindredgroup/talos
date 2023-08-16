@@ -1,22 +1,36 @@
-use std::collections::HashMap;
-use napi::bindgen_prelude::FromNapiValue;
-use napi::{JsObject, JsUnknown};
-use napi::sys::{napi_env, napi_value};
 // $coverage:ignore-start
+use cohort_sdk::model::{BackoffConfig, Config};
 use napi_derive::napi;
-use cohort_sdk::model::Config;
+
+#[napi(object)]
+pub struct JsBackoffConfig {
+    pub min_ms: u32,
+    pub max_ms: u32,
+}
+
+impl From<JsBackoffConfig> for BackoffConfig {
+    fn from(val: JsBackoffConfig) -> Self {
+        BackoffConfig {
+            min_ms: val.min_ms,
+            max_ms: val.max_ms,
+        }
+    }
+}
 
 // unsafe impl Send for JsConfig {}
 // unsafe impl Sync for JsConfig {}
 #[napi(object)]
 pub struct JsConfig {
-    //
     // cohort configs
     //
+    pub backoff_on_conflict: JsBackoffConfig,
+    pub retry_backoff: JsBackoffConfig,
+
     pub retry_attempts_max: u32,
-    pub retry_backoff_max_ms: u32,
-    pub retry_oo_backoff_max_ms: u32,
+    pub retry_oo_backoff: JsBackoffConfig,
     pub retry_oo_attempts_max: u32,
+
+    pub snapshot_wait_timeout_ms: u32,
 
     //
     // agent config values
@@ -50,33 +64,6 @@ pub struct JsConfig {
     pub agent_log_level: u32,
 
     //
-    // Kafka configs for Replicator
-    //
-    pub replicator_client_id: String,
-    pub replicator_group_id: String,
-    pub producer_config_overrides: HashMap<String, String>,
-    pub consumer_config_overrides: HashMap<String, String>,
-
-    //
-    // Suffix config values
-    //
-    /// Initial capacity of the suffix
-    pub suffix_size_max: u32,
-    /// - The suffix prune threshold from when we start checking if the suffix
-    /// should prune.
-    /// - Set to None if pruning is not required.
-    /// - Defaults to None.
-    pub suffix_prune_at_size: Option<u32>,
-    /// Minimum size of suffix after prune.
-    /// - Defaults to None.
-    pub suffix_size_min: Option<u32>,
-
-    //
-    // Replicator config values
-    //
-    pub replicator_buffer_size: u32,
-
-    //
     // Database config
     //
     pub db_pool_size: u32,
@@ -87,170 +74,59 @@ pub struct JsConfig {
     pub db_database: String,
 }
 
-
-impl Into<Config> for JsConfig {
-    fn into(self) -> Config {
+impl From<JsConfig> for Config {
+    fn from(val: JsConfig) -> Self {
         Config {
             //
             // cohort configs
             //
-            retry_attempts_max: 10,
-            retry_backoff_max_ms: 1500,
-            retry_oo_backoff_max_ms: 1000,
-            retry_oo_attempts_max: 10,
+            retry_attempts_max: val.retry_attempts_max,
+            retry_backoff: val.retry_backoff.into(),
+            backoff_on_conflict: val.backoff_on_conflict.into(),
+            retry_oo_backoff: val.retry_oo_backoff.into(),
+            retry_oo_attempts_max: val.retry_oo_attempts_max,
+            snapshot_wait_timeout_ms: val.snapshot_wait_timeout_ms,
 
             //
             // agent config values
             //
-            agent: "cohort-banking".into(),
-            cohort: "cohort-banking".into(),
+            agent: val.agent,
+            cohort: val.cohort,
             // The size of internal buffer for candidates
-            buffer_size: 10_000_000,
-            timeout_ms: 600_000,
+            buffer_size: val.buffer_size,
+            timeout_ms: val.timeout_ms,
 
             //
             // Common to kafka configs values
             //
-            brokers: "127.0.0.1:9092".into(),
-            topic: "dev.ksp.certification".into(),
-            sasl_mechanisms: None,
-            kafka_username: None,
-            kafka_password: None,
+            brokers: val.brokers,
+            topic: val.topic,
+            sasl_mechanisms: val.sasl_mechanisms,
+            kafka_username: val.kafka_username,
+            kafka_password: val.kafka_password,
 
             //
             // Kafka configs for Agent
             //
             // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-            agent_group_id: "cohort-banking".into(),
-            agent_fetch_wait_max_ms: 6000,
+            agent_group_id: val.agent_group_id,
+            agent_fetch_wait_max_ms: val.agent_fetch_wait_max_ms,
             // The maximum time librdkafka may use to deliver a message (including retries)
-            agent_message_timeout_ms: 15000,
+            agent_message_timeout_ms: val.agent_message_timeout_ms,
             // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-            agent_enqueue_timeout_ms: 10,
+            agent_enqueue_timeout_ms: val.agent_enqueue_timeout_ms,
             // should be mapped to rdkafka::config::RDKafkaLogLevel
-            agent_log_level: 6,
-
-            //
-            // Kafka configs for Replicator
-            //
-            replicator_client_id: "cohort-banking".into(),
-            replicator_group_id: "cohort-banking-replicator".into(),
-            producer_config_overrides: HashMap::new(),
-            consumer_config_overrides: HashMap::new(),
-
-            //
-            // Suffix config values
-            //
-            /// Initial capacity of the suffix
-            // suffix_size_max: 500_000,
-            suffix_size_max: 10,
-            /// - The suffix prune threshold from when we start checking if the suffix
-            /// should prune.
-            /// - Set to None if pruning is not required.
-            /// - Defaults to None.
-            // suffix_prune_at_size: Some(300_000),
-            suffix_prune_at_size: Some(2000),
-            /// Minimum size of suffix after prune.
-            /// - Defaults to None.
-            // suffix_size_min: Some(100_000),
-            suffix_size_min: None,
-
-            //
-            // Replicator config values
-            //
-            replicator_buffer_size: 100_000,
+            agent_log_level: val.agent_log_level,
 
             //
             // Database config
             //
-            db_pool_size: 200,
-            db_user: "postgres".into(),
-            db_password: "admin".into(),
-            db_host: "127.0.0.1".into(),
-            db_port: "5432".into(),
-            db_database: "talos-sample-cohort-dev".into(),
+            db_pool_size: val.db_pool_size,
+            db_user: val.db_user,
+            db_password: val.db_password,
+            db_host: val.db_host,
+            db_port: val.db_port,
+            db_database: val.db_database,
         }
     }
-    // fn into(self) -> Config {
-    //     Config {
-    //         //
-    //         // cohort configs
-    //         //
-    //         retry_attempts_max: self.retry_attempts_max,
-    //         retry_backoff_max_ms: self.retry_backoff_max_ms,
-    //         retry_oo_backoff_max_ms: self.retry_oo_backoff_max_ms,
-    //         retry_oo_attempts_max: self.retry_oo_attempts_max,
-    //
-    //         //
-    //         // agent config values
-    //         //
-    //         agent: self.agent,
-    //         cohort: self.cohort,
-    //         // The size of internal buffer for candidates
-    //         buffer_size: self.buffer_size,
-    //         timeout_ms: self.timeout_ms,
-    //
-    //         //
-    //         // Common to kafka configs values
-    //         //
-    //         brokers: self.brokers,
-    //         topic: self.topic,
-    //         sasl_mechanisms: self.sasl_mechanisms,
-    //         kafka_username: self.kafka_username,
-    //         kafka_password: self.kafka_password,
-    //
-    //         //
-    //         // Kafka configs for Agent
-    //         //
-    //         // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-    //         agent_group_id: self.agent_group_id,
-    //         agent_fetch_wait_max_ms: self.agent_fetch_wait_max_ms,
-    //         // The maximum time librdkafka may use to deliver a message (including retries)
-    //         agent_message_timeout_ms: self.agent_message_timeout_ms,
-    //         // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    //         agent_enqueue_timeout_ms: self.agent_enqueue_timeout_ms,
-    //         // should be mapped to rdkafka::config::RDKafkaLogLevel
-    //         agent_log_level: self.agent_log_level,
-    //
-    //         //
-    //         // Kafka configs for Replicator
-    //         //
-    //         replicator_client_id: self.replicator_client_id,
-    //         replicator_group_id: self.replicator_group_id,
-    //         producer_config_overrides: self.producer_config_overrides,
-    //         consumer_config_overrides: self.consumer_config_overrides,
-    //
-    //         //
-    //         // Suffix config values
-    //         //
-    //         /// Initial capacity of the suffix
-    //         // suffix_size_max: 500_000,
-    //         suffix_size_max: self.suffix_size_max,
-    //         /// - The suffix prune threshold from when we start checking if the suffix
-    //         /// should prune.
-    //         /// - Set to None if pruning is not required.
-    //         /// - Defaults to None.
-    //         // suffix_prune_at_size: Some(300_000),
-    //         suffix_prune_at_size: self.suffix_prune_at_size,
-    //         /// Minimum size of suffix after prune.
-    //         /// - Defaults to None.
-    //         // suffix_size_min: Some(100_000),
-    //         suffix_size_min: self.suffix_size_min,
-    //
-    //         //
-    //         // Replicator config values
-    //         //
-    //         replicator_buffer_size: self.replicator_buffer_size,
-    //
-    //         //
-    //         // Database config
-    //         //
-    //         db_pool_size: self.db_pool_size,
-    //         db_user: self.db_user,
-    //         db_password: self.db_password,
-    //         db_host: self.db_host,
-    //         db_port: self.db_port,
-    //         db_database: self.db_database,
-    //     }
-    // }
 }

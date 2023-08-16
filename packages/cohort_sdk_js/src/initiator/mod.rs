@@ -1,18 +1,13 @@
+use crate::models::JsConfig;
+use async_trait::async_trait;
+use cohort_sdk::cohort_mock::CohortMock;
+use cohort_sdk::model::callbacks::{CapturedItemState, CapturedState, ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller};
+use cohort_sdk::model::{CandidateData, CertificationRequest};
+use napi::threadsafe_function::ThreadsafeFunction;
+use napi_derive::napi;
+use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::Arc;
-use async_trait::async_trait;
-use napi_derive::napi;
-use napi::{Error,  JsFunction, JsObject, JsString};
-use napi::bindgen_prelude::{BigInt, Promise};
-use napi::threadsafe_function::ErrorStrategy::ErrorStrategy;
-use napi::threadsafe_function::{ThreadSafeCallContext, ThreadsafeFunction};
-use serde_json::Value;
-use cohort_sdk::cohort::Cohort;
-use cohort_sdk::model::{CandidateData, CertificationRequest, ClientError, ClientErrorKind};
-use cohort_sdk::model::callbacks::{CapturedItemState, CapturedState, ItemStateProvider, OutOfOrderInstaller, OutOfOrderInstallOutcome};
-use crate::models::JsConfig;
-
 
 #[napi(object)]
 pub struct JsCertificationRequest {
@@ -27,66 +22,72 @@ pub struct JsCandidateData {
     pub statemap: Option<Vec<HashMap<String, Value>>>,
 }
 
-impl Into<CertificationRequest> for JsCertificationRequest {
-    fn into(self) -> CertificationRequest {
+impl From<JsCertificationRequest> for CertificationRequest {
+    fn from(_val: JsCertificationRequest) -> Self {
         CertificationRequest {
             candidate: CandidateData {
                 statemap: None,
                 readset: vec![],
-                writeset: vec![]
+                writeset: vec![],
             },
-            timeout_ms: 34
+            timeout_ms: 34,
         }
     }
 }
 
 #[napi]
 pub struct Initiator {
-    cohort: Cohort,
+    cohort: CohortMock,
 }
 
 #[napi]
 impl Initiator {
     #[napi]
-    pub async fn init(config:JsConfig) -> napi::Result<Initiator> {
-
-        let cohort = Cohort::create(config.into()).await.map_err(map_error_to_napi_error)?;
+    pub async fn init(config: JsConfig) -> napi::Result<Initiator> {
+        let cohort = CohortMock::create(config.into()).await.map_err(map_error_to_napi_error)?;
         // let tsfn: ThreadsafeFunction<OORequest> = oo_callback
         //     .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<OORequest>| Ok(vec![ctx.value]))?;
-        Ok(Initiator {
-            cohort,
-        })
-
+        Ok(Initiator { cohort })
     }
     #[napi]
-    pub async fn certify(&self, js_certification_request: JsCertificationRequest, ooo_callback: ThreadsafeFunction<OORequest>, get_state_callback: ThreadsafeFunction<u8>) -> napi::Result<String>{
+    pub async fn certify(
+        &self,
+        js_certification_request: JsCertificationRequest,
+        ooo_callback: ThreadsafeFunction<OORequest>,
+        get_state_callback: ThreadsafeFunction<u8>,
+    ) -> napi::Result<String> {
         println!("certify being called");
-        let ooo_impl = OutOfOrderInstallerImpl{ooo_callback};
-        let item_state_provider_impl = ItemStateProviderImpl{get_state_callback};
-        let res = self.cohort.certify(js_certification_request.into(), &item_state_provider_impl, &ooo_impl).await.map_err(map_error_to_napi_error)?;
+        let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
+        let item_state_provider_impl = ItemStateProviderImpl {
+            _get_state_callback: get_state_callback
+        };
+        let _res = self
+            .cohort
+            .certify(js_certification_request.into(), &item_state_provider_impl, &ooo_impl)
+            .await
+            .map_err(map_error_to_napi_error)?;
         Ok("Success".to_string())
     }
 }
 
-struct OutOfOrderInstallerImpl{
+struct OutOfOrderInstallerImpl {
     ooo_callback: ThreadsafeFunction<OORequest>,
 }
 
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
-    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
         println!("install being called");
         let oorequest = OORequest {
             xid,
             safepoint: safepoint.try_into().unwrap(),
             new_version: new_version.try_into().unwrap(),
-            attempt_nr: attempt_nr.try_into().unwrap(),
+            attempt_nr,
         };
-        let res: String = self.ooo_callback.call_async( Ok(oorequest)).await.map_err(map_error_to_napi_error).unwrap();
+        let res: String = self.ooo_callback.call_async(Ok(oorequest)).await.map_err(map_error_to_napi_error).unwrap();
         println!("re from oo_callback {}, ", res);
         Ok(OutOfOrderInstallOutcome::Installed)
     }
-
 }
 
 // #[async_trait]
@@ -107,8 +108,9 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
 // }
 
 pub struct ItemStateProviderImpl {
-    get_state_callback: ThreadsafeFunction<u8>
+    _get_state_callback: ThreadsafeFunction<u8>,
 }
+
 #[async_trait]
 impl ItemStateProvider for ItemStateProviderImpl {
     async fn get_state(&self) -> Result<CapturedState, String> {
@@ -116,12 +118,11 @@ impl ItemStateProvider for ItemStateProviderImpl {
             snapshot_version: 34,
             items: vec![CapturedItemState {
                 id: "sd".to_string(),
-                version: 23
-            }]
+                version: 23,
+            }],
         })
     }
 }
-
 
 // pub struct JsClientError {
 //     client_error: ClientError
@@ -136,7 +137,7 @@ pub struct OORequest {
     pub xid: String,
     pub safepoint: u32,
     pub new_version: u32,
-    pub attempt_nr: u32
+    pub attempt_nr: u32,
 }
 
 // impl From<JsClientError> for napi::Error {
@@ -144,4 +145,3 @@ pub struct OORequest {
 //         map_error_to_napi_error(scylla_error)
 //     }
 // }
-

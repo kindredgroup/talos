@@ -213,15 +213,15 @@ fn read_var(name: &str) -> Result<String, String> {
 async fn make_agent(params: LaunchParams) -> impl TalosAgent {
     let (cfg_agent, cfg_kafka) = load_configs().unwrap();
 
-    let (tx_certify_ch, rx_certify_ch) = mpsc::channel::<CertifyRequestChannelMessage>(cfg_agent.buffer_size);
+    let (tx_certify_ch, rx_certify_ch) = mpsc::channel::<CertifyRequestChannelMessage>(cfg_agent.buffer_size as usize);
     let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
     let rx_certify = ReceiverWrapper::<CertifyRequestChannelMessage> { rx: rx_certify_ch };
 
-    let (tx_decision_ch, rx_decision_ch) = mpsc::channel::<DecisionMessage>(cfg_agent.buffer_size);
+    let (tx_decision_ch, rx_decision_ch) = mpsc::channel::<DecisionMessage>(cfg_agent.buffer_size as usize);
     let tx_decision = SenderWrapper::<DecisionMessage> { tx: tx_decision_ch };
     let rx_decision = ReceiverWrapper::<DecisionMessage> { rx: rx_decision_ch };
 
-    let (tx_cancel_ch, rx_cancel_ch) = mpsc::channel::<CancelRequestChannelMessage>(cfg_agent.buffer_size);
+    let (tx_cancel_ch, rx_cancel_ch) = mpsc::channel::<CancelRequestChannelMessage>(cfg_agent.buffer_size as usize);
     let tx_cancel = SenderWrapper::<CancelRequestChannelMessage> { tx: tx_cancel_ch };
     let rx_cancel = ReceiverWrapper::<CancelRequestChannelMessage> { rx: rx_cancel_ch };
 

@@ -121,7 +121,7 @@ where
         let m = CertifyRequestChannelMessage::new(&request, Arc::new(Box::new(tx)));
         let to_state_manager = Arc::clone(&self.tx_certify);
 
-        let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timeout_ms));
+        let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timeout_ms as u64));
 
         let result: Result<Result<CertificationResponse, AgentError>, Elapsed> = timeout(max_wait, async {
             match to_state_manager.send(m).await {

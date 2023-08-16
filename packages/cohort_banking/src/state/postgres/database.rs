@@ -104,7 +104,7 @@ impl Database {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
         let pc = PoolConfig {
-            max_size: cfg.pool_size,
+            max_size: cfg.pool_size as usize,
             ..PoolConfig::default()
         };
         config.pool = Some(pc);

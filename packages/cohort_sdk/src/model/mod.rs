@@ -91,8 +91,8 @@ pub struct Config {
     pub agent: String,
     pub cohort: String,
     // The size of internal buffer for candidates
-    pub buffer_size: usize,
-    pub timeout_ms: u64,
+    pub buffer_size: u32,
+    pub timeout_ms: u32,
 
     //
     // Common to kafka configs values
@@ -119,7 +119,7 @@ pub struct Config {
     //
     // Database config
     //
-    pub db_pool_size: usize,
+    pub db_pool_size: u32,
     pub db_user: String,
     pub db_password: String,
     pub db_host: String,
