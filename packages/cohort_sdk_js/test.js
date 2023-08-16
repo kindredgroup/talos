@@ -62,7 +62,11 @@ candidate: {
 },
 timeoutMs: 34
 },
-install_callback
+install_callback,
+() => {
+console.log("get state callback")
+}
+
 )
 }
 
