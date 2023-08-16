@@ -243,10 +243,10 @@ impl Cohort {
                 c_giveups.add(giveups, &[]);
             }
             if attempt > 1 {
-                c_retry.add(attempt - 1, &[]);
+                c_retry.add(attempt as u64 - 1, &[]);
             }
 
-            h_attempts.record(attempt, &[]);
+            h_attempts.record(attempt as u64, &[]);
             h_span_2.record(span_2_val * 100.0, &[]);
         });
         result
@@ -347,7 +347,7 @@ impl Cohort {
                 c_talos_aborts.add(talos_aborts, &[]);
                 c_agent_errors.add(agent_errors, &[]);
                 c_db_errors.add(db_errors, &[]);
-                h_agent_retries.record(attempts, &[]);
+                h_agent_retries.record(attempts as u64, &[]);
             });
         }
 
@@ -366,7 +366,7 @@ impl Cohort {
         let timeout = if request.timeout_ms > 0 {
             Duration::from_millis(request.timeout_ms)
         } else {
-            Duration::from_millis(self.config.snapshot_wait_timeout_ms)
+            Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64)
         };
 
         let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {

@@ -94,7 +94,7 @@ impl Publisher for KafkaPublisher {
 
         let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.certification_topic, key.as_str(), payload.as_str());
 
-        let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timeout_ms));
+        let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timeout_ms as u64));
         return match self.producer.send(data, timeout).await {
             Ok((partition, offset)) => {
                 debug!("KafkaPublisher.send_message(): Published into partition {}, offset: {}", partition, offset);
@@ -380,9 +380,9 @@ mod tests {
                 brokers: "brokers".to_string(),
                 group_id: "group_id".to_string(),
                 certification_topic: "certification_topic".to_string(),
-                fetch_wait_max_ms: 1_u64,
-                message_timeout_ms: 1_u64,
-                enqueue_timeout_ms: 1_u64,
+                fetch_wait_max_ms: 1_u32,
+                message_timeout_ms: 1_u32,
+                enqueue_timeout_ms: 1_u32,
                 log_level: RDKafkaLogLevel::Debug,
                 talos_type: TalosType::InProcessMock,
                 sasl_mechanisms: None,

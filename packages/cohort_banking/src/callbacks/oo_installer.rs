@@ -63,7 +63,7 @@ impl OutOfOrderInstallerImpl {
         }
     }
 
-    async fn install_using_polling(&self, _xid: String, safepoint: u64, new_version: u64, _attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install_using_polling(&self, _xid: String, safepoint: u64, new_version: u64, _attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
         let db = Arc::clone(&self.database);
         let wait_handle: JoinHandle<Result<bool, String>> = tokio::spawn(async move {
             let mut safe_now = Self::is_safe_to_proceed(Arc::clone(&db), safepoint).await?;
@@ -91,7 +91,7 @@ impl OutOfOrderInstallerImpl {
         }
     }
 
-    async fn install_using_single_query(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install_using_single_query(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
         // Params order:
         //  1 - from, 2 - to, 3 - amount
         //  4 - new_ver, 5 - safepoint
@@ -251,7 +251,7 @@ impl OutOfOrderInstallerImpl {
 
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
-    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
         if self.single_query_strategy {
             self.install_using_single_query(xid, safepoint, new_version, attempt_nr).await
         } else {
