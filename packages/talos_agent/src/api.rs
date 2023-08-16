@@ -65,11 +65,11 @@ pub struct KafkaConfig {
     // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
     pub group_id: String,
     pub certification_topic: String,
-    pub fetch_wait_max_ms: u64,
+    pub fetch_wait_max_ms: u32,
     // The maximum time librdkafka may use to deliver a message (including retries)
-    pub message_timeout_ms: u64,
+    pub message_timeout_ms: u32,
     // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    pub enqueue_timeout_ms: u64,
+    pub enqueue_timeout_ms: u32,
     pub log_level: RDKafkaLogLevel,
     pub talos_type: TalosType,
     // defaults to SCRAM-SHA-512
@@ -79,7 +79,7 @@ pub struct KafkaConfig {
 }
 
 impl KafkaConfig {
-    pub fn map_log_level(level: u64) -> RDKafkaLogLevel {
+    pub fn map_log_level(level: u32) -> RDKafkaLogLevel {
         match level {
             0 => RDKafkaLogLevel::Emerg,
             1 => RDKafkaLogLevel::Alert,

@@ -18,7 +18,7 @@ pub trait ItemStateProvider {
 
 #[async_trait]
 pub trait OutOfOrderInstaller {
-    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String>;
+    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String>;
 }
 
 pub enum OutOfOrderInstallOutcome {

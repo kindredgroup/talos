@@ -153,9 +153,8 @@ impl Cohort {
         S: ItemStateProvider,
         O: OutOfOrderInstaller,
     {
-        println!("in certify");
         let span_1 = Instant::now();
-       // let response = self.send_to_talos(request, state_provider).await?;
+        let response = self.send_to_talos(request, state_provider).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -163,13 +162,13 @@ impl Cohort {
             h_talos.record(span_1_val * 100.0, &[]);
         });
 
-        // if response.decision == Decision::Aborted {
-        //     return Ok(response);
-        // }
+        if response.decision == Decision::Aborted {
+            return Ok(response);
+        }
 
         // system error if we have Commit decision but no safepoint is given
-        // let safepoint = response.safepoint.unwrap();
-        // let new_version = response.version;
+        let safepoint = response.safepoint.unwrap();
+        let new_version = response.version;
 
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
         let mut attempt = 0;
@@ -182,10 +181,7 @@ impl Cohort {
             attempt += 1;
 
             let span_3 = Instant::now();
-            println!("install will be called");
-            // let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
-            let install_result = oo_installer.install("22".to_string(), 10, 22, attempt).await;
-
+            let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
@@ -202,7 +198,7 @@ impl Cohort {
                     // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
                     Some(ClientError {
                         kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
-                        reason: format!("Timeout waitig for safepoint:"),
+                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
                         cause: None,
                     })
                 }
@@ -222,16 +218,7 @@ impl Cohort {
                 // try again
                 controller.sleep().await;
             } else {
-                break Ok(CertificationResponse {
-                    safepoint: Some(2),
-                    xid: "wqe".to_string(),
-                    version: 2,
-                    metadata: ResponseMetadata {
-                        attempts: 2,
-                        duration_ms: 222
-                    },
-                    decision: Decision::Committed
-                });
+                break Ok(response);
             }
         };
 
@@ -256,10 +243,10 @@ impl Cohort {
                 c_giveups.add(giveups, &[]);
             }
             if attempt > 1 {
-                c_retry.add(attempt - 1, &[]);
+                c_retry.add(attempt as u64 - 1, &[]);
             }
 
-            h_attempts.record(attempt, &[]);
+            h_attempts.record(attempt as u64, &[]);
             h_span_2.record(span_2_val * 100.0, &[]);
         });
         result
@@ -360,7 +347,7 @@ impl Cohort {
                 c_talos_aborts.add(talos_aborts, &[]);
                 c_agent_errors.add(agent_errors, &[]);
                 c_db_errors.add(db_errors, &[]);
-                h_agent_retries.record(attempts, &[]);
+                h_agent_retries.record(attempts as u64, &[]);
             });
         }
 
@@ -379,7 +366,7 @@ impl Cohort {
         let timeout = if request.timeout_ms > 0 {
             Duration::from_millis(request.timeout_ms)
         } else {
-            Duration::from_millis(self.config.snapshot_wait_timeout_ms)
+            Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64)
         };
 
         let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {

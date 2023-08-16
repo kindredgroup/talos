@@ -37,7 +37,7 @@ pub struct CertificationResponse {
 
 #[derive(Clone)]
 pub struct ResponseMetadata {
-    pub attempts: u64,
+    pub attempts: u32,
     pub duration_ms: u64,
 }
 
@@ -61,12 +61,12 @@ pub struct ClientError {
 
 #[derive(Clone)]
 pub struct BackoffConfig {
-    pub min_ms: u64,
-    pub max_ms: u64,
+    pub min_ms: u32,
+    pub max_ms: u32,
 }
 
 impl BackoffConfig {
-    pub fn new(min_ms: u64, max_ms: u64) -> Self {
+    pub fn new(min_ms: u32, max_ms: u32) -> Self {
         Self { min_ms, max_ms }
     }
 }
@@ -79,11 +79,11 @@ pub struct Config {
     pub backoff_on_conflict: BackoffConfig,
     pub retry_backoff: BackoffConfig,
 
-    pub retry_attempts_max: u64,
+    pub retry_attempts_max: u32,
     pub retry_oo_backoff: BackoffConfig,
-    pub retry_oo_attempts_max: u64,
+    pub retry_oo_attempts_max: u32,
 
-    pub snapshot_wait_timeout_ms: u64,
+    pub snapshot_wait_timeout_ms: u32,
 
     //
     // agent config values
@@ -108,13 +108,13 @@ pub struct Config {
     //
     // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
     pub agent_group_id: String,
-    pub agent_fetch_wait_max_ms: u64,
+    pub agent_fetch_wait_max_ms: u32,
     // The maximum time librdkafka may use to deliver a message (including retries)
-    pub agent_message_timeout_ms: u64,
+    pub agent_message_timeout_ms: u32,
     // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    pub agent_enqueue_timeout_ms: u64,
+    pub agent_enqueue_timeout_ms: u32,
     // should be mapped to rdkafka::config::RDKafkaLogLevel
-    pub agent_log_level: u64,
+    pub agent_log_level: u32,
 
     //
     // Database config
@@ -126,7 +126,6 @@ pub struct Config {
     pub db_port: String,
     pub db_database: String,
 }
-
 
 pub struct ReplicatorServices {
     pub replicator_handle: JoinHandle<Result<(), String>>,

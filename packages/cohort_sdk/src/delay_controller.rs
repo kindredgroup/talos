@@ -4,14 +4,14 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct DelayController {
     pub total_sleep_time: u128,
-    multiplier: u64,
-    min_sleep_ms: u64,
-    max_sleep_ms: u64,
+    multiplier: u32,
+    min_sleep_ms: u32,
+    max_sleep_ms: u32,
 }
 
 // TODO: move me into cohort_sdk package
 impl DelayController {
-    pub fn new(min_sleep_ms: u64, max_sleep_ms: u64) -> Self {
+    pub fn new(min_sleep_ms: u32, max_sleep_ms: u32) -> Self {
         Self {
             multiplier: 1,
             min_sleep_ms,
@@ -40,7 +40,7 @@ impl DelayController {
         };
 
         let delay_ms = std::cmp::min(self.max_sleep_ms, m + add);
-        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        tokio::time::sleep(Duration::from_millis(delay_ms as u64)).await;
         self.total_sleep_time += delay_ms as u128;
     }
 }
