@@ -252,6 +252,6 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { callThreadsafeFunction } = nativeBinding
+const { Initiator } = nativeBinding
 
-module.exports.callThreadsafeFunction = callThreadsafeFunction
+module.exports.Initiator = Initiator
