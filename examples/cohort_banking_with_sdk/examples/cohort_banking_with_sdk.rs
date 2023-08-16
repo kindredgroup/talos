@@ -6,7 +6,7 @@ use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueuePr
 use cohort_sdk::model::Config;
 use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
-
+use crate::ut
 use metrics::model::MinMax;
 use opentelemetry_api::KeyValue;
 use opentelemetry_sdk::Resource;

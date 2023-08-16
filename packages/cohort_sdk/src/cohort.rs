@@ -140,7 +140,7 @@ where {
         let agent_errors_counter = meter.u64_counter("metric_agent_errors_count").with_unit(Unit::new("tx")).init();
         let agent_retries_counter = meter.u64_counter("metric_agent_retries_count").with_unit(Unit::new("tx")).init();
         let db_errors_counter = meter.u64_counter("metric_db_errors_counter").with_unit(Unit::new("tx")).init();
-
+        println!("cohort created");
         Ok(Self {
             config,
             talos_agent: Box::new(agent),
@@ -174,8 +174,9 @@ where {
         S: ItemStateProvider,
         O: OutOfOrderInstaller,
     {
+        println!("in certify");
         let span_1 = Instant::now();
-        let response = self.send_to_talos(request, state_provider).await?;
+       // let response = self.send_to_talos(request, state_provider).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -183,13 +184,13 @@ where {
             h_talos.record(&Context::current(), span_1_val, &[]);
         });
 
-        if response.decision == Decision::Aborted {
-            return Ok(response);
-        }
+        // if response.decision == Decision::Aborted {
+        //     return Ok(response);
+        // }
 
         // system error if we have Commit decision but no safepoint is given
-        let safepoint = response.safepoint.unwrap();
-        let new_version = response.version;
+        // let safepoint = response.safepoint.unwrap();
+        // let new_version = response.version;
 
         let mut controller = DelayController::new(20, self.config.retry_oo_backoff_max_ms);
         let mut attempt = 0;
@@ -202,7 +203,10 @@ where {
             attempt += 1;
 
             let span_3 = Instant::now();
-            let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
+            println!("install will be called");
+            // let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
+            let install_result = oo_installer.install("22".to_string(), 10, 22, attempt).await;
+
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
@@ -220,7 +224,7 @@ where {
                     // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
                     Some(ClientError {
                         kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
-                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
+                        reason: format!("Timeout waitig for safepoint:"),
                         cause: None,
                     })
                 }
@@ -240,7 +244,16 @@ where {
                 // try again
                 controller.sleep().await;
             } else {
-                break Ok(response);
+                break Ok(CertificationResponse {
+                    safepoint: Some(2),
+                    xid: "wqe".to_string(),
+                    version: 2,
+                    metadata: ResponseMetadata {
+                        attempts: 2,
+                        duration_ms: 222
+                    },
+                    decision: Decision::Committed
+                });
             }
         };
 
