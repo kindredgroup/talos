@@ -21,7 +21,6 @@ strum = { version = "0.25", features = ["derive"] }
 metrics = { path = "../metrics" }
 talos_agent = { path = "../talos_agent" }
 talos_certifier = { path = "../talos_certifier" }
-talos_certifier_adapters = { path = "../talos_certifier_adapters" }
 uuid = { version = "1.2.2", features = ["v4"] }
 
 tokio = { workspace = true, features = ["full"] }

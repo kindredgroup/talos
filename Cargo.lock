@@ -506,7 +506,6 @@ dependencies = [
  "strum 0.25.0",
  "talos_agent",
  "talos_certifier",
- "talos_certifier_adapters",
  "tokio",
  "uuid",
 ]
