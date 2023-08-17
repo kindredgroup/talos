@@ -46,6 +46,7 @@ pub struct ResponseMetadata {
 pub enum ClientErrorKind {
     Certification,
     CertificationTimeout,
+    ClientAborted,
     Messaging,
     Persistence,
     Internal,

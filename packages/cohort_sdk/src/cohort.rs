@@ -273,6 +273,14 @@ impl Cohort {
 
             attempts += 1;
             let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict).await {
+                CertificationAttemptOutcome::ClientAborted { reason } => {
+                    result = Some(Err(ClientError {
+                        kind: model::ClientErrorKind::ClientAborted,
+                        reason,
+                        cause: None,
+                    }));
+                    false
+                }
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -380,6 +388,10 @@ impl Cohort {
             Ok(local_state) => local_state,
         };
 
+        if let Some(reason) = local_state.abort_reason {
+            return CertificationAttemptOutcome::ClientAborted { reason };
+        }
+
         log::debug!("loaded state: {}, {:?}", local_state.snapshot_version, local_state.items);
 
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(local_state.snapshot_version, local_state.items.iter().map(|i| i.version).collect());
@@ -437,7 +449,9 @@ impl Cohort {
                     match result_local_state {
                         Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
                         Ok(current_state) => {
-                            if current_state.snapshot_version < conflict {
+                            if current_state.abort_reason.is_some() {
+                                break Ok(current_state);
+                            } else if current_state.snapshot_version < conflict {
                                 // not safe yet
                                 let waited = poll_started_at.elapsed();
                                 if waited >= timeout {
