@@ -86,17 +86,25 @@ impl CohortMock {
     pub async fn certify<S, O>(
         &self,
         _request: model::CertificationRequest,
-        _state_provider: &S,
+        state_provider: &S,
         oo_installer: &O,
     ) -> Result<model::CertificationResponse, ClientError>
     where
         S: ItemStateProvider,
         O: OutOfOrderInstaller,
     {
-        println!("in certify");
+        println!("CohortMock.certify(): Before state_provider.get_state()");
+        let state = state_provider.get_state().await.map_err(|e| ClientError {
+            kind: model::ClientErrorKind::Internal,
+            reason: format!("Cannot load state: {}.", e),
+            cause: Some(e),
+        })?;
+
+        println!("CohortMock.certify(): After state_provider.get_state(). Loaded: {:?}", state);
+
         let response = CertificationResponse {
             safepoint: Some(2),
-            xid: "wqe".to_string(),
+            xid: "mock-xid".to_string(),
             version: 2,
             metadata: ResponseMetadata { attempts: 2, duration_ms: 222 },
             decision: Decision::Committed,
@@ -117,9 +125,9 @@ impl CohortMock {
         loop {
             attempt += 1;
 
-            println!("install will be called");
+            println!("CohortMock.certify(): before 'oo_installer.install()'");
             let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
-
+            println!("CohortMock.certify(): after 'oo_installer.install()': {:?}", install_result);
             let error = match install_result {
                 Ok(OutOfOrderInstallOutcome::Installed) => None,
                 Ok(OutOfOrderInstallOutcome::InstalledAlready) => None,

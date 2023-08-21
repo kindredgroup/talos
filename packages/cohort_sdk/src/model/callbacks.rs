@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+#[derive(Debug)]
 pub struct CapturedState {
     pub snapshot_version: u64,
     pub items: Vec<CapturedItemState>,
@@ -21,6 +22,7 @@ pub trait OutOfOrderInstaller {
     async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String>;
 }
 
+#[derive(Debug)]
 pub enum OutOfOrderInstallOutcome {
     Installed,
     InstalledAlready,

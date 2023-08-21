@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+      "module": "ES2022",
+      "esModuleInterop": true,
+      "target": "ES2022",
+      "moduleResolution": "node",
+      "sourceMap": true,
+      "outDir": "dist"
+    },
+    "exclude": [
+        "build",
+        "dist",
+        "node_modules",
+      ]
+  }

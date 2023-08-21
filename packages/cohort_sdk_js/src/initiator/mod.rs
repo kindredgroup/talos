@@ -45,48 +45,59 @@ impl Initiator {
     #[napi]
     pub async fn init(config: JsConfig) -> napi::Result<Initiator> {
         let cohort = CohortMock::create(config.into()).await.map_err(map_error_to_napi_error)?;
-        // let tsfn: ThreadsafeFunction<OORequest> = oo_callback
-        //     .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<OORequest>| Ok(vec![ctx.value]))?;
+        // let tsfn: ThreadsafeFunction<OoRequest> = oo_callback
+        //     .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<OoRequest>| Ok(vec![ctx.value]))?;
         Ok(Initiator { cohort })
     }
     #[napi]
     pub async fn certify(
         &self,
         js_certification_request: JsCertificationRequest,
-        ooo_callback: ThreadsafeFunction<OORequest>,
         get_state_callback: ThreadsafeFunction<u8>,
+        ooo_callback: ThreadsafeFunction<OoRequest>,
     ) -> napi::Result<String> {
-        println!("certify being called");
+        println!("Initiator.certify()");
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         let item_state_provider_impl = ItemStateProviderImpl {
             _get_state_callback: get_state_callback,
         };
+        println!("Initiator.certify(): invoking cohort.certify(...)");
         let _res = self
             .cohort
             .certify(js_certification_request.into(), &item_state_provider_impl, &ooo_impl)
             .await
             .map_err(map_error_to_napi_error)?;
+
+        println!("Initiator.certify(): after cohort.certify(...)");
         Ok("Success".to_string())
     }
 }
 
 struct OutOfOrderInstallerImpl {
-    ooo_callback: ThreadsafeFunction<OORequest>,
+    ooo_callback: ThreadsafeFunction<OoRequest>,
 }
 
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
     async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
-        println!("install being called");
-        let oorequest = OORequest {
+        println!("OutOfOrderInstallerImpl.install()");
+        let oorequest = OoRequest {
             xid,
             safepoint: safepoint.try_into().unwrap(),
             new_version: new_version.try_into().unwrap(),
             attempt_nr,
         };
-        let res: String = self.ooo_callback.call_async(Ok(oorequest)).await.map_err(map_error_to_napi_error).unwrap();
-        println!("re from oo_callback {}, ", res);
-        Ok(OutOfOrderInstallOutcome::Installed)
+        let result = self.ooo_callback.call_async::<()>(Ok(oorequest)).await.map_err(map_error_to_napi_error);
+        match result {
+            Ok(_) => {
+                println!("OutOfOrderInstallerImpl.install(): was successful");
+                Ok(OutOfOrderInstallOutcome::Installed)
+            }
+            Err(e) => {
+                println!("OutOfOrderInstallerImpl.install(): error installing: {}", e);
+                Err(e.to_string())
+            }
+        }
     }
 }
 
@@ -94,7 +105,7 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
 // impl OutOfOrderInstaller for Initiator {
 //     async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String> {
 //         println!("install being called");
-//         let oorequest = OORequest {
+//         let oorequest = OoRequest {
 //             xid,
 //             safepoint: safepoint.try_into().unwrap(),
 //             new_version: new_version.try_into().unwrap(),
@@ -133,7 +144,7 @@ fn map_error_to_napi_error<T: Display>(e: T) -> napi::Error {
     napi::Error::from_reason(e.to_string())
 }
 #[napi(object)]
-pub struct OORequest {
+pub struct OoRequest {
     pub xid: String,
     pub safepoint: u32,
     pub new_version: u32,

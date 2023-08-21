@@ -52,5 +52,5 @@ export interface OoRequest {
 }
 export class Initiator {
   static init(config: JsConfig): Promise<Initiator>
-  certify(jsCertificationRequest: JsCertificationRequest, oooCallback: (err: Error | null, value: OORequest) => any, getStateCallback: (err: Error | null, value: number) => any): Promise<string>
+  certify(jsCertificationRequest: JsCertificationRequest, getStateCallback: (err: Error | null, value: number) => any, oooCallback: (err: Error | null, value: OoRequest) => any): Promise<string>
 }

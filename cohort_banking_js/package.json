@@ -1,0 +1,19 @@
+{
+  "name": "cohort_banking_js",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/app.js",
+  "scripts": {
+    "start": "npx tsc && node dist/app.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "cohort_sdk_js": "file:../packages/cohort_sdk_js"
+  }
+}
