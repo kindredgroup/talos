@@ -2,7 +2,8 @@ use std::{collections::HashMap, time::Duration};
 
 use metrics::model::MinMax;
 use talos_certifier::{model::metrics::TxProcessingTimeline, ports::MessageReciever, ChannelMessage};
-use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
+use talos_certifier_adapters::KafkaConsumer;
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::time::timeout;
 
@@ -10,12 +11,15 @@ use tokio::time::timeout;
 async fn main() -> Result<(), String> {
     env_logger::builder().format_timestamp_millis().init();
 
-    let mut kafka_config = KafkaConfig::from_env();
-    let mut cfg: HashMap<&'static str, &'static str> = HashMap::new();
-    cfg.insert("enable.auto.commit", "false");
-    cfg.insert("auto.offset.reset", "earliest");
+    let mut kafka_config = KafkaConfig::from_env(None);
+    kafka_config.extend(
+        None,
+        Some(HashMap::from([
+            ("auto.commit.enable".into(), "false".into()),
+            ("auto.offset.reset".into(), "earliest".into()),
+        ])),
+    );
 
-    kafka_config.set_overrides(HashMap::new(), cfg);
     kafka_config.group_id = format!("talos-metric-histogram-timings-{}", uuid::Uuid::new_v4());
     let mut kafka_consumer = KafkaConsumer::new(&kafka_config);
     kafka_consumer.subscribe().await.unwrap();

@@ -12,7 +12,7 @@ use talos_agent::{
         core::{AgentServices, TalosAgentImpl},
         model::{CancelRequestChannelMessage, CertifyRequestChannelMessage},
     },
-    api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgent},
+    api::{AgentConfig, CandidateData, CertificationRequest, TalosAgent, TalosType},
     messaging::{
         api::{Decision, DecisionMessage},
         kafka::KafkaInitializer,
@@ -20,6 +20,7 @@ use talos_agent::{
     metrics::{client::MetricsClient, model::Signal},
     mpsc::core::{ReceiverWrapper, SenderWrapper},
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 use crate::{
     delay_controller::DelayController,
@@ -62,7 +63,7 @@ impl Cohort {
         // Returns error descrition. If string is empty it means there was no error installing
     ) -> Result<Self, ClientError> {
         let agent_config: AgentConfig = config.clone().into();
-        let kafka_config: KafkaConfig = config.clone().into();
+        let kafka_config: KafkaConfig = config.kafka.clone();
 
         //
         // Create instance of Agent
@@ -93,7 +94,7 @@ impl Cohort {
             },
         );
 
-        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config)
+        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config, TalosType::External)
             .await
             .map_err(|me| ClientError {
                 kind: model::ClientErrorKind::Messaging,

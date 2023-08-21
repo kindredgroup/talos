@@ -1,20 +1,19 @@
 use async_channel::Receiver;
 use examples_support::load_generator::generator::ControlledRateLoadGenerator;
 use examples_support::load_generator::models::{Generator, StopType};
-use std::num::ParseIntError;
-use std::{env, sync::Arc, time::Duration};
-
-use rdkafka::config::RDKafkaLogLevel;
+use std::collections::HashMap;
 use std::env::{var, VarError};
+use std::{env, sync::Arc, time::Duration};
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
-use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, KafkaConfig, TalosAgent, TalosType};
+use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, TalosAgent, TalosType};
 use talos_agent::messaging::api::DecisionMessage;
 use talos_agent::messaging::kafka::KafkaInitializer;
 use talos_agent::metrics::client::MetricsClient;
 use talos_agent::metrics::core::Metrics;
 use talos_agent::metrics::model::Signal;
 use talos_agent::mpsc::core::{ReceiverWrapper, SenderWrapper};
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -23,8 +22,6 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 struct LaunchParams {
-    stop_max_empty_checks: u64,
-    stop_check_delay: Duration,
     stop_type: StopType,
     target_rate: u64,
     threads: u64,
@@ -51,7 +48,7 @@ async fn certify() -> Result<(), String> {
     // give this to stop controller
     let rx_generated_ref = Arc::clone(&rx_generated);
 
-    let h_stop_controller: JoinHandle<Result<(), String>> = create_stop_controller(params.clone(), rx_generated_ref);
+    let h_monitor: JoinHandle<Result<(), String>> = create_queue_monitor(rx_generated_ref);
 
     let h_agent_workers = init_workers(params.clone(), rx_generated);
 
@@ -61,15 +58,11 @@ async fn certify() -> Result<(), String> {
     });
 
     let all_async_services = tokio::spawn(async move {
-        let result = try_join!(h_workload_generator, h_agent_workers);
+        let result = try_join!(h_workload_generator, h_agent_workers, h_monitor);
         log::info!("Result from the services ={result:?}");
     });
 
     tokio::select! {
-        _ = h_stop_controller => {
-            log::info!("Stop controller is active...");
-        }
-
         _ = all_async_services => {}
 
         // CTRL + C termination signal
@@ -132,24 +125,6 @@ fn init_workers(params: LaunchParams, queue: Arc<Receiver<(CertificationRequest,
     })
 }
 
-fn get_kafka_log_level_from_env() -> Result<RDKafkaLogLevel, String> {
-    match read_var("KAFKA_LOG_LEVEL") {
-        Ok(level) => match level.to_lowercase().as_str() {
-            "alert" => Ok(RDKafkaLogLevel::Alert),
-            "critical" => Ok(RDKafkaLogLevel::Critical),
-            "debug" => Ok(RDKafkaLogLevel::Debug),
-            "emerg" => Ok(RDKafkaLogLevel::Emerg),
-            "error" => Ok(RDKafkaLogLevel::Error),
-            "info" => Ok(RDKafkaLogLevel::Info),
-            "notice" => Ok(RDKafkaLogLevel::Notice),
-            "warning" => Ok(RDKafkaLogLevel::Warning),
-            _ => Ok(RDKafkaLogLevel::Info),
-        },
-
-        Err(e) => Err(e),
-    }
-}
-
 fn load_configs() -> Result<(AgentConfig, KafkaConfig), String> {
     let cfg_agent = AgentConfig {
         agent: read_var("AGENT_NAME").unwrap(),
@@ -158,40 +133,26 @@ fn load_configs() -> Result<(AgentConfig, KafkaConfig), String> {
         timeout_ms: read_var("AGENT_TIMEOUT_MS").unwrap().parse().unwrap(),
     };
 
-    let cfg_kafka = KafkaConfig {
-        brokers: read_var("KAFKA_BROKERS")?,
-        group_id: read_var("KAFKA_GROUP_ID")?,
-        certification_topic: read_var("KAFKA_TOPIC")?,
-        fetch_wait_max_ms: read_var("KAFKA_FETCH_WAIT_MAX_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
-        message_timeout_ms: read_var("KAFKA_MESSAGE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
-        enqueue_timeout_ms: read_var("KAFKA_ENQUEUE_TIMEOUT_MS")?.parse().map_err(|e: ParseIntError| e.to_string())?,
-        log_level: get_kafka_log_level_from_env()?,
-        talos_type: TalosType::External,
-        sasl_mechanisms: read_var_optional("KAFKA_SASL_MECHANISMS")?,
-        username: read_var_optional("KAFKA_USERNAME")?,
-        password: read_var_optional("KAFKA_PASSWORD")?,
-    };
+    let mut cfg_kafka = KafkaConfig::from_env(Some("AGENT"));
+    let more_producer_values = [
+        ("message.timeout.ms".to_string(), "15000".to_string()),
+        ("queue.buffering.max.messages".to_string(), "1000000".to_string()),
+        ("topic.metadata.refresh.interval.ms".to_string(), "5".to_string()),
+        ("socket.keepalive.enable".to_string(), "true".to_string()),
+        ("acks".to_string(), "0".to_string()),
+    ];
+
+    let more_consumer_values = [
+        ("enable.auto.commit".to_string(), "false".to_string()),
+        ("auto.offset.reset".to_string(), "latest".to_string()),
+        ("fetch.wait.max.ms".to_string(), "600".to_string()),
+        ("socket.keepalive.enable".to_string(), "true".to_string()),
+        ("acks".to_string(), "0".to_string()),
+    ];
+
+    cfg_kafka.extend(Some(HashMap::from(more_producer_values)), Some(HashMap::from(more_consumer_values)));
 
     Ok((cfg_agent, cfg_kafka))
-}
-
-fn read_var_optional(name: &str) -> Result<Option<String>, String> {
-    match var(name) {
-        Ok(value) => {
-            if value.is_empty() {
-                Ok(None)
-            } else {
-                Ok(Some(value.trim().to_string()))
-            }
-        }
-        Err(e) => match e {
-            VarError::NotPresent => {
-                log::info!("Environment variable is not found: \"{}\"", name);
-                Ok(None)
-            }
-            VarError::NotUnicode(_) => Err(format!("Environment variable is not unique: \"{}\"", name)),
-        },
-    }
 }
 
 fn read_var(name: &str) -> Result<String, String> {
@@ -225,7 +186,7 @@ async fn make_agent(params: LaunchParams) -> impl TalosAgent {
     let tx_cancel = SenderWrapper::<CancelRequestChannelMessage> { tx: tx_cancel_ch };
     let rx_cancel = ReceiverWrapper::<CancelRequestChannelMessage> { rx: rx_cancel_ch };
 
-    let (publisher, consumer) = KafkaInitializer::connect(cfg_agent.agent.clone(), cfg_kafka)
+    let (publisher, consumer) = KafkaInitializer::connect(cfg_agent.agent.clone(), cfg_kafka, TalosType::External)
         .await
         .expect("Cannot connect to kafka...");
 
@@ -264,30 +225,17 @@ async fn make_agent(params: LaunchParams) -> impl TalosAgent {
     agent
 }
 
-fn create_stop_controller(params: LaunchParams, queue: Arc<Receiver<(CertificationRequest, f64)>>) -> JoinHandle<Result<(), String>> {
+fn create_queue_monitor(queue: Arc<Receiver<(CertificationRequest, f64)>>) -> JoinHandle<Result<(), String>> {
     tokio::spawn(async move {
-        let mut remaining_checks = params.stop_max_empty_checks;
         loop {
-            tokio::time::sleep(params.stop_check_delay).await;
+            tokio::time::sleep(Duration::from_secs(10)).await;
             if queue.is_empty() {
-                log::info!(
-                    "There are no more items to process, finalising in {} sec",
-                    remaining_checks * params.stop_check_delay.as_secs()
-                );
-                remaining_checks -= 1;
-                if remaining_checks == 0 {
-                    break;
-                }
-            } else {
-                let len = queue.len();
-                log::info!("Items remaining to process: {}", len);
-                remaining_checks = params.stop_max_empty_checks;
+                continue;
             }
+
+            let len = queue.len();
+            log::info!("Items remaining to process: {}", len);
         }
-
-        queue.close();
-
-        Err("Signal from StopController".into())
     })
 }
 
@@ -296,8 +244,6 @@ async fn get_params() -> Result<LaunchParams, String> {
     let mut threads: Option<u64> = Some(1);
     let mut target_rate: Option<u64> = None;
     let mut stop_type: Option<StopType> = None;
-    let mut stop_max_empty_checks: Option<u64> = Some(5);
-    let mut stop_check_delay: Option<u64> = Some(5);
     let mut collect_metrics: Option<bool> = Some(true);
 
     if args.len() >= 3 {
@@ -322,12 +268,6 @@ async fn get_params() -> Result<LaunchParams, String> {
                     let count: u64 = param_value.parse().unwrap();
                     stop_type = Some(StopType::LimitGeneratedTransactions { count })
                 }
-            } else if param_name.eq("--stop-controller-max-empty-checks") {
-                let param_value = &args[i + 1];
-                stop_max_empty_checks = Some(param_value.parse().unwrap());
-            } else if param_name.eq("--stop-controller-delay") {
-                let param_value = &args[i + 1];
-                stop_check_delay = Some(param_value.parse().unwrap());
             } else if param_name.eq("--no-metrics") {
                 collect_metrics = Some(false)
             }
@@ -344,8 +284,6 @@ async fn get_params() -> Result<LaunchParams, String> {
             target_rate: target_rate.unwrap(),
             stop_type: stop_type.unwrap(),
             threads: threads.unwrap(),
-            stop_max_empty_checks: stop_max_empty_checks.unwrap(),
-            stop_check_delay: Duration::from_secs(stop_check_delay.unwrap()),
             collect_metrics: collect_metrics.unwrap(),
         })
     }

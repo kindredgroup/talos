@@ -1,0 +1,16 @@
+[package]
+name = "talos_common_utils"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+doctest = false
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Logging
+log = { workspace = true }
+env_logger = { workspace = true }
+
+[dev-dependencies]
+serial_test = "2.0.0"
