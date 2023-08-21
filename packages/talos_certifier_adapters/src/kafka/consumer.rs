@@ -17,11 +17,12 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
-use super::{config::KafkaConfig, utils};
+use super::utils;
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]

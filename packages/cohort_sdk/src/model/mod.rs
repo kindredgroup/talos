@@ -6,9 +6,10 @@ use std::{collections::HashMap, fmt::Display};
 use serde_json::Value;
 use talos_agent::{
     agent::errors::{AgentError, AgentErrorKind},
-    api::{AgentConfig, KafkaConfig, TalosType},
+    api::AgentConfig,
     messaging::api::Decision,
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::task::JoinHandle;
 
 #[derive(Clone)]
@@ -75,19 +76,22 @@ impl BackoffConfig {
 #[derive(Clone)]
 pub struct Config {
     //
-    // cohort configs
+    // Cohort configs
     //
+    // Backoff setting before re-polling after Talos returned abort caused by conflict
     pub backoff_on_conflict: BackoffConfig,
+    // Backoff setting before re-trying to send request to Talos
     pub retry_backoff: BackoffConfig,
 
     pub retry_attempts_max: u32,
+    // Backoff setting before re-trying DB install operations during when handling out of order installs
     pub retry_oo_backoff: BackoffConfig,
     pub retry_oo_attempts_max: u32,
 
     pub snapshot_wait_timeout_ms: u32,
 
     //
-    // agent config values
+    // Agent config values
     //
     pub agent: String,
     pub cohort: String,
@@ -96,36 +100,29 @@ pub struct Config {
     pub timeout_ms: u64,
 
     //
-    // Common to kafka configs values
-    //
-    pub brokers: String,
-    pub topic: String,
-    pub sasl_mechanisms: Option<String>,
-    pub kafka_username: Option<String>,
-    pub kafka_password: Option<String>,
-
-    //
     // Kafka configs for Agent
     //
-    // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-    pub agent_group_id: String,
-    pub agent_fetch_wait_max_ms: u32,
-    // The maximum time librdkafka may use to deliver a message (including retries)
-    pub agent_message_timeout_ms: u32,
-    // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    pub agent_enqueue_timeout_ms: u32,
-    // should be mapped to rdkafka::config::RDKafkaLogLevel
-    pub agent_log_level: u32,
+    pub kafka: KafkaConfig,
+}
 
-    //
-    // Database config
-    //
-    pub db_pool_size: usize,
-    pub db_user: String,
-    pub db_password: String,
-    pub db_host: String,
-    pub db_port: String,
-    pub db_database: String,
+impl Config {
+    pub fn create(agent: String, cohort: String, kafka_config: KafkaConfig) -> Self {
+        Self {
+            backoff_on_conflict: BackoffConfig { min_ms: 1, max_ms: 1500 },
+            retry_backoff: BackoffConfig { min_ms: 20, max_ms: 1500 },
+            retry_attempts_max: 10,
+            retry_oo_backoff: BackoffConfig { min_ms: 20, max_ms: 1500 },
+            retry_oo_attempts_max: 10,
+            snapshot_wait_timeout_ms: 10_000,
+            agent,
+            cohort,
+            buffer_size: 100_000,
+            timeout_ms: 30_000,
+
+            // Kafka
+            kafka: kafka_config,
+        }
+    }
 }
 
 pub struct ReplicatorServices {
@@ -140,24 +137,6 @@ impl From<Config> for AgentConfig {
             cohort: val.cohort,
             buffer_size: val.buffer_size,
             timeout_ms: val.timeout_ms,
-        }
-    }
-}
-
-impl From<Config> for KafkaConfig {
-    fn from(val: Config) -> Self {
-        KafkaConfig {
-            brokers: val.brokers,
-            certification_topic: val.topic,
-            sasl_mechanisms: val.sasl_mechanisms,
-            username: val.kafka_username,
-            password: val.kafka_password,
-            group_id: val.agent_group_id,
-            fetch_wait_max_ms: val.agent_fetch_wait_max_ms,
-            message_timeout_ms: val.agent_message_timeout_ms,
-            enqueue_timeout_ms: val.agent_enqueue_timeout_ms,
-            log_level: KafkaConfig::map_log_level(val.agent_log_level),
-            talos_type: TalosType::External,
         }
     }
 }

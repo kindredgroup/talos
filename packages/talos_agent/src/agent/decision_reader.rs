@@ -45,6 +45,7 @@ enum ReaderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::TalosType;
     use crate::messaging::api::Consumer;
     use crate::messaging::api::Decision::Committed;
     use crate::messaging::errors::{MessagingError, MessagingErrorKind};
@@ -66,6 +67,7 @@ mod tests {
 
         #[async_trait]
         impl Consumer for NoopConsumer {
+            pub fn get_talos_type(&self) -> TalosType;
             pub async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>>;
         }
     }

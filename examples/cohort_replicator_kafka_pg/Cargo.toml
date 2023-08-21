@@ -10,6 +10,8 @@ cohort_banking   = { path = "../../packages/cohort_banking" }
 talos_cohort_replicator = { path = "../../packages/talos_cohort_replicator" }
 talos_certifier  = { path = "../../packages/talos_certifier" }
 talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_common_utils = { path = "../../packages/talos_common_utils" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils" }
 
 async-trait = { workspace = true }
 env_logger =  { workspace = true }

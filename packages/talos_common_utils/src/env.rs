@@ -140,6 +140,8 @@ macro_rules! env_var_with_defaults {
 mod tests {
     use std::env;
 
+    use serial_test::serial;
+
     fn set_env_var(key: &str, value: &str) {
         env::set_var(key, value)
     }
@@ -149,6 +151,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_env_var_macro_get_value_successfully_for_key() {
         // When only the key is passed a value as String is returned.
         set_env_var("keyA", "valueA");
@@ -174,6 +177,7 @@ mod tests {
         unset_env_var("keyA");
     }
     #[test]
+    #[serial]
     #[should_panic(expected = "keyB environment variable is not defined")]
     fn test_env_var_macro_when_key_value_not_found() {
         // When only the key is passed a value as String is returned.
@@ -184,6 +188,7 @@ mod tests {
         unset_env_var("keyAE1");
     }
     #[test]
+    #[serial]
     #[should_panic(expected = "error parsing \"valueA\" String -> u32")]
     fn test_env_var_macro_when_parsing_fails() {
         // When only the key is passed a value as String is returned.
@@ -194,6 +199,7 @@ mod tests {
         unset_env_var("keyAE2");
     }
     #[test]
+    #[serial]
     #[should_panic(expected = "error parsing \"1, 2 ,valueA\" String -> Vec<u32>")]
     fn test_env_var_macro_when_parsing_fails_for_vector() {
         // When only the key is passed a value as String is returned.
@@ -205,12 +211,11 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_env_var_with_default_macro_get_value_successfully_for_key() {
         let val = env_var_with_defaults!("keyA", "test_string".to_owned());
         assert_eq!(val, "test_string".to_owned());
 
-        // let val = env_var_with_defaults!("keyA", Option::<u64>, Some(10));
-        // assert_eq!(val, Some(10));
         set_env_var("keyA", "30");
         let val = env_var_with_defaults!("keyA", Option::<u64>, 10);
 

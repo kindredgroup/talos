@@ -21,6 +21,8 @@ logger = { path = "../../packages/logger" }
 talos_certifier = { path = "../../packages/talos_certifier" }
 talos_suffix = { path = "../../packages/talos_suffix" }
 talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_common_utils = { path = "../../packages/talos_common_utils" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils" }
 
 [dev-dependencies.cargo-husky]
 version = "1"

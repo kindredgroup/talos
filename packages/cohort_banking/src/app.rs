@@ -29,16 +29,7 @@ pub struct BankingApp {
 }
 
 impl BankingApp {
-    pub async fn new(config: Config) -> Result<Self, String> {
-        let db_config = DatabaseConfig {
-            pool_size: config.db_pool_size,
-            user: config.db_user.clone(),
-            password: config.db_password.clone(),
-            host: config.db_host.clone(),
-            port: config.db_port.clone(),
-            database: config.db_database.clone(),
-        };
-
+    pub async fn new(config: Config, db_config: DatabaseConfig) -> Result<Self, String> {
         let meter = global::meter("banking_cohort");
         let counter_aborts = meter.u64_counter("metric_aborts").with_unit(Unit::new("tx")).init();
         let counter_commits = meter.u64_counter("metric_commits").with_unit(Unit::new("tx")).init();
