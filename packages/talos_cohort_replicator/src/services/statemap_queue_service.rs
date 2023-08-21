@@ -110,6 +110,7 @@ where
                 }
 
                 let  items_to_install: Vec<u64> = statemap_installer_queue.get_versions_to_install();
+
                 // Sends for installation.
                 for key in items_to_install {
                     // Send for installation
@@ -140,6 +141,45 @@ where
                         current snapshot: {}
                         \n ", statemap_installer_queue.snapshot_version);
                     //   last vers send to install : {last_item_send_for_install}
+
+                    if config.enable_stats && awaiting_count > 0 && inflight_count == 0
+                    {
+                        let result = statemap_installer_queue.dbg_get_versions_to_install();
+                        let final_items = result.installable_items;
+                        let criteria_awaiting_state = &result.filter_steps_insights[0];
+                        let criteria_snapshot_check = &result.filter_steps_insights[1];
+                        let criteria_seriazable_check = &result.filter_steps_insights[2];
+
+                        if let Some(first_item_to_fail_safepoint_check) = criteria_snapshot_check.filter_reject_items.first() {
+                            error!("\n\n
+                +----------+-----------------------------------+----------------------------+
+                | Total    | Items in queue                    | {}
+                +----------+-----------------------------------+----------------------------+
+                | Filter 1 | Items in AWAITING state           | {}
+                | Filter 2 | Items whose safepoint <= snapshot | {}
+                |          |                                   | Current snapshot={}
+                |          |-----------------------------------+----------------------------+
+                |          |  > First item to fail this check  | Version={}
+                |          |                                   | Safepoint={:?}
+                |          |-----------------------------------+----------------------------+
+                | Filter 3 | Items serializable in the batch   | {}
+                |          |  > Non serializable items count   | {}
+                +----------+-----------------------------------+------+---------------------+
+                | Total    | Items ready to install            | {}
+                +----------+-----------------------------------+----------------------------+
+                            \n\n",
+                            criteria_awaiting_state.filter_enter_count,
+                            criteria_awaiting_state.filter_exit_count,
+                            criteria_snapshot_check.filter_exit_count,
+                            statemap_installer_queue.snapshot_version,
+                            first_item_to_fail_safepoint_check.version,
+                            first_item_to_fail_safepoint_check.safepoint,
+                            criteria_seriazable_check.filter_exit_count,
+                            criteria_seriazable_check.filter_reject_items.len(),
+                            final_items.len(),
+                        );
+                        }
+                    }
                 }
 
                 statemap_installer_queue.remove_installed();

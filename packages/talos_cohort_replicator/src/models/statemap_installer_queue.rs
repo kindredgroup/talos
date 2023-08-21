@@ -1,7 +1,24 @@
+use std::ops::ControlFlow;
+
 use ahash::RandomState;
 use indexmap::IndexMap;
 
-use crate::core::{StatemapInstallState, StatemapInstallerHashmap};
+use crate::{
+    core::{StatemapInstallState, StatemapInstallerHashmap},
+    utils::installer_utils::{is_queue_item_above_version, is_queue_item_serializable, is_queue_item_state_match},
+};
+
+#[derive(Debug, Default)]
+pub struct DbgQueueFilterSummary<T> {
+    pub filter_enter_count: usize,
+    pub filter_exit_count: usize,
+    pub filter_reject_items: Vec<T>,
+}
+#[derive(Debug, Default)]
+pub struct DbgQueueInstallItemsSummary<T> {
+    pub installable_items: Vec<T>,
+    pub filter_steps_insights: Vec<DbgQueueFilterSummary<T>>,
+}
 
 #[derive(Debug, Default)]
 pub struct StatemapInstallerQueue {
@@ -36,41 +53,77 @@ impl StatemapInstallerQueue {
 
     /// Filter items in queue based on the `StatemapInstallState`
     pub fn filter_items_by_state(&self, state: StatemapInstallState) -> impl Iterator<Item = &StatemapInstallerHashmap> {
-        self.queue.values().filter(move |&x| x.state == state)
+        self.queue.values().filter(is_queue_item_state_match(state))
+    }
+
+    pub(crate) fn dbg_get_versions_to_install(&self) -> DbgQueueInstallItemsSummary<&StatemapInstallerHashmap> {
+        let mut intermediate_steps = vec![];
+
+        let items_awaiting: Vec<&StatemapInstallerHashmap> = self.queue.values().filter(is_queue_item_state_match(StatemapInstallState::Awaiting)).collect();
+
+        // Capture for debug the items entering and exiting
+        let filter_on_awaiting_criteria = DbgQueueFilterSummary::<&StatemapInstallerHashmap> {
+            filter_enter_count: self.queue.len(),
+            filter_exit_count: items_awaiting.len(),
+            filter_reject_items: vec![],
+        };
+
+        let vec1 = vec![];
+        let vec2 = vec![];
+
+        let mut closure_above_version = is_queue_item_above_version(&self.snapshot_version);
+        let x: ControlFlow<_, _> = items_awaiting.iter().try_fold((vec1, vec2), |mut acc, x| {
+            if closure_above_version(x) {
+                acc.0.push(*x);
+                ControlFlow::Continue(acc)
+            } else {
+                acc.1.push(*x);
+                ControlFlow::Break(acc)
+            }
+        });
+
+        let (items_safepoint_match, items_safepoint_fail) = match x {
+            ControlFlow::Continue(v) => v,
+            ControlFlow::Break(v) => v,
+        };
+
+        let filter_on_snapshot_criteria = DbgQueueFilterSummary::<&StatemapInstallerHashmap> {
+            filter_enter_count: items_awaiting.len(),
+            filter_exit_count: items_safepoint_match.len(),
+            filter_reject_items: items_safepoint_fail,
+        };
+
+        let (final_items, items_non_serializable): (Vec<&StatemapInstallerHashmap>, Vec<&StatemapInstallerHashmap>) =
+            items_safepoint_match.into_iter().partition(is_queue_item_serializable(&self.queue));
+
+        let filter_on_serialization_criteria = DbgQueueFilterSummary::<&StatemapInstallerHashmap> {
+            filter_enter_count: filter_on_snapshot_criteria.filter_exit_count,
+            filter_exit_count: final_items.len(),
+            filter_reject_items: items_non_serializable,
+        };
+
+        intermediate_steps.push(filter_on_awaiting_criteria);
+        intermediate_steps.push(filter_on_snapshot_criteria);
+        intermediate_steps.push(filter_on_serialization_criteria);
+
+        DbgQueueInstallItemsSummary {
+            installable_items: final_items,
+            filter_steps_insights: intermediate_steps,
+        }
     }
 
     pub fn get_versions_to_install(&self) -> Vec<u64> {
-        self
-            // Get items in awaiting
-            .filter_items_by_state(StatemapInstallState::Awaiting)
+        self.queue
+            .values()
+            // filter items in `Awaiting` state
+            .filter(is_queue_item_state_match(StatemapInstallState::Awaiting))
             // Get items whose safepoint is below the snapshot.
-            .take_while(|v| {
-                // If no safepoint, this could be a abort item and is safe to install as statemap will be empty.
-                let Some(safepoint) = v.safepoint else {
-                    return true;
-                };
-
-                self.snapshot_version >= safepoint
-            })
-            // filter out the ones that can't be serialized
-            .filter_map(|v| {
-                // If no safepoint, this could be a abort item and is safe to install as statemap will be empty.
-                let Some(safepoint) = v.safepoint else {
-                    return Some(v.version);
-                };
-
-                // If there is no version matching the safepoint, then it is safe to install
-                let Some(safepoint_pointing_item) = self.queue.get(&safepoint) else {
-                    return Some(v.version);
-                };
-                if safepoint_pointing_item.state == StatemapInstallState::Installed {
-                    return Some(v.version);
-                };
-                // error!("[items_to_install] Not picking {} as safepoint={safepoint} criteria failed against={:?}", v.version, statemap_queue.get(&safepoint));
-
-                None
-            })
-            // take the remaining we can install
+            .take_while(is_queue_item_above_version(&self.snapshot_version))
+            // filter items safe to be serialized
+            .filter(is_queue_item_serializable(&self.queue))
+            // map the version
+            .map(|x| x.version)
+            // collect the iterator of versions into a vec
             .collect::<Vec<u64>>()
     }
 }
