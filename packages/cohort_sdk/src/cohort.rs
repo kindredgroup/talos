@@ -378,7 +378,7 @@ impl Cohort {
             Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64)
         };
 
-        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {
+        let (snapshot_version, items) = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {
             Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
             Err(SnapshotPollErrorType::Timeout { waited }) => {
                 return CertificationAttemptOutcome::SnapshotTimeout {
@@ -386,16 +386,15 @@ impl Cohort {
                     conflict: previous_conflict.unwrap(),
                 }
             }
-            Ok(local_state) => local_state,
+            Ok(CapturedState::Abort(reason)) => {
+                return CertificationAttemptOutcome::ClientAborted { reason };
+            }
+            Ok(CapturedState::Proceed(snapshot_version, items)) => (snapshot_version, items),
         };
 
-        if let Some(reason) = local_state.abort_reason {
-            return CertificationAttemptOutcome::ClientAborted { reason };
-        }
+        log::debug!("loaded state: {}, {:?}", snapshot_version, items);
 
-        log::debug!("loaded state: {}, {:?}", local_state.snapshot_version, local_state.items);
-
-        let (snapshot, readvers) = Self::select_snapshot_and_readvers(local_state.snapshot_version, local_state.items.iter().map(|i| i.version).collect());
+        let (snapshot, readvers) = Self::select_snapshot_and_readvers(snapshot_version, items.iter().map(|i| i.version).collect());
 
         let xid = uuid::Uuid::new_v4().to_string();
         let agent_request = CertificationRequest {
@@ -449,21 +448,15 @@ impl Cohort {
                     let result_local_state = state_provider.get_state().await;
                     match result_local_state {
                         Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
-                        Ok(current_state) => {
-                            if current_state.abort_reason.is_some() {
-                                break Ok(current_state);
-                            } else if current_state.snapshot_version < conflict {
-                                // not safe yet
-                                let waited = poll_started_at.elapsed();
-                                if waited >= timeout {
-                                    return Err(SnapshotPollErrorType::Timeout { waited });
-                                }
-                                delay_controller.sleep().await;
-                                continue;
-                            } else {
-                                break Ok(current_state);
+                        Ok(CapturedState::Proceed(snapshot_version, _)) if snapshot_version < conflict => {
+                            let waited = poll_started_at.elapsed();
+                            if waited >= timeout {
+                                return Err(SnapshotPollErrorType::Timeout { waited });
                             }
+                            delay_controller.sleep().await;
+                            continue;
                         }
+                        Ok(current_state) => break Ok(current_state),
                     }
                 }
             }

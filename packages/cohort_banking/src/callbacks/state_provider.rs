@@ -64,17 +64,15 @@ impl StateProviderImpl {
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(CapturedState {
+        Ok(CapturedState::Proceed(
             snapshot_version,
-            items: list
-                .iter()
+            list.iter()
                 .map(|account| CapturedItemState {
                     id: account.number.clone(),
                     version: account.version,
                 })
                 .collect(),
-            abort_reason: None,
-        })
+        ))
     }
 
     async fn get_state_using_one_query(&self) -> Result<CapturedState, String> {
@@ -109,17 +107,15 @@ impl StateProviderImpl {
             return Err(format!("Unable to load state of accounts: '{}' and '{}'", self.request.from, self.request.to));
         }
 
-        Ok(CapturedState {
-            snapshot_version: list[0].1,
-            items: list
-                .iter()
+        Ok(CapturedState::Proceed(
+            list[0].1,
+            list.iter()
                 .map(|tuple| CapturedItemState {
                     id: tuple.0.number.clone(),
                     version: tuple.0.version,
                 })
                 .collect(),
-            abort_reason: None,
-        })
+        ))
     }
 }
 

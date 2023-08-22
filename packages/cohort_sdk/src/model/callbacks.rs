@@ -1,12 +1,15 @@
 use async_trait::async_trait;
 
-pub struct CapturedState {
-    pub abort_reason: Option<String>,
-    pub snapshot_version: u64,
-    pub items: Vec<CapturedItemState>,
+#[derive(Debug, PartialEq, PartialOrd)]
+pub enum CapturedState {
+    Abort(String),
+    Proceed(u64, Vec<CapturedItemState>),
+    // pub abort_reason: Option<String>,
+    // pub snapshot_version: u64,
+    // pub items: Vec<CapturedItemState>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub struct CapturedItemState {
     pub id: String,
     pub version: u64,
