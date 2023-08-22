@@ -5,11 +5,13 @@ use cohort_banking::{
     callbacks::statemap_installer::BankStatemapInstaller,
     state::postgres::{database::Database, database_config::DatabaseConfig},
 };
-use talos_certifier::{env_var, env_var_with_defaults, ports::MessageReciever};
-use talos_certifier_adapters::{KafkaConfig, KafkaConsumer};
+use talos_certifier::ports::MessageReciever;
+use talos_certifier_adapters::KafkaConsumer;
 use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, ReplicatorSnapshotProvider};
 
 use cohort_banking::state::postgres::database::DatabaseError;
+use talos_common_utils::{env_var, env_var_with_defaults};
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::signal;
 
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
@@ -43,7 +45,7 @@ async fn main() {
 
     // 0. Create required items.
     //  a. Create Kafka consumer
-    let mut kafka_config = KafkaConfig::from_env();
+    let mut kafka_config = KafkaConfig::from_env(None);
     kafka_config.group_id = env_var!("BANK_REPLICATOR_KAFKA_GROUP_ID");
     let kafka_consumer = KafkaConsumer::new(&kafka_config);
 

@@ -1,4 +1,4 @@
-use crate::api::{CandidateData, StateMap};
+use crate::api::{CandidateData, StateMap, TalosType};
 use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -113,6 +113,7 @@ pub type PublisherType = dyn Publisher + Sync + Send;
 #[async_trait]
 pub trait Consumer {
     async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>>;
+    fn get_talos_type(&self) -> TalosType;
 }
 
 pub type ConsumerType = dyn Consumer + Sync + Send;

@@ -1,4 +1,4 @@
-use talos_certifier::env_var;
+use talos_common_utils::env_var;
 
 #[derive(Debug, Clone)]
 pub struct PgConfig {

@@ -1,6 +1,5 @@
 // Kafka exports
 pub mod kafka;
-pub use kafka::config::KafkaConfig;
 pub use kafka::consumer::KafkaConsumer;
 pub use kafka::errors::KafkaAdapterError;
 pub use kafka::producer::KafkaProducer;

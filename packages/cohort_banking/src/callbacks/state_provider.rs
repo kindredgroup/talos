@@ -73,6 +73,7 @@ impl StateProviderImpl {
                     version: account.version,
                 })
                 .collect(),
+            abort_reason: None,
         })
     }
 
@@ -117,6 +118,7 @@ impl StateProviderImpl {
                     version: tuple.0.version,
                 })
                 .collect(),
+            abort_reason: None,
         })
     }
 }

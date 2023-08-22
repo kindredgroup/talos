@@ -1,6 +1,7 @@
 use log::{error, info};
-use talos_certifier::env_var;
-use talos_certifier_adapters::{certifier_with_kafka_pg, Configuration, KafkaConfig, PgConfig, TalosCertifierChannelBuffers};
+use talos_certifier_adapters::{certifier_with_kafka_pg, Configuration, PgConfig, TalosCertifierChannelBuffers};
+use talos_common_utils::env_var;
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::core::SuffixConfig;
 use tokio::signal;
 
@@ -17,7 +18,7 @@ async fn main() -> Result<(), impl std::error::Error> {
 
     info!("Talos certifier starting...");
 
-    let kafka_config = KafkaConfig::from_env();
+    let kafka_config = KafkaConfig::from_env(None);
     let pg_config = PgConfig::from_env();
     let mock_config = get_mock_config();
     let suffix_config = Some(SuffixConfig {

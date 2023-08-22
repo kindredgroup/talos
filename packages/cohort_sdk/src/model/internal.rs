@@ -5,6 +5,7 @@ use talos_agent::agent::errors::AgentError;
 use super::CertificationResponse;
 
 pub(crate) enum CertificationAttemptOutcome {
+    ClientAborted { reason: String },
     Success { response: CertificationResponse },
     Aborted { response: CertificationResponse },
     AgentError { error: AgentError },
