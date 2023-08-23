@@ -191,10 +191,10 @@ impl Cohort {
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CohortCapturedState, String>>,
     {
+        let span_1 = Instant::now();
         // 1. Get the snapshot
         // 2. Send for certification
-        let span_1 = Instant::now();
-        let response = self.create_request_and_certify(get_payload_and_snapshot).await?;
+        let response = self.send_to_talos(get_payload_and_snapshot).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -207,10 +207,10 @@ impl Cohort {
         }
 
         // 3. OOO install
-        self.install_success_response(response, oo_installer).await
+        self.install_statemaps_oo(response, oo_installer).await
     }
 
-    pub async fn install_success_response<O>(&self, response: CertificationResponse, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
+    pub async fn install_statemaps_oo<O>(&self, response: CertificationResponse, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
     where
         O: OutOfOrderInstaller,
     {
@@ -299,13 +299,13 @@ impl Cohort {
         result
     }
 
-    pub async fn create_request_and_certify<F, Fut>(&self, get_payload_and_snapshot: &F) -> Result<model::CertificationResponse, ClientError>
+    pub async fn send_to_talos<F, Fut>(&self, get_payload_and_snapshot: &F) -> Result<model::CertificationResponse, ClientError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CohortCapturedState, String>>,
     {
         let started_at = Instant::now();
-        let mut result: Option<Result<CertificationResponse, ClientError>> = None;
+        let mut result: Option<Result<CertificationResponse, ClientError>>;
 
         let mut delay_controller = DelayController::new(self.config.retry_backoff.min_ms, self.config.retry_backoff.max_ms);
 
@@ -317,44 +317,10 @@ impl Cohort {
         let mut recent_conflict: Option<u64> = None;
         let mut recent_abort: Option<CertificationResponse> = None;
 
-        let k = loop {
-            let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
-            let res_request = self.await_for_snapshot(&get_payload_and_snapshot, recent_conflict, timeout).await;
-
-            let request = match res_request {
-                Ok(CohortCapturedState::Proceed(request)) => request,
-                // User initiated abort
-                Ok(CohortCapturedState::Abort(reason)) => {
-                    break Err(ClientError {
-                        kind: model::ClientErrorKind::ClientAborted,
-                        reason,
-                        cause: None,
-                    })
-                }
-                // Timeout waiting for snapshot
-                Err(SnapshotPollErrorType::Timeout { waited }) => {
-                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", recent_conflict, waited.as_secs_f32());
-
-                    break Ok(recent_abort.unwrap());
-                }
-                Err(SnapshotPollErrorType::FetchError { reason }) => {
-                    db_errors += 1;
-
-                    attempts += 1;
-                    if attempts >= self.config.retry_attempts_max {
-                        break Err(ClientError {
-                            kind: model::ClientErrorKind::Persistence,
-                            reason,
-                            cause: None,
-                        });
-                    } else {
-                        continue;
-                    }
-                }
-            };
-
-            // Send to talos
-            match self.send_to_talos_agent(request).await {
+        let final_result = loop {
+            // Await for snapshot and build the certification request payload.
+            // Send the certification payload to talos
+            match self.send_to_talos_attempt(&get_payload_and_snapshot, recent_conflict).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -373,26 +339,26 @@ impl Cohort {
                     result = Some(Err(ClientError::from(error)));
                     agent_errors += 1;
                 }
-                _ => {} //
-                        // CertificationAttemptOutcome::ClientAborted { reason } => {
-                        //     result = Some(Err(ClientError {
-                        //         kind: model::ClientErrorKind::ClientAborted,
-                        //         reason,
-                        //         cause: None,
-                        //     }));
-                        // }
-                        // CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
-                        //     log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
-                        //     result = recent_abort.clone().map(Ok);
-                        // }
-                        // CertificationAttemptOutcome::DataError { reason } => {
-                        //     result = Some(Err(ClientError {
-                        //         kind: model::ClientErrorKind::Persistence,
-                        //         reason,
-                        //         cause: None,
-                        //     }));
-                        //     db_errors += 1;
-                        // }
+
+                CertificationAttemptOutcome::ClientAborted { reason } => {
+                    break Err(ClientError {
+                        kind: model::ClientErrorKind::ClientAborted,
+                        reason,
+                        cause: None,
+                    });
+                }
+                CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
+                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
+                    result = recent_abort.clone().map(Ok);
+                }
+                CertificationAttemptOutcome::DataError { reason } => {
+                    result = Some(Err(ClientError {
+                        kind: model::ClientErrorKind::Persistence,
+                        reason,
+                        cause: None,
+                    }));
+                    db_errors += 1;
+                }
             }
 
             attempts += 1;
@@ -417,10 +383,32 @@ impl Cohort {
             });
         }
 
-        k
+        final_result
     }
 
-    async fn send_to_talos_agent(&self, request: model::CohortCertificationRequest) -> CertificationAttemptOutcome {
+    async fn send_to_talos_attempt<F, Fut>(&self, build_request_with_snapshot_fn: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CohortCapturedState, String>>,
+    {
+        let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
+
+        let request = match self.await_for_snapshot(build_request_with_snapshot_fn, previous_conflict, timeout).await {
+            Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
+            Err(SnapshotPollErrorType::Timeout { waited }) => {
+                return CertificationAttemptOutcome::SnapshotTimeout {
+                    waited,
+                    conflict: previous_conflict.unwrap(),
+                }
+            }
+            Ok(CohortCapturedState::Abort(reason)) => {
+                return CertificationAttemptOutcome::ClientAborted { reason };
+            }
+            Ok(CohortCapturedState::Proceed(request)) => request,
+        };
+
+        log::debug!("loaded state: {}, {:?}", request.snapshot, request.candidate);
+
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(request.snapshot, request.candidate.readvers);
 
         let xid = uuid::Uuid::new_v4().to_string();
