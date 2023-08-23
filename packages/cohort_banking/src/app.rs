@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use cohort_sdk::{
     cohort::Cohort,
-    model::{CandidateData, CertificationRequest, ClientErrorKind, Config},
+    model::{callbacks::ItemStateProvider, CandidateData, CertificationRequest, ClientErrorKind, Config},
 };
 
 use opentelemetry_api::{
@@ -94,11 +94,16 @@ impl Handler<TransferRequest> for BankingApp {
             single_query_strategy,
         };
 
+        // fn get_state_blah() {
+        //     state_provider.get_state_proposal(request)
+        // }
+
         match self
             .cohort_api
             .as_ref()
             .expect("Banking app is not initialised")
-            .certify(request, &state_provider, &oo_inst)
+            // .certify(request, &state_provider, &oo_inst)
+            .certify_v2(&|| state_provider.get_state_v2(request.clone()), &oo_inst)
             .await
         {
             Ok(rsp) => {

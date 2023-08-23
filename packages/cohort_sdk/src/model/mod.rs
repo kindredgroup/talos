@@ -12,6 +12,21 @@ use talos_agent::{
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::task::JoinHandle;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CohortCertificationRequest {
+    pub candidate: CohortCandidateData,
+    pub snapshot: u64,
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CohortCandidateData {
+    pub readset: Vec<String>,
+    pub writeset: Vec<String>,
+    pub readvers: Vec<u64>,
+    pub statemap: Option<Vec<HashMap<String, Value>>>,
+}
+
 #[derive(Clone)]
 pub struct CandidateData {
     pub readset: Vec<String>,
@@ -42,7 +57,7 @@ pub struct ResponseMetadata {
     pub duration_ms: u64,
 }
 
-#[derive(strum::Display)]
+#[derive(strum::Display, Debug)]
 // this is napi friendly copy of talos_agent::agent::errors::AgentErrorKind
 pub enum ClientErrorKind {
     Certification,
@@ -55,6 +70,7 @@ pub enum ClientErrorKind {
     OutOfOrderSnapshotTimeout,
 }
 
+#[derive(Debug)]
 pub struct ClientError {
     pub kind: ClientErrorKind,
     pub reason: String,
