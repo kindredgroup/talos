@@ -13,10 +13,7 @@ pub enum CapturedState {
 #[derive(Debug, PartialEq)]
 pub enum CohortCapturedState {
     Abort(String),
-    Proceed(u64, CohortCertificationRequest),
-    // pub abort_reason: Option<String>,
-    // pub snapshot_version: u64,
-    // pub items: Vec<CapturedItemState>,
+    Proceed(CohortCertificationRequest),
 }
 
 #[derive(Debug, PartialEq, PartialOrd)]
@@ -28,7 +25,7 @@ pub struct CapturedItemState {
 #[async_trait]
 pub trait ItemStateProvider {
     async fn get_state(&self) -> Result<CapturedState, String>;
-    async fn get_state_v2(&self, request: CertificationRequest) -> Result<CohortCertificationRequest, String>;
+    async fn get_state_v2(&self, request: CertificationRequest) -> Result<CohortCapturedState, String>;
 }
 
 #[async_trait]

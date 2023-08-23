@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use futures::Future;
 use opentelemetry_api::{
     global,
     metrics::{Counter, Histogram, Unit},
@@ -26,7 +27,7 @@ use crate::{
     delay_controller::DelayController,
     model::{
         self,
-        callbacks::{CapturedState, ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
+        callbacks::{CohortCapturedState, OutOfOrderInstallOutcome, OutOfOrderInstaller},
         internal::CertificationAttemptOutcome,
         CertificationResponse, ClientError, Config, ResponseMetadata,
     },
@@ -144,18 +145,56 @@ impl Cohort {
         })
     }
 
-    pub async fn certify<S, O>(
-        &self,
-        request: model::CertificationRequest,
-        state_provider: &S,
-        oo_installer: &O,
-    ) -> Result<model::CertificationResponse, ClientError>
+    fn select_snapshot_and_readvers(cpt_snapshot: u64, cpt_versions: Vec<u64>) -> (u64, Vec<u64>) {
+        if cpt_versions.is_empty() {
+            log::debug!(
+                "select_snapshot_and_readvers({}, {:?}): {:?}",
+                cpt_snapshot,
+                cpt_versions,
+                (cpt_snapshot, Vec::<u64>::new())
+            );
+            return (cpt_snapshot, vec![]);
+        }
+
+        let mut cpt_version_min: u64 = u64::MAX;
+        for v in cpt_versions.iter() {
+            if cpt_version_min > *v {
+                cpt_version_min = *v;
+            }
+        }
+        let snapshot_version = std::cmp::max(cpt_snapshot, cpt_version_min);
+        let mut read_vers = Vec::<u64>::new();
+        for v in cpt_versions.iter() {
+            if snapshot_version < *v {
+                read_vers.push(*v);
+            }
+        }
+
+        log::debug!(
+            "select_snapshot_and_readvers({}, {:?}): {:?}",
+            cpt_snapshot,
+            cpt_versions,
+            (snapshot_version, read_vers.clone())
+        );
+        (snapshot_version, read_vers)
+    }
+
+    pub async fn shutdown(&self) {
+        self.agent_services.decision_reader.abort();
+        self.agent_services.state_manager.abort();
+    }
+
+    pub async fn certify<O, F, Fut>(&self, get_payload_and_snapshot: &F, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
     where
-        S: ItemStateProvider,
         O: OutOfOrderInstaller,
+
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CohortCapturedState, String>>,
     {
+        // 1. Get the snapshot
+        // 2. Send for certification
         let span_1 = Instant::now();
-        let response = self.send_to_talos(request, state_provider).await?;
+        let response = self.create_request_and_certify(get_payload_and_snapshot).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -167,7 +206,14 @@ impl Cohort {
             return Ok(response);
         }
 
-        // system error if we have Commit decision but no safepoint is given
+        // 3. OOO install
+        self.install_success_response(response, oo_installer).await
+    }
+
+    pub async fn install_success_response<O>(&self, response: CertificationResponse, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
+    where
+        O: OutOfOrderInstaller,
+    {
         let safepoint = response.safepoint.unwrap();
         let new_version = response.version;
 
@@ -253,14 +299,17 @@ impl Cohort {
         result
     }
 
-    async fn send_to_talos<S>(&self, request: model::CertificationRequest, state_provider: &S) -> Result<model::CertificationResponse, ClientError>
+    pub async fn create_request_and_certify<F, Fut>(&self, get_payload_and_snapshot: &F) -> Result<model::CertificationResponse, ClientError>
     where
-        S: ItemStateProvider,
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CohortCapturedState, String>>,
     {
         let started_at = Instant::now();
-        let mut attempts = 0;
+        let mut result: Option<Result<CertificationResponse, ClientError>> = None;
 
         let mut delay_controller = DelayController::new(self.config.retry_backoff.min_ms, self.config.retry_backoff.max_ms);
+
+        let mut attempts = 0;
         let mut talos_aborts = 0_u64;
         let mut agent_errors = 0_u64;
         let mut db_errors = 0_u64;
@@ -268,25 +317,48 @@ impl Cohort {
         let mut recent_conflict: Option<u64> = None;
         let mut recent_abort: Option<CertificationResponse> = None;
 
-        let result = loop {
-            // One of these will be sent to client if we failed
-            let result: Option<Result<CertificationResponse, ClientError>>;
+        let k = loop {
+            let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
+            let res_request = self.await_for_snapshot(&get_payload_and_snapshot, recent_conflict, timeout).await;
 
-            attempts += 1;
-            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict).await {
-                CertificationAttemptOutcome::ClientAborted { reason } => {
-                    result = Some(Err(ClientError {
+            let request = match res_request {
+                Ok(CohortCapturedState::Proceed(request)) => request,
+                // User initiated abort
+                Ok(CohortCapturedState::Abort(reason)) => {
+                    break Err(ClientError {
                         kind: model::ClientErrorKind::ClientAborted,
                         reason,
                         cause: None,
-                    }));
-                    false
+                    })
                 }
+                // Timeout waiting for snapshot
+                Err(SnapshotPollErrorType::Timeout { waited }) => {
+                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", recent_conflict, waited.as_secs_f32());
+
+                    break Ok(recent_abort.unwrap());
+                }
+                Err(SnapshotPollErrorType::FetchError { reason }) => {
+                    db_errors += 1;
+
+                    attempts += 1;
+                    if attempts >= self.config.retry_attempts_max {
+                        break Err(ClientError {
+                            kind: model::ClientErrorKind::Persistence,
+                            reason,
+                            cause: None,
+                        });
+                    } else {
+                        continue;
+                    }
+                }
+            };
+
+            // Send to talos
+            match self.send_to_talos_agent(request).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
-                    result = Some(Ok(response));
-                    true
+                    break Ok(response);
                 }
                 CertificationAttemptOutcome::Aborted { mut response } => {
                     talos_aborts += 1;
@@ -296,51 +368,36 @@ impl Cohort {
                     recent_abort = Some(response.clone());
                     // result = recent_abort.map(|a| Ok(a));
                     result = Some(Ok(response));
-                    false
-                }
-                CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
-                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
-                    result = recent_abort.clone().map(Ok);
-                    false
                 }
                 CertificationAttemptOutcome::AgentError { error } => {
                     result = Some(Err(ClientError::from(error)));
                     agent_errors += 1;
-                    false
                 }
-                CertificationAttemptOutcome::DataError { reason } => {
-                    result = Some(Err(ClientError {
-                        kind: model::ClientErrorKind::Persistence,
-                        reason,
-                        cause: None,
-                    }));
-                    db_errors += 1;
-                    false
-                }
-            };
-
-            let rslt_response = result.unwrap();
-            if is_success || self.config.retry_attempts_max <= attempts {
-                break rslt_response;
+                _ => {} //
+                        // CertificationAttemptOutcome::ClientAborted { reason } => {
+                        //     result = Some(Err(ClientError {
+                        //         kind: model::ClientErrorKind::ClientAborted,
+                        //         reason,
+                        //         cause: None,
+                        //     }));
+                        // }
+                        // CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
+                        //     log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
+                        //     result = recent_abort.clone().map(Ok);
+                        // }
+                        // CertificationAttemptOutcome::DataError { reason } => {
+                        //     result = Some(Err(ClientError {
+                        //         kind: model::ClientErrorKind::Persistence,
+                        //         reason,
+                        //         cause: None,
+                        //     }));
+                        //     db_errors += 1;
+                        // }
             }
 
-            match rslt_response {
-                Ok(response) => {
-                    log::debug!(
-                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
-                        request.candidate.statemap,
-                        response.decision,
-                        attempts
-                    );
-                }
-                Err(error) => {
-                    log::debug!(
-                        "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
-                        request.candidate.statemap,
-                        error,
-                        attempts
-                    );
-                }
+            attempts += 1;
+            if attempts >= self.config.retry_attempts_max {
+                break result.unwrap();
             }
 
             delay_controller.sleep().await;
@@ -360,41 +417,11 @@ impl Cohort {
             });
         }
 
-        result
+        k
     }
 
-    async fn send_to_talos_attempt<S>(
-        &self,
-        request: model::CertificationRequest,
-        state_provider: &S,
-        previous_conflict: Option<u64>,
-    ) -> CertificationAttemptOutcome
-    where
-        S: ItemStateProvider,
-    {
-        let timeout = if request.timeout_ms > 0 {
-            Duration::from_millis(request.timeout_ms)
-        } else {
-            Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64)
-        };
-
-        let (snapshot_version, items) = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {
-            Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
-            Err(SnapshotPollErrorType::Timeout { waited }) => {
-                return CertificationAttemptOutcome::SnapshotTimeout {
-                    waited,
-                    conflict: previous_conflict.unwrap(),
-                }
-            }
-            Ok(CapturedState::Abort(reason)) => {
-                return CertificationAttemptOutcome::ClientAborted { reason };
-            }
-            Ok(CapturedState::Proceed(snapshot_version, items)) => (snapshot_version, items),
-        };
-
-        log::debug!("loaded state: {}, {:?}", snapshot_version, items);
-
-        let (snapshot, readvers) = Self::select_snapshot_and_readvers(snapshot_version, items.iter().map(|i| i.version).collect());
+    async fn send_to_talos_agent(&self, request: model::CohortCertificationRequest) -> CertificationAttemptOutcome {
+        let (snapshot, readvers) = Self::select_snapshot_and_readvers(request.snapshot, request.candidate.readvers);
 
         let xid = uuid::Uuid::new_v4().to_string();
         let agent_request = CertificationRequest {
@@ -435,71 +462,36 @@ impl Cohort {
         }
     }
 
-    async fn await_for_snapshot<S>(&self, state_provider: &S, previous_conflict: Option<u64>, timeout: Duration) -> Result<CapturedState, SnapshotPollErrorType>
+    async fn await_for_snapshot<F, Fut>(
+        &self,
+        get_state_callback_fn: &F,
+        previous_conflict: Option<u64>,
+        timeout: Duration,
+    ) -> Result<CohortCapturedState, SnapshotPollErrorType>
     where
-        S: ItemStateProvider,
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CohortCapturedState, String>>,
     {
-        match previous_conflict {
-            None => state_provider.get_state().await.map_err(|reason| SnapshotPollErrorType::FetchError { reason }),
-            Some(conflict) => {
-                let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
-                let poll_started_at = Instant::now();
-                loop {
-                    let result_local_state = state_provider.get_state().await;
-                    match result_local_state {
-                        Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
-                        Ok(CapturedState::Proceed(snapshot_version, _items)) if snapshot_version < conflict => {
-                            let waited = poll_started_at.elapsed();
-                            if waited >= timeout {
-                                return Err(SnapshotPollErrorType::Timeout { waited });
-                            }
-                            delay_controller.sleep().await;
-                            continue;
-                        }
-                        Ok(current_state) => break Ok(current_state),
+        let conflict = previous_conflict.unwrap_or(0);
+
+        let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
+        let poll_started_at = Instant::now();
+
+        loop {
+            let result_local_state = get_state_callback_fn().await;
+            match result_local_state {
+                Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
+                Ok(CohortCapturedState::Proceed(request)) if request.snapshot < conflict => {
+                    let waited = poll_started_at.elapsed();
+                    if waited >= timeout {
+                        return Err(SnapshotPollErrorType::Timeout { waited });
                     }
+                    delay_controller.sleep().await;
+                    continue;
                 }
+                Ok(request) => return Ok(request),
             }
         }
-    }
-
-    fn select_snapshot_and_readvers(cpt_snapshot: u64, cpt_versions: Vec<u64>) -> (u64, Vec<u64>) {
-        if cpt_versions.is_empty() {
-            log::debug!(
-                "select_snapshot_and_readvers({}, {:?}): {:?}",
-                cpt_snapshot,
-                cpt_versions,
-                (cpt_snapshot, Vec::<u64>::new())
-            );
-            return (cpt_snapshot, vec![]);
-        }
-
-        let mut cpt_version_min: u64 = u64::MAX;
-        for v in cpt_versions.iter() {
-            if cpt_version_min > *v {
-                cpt_version_min = *v;
-            }
-        }
-        let snapshot_version = std::cmp::max(cpt_snapshot, cpt_version_min);
-        let mut read_vers = Vec::<u64>::new();
-        for v in cpt_versions.iter() {
-            if snapshot_version < *v {
-                read_vers.push(*v);
-            }
-        }
-
-        log::debug!(
-            "select_snapshot_and_readvers({}, {:?}): {:?}",
-            cpt_snapshot,
-            cpt_versions,
-            (snapshot_version, read_vers.clone())
-        );
-        (snapshot_version, read_vers)
-    }
-
-    pub async fn shutdown(&self) {
-        self.agent_services.decision_reader.abort();
-        self.agent_services.state_manager.abort();
     }
 }
 #[derive(Debug)]

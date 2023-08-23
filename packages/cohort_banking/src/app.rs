@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use cohort_sdk::{
-    cohort::Cohort,
+    cohort_v2::Cohort,
     model::{callbacks::ItemStateProvider, CandidateData, CertificationRequest, ClientErrorKind, Config},
 };
 
@@ -21,7 +21,7 @@ use crate::{
 
 pub struct BankingApp {
     config: Config,
-    cohort_api: Option<cohort_sdk::cohort::Cohort>,
+    cohort_api: Option<cohort_sdk::cohort_v2::Cohort>,
     pub database: Arc<Database>,
     counter_aborts: Arc<Counter<u64>>,
     counter_commits: Arc<Counter<u64>>,
@@ -103,7 +103,7 @@ impl Handler<TransferRequest> for BankingApp {
             .as_ref()
             .expect("Banking app is not initialised")
             // .certify(request, &state_provider, &oo_inst)
-            .certify_v2(&|| state_provider.get_state_v2(request.clone()), &oo_inst)
+            .certify(&|| state_provider.get_state_v2(request.clone()), &oo_inst)
             .await
         {
             Ok(rsp) => {

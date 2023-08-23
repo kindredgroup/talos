@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use cohort_sdk::model::{
-    callbacks::{CapturedItemState, CapturedState, ItemStateProvider},
+    callbacks::{CapturedItemState, CapturedState, CohortCapturedState, ItemStateProvider},
     CertificationRequest, CohortCandidateData, CohortCertificationRequest,
 };
 use rust_decimal::Decimal;
@@ -132,7 +132,7 @@ impl ItemStateProvider for StateProviderImpl {
         }
     }
 
-    async fn get_state_v2(&self, request: CertificationRequest) -> Result<CohortCertificationRequest, String> {
+    async fn get_state_v2(&self, request: CertificationRequest) -> Result<CohortCapturedState, String> {
         let state = if self.single_query_strategy {
             self.get_state_using_one_query().await
         } else {
@@ -140,9 +140,7 @@ impl ItemStateProvider for StateProviderImpl {
         }?;
 
         match state {
-            CapturedState::Abort(_reason) => {
-                todo!()
-            }
+            CapturedState::Abort(reason) => Ok(CohortCapturedState::Abort(reason)),
             CapturedState::Proceed(snapshot, items) => {
                 let candidate = CohortCandidateData {
                     readset: request.candidate.readset,
@@ -151,11 +149,11 @@ impl ItemStateProvider for StateProviderImpl {
                     readvers: items.into_iter().map(|x| x.version).collect(),
                 };
 
-                Ok(CohortCertificationRequest {
+                Ok(CohortCapturedState::Proceed(CohortCertificationRequest {
                     candidate,
                     snapshot,
                     timeout_ms: request.timeout_ms,
-                })
+                }))
             }
         }
     }
