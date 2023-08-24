@@ -1,31 +1,22 @@
 use async_trait::async_trait;
 
-use super::{CertificationRequest, CohortCertificationRequest};
+use super::CertificationRequestPayload;
 
 #[derive(Debug, PartialEq, PartialOrd)]
-pub enum CapturedState {
-    Abort(String),
-    Proceed(u64, Vec<CapturedItemState>),
-    // pub abort_reason: Option<String>,
-    // pub snapshot_version: u64,
-    // pub items: Vec<CapturedItemState>,
+pub struct CapturedState {
+    pub snapshot_version: u64,
+    pub items: Vec<CapturedItemState>,
 }
 #[derive(Debug, PartialEq)]
-pub enum CohortCapturedState {
-    Abort(String),
-    Proceed(CohortCertificationRequest),
+pub enum CertificationCandidateCallbackResponse {
+    Cancelled(String),
+    Proceed(CertificationRequestPayload),
 }
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub struct CapturedItemState {
     pub id: String,
     pub version: u64,
-}
-
-#[async_trait]
-pub trait ItemStateProvider {
-    async fn get_state(&self) -> Result<CapturedState, String>;
-    async fn get_state_v2(&self, request: CertificationRequest) -> Result<CohortCapturedState, String>;
 }
 
 #[async_trait]

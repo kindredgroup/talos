@@ -1,26 +1,21 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use cohort_sdk::model::{
-    callbacks::{CapturedItemState, CapturedState, CohortCapturedState, ItemStateProvider},
-    CertificationRequest, CohortCandidateData, CohortCertificationRequest,
+    callbacks::{CapturedItemState, CapturedState, CertificationCandidateCallbackResponse},
+    CertificationCandidate, CertificationRequestPayload,
 };
 use rust_decimal::Decimal;
-use tokio_postgres::Row;
+use tokio_postgres::{types::ToSql, Row};
 
 use crate::{
-    model::{bank_account::BankAccount, requests::TransferRequest},
+    model::{bank_account::BankAccount, requests::CertificationRequest},
     state::postgres::database::{Database, DatabaseError},
 };
 
-pub struct StateProviderImpl {
-    pub request: TransferRequest,
-    pub database: Arc<Database>,
-    pub single_query_strategy: bool,
-}
+impl TryFrom<&Row> for BankAccount {
+    type Error = DatabaseError;
 
-impl StateProviderImpl {
-    pub fn account_from_row(row: &Row) -> Result<BankAccount, DatabaseError> {
+    fn try_from(row: &Row) -> Result<Self, Self::Error> {
         Ok(BankAccount {
             name: row
                 .try_get::<&str, String>("name")
@@ -36,20 +31,27 @@ impl StateProviderImpl {
                 .map_err(|e| DatabaseError::deserialise_payload(e.to_string(), "Cannot read account amount".into()))?,
         })
     }
+}
 
-    async fn get_state_using_two_queries(&self) -> Result<CapturedState, String> {
+pub struct StateProviderImpl {
+    pub database: Arc<Database>,
+    pub single_query_strategy: bool,
+}
+
+impl StateProviderImpl {
+    async fn get_state_using_two_queries(&self, accounts: &[&(dyn ToSql + Sync)]) -> Result<CapturedState, String> {
         let list = self
             .database
             .query_many(
                 r#"SELECT ba.* FROM bank_accounts ba WHERE ba."number" = $1 OR ba."number" = $2"#,
-                &[&self.request.from, &self.request.to],
-                Self::account_from_row,
+                accounts,
+                |row| BankAccount::try_from(row),
             )
             .await
             .map_err(|e| e.to_string())?;
 
         if list.len() != 2 {
-            return Err(format!("Unable to load state of accounts: '{}' and '{}'", self.request.from, self.request.to));
+            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", accounts[0], accounts[1]));
         }
 
         let snapshot_version = self
@@ -67,18 +69,19 @@ impl StateProviderImpl {
             .await
             .map_err(|e| e.to_string())?;
 
-        Ok(CapturedState::Proceed(
+        Ok(CapturedState {
             snapshot_version,
-            list.iter()
+            items: list
+                .iter()
                 .map(|account| CapturedItemState {
                     id: account.number.clone(),
                     version: account.version,
                 })
                 .collect(),
-        ))
+        })
     }
 
-    async fn get_state_using_one_query(&self) -> Result<CapturedState, String> {
+    async fn get_state_using_one_query(&self, accounts: &[&(dyn ToSql + Sync)]) -> Result<CapturedState, String> {
         let list = self
             .database
             .query_many(
@@ -93,10 +96,10 @@ impl StateProviderImpl {
                     bank_accounts ba, cohort_snapshot cs
                 WHERE
                     ba."number" = $1 OR ba."number" = $2"#,
-                &[&self.request.from, &self.request.to],
+                accounts,
                 // convert RAW output into tuple (bank account, snap ver)
                 |row| {
-                    let account = Self::account_from_row(row)?;
+                    let account = BankAccount::try_from(row)?;
                     let snapshot_version = row
                         .try_get::<&str, i64>("snapshot_version")
                         .map_err(|e| DatabaseError::deserialise_payload(e.to_string(), "Cannot read snapshot_version".into()))?;
@@ -107,54 +110,47 @@ impl StateProviderImpl {
             .map_err(|e| e.to_string())?;
 
         if list.len() != 2 {
-            return Err(format!("Unable to load state of accounts: '{}' and '{}'", self.request.from, self.request.to));
+            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", accounts[0], accounts[1]));
         }
 
-        Ok(CapturedState::Proceed(
-            list[0].1,
-            list.iter()
+        Ok(CapturedState {
+            snapshot_version: list[0].1,
+            items: list
+                .iter()
                 .map(|tuple| CapturedItemState {
                     id: tuple.0.number.clone(),
                     version: tuple.0.version,
                 })
                 .collect(),
-        ))
-    }
-}
-
-#[async_trait]
-impl ItemStateProvider for StateProviderImpl {
-    async fn get_state(&self) -> Result<CapturedState, String> {
-        if self.single_query_strategy {
-            self.get_state_using_one_query().await
-        } else {
-            self.get_state_using_two_queries().await
-        }
+        })
     }
 
-    async fn get_state_v2(&self, request: CertificationRequest) -> Result<CohortCapturedState, String> {
+    pub async fn get_certification_candidate(&self, request: CertificationRequest) -> Result<CertificationCandidateCallbackResponse, String> {
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // This example doesn't handle `Cancelled` scenario.
+        // If user cancellation is needed, add additional logic in this fn to return `Cancelled` instead of `Proceed` in the result.
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        let mut accounts: Vec<&(dyn ToSql + Sync)> = vec![];
+        request.candidate.readset.iter().for_each(|x| accounts.push(x));
+
         let state = if self.single_query_strategy {
-            self.get_state_using_one_query().await
+            self.get_state_using_one_query(&accounts).await
         } else {
-            self.get_state_using_two_queries().await
+            self.get_state_using_two_queries(&accounts).await
         }?;
 
-        match state {
-            CapturedState::Abort(reason) => Ok(CohortCapturedState::Abort(reason)),
-            CapturedState::Proceed(snapshot, items) => {
-                let candidate = CohortCandidateData {
-                    readset: request.candidate.readset,
-                    writeset: request.candidate.writeset,
-                    statemap: request.candidate.statemap,
-                    readvers: items.into_iter().map(|x| x.version).collect(),
-                };
+        let candidate = CertificationCandidate {
+            readset: request.candidate.readset,
+            writeset: request.candidate.writeset,
+            statemap: request.candidate.statemap,
+            readvers: state.items.into_iter().map(|x| x.version).collect(),
+        };
 
-                Ok(CohortCapturedState::Proceed(CohortCertificationRequest {
-                    candidate,
-                    snapshot,
-                    timeout_ms: request.timeout_ms,
-                }))
-            }
-        }
+        Ok(CertificationCandidateCallbackResponse::Proceed(CertificationRequestPayload {
+            candidate,
+            snapshot: state.snapshot_version,
+            timeout_ms: request.timeout_ms,
+        }))
     }
 }

@@ -2,8 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use cohort_sdk::{
-    cohort_v2::Cohort,
-    model::{callbacks::ItemStateProvider, CandidateData, CertificationRequest, ClientErrorKind, Config},
+    cohort::Cohort,
+    model::{ClientErrorKind, Config},
 };
 
 use opentelemetry_api::{
@@ -15,13 +15,13 @@ use talos_agent::messaging::api::Decision;
 use crate::{
     callbacks::{oo_installer::OutOfOrderInstallerImpl, state_provider::StateProviderImpl},
     examples_support::queue_processor::Handler,
-    model::requests::{BusinessActionType, TransferRequest},
+    model::requests::{BusinessActionType, CandidateData, CertificationRequest, TransferRequest},
     state::postgres::{database::Database, database_config::DatabaseConfig},
 };
 
 pub struct BankingApp {
     config: Config,
-    cohort_api: Option<cohort_sdk::cohort_v2::Cohort>,
+    cohort_api: Option<cohort_sdk::cohort::Cohort>,
     pub database: Arc<Database>,
     counter_aborts: Arc<Counter<u64>>,
     counter_commits: Arc<Counter<u64>>,
@@ -70,7 +70,7 @@ impl Handler<TransferRequest> for BankingApp {
             TransferRequest::new(request.from.clone(), request.to.clone(), request.amount).json(),
         )])];
 
-        let request = CertificationRequest {
+        let certification_request = CertificationRequest {
             timeout_ms: 0,
             candidate: CandidateData {
                 readset: vec![request.from.clone(), request.to.clone()],
@@ -82,7 +82,6 @@ impl Handler<TransferRequest> for BankingApp {
         let single_query_strategy = true;
         let state_provider = StateProviderImpl {
             database: Arc::clone(&self.database),
-            request: request_copy.clone(),
             single_query_strategy,
         };
 
@@ -94,16 +93,11 @@ impl Handler<TransferRequest> for BankingApp {
             single_query_strategy,
         };
 
-        // fn get_state_blah() {
-        //     state_provider.get_state_proposal(request)
-        // }
-
         match self
             .cohort_api
             .as_ref()
             .expect("Banking app is not initialised")
-            // .certify(request, &state_provider, &oo_inst)
-            .certify(&|| state_provider.get_state_v2(request.clone()), &oo_inst)
+            .certify(&|| state_provider.get_certification_candidate(certification_request.clone()), &oo_inst)
             .await
         {
             Ok(rsp) => {

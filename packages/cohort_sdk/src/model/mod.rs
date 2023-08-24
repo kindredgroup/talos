@@ -13,32 +13,18 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::task::JoinHandle;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CohortCertificationRequest {
-    pub candidate: CohortCandidateData,
+pub struct CertificationRequestPayload {
+    pub candidate: CertificationCandidate,
     pub snapshot: u64,
     pub timeout_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CohortCandidateData {
+pub struct CertificationCandidate {
     pub readset: Vec<String>,
     pub writeset: Vec<String>,
     pub readvers: Vec<u64>,
     pub statemap: Option<Vec<HashMap<String, Value>>>,
-}
-
-#[derive(Clone)]
-pub struct CandidateData {
-    pub readset: Vec<String>,
-    pub writeset: Vec<String>,
-    pub statemap: Option<Vec<HashMap<String, Value>>>,
-    // The "snapshot" is intentionally messing here. We will compute it ourselves before feeding this data to Talos
-}
-
-#[derive(Clone)]
-pub struct CertificationRequest {
-    pub candidate: CandidateData,
-    pub timeout_ms: u64,
 }
 
 #[derive(Clone)]
@@ -63,7 +49,7 @@ pub enum ClientErrorKind {
     Certification,
     CertificationTimeout,
     SnapshotTimeout,
-    ClientAborted,
+    Cancelled,
     Messaging,
     Persistence,
     Internal,
