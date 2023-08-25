@@ -63,8 +63,6 @@ impl Handler<TransferRequest> for BankingApp {
     async fn handle(&self, request: TransferRequest) -> Result<(), String> {
         log::debug!("processig new banking transfer request: {:?}", request);
 
-        let request_copy = request.clone();
-
         let statemap = vec![HashMap::from([(
             BusinessActionType::TRANSFER.to_string(),
             TransferRequest::new(request.from.clone(), request.to.clone(), request.amount).json(),
@@ -87,7 +85,6 @@ impl Handler<TransferRequest> for BankingApp {
 
         let oo_inst = OutOfOrderInstallerImpl {
             database: Arc::clone(&self.database),
-            request: request_copy,
             detailed_logging: false,
             counter_oo_no_data_found: Arc::clone(&self.counter_oo_no_data_found),
             single_query_strategy,

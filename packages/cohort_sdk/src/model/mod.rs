@@ -24,7 +24,7 @@ pub struct CertificationCandidate {
     pub readset: Vec<String>,
     pub writeset: Vec<String>,
     pub readvers: Vec<u64>,
-    pub statemap: Option<Vec<HashMap<String, Value>>>,
+    pub statemaps: Option<Vec<HashMap<String, Value>>>,
 }
 
 #[derive(Clone)]
@@ -35,6 +35,7 @@ pub struct CertificationResponse {
     pub safepoint: Option<u64>,
     pub conflict: Option<u64>,
     pub metadata: ResponseMetadata,
+    pub statemaps: Option<Vec<HashMap<String, Value>>>,
 }
 
 #[derive(Clone)]

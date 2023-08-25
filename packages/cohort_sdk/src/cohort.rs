@@ -13,7 +13,7 @@ use talos_agent::{
         core::{AgentServices, TalosAgentImpl},
         model::{CancelRequestChannelMessage, CertifyRequestChannelMessage},
     },
-    api::{AgentConfig, CandidateData, CertificationRequest, TalosAgent, TalosType},
+    api::{AgentConfig, CandidateData, CertificationRequest, StateMap, TalosAgent, TalosType},
     messaging::{
         api::{Decision, DecisionMessage},
         kafka::KafkaInitializer,
@@ -202,22 +202,30 @@ impl Cohort {
             h_talos.record(span_1_val * 100.0, &[]);
         });
 
-        if response.decision == Decision::Aborted {
+        if response.decision == Decision::Aborted || response.statemaps.is_none() {
             return Ok(response);
         }
 
+        let CertificationResponse {
+            xid,
+            version,
+            safepoint,
+            statemaps,
+            ..
+        } = &response;
+
         // 3. OOO install
-        self.install_statemaps_oo(response, oo_installer).await
+        self.install_statemaps_oo(xid, version, &safepoint.unwrap(), statemaps.clone().unwrap(), oo_installer)
+            .await?;
+
+        Ok(response)
     }
 
     /// Installs the statemap for candidate messages with committed decisions received from talos.
-    pub async fn install_statemaps_oo<O>(&self, response: CertificationResponse, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
+    pub async fn install_statemaps_oo<O>(&self, xid: &str, version: &u64, safepoint: &u64, statemaps: StateMap, oo_installer: &O) -> Result<(), ClientError>
     where
         O: OutOfOrderInstaller,
     {
-        let safepoint = response.safepoint.unwrap();
-        let new_version = response.version;
-
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
         let mut attempt = 0;
         let span_2 = Instant::now();
@@ -229,7 +237,8 @@ impl Cohort {
             attempt += 1;
 
             let span_3 = Instant::now();
-            let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
+
+            let install_result = oo_installer.install(xid, safepoint, version, &statemaps, attempt).await;
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
@@ -239,8 +248,6 @@ impl Cohort {
             });
 
             let error = match install_result {
-                Ok(OutOfOrderInstallOutcome::Installed) => None,
-                Ok(OutOfOrderInstallOutcome::InstalledAlready) => None,
                 Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
                     is_not_save += 1;
                     // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
@@ -250,6 +257,7 @@ impl Cohort {
                         cause: None,
                     })
                 }
+                Ok(_) => None,
                 Err(error) => Some(ClientError {
                     kind: model::ClientErrorKind::OutOfOrderCallbackFailed,
                     reason: error,
@@ -266,7 +274,7 @@ impl Cohort {
                 // try again
                 controller.sleep().await;
             } else {
-                break Ok(response);
+                break Ok(());
             }
         };
 
@@ -422,7 +430,7 @@ impl Cohort {
             message_key: xid.clone(),
             candidate: CandidateData {
                 xid: xid.clone(),
-                statemap: request.candidate.statemap,
+                statemap: request.candidate.statemaps.clone(),
                 readset: request.candidate.readset,
                 writeset: request.candidate.writeset,
                 readvers,
@@ -444,6 +452,7 @@ impl Cohort {
                     version: agent_response.version,
                     metadata: ResponseMetadata { duration_ms: 0, attempts: 0 },
                     conflict: agent_response.conflict.map(|cm| cm.version),
+                    statemaps: request.candidate.statemaps,
                 };
 
                 if response.decision == Decision::Aborted {

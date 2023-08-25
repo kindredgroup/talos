@@ -7,6 +7,7 @@ use std::{
 use async_trait::async_trait;
 use cohort_sdk::model::callbacks::{OutOfOrderInstallOutcome, OutOfOrderInstaller};
 use opentelemetry_api::metrics::Counter;
+use talos_agent::api::StateMap;
 use tokio::task::JoinHandle;
 use tokio_postgres::types::ToSql;
 
@@ -17,7 +18,6 @@ use crate::{
 
 pub struct OutOfOrderInstallerImpl {
     pub database: Arc<Database>,
-    pub request: TransferRequest,
     pub detailed_logging: bool,
     pub counter_oo_no_data_found: Arc<Counter<u64>>,
     pub single_query_strategy: bool,
@@ -26,7 +26,7 @@ pub struct OutOfOrderInstallerImpl {
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 
 impl OutOfOrderInstallerImpl {
-    async fn is_safe_to_proceed(db: Arc<Database>, safepoint: u64) -> Result<bool, String> {
+    async fn is_safe_to_proceed(db: Arc<Database>, safepoint: &u64) -> Result<bool, String> {
         let snapshot = db
             .query_one(r#"SELECT "version" FROM cohort_snapshot WHERE id = $1"#, &[&SNAPSHOT_SINGLETON_ROW_ID], |row| {
                 let snapshot = row
@@ -37,10 +37,10 @@ impl OutOfOrderInstallerImpl {
             })
             .await
             .map_err(|e| e.to_string())?;
-        Ok(snapshot >= safepoint)
+        Ok(&snapshot >= safepoint)
     }
 
-    async fn install_item(&self, new_version: u64) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install_item(&self, new_version: &u64, request: &TransferRequest) -> Result<OutOfOrderInstallOutcome, String> {
         let sql = r#"
             UPDATE bank_accounts ba SET
                 "amount" =
@@ -52,7 +52,7 @@ impl OutOfOrderInstallerImpl {
             WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT) AND ba."version" < ($4)::BIGINT
         "#;
 
-        let params: &[&(dyn ToSql + Sync)] = &[&self.request.from, &self.request.to, &self.request.amount, &(new_version as i64)];
+        let params: &[&(dyn ToSql + Sync)] = &[&request.from, &request.to, &request.amount, &(*new_version as i64)];
 
         let result = self.database.execute(sql, params).await.map_err(|e| e.to_string())?;
 
@@ -63,10 +63,18 @@ impl OutOfOrderInstallerImpl {
         }
     }
 
-    async fn install_using_polling(&self, _xid: String, safepoint: u64, new_version: u64, _attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install_using_polling(
+        &self,
+        _xid: &str,
+        safepoint: &u64,
+        new_version: &u64,
+        request: &TransferRequest,
+        _attempt_nr: u32,
+    ) -> Result<OutOfOrderInstallOutcome, String> {
         let db = Arc::clone(&self.database);
+        let safepoint = *safepoint;
         let wait_handle: JoinHandle<Result<bool, String>> = tokio::spawn(async move {
-            let mut safe_now = Self::is_safe_to_proceed(Arc::clone(&db), safepoint).await?;
+            let mut safe_now = Self::is_safe_to_proceed(Arc::clone(&db), &safepoint).await?;
             let poll_frequency = Duration::from_secs(1);
             let started_at = Instant::now();
             loop {
@@ -79,19 +87,26 @@ impl OutOfOrderInstallerImpl {
                     return Ok(false);
                 }
 
-                safe_now = Self::is_safe_to_proceed(Arc::clone(&db), safepoint).await?;
+                safe_now = Self::is_safe_to_proceed(Arc::clone(&db), &safepoint).await?;
             }
         });
 
         let is_safe_now = wait_handle.await.map_err(|e| e.to_string())??;
         if is_safe_now {
-            self.install_item(new_version).await
+            self.install_item(new_version, request).await
         } else {
             Ok(OutOfOrderInstallOutcome::SafepointCondition)
         }
     }
 
-    async fn install_using_single_query(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
+    async fn install_using_single_query(
+        &self,
+        xid: &str,
+        safepoint: &u64,
+        new_version: &u64,
+        request: &TransferRequest,
+        attempt_nr: u32,
+    ) -> Result<OutOfOrderInstallOutcome, String> {
         // Params order:
         //  1 - from, 2 - to, 3 - amount
         //  4 - new_ver, 5 - safepoint
@@ -119,13 +134,7 @@ impl OutOfOrderInstallerImpl {
         WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)
             "#;
 
-        let params: &[&(dyn ToSql + Sync)] = &[
-            &self.request.from,
-            &self.request.to,
-            &self.request.amount,
-            &(new_version as i64),
-            &(safepoint as i64),
-        ];
+        let params: &[&(dyn ToSql + Sync)] = &[&request.from, &request.to, &request.amount, &(*new_version as i64), &(*safepoint as i64)];
 
         let result = self
             .database
@@ -150,10 +159,7 @@ impl OutOfOrderInstallerImpl {
 
         if result.is_empty() {
             // there were no items found to work with
-            log::warn!(
-                "No bank accounts where found by these IDs: {:?}",
-                (self.request.from.clone(), self.request.to.clone())
-            );
+            log::warn!("No bank accounts where found by these IDs: {:?}", (request.from.clone(), request.to.clone()));
             let c = Arc::clone(&self.counter_oo_no_data_found);
             tokio::spawn(async move {
                 c.add(1, &[]);
@@ -163,7 +169,7 @@ impl OutOfOrderInstallerImpl {
 
         // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
         let (_, _, _, snapshot) = &result[0];
-        if (*snapshot as u64) < safepoint {
+        if &(*snapshot as u64) < safepoint {
             return Ok(OutOfOrderInstallOutcome::SafepointCondition);
         }
 
@@ -251,11 +257,24 @@ impl OutOfOrderInstallerImpl {
 
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
-    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
-        if self.single_query_strategy {
-            self.install_using_single_query(xid, safepoint, new_version, attempt_nr).await
-        } else {
-            self.install_using_polling(xid, safepoint, new_version, attempt_nr).await
+    async fn install(&self, xid: &str, safepoint: &u64, version: &u64, statemaps: &StateMap, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
+        // TODO: GK -
+        // For our testing the statemap size is 1,so the below approach is fine. But if we have to install multiple statemaps, then we would ideally
+        // use a transaction and either install all or none, depending on error and handle the return accordingly.
+        for statemap in statemaps.iter() {
+            let payload = statemap.values().next().unwrap();
+            let request: TransferRequest = serde_json::from_value(payload.clone()).unwrap();
+            let result = if self.single_query_strategy {
+                self.install_using_single_query(xid, safepoint, version, &request, attempt_nr).await?
+            } else {
+                self.install_using_polling(xid, safepoint, version, &request, attempt_nr).await?
+            };
+
+            if result != OutOfOrderInstallOutcome::Installed {
+                return Ok(result);
+            };
         }
+
+        Ok(OutOfOrderInstallOutcome::Installed)
     }
 }

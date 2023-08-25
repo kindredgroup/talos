@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use talos_agent::api::StateMap;
 
 use super::CertificationRequestPayload;
 
@@ -21,8 +22,10 @@ pub struct CapturedItemState {
 
 #[async_trait]
 pub trait OutOfOrderInstaller {
-    async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String>;
+    async fn install(&self, xid: &str, safepoint: &u64, version: &u64, statemaps: &StateMap, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String>;
 }
+
+#[derive(Debug, PartialEq, PartialOrd)]
 
 pub enum OutOfOrderInstallOutcome {
     Installed,

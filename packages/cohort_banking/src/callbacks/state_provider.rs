@@ -143,7 +143,7 @@ impl StateProviderImpl {
         let candidate = CertificationCandidate {
             readset: request.candidate.readset,
             writeset: request.candidate.writeset,
-            statemap: request.candidate.statemap,
+            statemaps: request.candidate.statemap,
             readvers: state.items.into_iter().map(|x| x.version).collect(),
         };
 
