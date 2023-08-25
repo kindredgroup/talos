@@ -53,13 +53,14 @@ impl Initiator {
     pub async fn certify(
         &self,
         js_certification_request: JsCertificationRequest,
-        get_state_callback: ThreadsafeFunction<u8>,
+        #[napi(ts_arg_type = "() => Promise<any>")]
+        get_state_callback: ThreadsafeFunction<()>,
         ooo_callback: ThreadsafeFunction<OoRequest>,
     ) -> napi::Result<String> {
         println!("Initiator.certify()");
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         let item_state_provider_impl = ItemStateProviderImpl {
-            _get_state_callback: get_state_callback,
+            get_state_callback,
         };
         println!("Initiator.certify(): invoking cohort.certify(...)");
         let _res = self
@@ -119,19 +120,21 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
 // }
 
 pub struct ItemStateProviderImpl {
-    _get_state_callback: ThreadsafeFunction<u8>,
+    get_state_callback: ThreadsafeFunction<()>,
 }
 
 #[async_trait]
 impl ItemStateProvider for ItemStateProviderImpl {
     async fn get_state(&self) -> Result<CapturedState, String> {
-        Ok(CapturedState {
-            snapshot_version: 34,
-            items: vec![CapturedItemState {
-                id: "sd".to_string(),
-                version: 23,
-            }],
-        })
+        let result = self.get_state_callback.call_async::<CapturedStateJs>(Ok(())).await.map_err(map_error_to_napi_error);
+        result.map(|js| js.into()).map_err(|e| e.to_string())
+        // Ok(CapturedState {
+        //     snapshot_version: 34,
+        //     items: vec![CapturedItemState {
+        //         id: "sd".to_string(),
+        //         version: 23,
+        //     }],
+        // })
     }
 }
 
@@ -149,6 +152,32 @@ pub struct OoRequest {
     pub safepoint: u32,
     pub new_version: u32,
     pub attempt_nr: u32,
+}
+
+#[napi(object)]
+pub struct CapturedItemStateJs {
+    pub id: String,
+    pub version: u32,
+}
+
+#[napi(object)]
+pub struct CapturedStateJs {
+    pub snapshot_version: u32,
+    pub items: Vec<CapturedItemStateJs>,
+}
+
+impl From<CapturedStateJs> for CapturedState {
+    fn from(val: CapturedStateJs) -> Self {
+        Self {
+            snapshot_version: val.snapshot_version as u64,
+            items: val.items.iter().map(|js| {
+                CapturedItemState {
+                    id: js.id.clone(),
+                    version: js.version as u64
+                }
+            }).collect()
+        }
+    }
 }
 
 // impl From<JsClientError> for napi::Error {

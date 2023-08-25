@@ -50,7 +50,15 @@ export interface OoRequest {
   newVersion: number
   attemptNr: number
 }
+export interface CapturedItemStateJs {
+  id: string
+  version: number
+}
+export interface CapturedStateJs {
+  snapshotVersion: number
+  items: Array<CapturedItemStateJs>
+}
 export class Initiator {
   static init(config: JsConfig): Promise<Initiator>
-  certify(jsCertificationRequest: JsCertificationRequest, getStateCallback: (err: Error | null, value: number) => any, oooCallback: (err: Error | null, value: OoRequest) => any): Promise<string>
+  certify(jsCertificationRequest: JsCertificationRequest, getStateCallback: () => Promise<any>, oooCallback: (err: Error | null, value: OoRequest) => any): Promise<string>
 }
