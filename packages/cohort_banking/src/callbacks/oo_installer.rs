@@ -171,12 +171,12 @@ impl OutOfOrderInstallerImpl {
         // The number of returned rows could be anything from 1 to 4.
         // When:
         //      1:  Edge case. We wanted to update 2 accounts, but one account got deleted from DB, thats why "SELECT ... WHERE number IN($1,$2)" could find only one account.
-        //          With that single accout which we found, we or replicator did the installation.
+        //          With that single account which we found, we or replicator did the installation.
         //      4:  Happy path. We updated two accounts and also queried them using the bottom part of UNION statement.
         //      2:  This is possible in two scenarios.
-        //          2.1:    Happy path. We could not update anyhting, so we just queried data using the bottom part of UNION statement. Replicator has done thr work.
-        //          2.2:    Edge case. We could find one account because it was deleted. This returned only one row: "SELECT ... WHERE number IN($1,$2)".
-        //                  However that rows was returned 2 times, one time by each arm of UNION. Basically this is the same as case "4" but applied to one account only.
+        //          2.1:    Happy path. We could not update anyhting, so we just queried data using the bottom part of UNION statement. Replicator has done the work.
+        //          2.2:    Edge case. We could not find one account because it was deleted. This returned only one row: "SELECT ... WHERE number IN($1,$2)".
+        //                  However, that rows was returned 2 times, one time by each arm of UNION. Basically this is the same as case "4" but applied to one account only.
         //      3:  Only one accout was updated by us, and two accouts were queried by bottom part of UNION statement, while another accout has been updated by replicator.
 
         // Code below is for debugging purposes only

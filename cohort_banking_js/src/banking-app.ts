@@ -4,8 +4,8 @@ import { Pool, PoolClient } from "pg"
 import { logger } from "./logger"
 
 import { CapturedItemState, CapturedState, TransferRequest } from "./model"
-import { Initiator, JsCertificationRequest } from "cohort_sdk_js"
-import { SDK_CONFIG as sdkConfig } from "./cohort-sdk-config"
+import { Initiator, JsCertificationRequest, OoRequest } from "cohort_sdk_js"
+import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
 
 export class BankingApp {
     private startedAtMs: number = 0
@@ -15,7 +15,8 @@ export class BankingApp {
     constructor(
         private expectedTxCount: number,
         private database: Pool,
-        private queue: BroadcastChannel) {}
+        private queue: BroadcastChannel,
+        private onFinishListener: () => any) {}
 
     async init() {
         this.queue.onmessage = async (event: MessageEvent<TransferRequest>) => {
@@ -30,14 +31,21 @@ export class BankingApp {
 
     async close() {
         this.queue.close()
-        await this.database.end()
+        this.onFinishListener()
     }
 
     async processQueueItem(event: MessageEvent<TransferRequest>) {
         if (this.startedAtMs === 0) {
             this.startedAtMs = Date.now()
         }
-        await this.handleTransaction(event.data)
+
+        try {
+            await this.handleTransaction(event.data)
+        } catch (e) {
+            logger.error("Unable to process tx: %s. Error:: %s", JSON.stringify(event.data), e)
+        } finally {
+            this.handledCount++
+        }
 
         if (this.handledCount === this.expectedTxCount) {
             await this.close()
@@ -54,14 +62,9 @@ export class BankingApp {
         const request: JsCertificationRequest = this.createNewCertRequest(tx)
         await this.initiator.certify(
             request,
-            // async () => await this.loadState(tx) as any,
-            async () => new CapturedState(362078,  [ new CapturedItemState("66807", 0) ]),
-            (e, r) => {
-                logger.info(`App: Inside OO install callback. Error: ${e}, Request: ${JSON.stringify(r, null, 2)}`)
-            }
+            async () => await this.loadState(tx) as any,
+            async (_e, request: OoRequest) => await this.installOutOfOrder(tx, request) as any
         )
-
-        this.handledCount += 1
     }
 
     getThroughput(nowMs: number): number {
@@ -82,14 +85,12 @@ export class BankingApp {
     }
 
     private async loadState(tx: TransferRequest): Promise<CapturedState> {
-        logger.info("BankingApp.loadState(): loading state for: %s", tx)
-
         let cnn: PoolClient
         try {
             cnn = await this.database.connect()
             const result = await cnn.query(
                 `SELECT
-                    ba.*, cs."version" AS snapshot_version
+                    ba."number" as "id", ba."version" as "version", cs."version" AS snapshot_version
                 FROM
                     bank_accounts ba, cohort_snapshot cs
                 WHERE
@@ -101,13 +102,66 @@ export class BankingApp {
                 throw new Error(`Unable to load bank accounts by these ids: '${tx.from}', '${tx.to}'. Query returned: ${result.rowCount} rows.`)
             }
 
-            const items = result.rows.map(row => new CapturedItemState(row.number, row.version))
+            const items = result.rows.map(row => new CapturedItemState(row.id, Number(row.version)))
+            // take snapshot from any row
+            return new CapturedState(Number(result.rows[0].snapshot_version), items)
+        } catch (e) {
+            logger.error("BankingApp.loadState(): %s", e)
+            throw e
+        } finally {
+            cnn?.release()
+        }
+    }
 
-            // tkae snapshot from any row
-            const state = new CapturedState(result.rows[0].snapshot_version, items)
+    private async installOutOfOrder(tx: TransferRequest, request: OoRequest): Promise<number> {
+        let cnn: PoolClient
+        try {
+            // Params order:
+            //  1 - from, 2 - to, 3 - amount
+            //  4 - new_ver, 5 - safepoint
+            let sql = `
+            WITH bank_accounts_temp AS (
+                UPDATE bank_accounts ba SET
+                    "amount" =
+                        (CASE
+                            WHEN ba."number" = ($1)::TEXT THEN ba."amount" + ($3)::DECIMAL
+                            WHEN ba."number" = ($2)::TEXT THEN ba."amount" - ($3)::DECIMAL
+                        END),
+                    "version" = ($4)::BIGINT
+                WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)
+                    AND EXISTS (SELECT 1 FROM cohort_snapshot cs WHERE cs."version" >= ($5)::BIGINT)
+                    AND ba."version" < ($4)::BIGINT
+                RETURNING
+                    ba."number", ba."version" as "new_version", (null)::BIGINT as "version", (SELECT cs."version" FROM cohort_snapshot cs) as "snapshot"
+            )
+            SELECT * FROM bank_accounts_temp
+            UNION
+            SELECT
+                ba."number", (null)::BIGINT as "new_version", ba."version" as "version", cs."version" as "snapshot"
+            FROM
+                bank_accounts ba, cohort_snapshot cs
+            WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)`
 
-            logger.info("BankingApp.loadState(): Loaded: %s", JSON.stringify(state, null, 2))
-            return state
+            cnn = await this.database.connect()
+            const result = await cnn.query(sql, [tx.from, tx.to, tx.amount, request.newVersion, request.safepoint])
+
+            if (result.rowCount === 0) {
+                // installed already
+                return 1
+            }
+
+            // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
+            const snapshot = result.rows[0].snapshot
+            if (snapshot < request.safepoint) {
+                // safepoint condition
+                return 2
+            }
+
+            // installed
+            return 0
+
+        } catch (e) {
+            logger.error("BankingApp.installOutOfOrder(): %s", e)
         } finally {
             cnn?.release()
         }

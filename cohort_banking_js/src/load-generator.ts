@@ -1,10 +1,7 @@
 import { BroadcastChannel, Worker, isMainThread, workerData } from "node:worker_threads"
+
 import { logger } from "./logger"
 import { TransferRequest } from "./model"
-
-export interface ItemHandler {
-    handle(item: TransferRequest): Promise<void>
-}
 
 export class LoadGenerator {
     private generatedItems: Array<TransferRequest>
@@ -12,15 +9,24 @@ export class LoadGenerator {
     constructor(private accountsRange: number, private historySize: number | null) {
         this.generatedItems = new Array()
         this.historySize = historySize || 0
-        logger.info("historySize: %d", this.historySize)
+        logger.info("LoadGenerator. Configured history size: %d", this.historySize)
     }
 
     generate(): TransferRequest {
         const checkTimeout = (elapsedMs: number) => {
             if (elapsedMs >= 20_000) {
-                logger.warn("should throw error: %d", elapsedMs)
+                logger.warn("LoadGenerator.generate(): Should throw error: %d", elapsedMs)
                 throw new Error(`Timeout (20 sec). Unable to generate a unique pair of account numbers from this range: [1, ${this.accountsRange}]`)
             }
+        }
+
+        const fnFormatAccountNr = (nr: number) => {
+            let asText = nr.toString()
+            while (asText.length < 4) {
+                asText = '0' + asText
+            }
+
+            return asText
         }
 
         const startedAt = Date.now()
@@ -50,7 +56,7 @@ export class LoadGenerator {
                 }
             }
 
-            const request = new TransferRequest(from.toString(), to.toString(), 1.0)
+            const request = new TransferRequest(fnFormatAccountNr(from), fnFormatAccountNr(to), 1.0)
             if (this.historySize > 0) {
                 if (this.generatedItems.length === this.historySize) {
                     this.generatedItems.shift()
@@ -68,8 +74,8 @@ export function createGeneratorService(settings: any): Worker {
 
 if (!isMainThread) {
     const { count, channelName, rate } = workerData.settings
-    const generator = new LoadGenerator(100_000, 10)
-    logger.info("Load generator will generate: %d transactions", count)
+    const generator = new LoadGenerator(100_000, 100)
+    logger.info("Load generator will generate: %d transactions at the reate of %d TPS", count, rate.toFixed(2))
 
     new Promise(async () => {
         const txChannel = new BroadcastChannel(channelName)

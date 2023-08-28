@@ -1,8 +1,9 @@
 use crate::models::JsConfig;
 use async_trait::async_trait;
-use cohort_sdk::cohort_mock::CohortMock;
+use cohort_sdk::cohort::Cohort;
 use cohort_sdk::model::callbacks::{CapturedItemState, CapturedState, ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller};
 use cohort_sdk::model::{CandidateData, CertificationRequest};
+use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 use serde_json::Value;
@@ -22,54 +23,56 @@ pub struct JsCandidateData {
     pub statemap: Option<Vec<HashMap<String, Value>>>,
 }
 
+impl From<JsCandidateData> for CandidateData {
+    fn from(val: JsCandidateData) -> Self {
+        CandidateData {
+            readset: val.readset,
+            writeset: val.writeset,
+            statemap: val.statemap,
+        }
+    }
+}
+
 impl From<JsCertificationRequest> for CertificationRequest {
-    fn from(_val: JsCertificationRequest) -> Self {
+    fn from(val: JsCertificationRequest) -> Self {
         CertificationRequest {
-            candidate: CandidateData {
-                statemap: None,
-                readset: vec![],
-                writeset: vec![],
-            },
-            timeout_ms: 34,
+            candidate: CandidateData::from(val.candidate),
+            timeout_ms: val.timeout_ms as u64,
         }
     }
 }
 
 #[napi]
 pub struct Initiator {
-    cohort: CohortMock,
+    cohort: Cohort,
 }
 
 #[napi]
 impl Initiator {
     #[napi]
     pub async fn init(config: JsConfig) -> napi::Result<Initiator> {
-        let cohort = CohortMock::create(config.into()).await.map_err(map_error_to_napi_error)?;
-        // let tsfn: ThreadsafeFunction<OoRequest> = oo_callback
-        //     .create_threadsafe_function(0, |ctx: ThreadSafeCallContext<OoRequest>| Ok(vec![ctx.value]))?;
+        let cohort = Cohort::create(config.into()).await.map_err(map_error_to_napi_error)?;
         Ok(Initiator { cohort })
     }
+
     #[napi]
     pub async fn certify(
         &self,
         js_certification_request: JsCertificationRequest,
-        #[napi(ts_arg_type = "() => Promise<any>")]
-        get_state_callback: ThreadsafeFunction<()>,
+        #[napi(ts_arg_type = "() => Promise<any>")] get_state_callback: ThreadsafeFunction<()>,
         ooo_callback: ThreadsafeFunction<OoRequest>,
     ) -> napi::Result<String> {
-        println!("Initiator.certify()");
+        // println!("Initiator.certify()");
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
-        let item_state_provider_impl = ItemStateProviderImpl {
-            get_state_callback,
-        };
-        println!("Initiator.certify(): invoking cohort.certify(...)");
+        let item_state_provider_impl = ItemStateProviderImpl { get_state_callback };
+        // println!("Initiator.certify(): invoking cohort.certify(...)");
         let _res = self
             .cohort
             .certify(js_certification_request.into(), &item_state_provider_impl, &ooo_impl)
             .await
             .map_err(map_error_to_napi_error)?;
 
-        println!("Initiator.certify(): after cohort.certify(...)");
+        // println!("Initiator.certify(): after cohort.certify(...)");
         Ok("Success".to_string())
     }
 }
@@ -81,23 +84,29 @@ struct OutOfOrderInstallerImpl {
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
     async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
-        println!("OutOfOrderInstallerImpl.install()");
+        // println!("OutOfOrderInstallerImpl.install()");
         let oorequest = OoRequest {
             xid,
             safepoint: safepoint.try_into().unwrap(),
             new_version: new_version.try_into().unwrap(),
             attempt_nr,
         };
-        let result = self.ooo_callback.call_async::<()>(Ok(oorequest)).await.map_err(map_error_to_napi_error);
+
+        let result = self
+            .ooo_callback
+            .call_async::<Promise<u32>>(Ok(oorequest))
+            .await
+            .map_err(map_error_to_napi_error);
         match result {
-            Ok(_) => {
-                println!("OutOfOrderInstallerImpl.install(): was successful");
-                Ok(OutOfOrderInstallOutcome::Installed)
-            }
-            Err(e) => {
-                println!("OutOfOrderInstallerImpl.install(): error installing: {}", e);
-                Err(e.to_string())
-            }
+            Ok(promise) => promise
+                .await
+                .map(|code| match code {
+                    1 => OutOfOrderInstallOutcome::InstalledAlready,
+                    2 => OutOfOrderInstallOutcome::SafepointCondition,
+                    _ => OutOfOrderInstallOutcome::Installed,
+                })
+                .map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
         }
     }
 }
@@ -126,15 +135,15 @@ pub struct ItemStateProviderImpl {
 #[async_trait]
 impl ItemStateProvider for ItemStateProviderImpl {
     async fn get_state(&self) -> Result<CapturedState, String> {
-        let result = self.get_state_callback.call_async::<CapturedStateJs>(Ok(())).await.map_err(map_error_to_napi_error);
-        result.map(|js| js.into()).map_err(|e| e.to_string())
-        // Ok(CapturedState {
-        //     snapshot_version: 34,
-        //     items: vec![CapturedItemState {
-        //         id: "sd".to_string(),
-        //         version: 23,
-        //     }],
-        // })
+        let result = self
+            .get_state_callback
+            .call_async::<Promise<CapturedStateJs>>(Ok(()))
+            .await
+            .map_err(map_error_to_napi_error);
+        match result {
+            Ok(promise) => promise.await.map(CapturedState::from).map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        }
     }
 }
 
@@ -170,12 +179,14 @@ impl From<CapturedStateJs> for CapturedState {
     fn from(val: CapturedStateJs) -> Self {
         Self {
             snapshot_version: val.snapshot_version as u64,
-            items: val.items.iter().map(|js| {
-                CapturedItemState {
+            items: val
+                .items
+                .iter()
+                .map(|js| CapturedItemState {
                     id: js.id.clone(),
-                    version: js.version as u64
-                }
-            }).collect()
+                    version: js.version as u64,
+                })
+                .collect(),
         }
     }
 }
