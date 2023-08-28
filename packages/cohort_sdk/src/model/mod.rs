@@ -1,4 +1,3 @@
-pub mod callbacks;
 pub mod internal;
 
 use std::{collections::HashMap, fmt::Display};
@@ -11,6 +10,28 @@ use talos_agent::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::task::JoinHandle;
+
+#[derive(Debug, PartialEq)]
+pub enum CertificationCandidateCallbackResponse {
+    Cancelled(String),
+    Proceed(CertificationRequestPayload),
+}
+
+#[derive(Debug, Clone)]
+pub struct OOOInstallerPayload {
+    pub xid: String,
+    pub version: u64,
+    pub safepoint: u64,
+    pub statemaps: Vec<HashMap<String, Value>>,
+}
+
+#[derive(Debug, PartialEq, PartialOrd)]
+
+pub enum OutOfOrderInstallOutcome {
+    Installed,
+    InstalledAlready,
+    SafepointCondition,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CertificationRequestPayload {

@@ -13,7 +13,7 @@ use talos_agent::{
         core::{AgentServices, TalosAgentImpl},
         model::{CancelRequestChannelMessage, CertifyRequestChannelMessage},
     },
-    api::{AgentConfig, CandidateData, CertificationRequest, StateMap, TalosAgent, TalosType},
+    api::{AgentConfig, CandidateData, CertificationRequest, TalosAgent, TalosType},
     messaging::{
         api::{Decision, DecisionMessage},
         kafka::KafkaInitializer,
@@ -26,10 +26,8 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use crate::{
     delay_controller::DelayController,
     model::{
-        self,
-        callbacks::{CertificationCandidateCallbackResponse, OutOfOrderInstallOutcome, OutOfOrderInstaller},
-        internal::CertificationAttemptOutcome,
-        CertificationResponse, ClientError, Config, ResponseMetadata,
+        self, internal::CertificationAttemptOutcome, CertificationCandidateCallbackResponse, CertificationResponse, ClientError, Config, OOOInstallerPayload,
+        OutOfOrderInstallOutcome, ResponseMetadata,
     },
 };
 
@@ -184,17 +182,25 @@ impl Cohort {
         self.agent_services.state_manager.abort();
     }
 
-    pub async fn certify<O, F, Fut>(&self, get_payload_and_snapshot: &F, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
+    /// Certifies a candidate in talos and install the statemap if the certification is successful.
+    /// Uses two callbacks
+    ///  - First callback to build the request payload to send to talos for certification
+    ///  - The installer callback will be called to do the out of order install.
+    pub async fn certify<F, Fut, IF, IFut>(
+        &self,
+        create_certifier_candidate_callback: &F,
+        installer_callback: &IF,
+    ) -> Result<model::CertificationResponse, ClientError>
     where
-        O: OutOfOrderInstaller,
-
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
+        IF: Fn(OOOInstallerPayload) -> IFut,
+        IFut: Future<Output = Result<OutOfOrderInstallOutcome, String>>,
     {
         let span_1 = Instant::now();
         // 1. Get the snapshot
         // 2. Send for certification
-        let response = self.send_to_talos(get_payload_and_snapshot).await?;
+        let response = self.send_to_talos(create_certifier_candidate_callback).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -206,25 +212,24 @@ impl Cohort {
             return Ok(response);
         }
 
-        let CertificationResponse {
-            xid,
-            version,
-            safepoint,
-            statemaps,
-            ..
-        } = &response;
+        let oooinstall_payload = OOOInstallerPayload {
+            xid: response.xid.clone(),
+            version: response.version,
+            safepoint: response.safepoint.unwrap(),
+            statemaps: response.statemaps.clone().unwrap(),
+        };
 
         // 3. OOO install
-        self.install_statemaps_oo(xid, version, &safepoint.unwrap(), statemaps.clone().unwrap(), oo_installer)
-            .await?;
+        self.install_statemaps_oo(oooinstall_payload, installer_callback).await?;
 
         Ok(response)
     }
 
     /// Installs the statemap for candidate messages with committed decisions received from talos.
-    pub async fn install_statemaps_oo<O>(&self, xid: &str, version: &u64, safepoint: &u64, statemaps: StateMap, oo_installer: &O) -> Result<(), ClientError>
+    pub async fn install_statemaps_oo<IF, IFut>(&self, install_payload: OOOInstallerPayload, installer_callback: &IF) -> Result<(), ClientError>
     where
-        O: OutOfOrderInstaller,
+        IF: Fn(OOOInstallerPayload) -> IFut,
+        IFut: Future<Output = Result<OutOfOrderInstallOutcome, String>>,
     {
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
         let mut attempt = 0;
@@ -233,12 +238,13 @@ impl Cohort {
         let mut is_not_save = 0_u64;
         let mut giveups = 0_u64;
 
+        let safepoint = install_payload.safepoint;
         let result = loop {
             attempt += 1;
 
             let span_3 = Instant::now();
 
-            let install_result = oo_installer.install(xid, safepoint, version, &statemaps, attempt).await;
+            let install_result = installer_callback(install_payload.clone()).await;
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
@@ -305,10 +311,12 @@ impl Cohort {
             h_attempts.record(attempt as u64, &[]);
             h_span_2.record(span_2_val * 100.0, &[]);
         });
+
+        log::debug!("Total attempts used to install: {attempt}");
         result
     }
 
-    pub async fn send_to_talos<F, Fut>(&self, get_payload_and_snapshot: &F) -> Result<model::CertificationResponse, ClientError>
+    pub async fn send_to_talos<F, Fut>(&self, create_certifier_candidate_callback: &F) -> Result<model::CertificationResponse, ClientError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
@@ -333,7 +341,7 @@ impl Cohort {
         let final_result = loop {
             // Await for snapshot and build the certification request payload.
             // Send the certification payload to talos
-            match self.send_to_talos_attempt(&get_payload_and_snapshot, recent_conflict).await {
+            match self.send_to_talos_attempt(&create_certifier_candidate_callback, recent_conflict).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -400,14 +408,14 @@ impl Cohort {
         final_result
     }
 
-    async fn send_to_talos_attempt<F, Fut>(&self, build_request_with_snapshot_fn: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
+    async fn send_to_talos_attempt<F, Fut>(&self, generate_certifier_candidate_callback: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
     {
         let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
 
-        let request = match self.await_for_snapshot(build_request_with_snapshot_fn, previous_conflict, timeout).await {
+        let request = match self.await_for_snapshot(generate_certifier_candidate_callback, previous_conflict, timeout).await {
             Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
             Err(SnapshotPollErrorType::Timeout { waited }) => {
                 return CertificationAttemptOutcome::SnapshotTimeout {
@@ -429,7 +437,7 @@ impl Cohort {
         let agent_request = CertificationRequest {
             message_key: xid.clone(),
             candidate: CandidateData {
-                xid: xid.clone(),
+                xid,
                 statemap: request.candidate.statemaps.clone(),
                 readset: request.candidate.readset,
                 writeset: request.candidate.writeset,

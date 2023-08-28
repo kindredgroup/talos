@@ -4,10 +4,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use async_trait::async_trait;
-use cohort_sdk::model::callbacks::{OutOfOrderInstallOutcome, OutOfOrderInstaller};
+use cohort_sdk::model::{OOOInstallerPayload, OutOfOrderInstallOutcome};
 use opentelemetry_api::metrics::Counter;
-use talos_agent::api::StateMap;
 use tokio::task::JoinHandle;
 use tokio_postgres::types::ToSql;
 
@@ -69,7 +67,6 @@ impl OutOfOrderInstallerImpl {
         safepoint: &u64,
         new_version: &u64,
         request: &TransferRequest,
-        _attempt_nr: u32,
     ) -> Result<OutOfOrderInstallOutcome, String> {
         let db = Arc::clone(&self.database);
         let safepoint = *safepoint;
@@ -105,7 +102,6 @@ impl OutOfOrderInstallerImpl {
         safepoint: &u64,
         new_version: &u64,
         request: &TransferRequest,
-        attempt_nr: u32,
     ) -> Result<OutOfOrderInstallOutcome, String> {
         // Params order:
         //  1 - from, 2 - to, 3 - amount
@@ -191,19 +187,17 @@ impl OutOfOrderInstallerImpl {
                 let (number, new_ver, version, _snapshot) = &result[0];
                 if new_ver.is_none() {
                     log::debug!(
-                        "Case 1: No rows were updated for xid '{}' when installing out of order data with new version {} using attempts: {}. Account {} version is now {:?}. Another candidate account was not found",
+                        "Case 1: No rows were updated for xid '{}' when installing out of order data with new version {}. Account {} version is now {:?}. Another candidate account was not found",
                         xid,
                         new_version,
-                        attempt_nr,
                         number,
                         version,
                     );
                 } else {
                     log::debug!(
-                        "Case 1: 1 row was updated for xid '{}' when installing out of order data with new version {} using attempts: {}. Account {} version is now {:?}. Another candidate account was not found",
+                        "Case 1: 1 row was updated for xid '{}' when installing out of order data with new version {}. Account {} version is now {:?}. Another candidate account was not found",
                         xid,
                         new_version,
-                        attempt_nr,
                         number,
                         new_ver,
                     );
@@ -215,20 +209,18 @@ impl OutOfOrderInstallerImpl {
                     let (_, _, version_from, _) = &result[0];
                     let (_, _, version_to, _) = &result[1];
                     log::debug!(
-                        "Case 2.1: No rows were updated for xid '{}' when installing out of order data with new version {} using attempts: {}. Current versions have moved to {:?}",
+                        "Case 2.1: No rows were updated for xid '{}' when installing out of order data with new version {}. Current versions have moved to {:?}",
                         xid,
                         new_version,
-                        attempt_nr,
                         (version_from, version_to)
                     );
                 } else {
                     // 2.2
                     let (number, new_ver, _, _) = &result[0];
                     log::debug!(
-                        "Case 2.2: 1 row was updated for xid '{}' when installing out of order data with new version {} using attempts: {}. Account {} version is now {:?}. Another candidate account was not found",
+                        "Case 2.2: 1 row was updated for xid '{}' when installing out of order data with new version {}. Account {} version is now {:?}. Another candidate account was not found",
                         xid,
                         new_version,
-                        attempt_nr,
                         number,
                         new_ver,
                     );
@@ -240,10 +232,9 @@ impl OutOfOrderInstallerImpl {
                 let (_, _, version, _) = if *number_a == *number { &result[2] } else { &result[1] };
 
                 log::debug!(
-                    "Case 3: 1 row was updated for xid '{}' when installing out of order data with new version {} using attempts: {}. Account {} version is now {:?}. Another accout was already set to: {:?}",
+                    "Case 3: 1 row was updated for xid '{}' when installing out of order data with new version {}. Account {} version is now {:?}. Another accout was already set to: {:?}",
                     xid,
                     new_version,
-                    attempt_nr,
                     number,
                     new_ver,
                     version,
@@ -253,21 +244,19 @@ impl OutOfOrderInstallerImpl {
 
         Ok(OutOfOrderInstallOutcome::Installed)
     }
-}
-
-#[async_trait]
-impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
-    async fn install(&self, xid: &str, safepoint: &u64, version: &u64, statemaps: &StateMap, attempt_nr: u32) -> Result<OutOfOrderInstallOutcome, String> {
+    pub async fn install(&self, install_item: OOOInstallerPayload) -> Result<OutOfOrderInstallOutcome, String> {
         // TODO: GK -
         // For our testing the statemap size is 1,so the below approach is fine. But if we have to install multiple statemaps, then we would ideally
         // use a transaction and either install all or none, depending on error and handle the return accordingly.
-        for statemap in statemaps.iter() {
+        for statemap in install_item.statemaps.iter() {
             let payload = statemap.values().next().unwrap();
             let request: TransferRequest = serde_json::from_value(payload.clone()).unwrap();
             let result = if self.single_query_strategy {
-                self.install_using_single_query(xid, safepoint, version, &request, attempt_nr).await?
+                self.install_using_single_query(&install_item.xid, &install_item.safepoint, &install_item.version, &request)
+                    .await?
             } else {
-                self.install_using_polling(xid, safepoint, version, &request, attempt_nr).await?
+                self.install_using_polling(&install_item.xid, &install_item.safepoint, &install_item.version, &request)
+                    .await?
             };
 
             if result != OutOfOrderInstallOutcome::Installed {

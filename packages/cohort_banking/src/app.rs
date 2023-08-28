@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use cohort_sdk::{
     cohort::Cohort,
-    model::{ClientErrorKind, Config},
+    model::{ClientErrorKind, Config, OOOInstallerPayload},
 };
 
 use opentelemetry_api::{
@@ -82,6 +82,7 @@ impl Handler<TransferRequest> for BankingApp {
             database: Arc::clone(&self.database),
             single_query_strategy,
         };
+        let request_payload_callback = || state_provider.get_certification_candidate(certification_request.clone());
 
         let oo_inst = OutOfOrderInstallerImpl {
             database: Arc::clone(&self.database),
@@ -90,11 +91,13 @@ impl Handler<TransferRequest> for BankingApp {
             single_query_strategy,
         };
 
+        let oo_installer_callback = |payload: OOOInstallerPayload| oo_inst.install(payload);
+
         match self
             .cohort_api
             .as_ref()
             .expect("Banking app is not initialised")
-            .certify(&|| state_provider.get_certification_candidate(certification_request.clone()), &oo_inst)
+            .certify(&request_payload_callback, &oo_installer_callback)
             .await
         {
             Ok(rsp) => {

@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use cohort_sdk::model::{
-    callbacks::{CapturedItemState, CapturedState, CertificationCandidateCallbackResponse},
-    CertificationCandidate, CertificationRequestPayload,
-};
+use cohort_sdk::model::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
 use rust_decimal::Decimal;
 use tokio_postgres::{types::ToSql, Row};
 
@@ -11,6 +8,18 @@ use crate::{
     model::{bank_account::BankAccount, requests::CertificationRequest},
     state::postgres::database::{Database, DatabaseError},
 };
+
+#[derive(Debug, PartialEq, PartialOrd)]
+pub struct CapturedState {
+    pub snapshot_version: u64,
+    pub items: Vec<CapturedItemState>,
+}
+
+#[derive(Debug, PartialEq, PartialOrd)]
+pub struct CapturedItemState {
+    pub id: String,
+    pub version: u64,
+}
 
 impl TryFrom<&Row> for BankAccount {
     type Error = DatabaseError;
