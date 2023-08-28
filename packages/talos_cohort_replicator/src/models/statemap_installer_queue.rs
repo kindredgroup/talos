@@ -44,7 +44,9 @@ impl StatemapInstallerQueue {
     }
 
     pub fn remove_installed(&mut self) -> Option<u64> {
-        let Some(index) = self.queue.get_index_of(&self.snapshot_version) else { return None;};
+        let Some(index) = self.queue.get_index_of(&self.snapshot_version) else {
+            return None;
+        };
 
         let items = self.queue.drain(..index);
 
