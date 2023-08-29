@@ -30,7 +30,7 @@ mod suffix_tests {
         let full_vec = r.collect::<Vec<u64>>();
 
         let Some(ignore_vec) = ignore_vers else {
-            return  full_vec;
+            return full_vec;
         };
 
         let vec_remaining = full_vec.iter().filter_map(|&v| (!ignore_vec.contains(&v)).then_some(v));
@@ -359,7 +359,7 @@ mod suffix_tests {
 
     #[test]
     fn test_get_non_empty_items_when_no_empty_items() {
-        let list_to_scan = vec![Some(10_u8); 100];
+        let list_to_scan = [Some(10_u8); 100];
         let result = get_nonempty_suffix_items(list_to_scan.iter());
 
         assert_eq!(result.count(), 100);

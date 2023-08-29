@@ -82,7 +82,7 @@ if (!isMainThread) {
         const startedAt = Date.now()
         for (let i = 1.0; i <= count; i++) {
             const request = generator.generate()
-            txChannel.postMessage(request)
+            txChannel.postMessage({ request, postedAtMs: Date.now() })
 
             if (i % (count * 10 / 100) === 0) {
                 const elapsed = (Date.now() - startedAt) / 1000.0

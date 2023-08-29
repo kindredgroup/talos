@@ -10,8 +10,14 @@ logger.info("App: Cohort JS Application: %d", 111)
 logger.info("App: ---------------------")
 
 const CHANNEL_NAME = "banking-transactions"
-const COUNT = 25_000
+const COUNT = 200_000
 const RATE = 4_000
+
+const printMetrics = (spans: Array<any>) => {
+    for (let span of spans) {
+        logger.info("METRIC: %d, %d, %d, %d", span.enqueue, span.process, span.processDetails?.state, span.processDetails?.ooinstall)
+    }
+}
 
 new Promise(async (resolve) => {
     const database = new Pool(DB_CONFIG)
@@ -24,10 +30,14 @@ new Promise(async (resolve) => {
 
     const queue = new BroadcastChannel(CHANNEL_NAME)
 
-    const fnFinish = () => {
+    const fnFinish = (appRef: BankingApp) => {
         resolve(1)
         database.end()
+
+        logger.info("Collected metrics: %d", appRef.spans.length)
+        printMetrics(appRef.spans)
     }
+
     const app = new BankingApp(COUNT, database, queue, fnFinish)
     await app.init()
     const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })

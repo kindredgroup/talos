@@ -5,7 +5,7 @@
   "type": "commonjs",
   "main": "dist/main.js",
   "scripts": {
-    "start": "rm -rf dist && npx tsc && node dist/main.js"
+    "start": "rm -rf dist && npx tsc && node --max_semi_space_size=128 --max-old-space-size=2048 dist/main.js"
   },
   "keywords": [],
   "author": "",

@@ -3,7 +3,7 @@ import { Pool, PoolClient } from "pg"
 
 import { logger } from "./logger"
 
-import { CapturedItemState, CapturedState, TransferRequest } from "./model"
+import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
 import { Initiator, JsCertificationRequest, OoRequest } from "cohort_sdk_js"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
 
@@ -12,16 +12,22 @@ export class BankingApp {
     private handledCount: number = 0
     private initiator: Initiator
 
+    spans: Array<any> = []
+
     constructor(
         private expectedTxCount: number,
         private database: Pool,
         private queue: BroadcastChannel,
-        private onFinishListener: () => any) {}
+        private onFinishListener: (appRef: BankingApp) => any) {}
 
     async init() {
-        this.queue.onmessage = async (event: MessageEvent<TransferRequest>) => {
+        this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
             try {
-                await this.processQueueItem(event)
+
+                
+
+                const spans = await this.processQueueItem(event)
+                this.spans.push(spans)
             } catch (e) {
                 logger.error("Failed to process tx: %s", e)
             }
@@ -31,40 +37,65 @@ export class BankingApp {
 
     async close() {
         this.queue.close()
-        this.onFinishListener()
+        this.onFinishListener(this)
     }
 
-    async processQueueItem(event: MessageEvent<TransferRequest>) {
+    async processQueueItem(event: MessageEvent<TransferRequestMessage>): Promise<any> {
         if (this.startedAtMs === 0) {
             this.startedAtMs = Date.now()
         }
 
+        const span_s = Date.now()
+        const spans = {
+            enqueue: span_s - event.data.postedAtMs,
+            process: 0,
+            processDetails: {}
+        }
+
         try {
-            await this.handleTransaction(event.data)
+            const subSpans = await this.handleTransaction(event.data.request)
+            spans.processDetails = subSpans
         } catch (e) {
             logger.error("Unable to process tx: %s. Error:: %s", JSON.stringify(event.data), e)
         } finally {
             this.handledCount++
+            spans.process = Date.now() - span_s
         }
 
         if (this.handledCount === this.expectedTxCount) {
-            await this.close()
             logger.info("App: ---------------------")
             logger.info(
                 "\nProcessing finished.\nThroughput: %d (tps)\n     Count: %d\n",
                 this.getThroughput(Date.now()).toFixed(2),
                 this.handledCount,
             )
+            await this.close()
         }
+
+        return spans
     }
 
-    async handleTransaction(tx: TransferRequest) {
+    async handleTransaction(tx: TransferRequest): Promise<any> {
         const request: JsCertificationRequest = this.createNewCertRequest(tx)
+
+        const span_s = Date.now()
+        let state = 0
+        let ooinstall = 0
         await this.initiator.certify(
             request,
-            async () => await this.loadState(tx) as any,
-            async (_e, request: OoRequest) => await this.installOutOfOrder(tx, request) as any
+            async () => {
+                const r = await this.loadState(tx) as any
+                state = Date.now() - span_s
+                return r
+            },
+            async (_e, request: OoRequest) => {
+                const r = await this.installOutOfOrder(tx, request) as any
+                ooinstall = Date.now() - span_s
+                return r
+            }
         )
+
+        return { state, ooinstall }
     }
 
     getThroughput(nowMs: number): number {
@@ -88,14 +119,14 @@ export class BankingApp {
         let cnn: PoolClient
         try {
             cnn = await this.database.connect()
-            const result = await cnn.query(
+            const result = await cnn.query({ name: "get-state", text:
                 `SELECT
                     ba."number" as "id", ba."version" as "version", cs."version" AS snapshot_version
                 FROM
                     bank_accounts ba, cohort_snapshot cs
                 WHERE
                     ba."number" = $1 OR ba."number" = $2`,
-                [tx.from, tx.to]
+                values: [tx.from, tx.to] }
             )
 
             if (result.rowCount != 2) {
@@ -143,7 +174,7 @@ export class BankingApp {
             WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)`
 
             cnn = await this.database.connect()
-            const result = await cnn.query(sql, [tx.from, tx.to, tx.amount, request.newVersion, request.safepoint])
+            const result = await cnn.query({ name: "ooinstall", text: sql, values: [tx.from, tx.to, tx.amount, request.newVersion, request.safepoint] })
 
             if (result.rowCount === 0) {
                 // installed already
