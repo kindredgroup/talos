@@ -1,6 +1,8 @@
 import { BroadcastChannel } from "node:worker_threads"
 import { Pool, PoolClient } from "pg"
 
+import { Pond } from "./pond"
+
 import { logger } from "./logger"
 
 import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
@@ -16,27 +18,28 @@ export class BankingApp {
 
     constructor(
         private expectedTxCount: number,
+        private pond: Pond,
         private database: Pool,
         private queue: BroadcastChannel,
         private onFinishListener: (appRef: BankingApp) => any) {}
 
     async init() {
-        this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
-            try {
-
-                
-
-                const spans = await this.processQueueItem(event)
-                this.spans.push(spans)
-            } catch (e) {
-                logger.error("Failed to process tx: %s", e)
-            }
-        }
         this.initiator = await Initiator.init(sdkConfig)
+        this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
+            this.pond.submit(async () => {
+                try {
+                    const spans = await this.processQueueItem(event)
+                    this.spans.push(spans)
+                } catch (e) {
+                    logger.error("Failed to process tx: %s", e)
+                }
+            })
+        }
     }
 
     async close() {
         this.queue.close()
+        this.pond.shutdown()
         this.onFinishListener(this)
     }
 
@@ -79,23 +82,31 @@ export class BankingApp {
         const request: JsCertificationRequest = this.createNewCertRequest(tx)
 
         const span_s = Date.now()
-        let state = 0
-        let ooinstall = 0
+        let stateEnd = 0
+        let stateDuration = 0
+        let ooinstallEnd = 0
+        let ooinstallDuration = 0
         await this.initiator.certify(
             request,
             async () => {
+                const s = Date.now()
                 const r = await this.loadState(tx) as any
-                state = Date.now() - span_s
+                const n = Date.now()
+                stateEnd = n - span_s
+                stateDuration = n - s
                 return r
             },
             async (_e, request: OoRequest) => {
+                const s = Date.now()
                 const r = await this.installOutOfOrder(tx, request) as any
-                ooinstall = Date.now() - span_s
+                const n = Date.now()
+                ooinstallEnd = n - span_s
+                ooinstallDuration = n - s
                 return r
             }
         )
 
-        return { state, ooinstall }
+        return { stateDuration, stateEnd, ooinstallDuration, ooinstallEnd }
     }
 
     getThroughput(nowMs: number): number {

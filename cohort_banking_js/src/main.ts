@@ -5,17 +5,18 @@ import { logger } from "./logger"
 import { createGeneratorService } from "./load-generator"
 import { BankingApp } from "./banking-app"
 import { DB_CONFIG } from "./cfg/config-db-pool"
+import { Pond } from "./pond"
 
 logger.info("App: Cohort JS Application: %d", 111)
 logger.info("App: ---------------------")
 
 const CHANNEL_NAME = "banking-transactions"
 const COUNT = 200_000
-const RATE = 4_000
+const RATE = 4000
 
 const printMetrics = (spans: Array<any>) => {
     for (let span of spans) {
-        logger.info("METRIC: %d, %d, %d, %d", span.enqueue, span.process, span.processDetails?.state, span.processDetails?.ooinstall)
+        logger.info("METRIC: %d, %d, %d, %d, %d, %d", span.enqueue, span.process, span.processDetails?.stateDuration, span.processDetails?.stateEnd, span.processDetails?.ooinstallDuration, span.processDetails?.ooinstallEnd)
     }
 }
 
@@ -38,7 +39,13 @@ new Promise(async (resolve) => {
         printMetrics(appRef.spans)
     }
 
-    const app = new BankingApp(COUNT, database, queue, fnFinish)
+    const app = new BankingApp(
+        COUNT,
+        new Pond(400),
+        database,
+        queue,
+        fnFinish,
+    )
     await app.init()
     const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })
 })

@@ -135,7 +135,7 @@ impl CohortMock {
                     // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
                     Some(ClientError {
                         kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
-                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
+                        reason: format!("Timeout waiting for safepoint: {}", safepoint),
                         cause: None,
                     })
                 }
