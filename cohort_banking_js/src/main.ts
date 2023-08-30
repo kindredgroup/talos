@@ -11,7 +11,7 @@ logger.info("App: ---------------------")
 
 const CHANNEL_NAME = "banking-transactions"
 const COUNT = 200_000
-const RATE = 4_000
+const RATE = 5_000
 
 const printMetrics = (spans: Array<any>) => {
     for (let span of spans) {
@@ -21,7 +21,7 @@ const printMetrics = (spans: Array<any>) => {
 
 new Promise(async (resolve) => {
     const database = new Pool(DB_CONFIG)
-    database.on("error",   (e, _) => { logger.error("DBPool.error: Error: %s", e) })
+    database.on("error", (e, _) => { logger.error("DBPool.error: Error: %s", e) })
     database.on("release", (e, _) => { if (e) { logger.error("DBPool.release: Error: %s", e) } })
 
     const c = await database.connect()
@@ -40,5 +40,18 @@ new Promise(async (resolve) => {
 
     const app = new BankingApp(COUNT, database, queue, fnFinish)
     await app.init()
-    const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })
+    let transferChunks = await app.generate_payload(COUNT, RATE)
+
+
+    let arr = await Promise.all(transferChunks.map(r => app.process_payload(r)))
+
+    logger.info("App: ---------------------")
+    logger.info(
+        "\nProcessing finished.\nThroughput: %d (tps)\n     Count: %d\n     Items installed by replicator: %d\n",
+        app.getThroughput(Date.now()).toFixed(2),
+        app.handledCount,
+        app.installedByReplicator
+    )
+    await app.close();
+    // const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })
 })

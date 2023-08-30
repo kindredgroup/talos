@@ -8,8 +8,8 @@ const DB_CONFIG: PoolConfig = {
     database: "talos-sample-cohort-dev",
     user: "postgres",
     password: "admin",
-    max: 100,
-    min: 100,
+    max: 20,
+    min: 20,
 }
 
 export { DB_CONFIG }

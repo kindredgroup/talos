@@ -1,5 +1,6 @@
 import { BroadcastChannel } from "node:worker_threads"
 import { Pool, PoolClient } from "pg"
+import * as _ from "lodash";
 
 import { logger } from "./logger"
 
@@ -7,31 +8,122 @@ import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessa
 import { Initiator, JsCertificationRequest, OoRequest } from "cohort_sdk_js"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
 
+const fnFormatAccountNr = (nr: number) => {
+    let asText = nr.toString()
+    while (asText.length < 4) {
+        asText = '0' + asText
+    }
+
+    return asText
+}
+
+
 export class BankingApp {
     private startedAtMs: number = 0
-    private handledCount: number = 0
+    handledCount: number = 0
+    installedByReplicator: number = 0;
     private initiator: Initiator
 
     spans: Array<any> = []
+
 
     constructor(
         private expectedTxCount: number,
         private database: Pool,
         private queue: BroadcastChannel,
-        private onFinishListener: (appRef: BankingApp) => any) {}
+        private onFinishListener: (appRef: BankingApp) => any) { }
 
-    async init() {
-        this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
+    async delay(time) {
+        return new Promise(resolve => setTimeout(resolve, time));
+    }
+
+    async generate_payload(count: number, rate: number): Promise<Array<Array<TransferRequest>>> {
+        let first_number = 1;
+        let transfers = [];
+        const startedAt = Date.now()
+
+        for (let i = 1.0; i <= count; i++) {
+
+            const request = new TransferRequest(fnFormatAccountNr(first_number++), fnFormatAccountNr(first_number++), 1.0);
+            transfers.push(request);
+
+            if (i % (count * 10 / 100) === 0) {
+                const elapsed = (Date.now() - startedAt) / 1000.0
+                logger.info("Generated: %d, effective rate: %d", i, (i / elapsed).toFixed(2))
+            }
+            if (i == count) break
+
+            const now = Date.now()
+            const elapsedSec = (now - startedAt) / 1000.0
+            const currentRate = i / elapsedSec
+            if (currentRate > rate) {
+                const targetElapsed = i / rate
+                const delta = (targetElapsed - elapsedSec) * 1000
+                await new Promise(resolve => setTimeout(resolve, delta));
+            }
+        }
+        const elapsed = (Date.now() - startedAt) / 1000.0
+        logger.info("\nGenerator finished.\n Generated: %d\nThroughput: %d\n   Elapsed: %d (sec)\n", count, (count / elapsed).toFixed(2), elapsed.toFixed(2))
+
+        const chunkSize = count / 1_000;
+
+
+        return _.chunk(transfers, chunkSize);
+
+
+    }
+
+    async process_payload(bucket: Array<TransferRequest>) {
+        if (this.startedAtMs === 0) {
+            this.startedAtMs = Date.now()
+        }
+
+        let rev_bucket = _.reverse(bucket);
+        let loop_till = bucket.length;
+
+        for (let i = 1; i <= loop_till; i++) {
+            this.handledCount++;
             try {
+                // await this.delay(100)
+                const request = rev_bucket.pop();
+                if (!!request) {
+                    if (i % 100 === 0) {
+                        logger.info("Request payload ", request);
+                    }
 
-                
 
-                const spans = await this.processQueueItem(event)
-                this.spans.push(spans)
+                    const spans = await this.handleTransaction(request);
+                    this.spans.push(spans)
+
+                }
             } catch (e) {
                 logger.error("Failed to process tx: %s", e)
             }
+            if (i % 10 == 0) {
+                logger.info("Pausing after i=%d", i);
+                await this.delay(50)
+            }
         }
+    }
+
+    async init() {
+        // let limit = 0;
+        // this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
+        //     // if (limit == 50) {
+        //     //     await this.delay(200);
+        //     // } else {
+        //     //     limit++;
+        //     // }
+
+        //     try {
+        //         await this.delay(100)
+        //         const spans = await this.processQueueItem(event)
+        //         this.spans.push(spans)
+        //     } catch (e) {
+        //         logger.error("Failed to process tx: %s", e)
+        //     }
+        //     limit--;
+        // }
         this.initiator = await Initiator.init(sdkConfig)
     }
 
@@ -89,8 +181,14 @@ export class BankingApp {
                 return r
             },
             async (_e, request: OoRequest) => {
+                // const start_ms = Date.now();
+                // await this.delay(200)
                 const r = await this.installOutOfOrder(tx, request) as any
                 ooinstall = Date.now() - span_s
+
+                if (r === 1) {
+                    this.installedByReplicator++
+                }
                 return r
             }
         )
@@ -119,15 +217,16 @@ export class BankingApp {
         let cnn: PoolClient
         try {
             cnn = await this.database.connect()
-            const result = await cnn.query({ name: "get-state", text:
-                `SELECT
-                    ba."number" as "id", ba."version" as "version", cs."version" AS snapshot_version
-                FROM
-                    bank_accounts ba, cohort_snapshot cs
-                WHERE
-                    ba."number" = $1 OR ba."number" = $2`,
-                values: [tx.from, tx.to] }
-            )
+            const result = await cnn.query({
+                name: "get-state", text:
+                    `SELECT
+                        ba."number" as "id", ba."version" as "version", cs."version" AS snapshot_version
+                    FROM
+                        bank_accounts ba, cohort_snapshot cs
+                    WHERE
+                        ba."number" = $1 OR ba."number" = $2`,
+                values: [tx.from, tx.to]
+            })
 
             if (result.rowCount != 2) {
                 throw new Error(`Unable to load bank accounts by these ids: '${tx.from}', '${tx.to}'. Query returned: ${result.rowCount} rows.`)
@@ -138,63 +237,86 @@ export class BankingApp {
             return new CapturedState(Number(result.rows[0].snapshot_version), items)
         } catch (e) {
             logger.error("BankingApp.loadState(): %s", e)
+
             throw e
         } finally {
             cnn?.release()
         }
+
+
     }
 
     private async installOutOfOrder(tx: TransferRequest, request: OoRequest): Promise<number> {
-        let cnn: PoolClient
-        try {
-            // Params order:
-            //  1 - from, 2 - to, 3 - amount
-            //  4 - new_ver, 5 - safepoint
-            let sql = `
-            WITH bank_accounts_temp AS (
-                UPDATE bank_accounts ba SET
-                    "amount" =
-                        (CASE
-                            WHEN ba."number" = ($1)::TEXT THEN ba."amount" + ($3)::DECIMAL
-                            WHEN ba."number" = ($2)::TEXT THEN ba."amount" - ($3)::DECIMAL
-                        END),
-                    "version" = ($4)::BIGINT
-                WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)
-                    AND EXISTS (SELECT 1 FROM cohort_snapshot cs WHERE cs."version" >= ($5)::BIGINT)
-                    AND ba."version" < ($4)::BIGINT
-                RETURNING
-                    ba."number", ba."version" as "new_version", (null)::BIGINT as "version", (SELECT cs."version" FROM cohort_snapshot cs) as "snapshot"
-            )
-            SELECT * FROM bank_accounts_temp
-            UNION
-            SELECT
-                ba."number", (null)::BIGINT as "new_version", ba."version" as "version", cs."version" as "snapshot"
-            FROM
-                bank_accounts ba, cohort_snapshot cs
-            WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)`
+        let attempts = 3;
+        while (true) {
+            attempts--;
 
-            cnn = await this.database.connect()
-            const result = await cnn.query({ name: "ooinstall", text: sql, values: [tx.from, tx.to, tx.amount, request.newVersion, request.safepoint] })
+            let cnn: PoolClient
+            try {
+                // Params order:
+                //  1 - from, 2 - to, 3 - amount
+                //  4 - new_ver, 5 - safepoint
+                // let sql = `
+                // SELECT
+                //     ba."number", (null)::BIGINT as "new_version", ba."version" as "version", cs."version" as "snapshot"
+                // FROM
+                //     bank_accounts ba, cohort_snapshot cs
+                // WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)`
+                let sql = `
+                WITH bank_accounts_temp AS (
+                    UPDATE bank_accounts ba SET
+                        "amount" =
+                            (CASE
+                                WHEN ba."number" = ($1)::TEXT THEN ba."amount" + ($3)::DECIMAL
+                                WHEN ba."number" = ($2)::TEXT THEN ba."amount" - ($3)::DECIMAL
+                            END),
+                        "version" = ($4)::BIGINT
+                    WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)
+                        AND EXISTS (SELECT 1 FROM cohort_snapshot cs WHERE cs."version" >= ($5)::BIGINT)
+                        AND ba."version" < ($4)::BIGINT
+                    RETURNING
+                        ba."number", ba."version" as "new_version", (null)::BIGINT as "version", (SELECT cs."version" FROM cohort_snapshot cs) as "snapshot"
+                )
+                SELECT * FROM bank_accounts_temp
+                UNION
+                SELECT
+                    ba."number", (null)::BIGINT as "new_version", ba."version" as "version", cs."version" as "snapshot"
+                FROM
+                    bank_accounts ba, cohort_snapshot cs
+                WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)`
 
-            if (result.rowCount === 0) {
-                // installed already
-                return 1
+                cnn = await this.database.connect()
+                const result = await cnn.query({ text: sql, values: [tx.from, tx.to, tx.amount, request.newVersion, request.safepoint] })
+                // const result = await cnn.query({ text: sql, values: [tx.from, tx.to] })
+
+                if (result.rowCount === 0) {
+                    // installed already
+                    logger.info("Installed already.... %d ", request.newVersion)
+                    return 1
+                }
+
+                // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
+                const snapshot = result.rows[0].snapshot
+                if (snapshot < request.safepoint) {
+                    // safepoint condition
+                    return 2
+                }
+
+                // installed
+                return 0
+
+            } catch (e) {
+                logger.error("BankingApp.installOutOfOrder(): %s", e)
+
+                if (attempts == 0) {
+                    break;
+                }
+
+                await this.delay(200);
+
+            } finally {
+                cnn?.release()
             }
-
-            // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
-            const snapshot = result.rows[0].snapshot
-            if (snapshot < request.safepoint) {
-                // safepoint condition
-                return 2
-            }
-
-            // installed
-            return 0
-
-        } catch (e) {
-            logger.error("BankingApp.installOutOfOrder(): %s", e)
-        } finally {
-            cnn?.release()
         }
     }
 }
