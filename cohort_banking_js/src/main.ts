@@ -38,20 +38,11 @@ new Promise(async (resolve) => {
         printMetrics(appRef.spans)
     }
 
+
     const app = new BankingApp(COUNT, database, queue, fnFinish)
     await app.init()
-    let transferChunks = await app.generate_payload(COUNT, RATE)
 
+    const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })
 
-    let arr = await Promise.all(transferChunks.map(r => app.process_payload(r)))
-
-    logger.info("App: ---------------------")
-    logger.info(
-        "\nProcessing finished.\nThroughput: %d (tps)\n     Count: %d\n     Items installed by replicator: %d\n",
-        app.getThroughput(Date.now()).toFixed(2),
-        app.handledCount,
-        app.installedByReplicator
-    )
-    await app.close();
-    // const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })
+    await app.process_transfers()
 })

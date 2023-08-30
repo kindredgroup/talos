@@ -25,6 +25,7 @@ export class BankingApp {
     private initiator: Initiator
 
     spans: Array<any> = []
+    transfers: Array<TransferRequest> = []
 
 
     constructor(
@@ -33,7 +34,7 @@ export class BankingApp {
         private queue: BroadcastChannel,
         private onFinishListener: (appRef: BankingApp) => any) { }
 
-    async delay(time) {
+    async delay(time: number) {
         return new Promise(resolve => setTimeout(resolve, time));
     }
 
@@ -44,7 +45,7 @@ export class BankingApp {
 
         for (let i = 1.0; i <= count; i++) {
 
-            const request = new TransferRequest(fnFormatAccountNr(first_number++), fnFormatAccountNr(first_number++), 1.0);
+            const request = new TransferRequest(fnFormatAccountNr(first_number++), fnFormatAccountNr(first_number++), 1.0,);
             transfers.push(request);
 
             if (i % (count * 10 / 100) === 0) {
@@ -65,12 +66,9 @@ export class BankingApp {
         const elapsed = (Date.now() - startedAt) / 1000.0
         logger.info("\nGenerator finished.\n Generated: %d\nThroughput: %d\n   Elapsed: %d (sec)\n", count, (count / elapsed).toFixed(2), elapsed.toFixed(2))
 
-        const chunkSize = count / 1_000;
-
+        const chunkSize = count / 2_000;
 
         return _.chunk(transfers, chunkSize);
-
-
     }
 
     async process_payload(bucket: Array<TransferRequest>) {
@@ -82,7 +80,7 @@ export class BankingApp {
         let loop_till = bucket.length;
 
         for (let i = 1; i <= loop_till; i++) {
-            this.handledCount++;
+            // this.handledCount++;
             try {
                 // await this.delay(100)
                 const request = rev_bucket.pop();
@@ -100,30 +98,50 @@ export class BankingApp {
                 logger.error("Failed to process tx: %s", e)
             }
             if (i % 10 == 0) {
-                logger.info("Pausing after i=%d", i);
                 await this.delay(50)
             }
         }
     }
 
-    async init() {
-        // let limit = 0;
-        // this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
-        //     // if (limit == 50) {
-        //     //     await this.delay(200);
-        //     // } else {
-        //     //     limit++;
-        //     // }
+    async process_transfers() {
+        while (true) {
+            if (this.transfers.length > 0) {
 
-        //     try {
-        //         await this.delay(100)
-        //         const spans = await this.processQueueItem(event)
-        //         this.spans.push(spans)
-        //     } catch (e) {
-        //         logger.error("Failed to process tx: %s", e)
-        //     }
-        //     limit--;
-        // }
+                const chunkSize = this.transfers.length / 1_000;
+
+                let transferChunks = _.chunk(this.transfers, chunkSize);
+
+                this.handledCount += this.transfers.length;
+                this.transfers = [];
+
+                await Promise.all(transferChunks.map((r: TransferRequest[]) => this.process_payload(r)))
+
+            }
+
+            if (this.handledCount >= this.expectedTxCount) {
+                logger.info("App: ---------------------")
+                logger.info(
+                    "\nProcessing finished.\nThroughput: %d (tps)\n     Count: %d\n",
+                    this.getThroughput(Date.now()).toFixed(2),
+                    this.handledCount,
+                )
+                await this.close()
+            }
+
+            logger.info("Current count of items processed... %d", this.handledCount);
+
+            await this.delay(200)
+
+        }
+
+    }
+
+
+    async init() {
+        this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
+
+            this.transfers.push(event.data.request)
+        }
         this.initiator = await Initiator.init(sdkConfig)
     }
 
@@ -164,7 +182,7 @@ export class BankingApp {
             await this.close()
         }
 
-        return spans
+        return this.handledCount
     }
 
     async handleTransaction(tx: TransferRequest): Promise<any> {
