@@ -144,9 +144,7 @@ where
     pub fn get_safe_prune_index(&mut self) -> Option<usize> {
         // If `prune_start_threshold=None` don't prune.
         let Some(prune_threshold) = self.meta.prune_start_threshold else {
-            debug!(
-                "[SUFFIX PRUNE CHECK] As suffix.meta.prune_start_threshold is None, pruning is disabled."
-            );
+            debug!("[SUFFIX PRUNE CHECK] As suffix.meta.prune_start_threshold is None, pruning is disabled.");
             return None;
         };
 
@@ -194,13 +192,14 @@ where
             return Ok(());
         }
 
-        let Some(sfx_item) = self
-        .get(version)?
-        else {
-                info!("Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}", self.index_from_head(version));
-                // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
-                return Ok(());
-            };
+        let Some(sfx_item) = self.get(version)? else {
+            info!(
+                "Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}",
+                self.index_from_head(version)
+            );
+            // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
+            return Ok(());
+        };
 
         let new_sfx_item = SuffixItem {
             decision_ver: Some(decision_ver),

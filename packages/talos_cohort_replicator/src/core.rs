@@ -124,16 +124,15 @@ where
         }
     }
 
-    pub(crate) fn generate_statemap_batch(&mut self) -> (Vec<u64>, Vec<(u64, Vec<StatemapItem>)>) {
+    pub(crate) fn generate_statemap_batch(&mut self) -> (u32, Vec<(u64, Vec<StatemapItem>)>) {
         // get batch of items from suffix to install.
         let items_option = self.suffix.get_message_batch_from_version(self.last_installing, None);
 
         let mut statemaps_batch = vec![];
-
-        let mut current_batch_versions: Vec<u64> = vec![];
-
+        let mut total_items_in_batch = 0;
         if let Some(items) = items_option {
-            current_batch_versions = items.iter().map(|i| i.item_ver).collect();
+            total_items_in_batch = items.len() as u32;
+
             let filtered_message_batch = get_filtered_batch(items.iter().copied());
             // generate the statemap from each item in batch.
             statemaps_batch = get_statemap_from_suffix_items(filtered_message_batch);
@@ -142,7 +141,7 @@ where
                 self.last_installing = last_item.item_ver;
             }
         }
-        (current_batch_versions, statemaps_batch)
+        (total_items_in_batch, statemaps_batch)
     }
 
     pub(crate) async fn commit_till_last_installed(&mut self) {
