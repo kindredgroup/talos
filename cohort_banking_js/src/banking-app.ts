@@ -72,9 +72,7 @@ export class BankingApp {
     }
 
     async process_payload(bucket: Array<TransferRequest>) {
-        if (this.startedAtMs === 0) {
-            this.startedAtMs = Date.now()
-        }
+
 
         let rev_bucket = _.reverse(bucket);
         let loop_till = bucket.length;
@@ -104,12 +102,20 @@ export class BankingApp {
     }
 
     async process_transfers() {
+        let count = 0;
         while (true) {
             if (this.transfers.length > 0) {
-
+                if (this.startedAtMs === 0) {
+                    this.startedAtMs = Date.now()
+                }
                 const chunkSize = this.transfers.length / 1_000;
 
                 let transferChunks = _.chunk(this.transfers, chunkSize);
+
+                if (transferChunks.length === 0) {
+                    transferChunks = [this.transfers];
+                }
+                logger.info("Transfers length = %d and Chunks created = %d", this.transfers.length, transferChunks.length);
 
                 this.handledCount += this.transfers.length;
                 this.transfers = [];
@@ -125,12 +131,17 @@ export class BankingApp {
                     this.getThroughput(Date.now()).toFixed(2),
                     this.handledCount,
                 )
-                await this.close()
+                return await this.close()
+            }
+
+            count++;
+            if (count % 100 == 0) {
+                this.getThroughput(Date.now())
             }
 
             logger.info("Current count of items processed... %d", this.handledCount);
 
-            await this.delay(200)
+            await this.delay(100)
 
         }
 
@@ -215,7 +226,15 @@ export class BankingApp {
     }
 
     getThroughput(nowMs: number): number {
-        return this.handledCount / ((nowMs - this.startedAtMs) / 1_000.0)
+        const tps = this.handledCount / ((nowMs - this.startedAtMs) / 1_000.0)
+        logger.info(
+            "getThroughput(): handledCount=%d, nowMs=%d, startedAtMs=%d, tps=%d",
+
+            this.handledCount, nowMs, this.startedAtMs, tps
+        )
+
+        return tps
+
     }
 
     private createNewCertRequest(tx: TransferRequest): JsCertificationRequest {

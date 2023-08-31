@@ -35,7 +35,7 @@ new Promise(async (resolve) => {
         database.end()
 
         logger.info("Collected metrics: %d", appRef.spans.length)
-        printMetrics(appRef.spans)
+        // printMetrics(appRef.spans)
     }
 
 
