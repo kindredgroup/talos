@@ -74,7 +74,7 @@ export function createGeneratorService(settings: any): Worker {
 
 if (!isMainThread) {
     const { count, channelName, rate } = workerData.settings
-    const generator = new LoadGenerator(500_000, 100)
+    const generator = new LoadGenerator(100_000, 100)
     logger.info("Load generator will generate: %d transactions at the reate of %d TPS", count, rate.toFixed(2))
 
     new Promise(async () => {
