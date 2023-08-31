@@ -25,7 +25,7 @@ export class BankingApp {
 
     async init() {
         this.initiator = await Initiator.init(sdkConfig)
-        this.queue.onmessage = async (event: MessageEvent<TransferRequestMessage>) => {
+        this.queue.onmessage = (event: MessageEvent<TransferRequestMessage>) => {
             this.pond.submit(async () => {
                 try {
                     const spans = await this.processQueueItem(event)
@@ -39,7 +39,7 @@ export class BankingApp {
 
     async close() {
         this.queue.close()
-        this.pond.shutdown()
+        await this.pond.drain()
         this.onFinishListener(this)
     }
 

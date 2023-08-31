@@ -12,7 +12,7 @@ logger.info("App: ---------------------")
 
 const CHANNEL_NAME = "banking-transactions"
 const COUNT = 200_000
-const RATE = 4000
+const RATE = 5000
 
 const printMetrics = (spans: Array<any>) => {
     for (let span of spans) {
@@ -36,7 +36,7 @@ new Promise(async (resolve) => {
         database.end()
 
         logger.info("Collected metrics: %d", appRef.spans.length)
-        printMetrics(appRef.spans)
+        //printMetrics(appRef.spans)
     }
 
     const app = new BankingApp(

@@ -5,7 +5,8 @@
   "type": "commonjs",
   "main": "dist/main.js",
   "scripts": {
-    "start": "rm -rf dist && npx tsc && node --max_semi_space_size=128 --max-old-space-size=2048 dist/main.js"
+    "start": "rm -rf dist && npx tsc && node --max_semi_space_size=128 --max-old-space-size=2048 dist/main.js",
+    "start-dashboard": "rm -rf dist && npx tsc && nodejs-dashboard -- node  --max_semi_space_size=128 --max-old-space-size=2048 -r nodejs-dashboard dist/main.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +18,7 @@
   "dependencies": {
     "@types/pg": "^8.10.2",
     "cohort_sdk_js": "file:../packages/cohort_sdk_js",
+    "nodejs-dashboard": "^0.5.1",
     "pg": "^8.11.3",
     "ts-node": "^10.9.1",
     "winston": "^3.10.0"
