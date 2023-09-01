@@ -31,7 +31,6 @@ where
     let mut interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
 
     let mut total_items_send = 0;
-    let mut total_items_processed = 0;
     let mut total_items_installed = 0;
     let mut time_first_item_created_start_ns: i128 = 0; //
     let mut time_last_item_send_end_ns: i128 = 0;
@@ -54,14 +53,13 @@ where
                     ChannelMessage::Decision(decision_version, decision_message) => {
                         replicator.process_decision_message(decision_version, decision_message).await;
 
-                        if total_items_processed == 0 {
+                        if total_items_send == 0 {
                             time_first_item_created_start_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
                         }
                         // Get a batch of remaining versions with their statemaps to install.
-                        let (batch_count, statemaps_batch) = replicator.generate_statemap_batch();
+                        let statemaps_batch = replicator.generate_statemap_batch();
 
                         total_items_send += statemaps_batch.len();
-                        total_items_processed += batch_count;
 
                         // Send statemaps batch to
                         for (ver, statemap_vec) in statemaps_batch {
@@ -79,7 +77,6 @@ where
             if config.enable_stats {
                 let duration_sec = Duration::from_nanos((time_last_item_send_end_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
                 let tps_send = total_items_send as f32 / duration_sec;
-                let tps_processed = total_items_processed as f32 / duration_sec;
 
 
                 let duration_installed_sec = Duration::from_nanos((time_last_item_installed_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
@@ -88,7 +85,6 @@ where
 
                 error!("
                 Replicator Stats:
-                      processed             : tps={tps_processed:.3}    | count={total_items_processed}
                       send for install      : tps={tps_send:.3}    | count={total_items_send}
                       installed             : tps={tps_install:.3}    | count={total_items_installed}
                     \n ");
