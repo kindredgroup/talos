@@ -18,7 +18,7 @@ pub enum CertificationCandidateCallbackResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct OOOInstallerPayload {
+pub struct OutOfOrderInstallRequest {
     pub xid: String,
     pub version: u64,
     pub safepoint: u64,

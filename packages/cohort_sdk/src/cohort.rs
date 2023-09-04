@@ -26,8 +26,8 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use crate::{
     delay_controller::DelayController,
     model::{
-        self, internal::CertificationAttemptOutcome, CertificationCandidateCallbackResponse, CertificationResponse, ClientError, Config, OOOInstallerPayload,
-        OutOfOrderInstallOutcome, ResponseMetadata,
+        self, internal::CertificationAttemptOutcome, CertificationCandidateCallbackResponse, CertificationResponse, ClientError, Config,
+        OutOfOrderInstallOutcome, OutOfOrderInstallRequest, ResponseMetadata,
     },
 };
 
@@ -194,7 +194,7 @@ impl Cohort {
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
-        IF: Fn(OOOInstallerPayload) -> IFut,
+        IF: Fn(OutOfOrderInstallRequest) -> IFut,
         IFut: Future<Output = Result<OutOfOrderInstallOutcome, String>>,
     {
         let span_1 = Instant::now();
@@ -208,11 +208,11 @@ impl Cohort {
             h_talos.record(span_1_val * 100.0, &[]);
         });
 
-        if response.decision == Decision::Aborted || response.statemaps.is_none() {
+        if response.safepoint.is_none() || response.statemaps.is_none() {
             return Ok(response);
         }
 
-        let oooinstall_payload = OOOInstallerPayload {
+        let oooinstall_payload = OutOfOrderInstallRequest {
             xid: response.xid.clone(),
             version: response.version,
             safepoint: response.safepoint.unwrap(),
@@ -226,9 +226,9 @@ impl Cohort {
     }
 
     /// Installs the statemap for candidate messages with committed decisions received from talos.
-    pub async fn install_statemaps_oo<IF, IFut>(&self, install_payload: OOOInstallerPayload, installer_callback: &IF) -> Result<(), ClientError>
+    pub async fn install_statemaps_oo<IF, IFut>(&self, install_payload: OutOfOrderInstallRequest, installer_callback: &IF) -> Result<(), ClientError>
     where
-        IF: Fn(OOOInstallerPayload) -> IFut,
+        IF: Fn(OutOfOrderInstallRequest) -> IFut,
         IFut: Future<Output = Result<OutOfOrderInstallOutcome, String>>,
     {
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
@@ -362,7 +362,7 @@ impl Cohort {
                     agent_errors += 1;
                 }
 
-                CertificationAttemptOutcome::ClientAborted { reason } => {
+                CertificationAttemptOutcome::Cancelled { reason } => {
                     break Err(ClientError {
                         kind: model::ClientErrorKind::Cancelled,
                         reason,
@@ -383,9 +383,24 @@ impl Cohort {
                 }
             }
 
+            let rslt_response = result.unwrap();
             attempts += 1;
             if attempts >= self.config.retry_attempts_max {
-                break result.unwrap();
+                break rslt_response;
+            }
+
+            match rslt_response {
+                Ok(response) => {
+                    log::debug!(
+                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
+                        response.statemaps,
+                        response.decision,
+                        attempts
+                    );
+                }
+                Err(error) => {
+                    log::debug!("Unsuccessful transaction with error: {:?}. This might retry. Attempts: {}", error, attempts);
+                }
             }
 
             delay_controller.sleep().await;
@@ -424,7 +439,7 @@ impl Cohort {
                 }
             }
             Ok(CertificationCandidateCallbackResponse::Cancelled(reason)) => {
-                return CertificationAttemptOutcome::ClientAborted { reason };
+                return CertificationAttemptOutcome::Cancelled { reason };
             }
             Ok(CertificationCandidateCallbackResponse::Proceed(request)) => request,
         };

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use cohort_sdk::{
     cohort::Cohort,
-    model::{ClientErrorKind, Config, OOOInstallerPayload},
+    model::{ClientErrorKind, Config, OutOfOrderInstallRequest},
 };
 
 use opentelemetry_api::{
@@ -91,7 +91,7 @@ impl Handler<TransferRequest> for BankingApp {
             single_query_strategy,
         };
 
-        let oo_installer_callback = |payload: OOOInstallerPayload| oo_inst.install(payload);
+        let oo_installer_callback = |payload: OutOfOrderInstallRequest| oo_inst.install(payload);
 
         match self
             .cohort_api

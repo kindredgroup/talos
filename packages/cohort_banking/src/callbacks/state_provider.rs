@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cohort_sdk::model::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
 use rust_decimal::Decimal;
-use tokio_postgres::{types::ToSql, Row};
+use tokio_postgres::Row;
 
 use crate::{
     model::{bank_account::BankAccount, requests::CertificationRequest},
@@ -48,19 +48,19 @@ pub struct StateProviderImpl {
 }
 
 impl StateProviderImpl {
-    async fn get_state_using_two_queries(&self, accounts: &[&(dyn ToSql + Sync)]) -> Result<CapturedState, String> {
+    async fn get_state_using_two_queries(&self, from_account: &str, to_account: &str) -> Result<CapturedState, String> {
         let list = self
             .database
             .query_many(
                 r#"SELECT ba.* FROM bank_accounts ba WHERE ba."number" = $1 OR ba."number" = $2"#,
-                accounts,
+                &[&from_account, &to_account],
                 |row| BankAccount::try_from(row),
             )
             .await
             .map_err(|e| e.to_string())?;
 
         if list.len() != 2 {
-            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", accounts[0], accounts[1]));
+            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", from_account, to_account));
         }
 
         let snapshot_version = self
@@ -90,7 +90,7 @@ impl StateProviderImpl {
         })
     }
 
-    async fn get_state_using_one_query(&self, accounts: &[&(dyn ToSql + Sync)]) -> Result<CapturedState, String> {
+    async fn get_state_using_one_query(&self, from_account: &str, to_account: &str) -> Result<CapturedState, String> {
         let list = self
             .database
             .query_many(
@@ -105,7 +105,7 @@ impl StateProviderImpl {
                     bank_accounts ba, cohort_snapshot cs
                 WHERE
                     ba."number" = $1 OR ba."number" = $2"#,
-                accounts,
+                &[&from_account, &to_account],
                 // convert RAW output into tuple (bank account, snap ver)
                 |row| {
                     let account = BankAccount::try_from(row)?;
@@ -119,7 +119,7 @@ impl StateProviderImpl {
             .map_err(|e| e.to_string())?;
 
         if list.len() != 2 {
-            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", accounts[0], accounts[1]));
+            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", from_account, to_account));
         }
 
         Ok(CapturedState {
@@ -140,13 +140,16 @@ impl StateProviderImpl {
         // If user cancellation is needed, add additional logic in this fn to return `Cancelled` instead of `Proceed` in the result.
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        let mut accounts: Vec<&(dyn ToSql + Sync)> = vec![];
-        request.candidate.readset.iter().for_each(|x| accounts.push(x));
+        // The order of the accounts doesn't really matter in this example as we just use these accounts to get their respective versions.
+        // Safe assumption made here that we have 2 items in the writeset here. As our example is to transfer between 2 accounts.
+        // The other alternative is to deserialize from statemap Value, which could be expensive comparitively, also we may not have statemap.
+        let first_account = &request.candidate.writeset[0];
+        let second_account = &request.candidate.writeset[1];
 
         let state = if self.single_query_strategy {
-            self.get_state_using_one_query(&accounts).await
+            self.get_state_using_one_query(first_account, second_account).await
         } else {
-            self.get_state_using_two_queries(&accounts).await
+            self.get_state_using_two_queries(first_account, second_account).await
         }?;
 
         let candidate = CertificationCandidate {
