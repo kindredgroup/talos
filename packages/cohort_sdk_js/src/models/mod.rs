@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 // $coverage:ignore-start
 use cohort_sdk::model::{BackoffConfig, Config};
 use napi_derive::napi;
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 #[napi(object)]
 pub struct JsBackoffConfig {
@@ -13,6 +16,43 @@ impl From<JsBackoffConfig> for BackoffConfig {
         BackoffConfig {
             min_ms: val.min_ms,
             max_ms: val.max_ms,
+        }
+    }
+}
+
+#[napi(object)]
+pub struct JsKafkaConfig {
+    pub brokers: Vec<String>,
+    pub topic: String,
+    pub client_id: String,
+    // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
+    pub group_id: String,
+    pub username: String,
+    pub password: String,
+    // The maximum time librdkafka may use to deliver a message (including retries)
+    pub producer_config_overrides: HashMap<String, String>,
+    pub consumer_config_overrides: HashMap<String, String>,
+    // consumer_config_overrides: HashMap::new(),
+    pub producer_send_timeout_ms: Option<u32>,
+    pub log_level: Option<String>,
+}
+
+impl From<JsKafkaConfig> for KafkaConfig {
+    fn from(val: JsKafkaConfig) -> Self {
+        KafkaConfig {
+            brokers: val.brokers,
+            topic: val.topic,
+            client_id: val.client_id,
+            // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
+            group_id: val.group_id,
+            username: val.username,
+            password: val.password,
+            // The maximum time librdkafka may use to deliver a message (including retries)
+            producer_config_overrides: val.producer_config_overrides,
+            consumer_config_overrides: val.consumer_config_overrides,
+            // consumer_config_overrides: HashMap::new(),
+            producer_send_timeout_ms: val.producer_send_timeout_ms,
+            log_level: val.log_level,
         }
     }
 }
@@ -41,37 +81,7 @@ pub struct JsConfig {
     pub buffer_size: u32,
     pub timeout_ms: u32,
 
-    //
-    // Common to kafka configs values
-    //
-    pub brokers: String,
-    pub topic: String,
-    pub sasl_mechanisms: Option<String>,
-    pub kafka_username: Option<String>,
-    pub kafka_password: Option<String>,
-
-    //
-    // Kafka configs for Agent
-    //
-    // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-    pub agent_group_id: String,
-    pub agent_fetch_wait_max_ms: u32,
-    // The maximum time librdkafka may use to deliver a message (including retries)
-    pub agent_message_timeout_ms: u32,
-    // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    pub agent_enqueue_timeout_ms: u32,
-    // should be mapped to rdkafka::config::RDKafkaLogLevel
-    pub agent_log_level: u32,
-
-    //
-    // Database config
-    //
-    pub db_pool_size: u32,
-    pub db_user: String,
-    pub db_password: String,
-    pub db_host: String,
-    pub db_port: String,
-    pub db_database: String,
+    pub kafka: JsKafkaConfig,
 }
 
 impl From<JsConfig> for Config {
@@ -96,37 +106,7 @@ impl From<JsConfig> for Config {
             buffer_size: val.buffer_size,
             timeout_ms: val.timeout_ms,
 
-            //
-            // Common to kafka configs values
-            //
-            brokers: val.brokers,
-            topic: val.topic,
-            sasl_mechanisms: val.sasl_mechanisms,
-            kafka_username: val.kafka_username,
-            kafka_password: val.kafka_password,
-
-            //
-            // Kafka configs for Agent
-            //
-            // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-            agent_group_id: val.agent_group_id,
-            agent_fetch_wait_max_ms: val.agent_fetch_wait_max_ms,
-            // The maximum time librdkafka may use to deliver a message (including retries)
-            agent_message_timeout_ms: val.agent_message_timeout_ms,
-            // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-            agent_enqueue_timeout_ms: val.agent_enqueue_timeout_ms,
-            // should be mapped to rdkafka::config::RDKafkaLogLevel
-            agent_log_level: val.agent_log_level,
-
-            //
-            // Database config
-            //
-            db_pool_size: val.db_pool_size,
-            db_user: val.db_user,
-            db_password: val.db_password,
-            db_host: val.db_host,
-            db_port: val.db_port,
-            db_database: val.db_database,
+            kafka: val.kafka.into(),
         }
     }
 }

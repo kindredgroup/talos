@@ -7,6 +7,18 @@ export interface JsBackoffConfig {
   minMs: number
   maxMs: number
 }
+export interface JsKafkaConfig {
+  brokers: Array<string>
+  topic: string
+  clientId: string
+  groupId: string
+  username: string
+  password: string
+  producerConfigOverrides: Record<string, string>
+  consumerConfigOverrides: Record<string, string>
+  producerSendTimeoutMs?: number
+  logLevel?: string
+}
 export interface JsConfig {
   backoffOnConflict: JsBackoffConfig
   retryBackoff: JsBackoffConfig
@@ -18,22 +30,7 @@ export interface JsConfig {
   cohort: string
   bufferSize: number
   timeoutMs: number
-  brokers: string
-  topic: string
-  saslMechanisms?: string
-  kafkaUsername?: string
-  kafkaPassword?: string
-  agentGroupId: string
-  agentFetchWaitMaxMs: number
-  agentMessageTimeoutMs: number
-  agentEnqueueTimeoutMs: number
-  agentLogLevel: number
-  dbPoolSize: number
-  dbUser: string
-  dbPassword: string
-  dbHost: string
-  dbPort: string
-  dbDatabase: string
+  kafka: JsKafkaConfig
 }
 export interface JsCertificationRequest {
   candidate: JsCandidateData

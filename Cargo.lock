@@ -563,6 +563,7 @@ dependencies = [
  "napi-derive",
  "serde",
  "serde_json",
+ "talos_rdkafka_utils",
  "thiserror",
  "uuid",
 ]

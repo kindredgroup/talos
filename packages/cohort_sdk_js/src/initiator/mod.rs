@@ -187,6 +187,7 @@ impl From<CapturedStateJs> for CapturedState {
                     version: js.version as u64,
                 })
                 .collect(),
+            abort_reason: None,
         }
     }
 }

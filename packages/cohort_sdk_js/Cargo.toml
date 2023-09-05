@@ -31,7 +31,8 @@ log = { version = "0.4", features = [
 # db migrations
 #refinery = {version="0.8", features=["tokio-postgres"]}
 # crate depencies
-cohort_sdk = { path = "../cohort_sdk" }
+cohort_sdk =            { path = "../cohort_sdk" }
+talos_rdkafka_utils =   { path = "../../packages/talos_rdkafka_utils" }
 async-trait = "0.1.72"
 
 [build-dependencies]
