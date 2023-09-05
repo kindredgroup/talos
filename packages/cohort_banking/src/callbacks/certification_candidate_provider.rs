@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cohort_sdk::model::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
+use cohort_sdk::model::callback::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
 use rust_decimal::Decimal;
 use tokio_postgres::Row;
 
@@ -42,12 +42,12 @@ impl TryFrom<&Row> for BankAccount {
     }
 }
 
-pub struct StateProviderImpl {
+pub struct CertificationCandidateProviderImpl {
     pub database: Arc<Database>,
     pub single_query_strategy: bool,
 }
 
-impl StateProviderImpl {
+impl CertificationCandidateProviderImpl {
     async fn get_state_using_two_queries(&self, from_account: &str, to_account: &str) -> Result<CapturedState, String> {
         let list = self
             .database

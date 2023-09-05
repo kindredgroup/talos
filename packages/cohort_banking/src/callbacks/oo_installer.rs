@@ -1,6 +1,7 @@
 use std::{collections::HashSet, sync::Arc};
 
-use cohort_sdk::model::{OutOfOrderInstallOutcome, OutOfOrderInstallRequest};
+use async_trait::async_trait;
+use cohort_sdk::model::callback::{OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller};
 use opentelemetry_api::metrics::Counter;
 use tokio_postgres::types::ToSql;
 
@@ -167,7 +168,7 @@ impl OutOfOrderInstallerImpl {
 
         Ok(OutOfOrderInstallOutcome::Installed)
     }
-    pub async fn install(&self, install_item: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
+    pub async fn install_statemap(&self, install_item: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
         // TODO: GK -
         // For our testing the statemap size is 1,so the below approach is fine. But if we have to install multiple statemaps, then we would ideally
         // use a transaction and either install all or none, depending on error and handle the return accordingly.
@@ -184,5 +185,12 @@ impl OutOfOrderInstallerImpl {
         }
 
         Ok(OutOfOrderInstallOutcome::Installed)
+    }
+}
+
+#[async_trait]
+impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
+    async fn install(&self, install_item: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
+        self.install_statemap(install_item).await
     }
 }
