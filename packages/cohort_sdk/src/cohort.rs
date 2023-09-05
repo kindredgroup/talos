@@ -12,7 +12,7 @@ use talos_agent::{
         core::{AgentServices, TalosAgentImpl},
         model::{CancelRequestChannelMessage, CertifyRequestChannelMessage},
     },
-    api::{AgentConfig, CandidateData, CertificationRequest, KafkaConfig, TalosAgent},
+    api::{AgentConfig, CandidateData, CertificationRequest, TalosAgent, TalosType},
     messaging::{
         api::{Decision, DecisionMessage},
         kafka::KafkaInitializer,
@@ -20,6 +20,7 @@ use talos_agent::{
     metrics::{client::MetricsClient, model::Signal},
     mpsc::core::{ReceiverWrapper, SenderWrapper},
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 use crate::{
     delay_controller::DelayController,
@@ -62,7 +63,7 @@ impl Cohort {
         // Returns error descrition. If string is empty it means there was no error installing
     ) -> Result<Self, ClientError> {
         let agent_config: AgentConfig = config.clone().into();
-        let kafka_config: KafkaConfig = config.clone().into();
+        let kafka_config: KafkaConfig = config.kafka.clone();
 
         //
         // Create instance of Agent
@@ -93,7 +94,7 @@ impl Cohort {
             },
         );
 
-        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config)
+        let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config, TalosType::External)
             .await
             .map_err(|me| ClientError {
                 kind: model::ClientErrorKind::Messaging,
@@ -273,6 +274,14 @@ impl Cohort {
 
             attempts += 1;
             let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict).await {
+                CertificationAttemptOutcome::ClientAborted { reason } => {
+                    result = Some(Err(ClientError {
+                        kind: model::ClientErrorKind::ClientAborted,
+                        reason,
+                        cause: None,
+                    }));
+                    false
+                }
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -380,6 +389,10 @@ impl Cohort {
             Ok(local_state) => local_state,
         };
 
+        if let Some(reason) = local_state.abort_reason {
+            return CertificationAttemptOutcome::ClientAborted { reason };
+        }
+
         log::debug!("loaded state: {}, {:?}", local_state.snapshot_version, local_state.items);
 
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(local_state.snapshot_version, local_state.items.iter().map(|i| i.version).collect());
@@ -437,7 +450,9 @@ impl Cohort {
                     match result_local_state {
                         Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
                         Ok(current_state) => {
-                            if current_state.snapshot_version < conflict {
+                            if current_state.abort_reason.is_some() {
+                                break Ok(current_state);
+                            } else if current_state.snapshot_version < conflict {
                                 // not safe yet
                                 let waited = poll_started_at.elapsed();
                                 if waited >= timeout {

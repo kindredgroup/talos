@@ -12,7 +12,7 @@ metrics =                  { path = "../../packages/metrics" }
 talos_agent =              { path = "../../packages/talos_agent" }
 talos_certifier =          { path = "../../packages/talos_certifier" }
 talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
-talos_suffix =             { path = "../../packages/talos_suffix" }
+talos_rdkafka_utils =      { path = "../../packages/talos_rdkafka_utils" }
 
 async-trait = { workspace = true }
 env_logger =  { workspace = true }

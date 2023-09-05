@@ -7,10 +7,9 @@ use talos_certifier::{
     errors::SystemServiceError,
     ports::{common::SharedPortTraits, errors::MessagePublishError, MessagePublisher},
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 use crate::kafka::utils::build_kafka_headers;
-
-use super::config::KafkaConfig;
 
 // Kafka Producer
 // #[derive(Clone)]

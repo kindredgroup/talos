@@ -2,7 +2,6 @@ use crate::agent::errors::AgentError;
 use crate::messaging::api::{ConflictMessage, Decision};
 use crate::metrics::model::MetricsReport;
 use async_trait::async_trait;
-use rdkafka::config::RDKafkaLogLevel;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -58,40 +57,6 @@ pub enum TalosType {
     InProcessMock, // kafka listener and decision publisher is out internal function
 }
 
-/// Kafka-related configuration
-#[derive(Clone, Debug)]
-pub struct KafkaConfig {
-    pub brokers: String,
-    // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-    pub group_id: String,
-    pub certification_topic: String,
-    pub fetch_wait_max_ms: u32,
-    // The maximum time librdkafka may use to deliver a message (including retries)
-    pub message_timeout_ms: u32,
-    // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-    pub enqueue_timeout_ms: u32,
-    pub log_level: RDKafkaLogLevel,
-    pub talos_type: TalosType,
-    // defaults to SCRAM-SHA-512
-    pub sasl_mechanisms: Option<String>,
-    pub username: Option<String>,
-    pub password: Option<String>,
-}
-
-impl KafkaConfig {
-    pub fn map_log_level(level: u32) -> RDKafkaLogLevel {
-        match level {
-            0 => RDKafkaLogLevel::Emerg,
-            1 => RDKafkaLogLevel::Alert,
-            2 => RDKafkaLogLevel::Critical,
-            3 => RDKafkaLogLevel::Error,
-            4 => RDKafkaLogLevel::Warning,
-            5 => RDKafkaLogLevel::Notice,
-            6 => RDKafkaLogLevel::Info,
-            _ => RDKafkaLogLevel::Debug,
-        }
-    }
-}
 /// The agent interface exposed to the client
 #[async_trait]
 pub trait TalosAgent {

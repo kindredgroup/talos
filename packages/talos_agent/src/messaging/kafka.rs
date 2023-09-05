@@ -1,4 +1,4 @@
-use crate::api::{KafkaConfig, TalosType};
+use crate::api::TalosType;
 use crate::messaging::api::{
     CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
     HEADER_MESSAGE_TYPE,
@@ -11,12 +11,13 @@ use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::{ClientConfig, ClientContext, Message, Offset, TopicPartitionList};
+use rdkafka::{ClientContext, Message, Offset, TopicPartitionList};
 use std::collections::HashMap;
 use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str, thread};
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 
 use super::api::TxProcessingTimeline;
@@ -47,22 +48,8 @@ impl KafkaPublisher {
         Ok(Self {
             agent,
             config: config.clone(),
-            producer: Self::create_producer(config)?,
+            producer: config.build_producer_config().create()?,
         })
-    }
-
-    fn create_producer(kafka: &KafkaConfig) -> Result<FutureProducer, KafkaError> {
-        let mut cfg = ClientConfig::new();
-        cfg.set("bootstrap.servers", &kafka.brokers)
-            .set("message.timeout.ms", &kafka.message_timeout_ms.to_string())
-            .set("queue.buffering.max.messages", "1000000")
-            .set("topic.metadata.refresh.interval.ms", "5")
-            .set("socket.keepalive.enable", "true")
-            .set("acks", "0")
-            .set_log_level(kafka.log_level);
-
-        setup_kafka_auth(&mut cfg, kafka);
-        cfg.create()
     }
 
     pub fn make_record<'a>(agent: String, topic: &'a str, key: &'a str, message: &'a str) -> FutureRecord<'a, str, str> {
@@ -88,13 +75,13 @@ impl Publisher for KafkaPublisher {
     async fn send_message(&self, key: String, mut message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
         debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
 
-        let topic = self.config.certification_topic.clone();
+        let topic = self.config.topic.clone();
         message.published_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let payload = serde_json::to_string(&message).unwrap();
 
-        let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.certification_topic, key.as_str(), payload.as_str());
+        let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.topic, key.as_str(), payload.as_str());
 
-        let timeout = Timeout::After(Duration::from_millis(self.config.enqueue_timeout_ms as u64));
+        let timeout = Timeout::After(Duration::from_millis(self.config.producer_send_timeout_ms.unwrap_or(10) as u64));
         return match self.producer.send(data, timeout).await {
             Ok((partition, offset)) => {
                 debug!("KafkaPublisher.send_message(): Published into partition {}, offset: {}", partition, offset);
@@ -113,6 +100,7 @@ pub struct KafkaConsumer {
     agent: String,
     config: KafkaConfig,
     consumer: StreamConsumer<KafkaConsumerContext>,
+    talos_type: TalosType,
 }
 
 struct KafkaConsumerContext {}
@@ -130,33 +118,24 @@ impl ConsumerContext for KafkaConsumerContext {
 }
 
 impl KafkaConsumer {
-    pub fn new(agent: String, config: &KafkaConfig) -> Result<Self, MessagingError> {
+    pub fn new(agent: String, config: &KafkaConfig, talos_type: TalosType) -> Result<Self, MessagingError> {
         let consumer = Self::create_consumer(config)?;
 
         Ok(KafkaConsumer {
             agent,
             config: config.clone(),
             consumer,
+            talos_type,
         })
     }
 
-    fn create_consumer(kafka: &KafkaConfig) -> Result<StreamConsumer<KafkaConsumerContext>, KafkaError> {
-        let mut cfg = ClientConfig::new();
-        cfg.set("bootstrap.servers", &kafka.brokers)
-            .set("group.id", &kafka.group_id)
-            .set("enable.auto.commit", "false")
-            .set("auto.offset.reset", "latest")
-            .set("socket.keepalive.enable", "true")
-            .set("fetch.wait.max.ms", kafka.fetch_wait_max_ms.to_string())
-            .set_log_level(kafka.log_level);
-
-        setup_kafka_auth(&mut cfg, kafka);
-
+    fn create_consumer(kafka_config: &KafkaConfig) -> Result<StreamConsumer<KafkaConsumerContext>, KafkaError> {
+        let cfg = kafka_config.build_consumer_config();
         cfg.create_with_context(KafkaConsumerContext {})
     }
 
     pub fn subscribe(&self) -> Result<(), KafkaError> {
-        let topic = self.config.certification_topic.as_str();
+        let topic = &self.config.topic.as_str();
         let partition = 0_i32;
 
         let mut partition_list = TopicPartitionList::new();
@@ -177,7 +156,7 @@ impl KafkaConsumer {
     }
 
     fn get_offset(&self, partition: i32, timeout: Duration) -> Result<Offset, KafkaError> {
-        let topic = self.config.certification_topic.as_str();
+        let topic = &self.config.topic.as_str();
         let (_low, high) = self.consumer.fetch_watermarks(topic, partition, timeout)?;
 
         Ok(Offset::Offset(high))
@@ -186,6 +165,10 @@ impl KafkaConsumer {
 
 #[async_trait]
 impl crate::messaging::api::Consumer for KafkaConsumer {
+    fn get_talos_type(&self) -> TalosType {
+        self.talos_type.clone()
+    }
+
     async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>> {
         let rslt_received = self
             .consumer
@@ -238,21 +221,11 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
         });
 
-        parsed_type.and_then(|message_type| deserialize_decision(&self.config.talos_type, &message_type, &received.payload_view::<str>()))
+        parsed_type.and_then(|message_type| deserialize_decision(&self.get_talos_type(), &message_type, &received.payload_view::<str>()))
     }
 }
 
 /// Utilities.
-
-fn setup_kafka_auth(client: &mut ClientConfig, config: &KafkaConfig) {
-    if let Some(username) = &config.username {
-        client
-            .set("security.protocol", "SASL_PLAINTEXT")
-            .set("sasl.mechanisms", config.sasl_mechanisms.clone().unwrap_or_else(|| "SCRAM-SHA-512".to_string()))
-            .set("sasl.username", username)
-            .set("sasl.password", config.password.clone().unwrap_or_default());
-    }
-}
 
 fn deserialize_decision(
     talos_type: &TalosType,
@@ -311,9 +284,13 @@ pub struct KafkaInitializer {}
 
 impl KafkaInitializer {
     /// Creates new instances of initialised and fully connected publisher and consumer
-    pub async fn connect(agent: String, kafka_config: KafkaConfig) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), MessagingError> {
+    pub async fn connect(
+        agent: String,
+        kafka_config: KafkaConfig,
+        talos_type: TalosType,
+    ) -> Result<(Arc<Box<PublisherType>>, Arc<Box<ConsumerType>>), MessagingError> {
         let kafka_publisher = KafkaPublisher::new(agent.clone(), &kafka_config)?;
-        let kafka_consumer = KafkaConsumer::new(agent, &kafka_config)?;
+        let kafka_consumer = KafkaConsumer::new(agent, &kafka_config, talos_type)?;
         kafka_consumer.subscribe()?;
 
         let consumer: Arc<Box<ConsumerType>> = Arc::new(Box::new(kafka_consumer));
@@ -361,53 +338,6 @@ mod tests_publisher {
 
         let record = KafkaPublisher::make_record("agent".to_string(), "topic", "key", message.as_str());
         assert_eq!(record.topic, "topic");
-    }
-}
-// $coverage:ignore-end
-
-// $coverage:ignore-start
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rdkafka::config::RDKafkaLogLevel;
-
-    #[test]
-    fn test_setup_kafka_auth() {
-        let mut cfg = ClientConfig::new();
-        setup_kafka_auth(
-            &mut cfg,
-            &KafkaConfig {
-                brokers: "brokers".to_string(),
-                group_id: "group_id".to_string(),
-                certification_topic: "certification_topic".to_string(),
-                fetch_wait_max_ms: 1_u32,
-                message_timeout_ms: 1_u32,
-                enqueue_timeout_ms: 1_u32,
-                log_level: RDKafkaLogLevel::Debug,
-                talos_type: TalosType::InProcessMock,
-                sasl_mechanisms: None,
-                username: Some("user1".to_string()),
-                password: None,
-            },
-        );
-        assert!(check_key(&mut cfg, "security.protocol", "SASL_PLAINTEXT"));
-        assert!(check_key(&mut cfg, "sasl.mechanisms", "SCRAM-SHA-512"));
-        assert!(check_key(&mut cfg, "sasl.username", "user1"));
-        assert!(check_key(&mut cfg, "sasl.password", ""));
-
-        cfg.set("sasl.password", "pwd".to_string());
-        assert!(check_key(&mut cfg, "sasl.password", "pwd"));
-
-        cfg.set("sasl.mechanisms", "ANONYMOUS".to_string());
-        assert!(check_key(&mut cfg, "sasl.mechanisms", "ANONYMOUS"));
-    }
-
-    fn check_key(cfg: &mut ClientConfig, key: &str, value: &str) -> bool {
-        if let Some(v) = cfg.get(key) {
-            v == value
-        } else {
-            false
-        }
     }
 }
 // $coverage:ignore-end

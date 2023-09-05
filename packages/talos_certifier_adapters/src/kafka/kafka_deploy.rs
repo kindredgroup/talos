@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use crate::KafkaConfig;
 use rdkafka::{
     admin::{AdminClient, AdminOptions, NewTopic, TopicReplication},
     client::DefaultClientContext,
@@ -8,6 +7,7 @@ use rdkafka::{
     error::KafkaError,
     types::RDKafkaErrorCode,
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use thiserror::Error as ThisError;
 
 pub enum KafkaDeployStatus {
@@ -24,7 +24,7 @@ pub enum KafkaDeployError {
 }
 
 pub async fn create_topic() -> Result<KafkaDeployStatus, KafkaDeployError> {
-    let kafka_config = KafkaConfig::from_env();
+    let kafka_config = KafkaConfig::from_env(None);
     println!("kafka configs received from env... {kafka_config:#?}");
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create()?;
 

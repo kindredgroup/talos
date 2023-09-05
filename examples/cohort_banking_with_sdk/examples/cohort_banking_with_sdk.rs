@@ -1,6 +1,7 @@
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use async_channel::Receiver;
+use cohort_banking::state::postgres::database_config::DatabaseConfig;
 use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueueProcessor, model::requests::TransferRequest};
 use cohort_sdk::model::{BackoffConfig, Config};
 use examples_support::load_generator::models::Generator;
@@ -17,6 +18,7 @@ use opentelemetry_sdk::runtime;
 use opentelemetry_stdout::MetricsExporterBuilder;
 use rand::Rng;
 use rust_decimal::prelude::FromPrimitive;
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::{signal, task::JoinHandle, try_join};
 
 use opentelemetry::global::shutdown_tracer_provider;
@@ -68,7 +70,7 @@ async fn main() -> Result<(), String> {
     let generator = ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate, generator_impl, Arc::new(tx_queue));
     let h_generator = tokio::spawn(generator);
 
-    let config = Config {
+    let sdk_config = Config {
         //
         // cohort configs
         //
@@ -89,37 +91,30 @@ async fn main() -> Result<(), String> {
         buffer_size: 10_000_000,
         timeout_ms: 600_000,
 
-        //
-        // Common to kafka configs values
-        //
-        brokers: "127.0.0.1:9092".into(),
-        topic: "dev.ksp.certification".into(),
-        sasl_mechanisms: None,
-        kafka_username: None,
-        kafka_password: None,
+        kafka: KafkaConfig {
+            brokers: vec!["127.0.0.1:9092".to_string()],
+            topic: "dev.ksp.certification".into(),
+            client_id: "cohort-banking".into(),
+            // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
+            group_id: "cohort-banking".into(),
+            username: "".into(),
+            password: "".into(),
+            // The maximum time librdkafka may use to deliver a message (including retries)
+            producer_config_overrides: HashMap::from([("message.timeout.ms".into(), "15000".into())]),
+            consumer_config_overrides: HashMap::from([("fetch.wait.max.ms".into(), "6000".into())]),
+            // consumer_config_overrides: HashMap::new(),
+            producer_send_timeout_ms: Some(10),
+            log_level: Some("info".into()),
+        },
+    };
 
-        //
-        // Kafka configs for Agent
-        //
-        // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-        agent_group_id: "cohort-banking".into(),
-        agent_fetch_wait_max_ms: 6000,
-        // The maximum time librdkafka may use to deliver a message (including retries)
-        agent_message_timeout_ms: 15000,
-        // Controls how long to wait until message is successfully placed on the librdkafka producer queue  (including retries).
-        agent_enqueue_timeout_ms: 10,
-        // should be mapped to rdkafka::config::RDKafkaLogLevel
-        agent_log_level: 6,
-
-        //
-        // Database config
-        //
-        db_pool_size: 100,
-        db_user: "postgres".into(),
-        db_password: "admin".into(),
-        db_host: "127.0.0.1".into(),
-        db_port: "5432".into(),
-        db_database: "talos-sample-cohort-dev".into(),
+    let db_config = DatabaseConfig {
+        pool_size: 100,
+        user: "postgres".into(),
+        password: "admin".into(),
+        host: "127.0.0.1".into(),
+        port: "5432".into(),
+        database: "talos-sample-cohort-dev".into(),
     };
 
     let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw, ScalingConfig { ratios: params.scaling_config });
@@ -144,7 +139,7 @@ async fn main() -> Result<(), String> {
     let meter = Arc::new(meter);
 
     let h_cohort = tokio::spawn(async move {
-        let mut banking_app = BankingApp::new(config).await.unwrap();
+        let mut banking_app = BankingApp::new(sdk_config, db_config).await.unwrap();
         let _ = banking_app.init().await;
         let tasks = QueueProcessor::process::<TransferRequest, BankingApp>(rx_queue, meter, params.threads, Arc::new(banking_app)).await;
 

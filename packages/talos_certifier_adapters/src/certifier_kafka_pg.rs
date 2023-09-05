@@ -1,5 +1,4 @@
 use crate as Adapters;
-use crate::kafka::config::KafkaConfig;
 use crate::mock_certifier_service::MockCertifierService;
 use crate::PgConfig;
 use std::sync::{atomic::AtomicI64, Arc};
@@ -14,6 +13,7 @@ use talos_certifier::{
     services::{CertifierService, DecisionOutboxService, MessageReceiverService},
     talos_certifier_service::{TalosCertifierService, TalosCertifierServiceBuilder},
 };
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::core::SuffixConfig;
 use tokio::sync::{broadcast, mpsc};
 

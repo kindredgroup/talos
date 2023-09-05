@@ -2,6 +2,7 @@ use async_trait::async_trait;
 
 #[derive(Debug)]
 pub struct CapturedState {
+    pub abort_reason: Option<String>,
     pub snapshot_version: u64,
     pub items: Vec<CapturedItemState>,
 }
