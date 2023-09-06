@@ -426,7 +426,10 @@ impl Cohort {
     {
         let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
 
-        let request = match self.await_for_snapshot(get_certification_candidate_callback, previous_conflict, timeout).await {
+        let request = match self
+            .create_candidate_for_certification(get_certification_candidate_callback, previous_conflict, timeout)
+            .await
+        {
             Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
             Err(SnapshotPollErrorType::Timeout { waited }) => {
                 return CertificationAttemptOutcome::SnapshotTimeout {
@@ -484,9 +487,9 @@ impl Cohort {
         }
     }
 
-    async fn await_for_snapshot<F, Fut>(
+    async fn create_candidate_for_certification<F, Fut>(
         &self,
-        get_state_callback_fn: &F,
+        get_candidate_callback: &F,
         previous_conflict: Option<u64>,
         timeout: Duration,
     ) -> Result<CertificationCandidateCallbackResponse, SnapshotPollErrorType>
@@ -500,8 +503,8 @@ impl Cohort {
         let poll_started_at = Instant::now();
 
         loop {
-            let result_local_state = get_state_callback_fn().await;
-            match result_local_state {
+            let candidate_callback_result = get_candidate_callback().await;
+            match candidate_callback_result {
                 Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
                 Ok(CertificationCandidateCallbackResponse::Proceed(request)) if request.snapshot < conflict => {
                     let waited = poll_started_at.elapsed();
