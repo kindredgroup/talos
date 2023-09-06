@@ -1,12 +1,8 @@
-use std::{
-    collections::HashSet,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::HashSet, sync::Arc};
 
-use cohort_sdk::model::{OOOInstallerPayload, OutOfOrderInstallOutcome};
+use async_trait::async_trait;
+use cohort_sdk::model::callback::{OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller};
 use opentelemetry_api::metrics::Counter;
-use tokio::task::JoinHandle;
 use tokio_postgres::types::ToSql;
 
 use crate::{
@@ -24,83 +20,11 @@ pub struct OutOfOrderInstallerImpl {
 pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 
 impl OutOfOrderInstallerImpl {
-    async fn is_safe_to_proceed(db: Arc<Database>, safepoint: &u64) -> Result<bool, String> {
-        let snapshot = db
-            .query_one(r#"SELECT "version" FROM cohort_snapshot WHERE id = $1"#, &[&SNAPSHOT_SINGLETON_ROW_ID], |row| {
-                let snapshot = row
-                    .try_get::<&str, i64>("version")
-                    .map(|v| v as u64)
-                    .map_err(|e| DatabaseError::deserialise_payload(e.to_string(), "Cannot read snapshot version".into()))?;
-                Ok(snapshot)
-            })
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok(&snapshot >= safepoint)
-    }
-
-    async fn install_item(&self, new_version: &u64, request: &TransferRequest) -> Result<OutOfOrderInstallOutcome, String> {
-        let sql = r#"
-            UPDATE bank_accounts ba SET
-                "amount" =
-                    (CASE
-                        WHEN ba."number" = ($1)::TEXT THEN ba."amount" + ($3)::DECIMAL
-                        WHEN ba."number" = ($2)::TEXT THEN ba."amount" - ($3)::DECIMAL
-                    END),
-                "version" = ($4)::BIGINT
-            WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT) AND ba."version" < ($4)::BIGINT
-        "#;
-
-        let params: &[&(dyn ToSql + Sync)] = &[&request.from, &request.to, &request.amount, &(*new_version as i64)];
-
-        let result = self.database.execute(sql, params).await.map_err(|e| e.to_string())?;
-
-        if result == 0 {
-            Ok(OutOfOrderInstallOutcome::InstalledAlready)
-        } else {
-            Ok(OutOfOrderInstallOutcome::Installed)
-        }
-    }
-
-    async fn install_using_polling(
-        &self,
-        _xid: &str,
-        safepoint: &u64,
-        new_version: &u64,
-        request: &TransferRequest,
-    ) -> Result<OutOfOrderInstallOutcome, String> {
-        let db = Arc::clone(&self.database);
-        let safepoint = *safepoint;
-        let wait_handle: JoinHandle<Result<bool, String>> = tokio::spawn(async move {
-            let mut safe_now = Self::is_safe_to_proceed(Arc::clone(&db), &safepoint).await?;
-            let poll_frequency = Duration::from_secs(1);
-            let started_at = Instant::now();
-            loop {
-                if safe_now {
-                    return Ok(true);
-                }
-
-                tokio::time::sleep(poll_frequency).await;
-                if started_at.elapsed().as_secs() >= 600 {
-                    return Ok(false);
-                }
-
-                safe_now = Self::is_safe_to_proceed(Arc::clone(&db), &safepoint).await?;
-            }
-        });
-
-        let is_safe_now = wait_handle.await.map_err(|e| e.to_string())??;
-        if is_safe_now {
-            self.install_item(new_version, request).await
-        } else {
-            Ok(OutOfOrderInstallOutcome::SafepointCondition)
-        }
-    }
-
     async fn install_using_single_query(
         &self,
         xid: &str,
-        safepoint: &u64,
-        new_version: &u64,
+        safepoint: u64,
+        new_version: u64,
         request: &TransferRequest,
     ) -> Result<OutOfOrderInstallOutcome, String> {
         // Params order:
@@ -130,7 +54,7 @@ impl OutOfOrderInstallerImpl {
         WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)
             "#;
 
-        let params: &[&(dyn ToSql + Sync)] = &[&request.from, &request.to, &request.amount, &(*new_version as i64), &(*safepoint as i64)];
+        let params: &[&(dyn ToSql + Sync)] = &[&request.from, &request.to, &request.amount, &(new_version as i64), &(safepoint as i64)];
 
         let result = self
             .database
@@ -164,8 +88,8 @@ impl OutOfOrderInstallerImpl {
         }
 
         // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
-        let (_, _, _, snapshot) = &result[0];
-        if &(*snapshot as u64) < safepoint {
+        let (_, _, _, snapshot) = result[0];
+        if (snapshot as u64) < safepoint {
             return Ok(OutOfOrderInstallOutcome::SafepointCondition);
         }
 
@@ -244,20 +168,16 @@ impl OutOfOrderInstallerImpl {
 
         Ok(OutOfOrderInstallOutcome::Installed)
     }
-    pub async fn install(&self, install_item: OOOInstallerPayload) -> Result<OutOfOrderInstallOutcome, String> {
+    pub async fn install_statemap(&self, install_item: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
         // TODO: GK -
         // For our testing the statemap size is 1,so the below approach is fine. But if we have to install multiple statemaps, then we would ideally
         // use a transaction and either install all or none, depending on error and handle the return accordingly.
         for statemap in install_item.statemaps.iter() {
             let payload = statemap.values().next().unwrap();
             let request: TransferRequest = serde_json::from_value(payload.clone()).unwrap();
-            let result = if self.single_query_strategy {
-                self.install_using_single_query(&install_item.xid, &install_item.safepoint, &install_item.version, &request)
-                    .await?
-            } else {
-                self.install_using_polling(&install_item.xid, &install_item.safepoint, &install_item.version, &request)
-                    .await?
-            };
+            let result = self
+                .install_using_single_query(&install_item.xid, install_item.safepoint, install_item.version, &request)
+                .await?;
 
             if result != OutOfOrderInstallOutcome::Installed {
                 return Ok(result);
@@ -265,5 +185,12 @@ impl OutOfOrderInstallerImpl {
         }
 
         Ok(OutOfOrderInstallOutcome::Installed)
+    }
+}
+
+#[async_trait]
+impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
+    async fn install(&self, install_item: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
+        self.install_statemap(install_item).await
     }
 }

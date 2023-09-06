@@ -1,7 +1,9 @@
 use crate::models::JsConfig;
+use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
-use cohort_sdk::model::{
-    CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OOOInstallerPayload, OutOfOrderInstallOutcome,
+use cohort_sdk::model::callback::{
+    CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OutOfOrderInstallOutcome, OutOfOrderInstallRequest,
+    OutOfOrderInstaller,
 };
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::ThreadsafeFunction;
@@ -76,12 +78,7 @@ impl Initiator {
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         // println!("Initiator.certify(): invoking cohort.certify(...)");
         let make_new_request = || item_state_provider_impl.get_state();
-        let out_of_order_install = |param| ooo_impl.install(param);
-        let _res = self
-            .cohort
-            .certify(&make_new_request, &out_of_order_install)
-            .await
-            .map_err(map_error_to_napi_error)?;
+        let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error_to_napi_error)?;
 
         // println!("Initiator.certify(): after cohort.certify(...)");
         Ok("Success".to_string())
@@ -92,8 +89,9 @@ struct OutOfOrderInstallerImpl {
     ooo_callback: ThreadsafeFunction<OoRequest>,
 }
 
-impl OutOfOrderInstallerImpl {
-    pub async fn install(&self, request: OOOInstallerPayload) -> Result<OutOfOrderInstallOutcome, String> {
+#[async_trait]
+impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
+    async fn install(&self, request: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
         let oorequest = OoRequest {
             xid: request.xid,
             safepoint: request.safepoint.try_into().unwrap(),
@@ -118,23 +116,6 @@ impl OutOfOrderInstallerImpl {
         }
     }
 }
-
-// #[async_trait]
-// impl OutOfOrderInstaller for Initiator {
-//     async fn install(&self, xid: String, safepoint: u64, new_version: u64, attempt_nr: u64) -> Result<OutOfOrderInstallOutcome, String> {
-//         println!("install being called");
-//         let oorequest = OoRequest {
-//             xid,
-//             safepoint: safepoint.try_into().unwrap(),
-//             new_version: new_version.try_into().unwrap(),
-//             attempt_nr: attempt_nr.try_into().unwrap(),
-//         };
-//         let res: String = self.oo_callback.call_async( Ok(oorequest)).await.map_err(map_error_to_napi_error).unwrap();
-//         println!("re from oo_callback {}, ", res);
-//         Ok(OutOfOrderInstallOutcome::Installed)
-//
-//     }
-// }
 
 pub struct ItemStateProviderImpl {
     get_state_callback: ThreadsafeFunction<()>,

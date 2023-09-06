@@ -26,8 +26,10 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use crate::{
     delay_controller::DelayController,
     model::{
-        self, internal::CertificationAttemptOutcome, CertificationCandidateCallbackResponse, CertificationResponse, ClientError, Config, OOOInstallerPayload,
-        OutOfOrderInstallOutcome, ResponseMetadata,
+        self,
+        callback::{CertificationCandidateCallbackResponse, OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller},
+        internal::CertificationAttemptOutcome,
+        CertificationResponse, ClientError, Config, ResponseMetadata,
     },
 };
 
@@ -186,21 +188,16 @@ impl Cohort {
     /// Uses two callbacks
     ///  - First callback to build the request payload to send to talos for certification
     ///  - The installer callback will be called to do the out of order install.
-    pub async fn certify<F, Fut, IF, IFut>(
-        &self,
-        create_certifier_candidate_callback: &F,
-        installer_callback: &IF,
-    ) -> Result<model::CertificationResponse, ClientError>
+    pub async fn certify<F, Fut, O>(&self, get_certification_candidate_callback: &F, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
-        IF: Fn(OOOInstallerPayload) -> IFut,
-        IFut: Future<Output = Result<OutOfOrderInstallOutcome, String>>,
+        O: OutOfOrderInstaller,
     {
         let span_1 = Instant::now();
         // 1. Get the snapshot
         // 2. Send for certification
-        let response = self.send_to_talos(create_certifier_candidate_callback).await?;
+        let response = self.send_to_talos(get_certification_candidate_callback).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -208,11 +205,11 @@ impl Cohort {
             h_talos.record(span_1_val * 100.0, &[]);
         });
 
-        if response.decision == Decision::Aborted || response.statemaps.is_none() {
+        if response.safepoint.is_none() || response.statemaps.is_none() {
             return Ok(response);
         }
 
-        let oooinstall_payload = OOOInstallerPayload {
+        let oooinstall_payload = OutOfOrderInstallRequest {
             xid: response.xid.clone(),
             version: response.version,
             safepoint: response.safepoint.unwrap(),
@@ -220,16 +217,15 @@ impl Cohort {
         };
 
         // 3. OOO install
-        self.install_statemaps_oo(oooinstall_payload, installer_callback).await?;
+        self.install_statemaps_oo(oooinstall_payload, oo_installer).await?;
 
         Ok(response)
     }
 
     /// Installs the statemap for candidate messages with committed decisions received from talos.
-    pub async fn install_statemaps_oo<IF, IFut>(&self, install_payload: OOOInstallerPayload, installer_callback: &IF) -> Result<(), ClientError>
+    async fn install_statemaps_oo<O>(&self, install_payload: OutOfOrderInstallRequest, oo_installer: &O) -> Result<(), ClientError>
     where
-        IF: Fn(OOOInstallerPayload) -> IFut,
-        IFut: Future<Output = Result<OutOfOrderInstallOutcome, String>>,
+        O: OutOfOrderInstaller,
     {
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
         let mut attempt = 0;
@@ -244,7 +240,7 @@ impl Cohort {
 
             let span_3 = Instant::now();
 
-            let install_result = installer_callback(install_payload.clone()).await;
+            let install_result = oo_installer.install(install_payload.clone()).await;
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
             let h_install = Arc::clone(&self.oo_install_histogram);
@@ -316,7 +312,7 @@ impl Cohort {
         result
     }
 
-    pub async fn send_to_talos<F, Fut>(&self, create_certifier_candidate_callback: &F) -> Result<model::CertificationResponse, ClientError>
+    async fn send_to_talos<F, Fut>(&self, get_certification_candidate_callback: &F) -> Result<model::CertificationResponse, ClientError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
@@ -341,7 +337,7 @@ impl Cohort {
         let final_result = loop {
             // Await for snapshot and build the certification request payload.
             // Send the certification payload to talos
-            match self.send_to_talos_attempt(&create_certifier_candidate_callback, recent_conflict).await {
+            match self.send_to_talos_attempt(&get_certification_candidate_callback, recent_conflict).await {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -362,7 +358,7 @@ impl Cohort {
                     agent_errors += 1;
                 }
 
-                CertificationAttemptOutcome::ClientAborted { reason } => {
+                CertificationAttemptOutcome::Cancelled { reason } => {
                     break Err(ClientError {
                         kind: model::ClientErrorKind::Cancelled,
                         reason,
@@ -383,9 +379,24 @@ impl Cohort {
                 }
             }
 
+            let rslt_response = result.unwrap();
             attempts += 1;
             if attempts >= self.config.retry_attempts_max {
-                break result.unwrap();
+                break rslt_response;
+            }
+
+            match rslt_response {
+                Ok(response) => {
+                    log::debug!(
+                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
+                        response.statemaps,
+                        response.decision,
+                        attempts
+                    );
+                }
+                Err(error) => {
+                    log::debug!("Unsuccessful transaction with error: {:?}. This might retry. Attempts: {}", error, attempts);
+                }
             }
 
             delay_controller.sleep().await;
@@ -408,14 +419,17 @@ impl Cohort {
         final_result
     }
 
-    async fn send_to_talos_attempt<F, Fut>(&self, generate_certifier_candidate_callback: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
+    async fn send_to_talos_attempt<F, Fut>(&self, get_certification_candidate_callback: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
     {
         let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
 
-        let request = match self.await_for_snapshot(generate_certifier_candidate_callback, previous_conflict, timeout).await {
+        let request = match self
+            .create_candidate_for_certification(get_certification_candidate_callback, previous_conflict, timeout)
+            .await
+        {
             Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
             Err(SnapshotPollErrorType::Timeout { waited }) => {
                 return CertificationAttemptOutcome::SnapshotTimeout {
@@ -424,7 +438,7 @@ impl Cohort {
                 }
             }
             Ok(CertificationCandidateCallbackResponse::Cancelled(reason)) => {
-                return CertificationAttemptOutcome::ClientAborted { reason };
+                return CertificationAttemptOutcome::Cancelled { reason };
             }
             Ok(CertificationCandidateCallbackResponse::Proceed(request)) => request,
         };
@@ -473,9 +487,9 @@ impl Cohort {
         }
     }
 
-    async fn await_for_snapshot<F, Fut>(
+    async fn create_candidate_for_certification<F, Fut>(
         &self,
-        get_state_callback_fn: &F,
+        get_candidate_callback: &F,
         previous_conflict: Option<u64>,
         timeout: Duration,
     ) -> Result<CertificationCandidateCallbackResponse, SnapshotPollErrorType>
@@ -489,8 +503,8 @@ impl Cohort {
         let poll_started_at = Instant::now();
 
         loop {
-            let result_local_state = get_state_callback_fn().await;
-            match result_local_state {
+            let candidate_callback_result = get_candidate_callback().await;
+            match candidate_callback_result {
                 Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
                 Ok(CertificationCandidateCallbackResponse::Proceed(request)) if request.snapshot < conflict => {
                     let waited = poll_started_at.elapsed();

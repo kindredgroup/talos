@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use cohort_sdk::{
     cohort::Cohort,
-    model::{ClientErrorKind, Config, OOOInstallerPayload},
+    model::{ClientErrorKind, Config},
 };
 
 use opentelemetry_api::{
@@ -13,7 +13,7 @@ use opentelemetry_api::{
 use talos_agent::messaging::api::Decision;
 
 use crate::{
-    callbacks::{oo_installer::OutOfOrderInstallerImpl, state_provider::StateProviderImpl},
+    callbacks::{certification_candidate_provider::CertificationCandidateProviderImpl, oo_installer::OutOfOrderInstallerImpl},
     examples_support::queue_processor::Handler,
     model::requests::{BusinessActionType, CandidateData, CertificationRequest, TransferRequest},
     state::postgres::{database::Database, database_config::DatabaseConfig},
@@ -78,7 +78,7 @@ impl Handler<TransferRequest> for BankingApp {
         };
 
         let single_query_strategy = true;
-        let state_provider = StateProviderImpl {
+        let state_provider = CertificationCandidateProviderImpl {
             database: Arc::clone(&self.database),
             single_query_strategy,
         };
@@ -91,13 +91,11 @@ impl Handler<TransferRequest> for BankingApp {
             single_query_strategy,
         };
 
-        let oo_installer_callback = |payload: OOOInstallerPayload| oo_inst.install(payload);
-
         match self
             .cohort_api
             .as_ref()
             .expect("Banking app is not initialised")
-            .certify(&request_payload_callback, &oo_installer_callback)
+            .certify(&request_payload_callback, &oo_inst)
             .await
         {
             Ok(rsp) => {
