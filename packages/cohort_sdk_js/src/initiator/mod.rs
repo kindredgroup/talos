@@ -1,6 +1,8 @@
 use crate::models::JsConfig;
 use cohort_sdk::cohort::Cohort;
-use cohort_sdk::model::{CertificationRequestPayload, CertificationCandidateCallbackResponse, OOOInstallerPayload, OutOfOrderInstallOutcome, CertificationCandidate};
+use cohort_sdk::model::{
+    CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OOOInstallerPayload, OutOfOrderInstallOutcome,
+};
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
@@ -77,9 +79,7 @@ impl Initiator {
         let out_of_order_install = |param| ooo_impl.install(param);
         let _res = self
             .cohort
-            .certify(
-                &make_new_request,
-                &out_of_order_install)
+            .certify(&make_new_request, &out_of_order_install)
             .await
             .map_err(map_error_to_napi_error)?;
 
@@ -148,13 +148,21 @@ impl ItemStateProviderImpl {
             .await
             .map_err(map_error_to_napi_error);
         match result {
-            Ok(promise) => promise.await.map(|js_data: JsCertificationCandidateCallbackResponse| {
-                if js_data.cancellation_reason.is_some() {
-                    CertificationCandidateCallbackResponse::Cancelled(js_data.cancellation_reason.unwrap())
-                } else {
-                    CertificationCandidateCallbackResponse::Proceed(js_data.new_request.expect("Invalid response from 'get_state_callback'. Provide cancellation reason or new request. Currently both are empty.").into())
-                }
-            }).map_err(|e| e.to_string()),
+            Ok(promise) => promise
+                .await
+                .map(|js_data: JsCertificationCandidateCallbackResponse| {
+                    if js_data.cancellation_reason.is_some() {
+                        CertificationCandidateCallbackResponse::Cancelled(js_data.cancellation_reason.unwrap())
+                    } else {
+                        CertificationCandidateCallbackResponse::Proceed(
+                            js_data
+                                .new_request
+                                .expect("Invalid response from 'get_state_callback'. Provide cancellation reason or new request. Currently both are empty.")
+                                .into(),
+                        )
+                    }
+                })
+                .map_err(|e| e.to_string()),
 
             Err(e) => Err(e.to_string()),
         }
