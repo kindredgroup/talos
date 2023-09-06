@@ -1,4 +1,3 @@
-pub mod callbacks;
 pub mod internal;
 
 use std::{collections::HashMap, fmt::Display};
@@ -12,18 +11,41 @@ use talos_agent::{
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::task::JoinHandle;
 
-#[derive(Clone)]
-pub struct CandidateData {
-    pub readset: Vec<String>,
-    pub writeset: Vec<String>,
-    pub statemap: Option<Vec<HashMap<String, Value>>>,
-    // The "snapshot" is intentionally messing here. We will compute it ourselves before feeding this data to Talos
+#[derive(Debug, PartialEq)]
+pub enum CertificationCandidateCallbackResponse {
+    Cancelled(String),
+    Proceed(CertificationRequestPayload),
 }
 
-#[derive(Clone)]
-pub struct CertificationRequest {
-    pub candidate: CandidateData,
+#[derive(Debug, Clone)]
+pub struct OOOInstallerPayload {
+    pub xid: String,
+    pub version: u64,
+    pub safepoint: u64,
+    pub statemaps: Vec<HashMap<String, Value>>,
+}
+
+#[derive(Debug, PartialEq, PartialOrd)]
+
+pub enum OutOfOrderInstallOutcome {
+    Installed,
+    InstalledAlready,
+    SafepointCondition,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CertificationRequestPayload {
+    pub candidate: CertificationCandidate,
+    pub snapshot: u64,
     pub timeout_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CertificationCandidate {
+    pub readset: Vec<String>,
+    pub writeset: Vec<String>,
+    pub readvers: Vec<u64>,
+    pub statemaps: Option<Vec<HashMap<String, Value>>>,
 }
 
 #[derive(Clone)]
@@ -34,6 +56,7 @@ pub struct CertificationResponse {
     pub safepoint: Option<u64>,
     pub conflict: Option<u64>,
     pub metadata: ResponseMetadata,
+    pub statemaps: Option<Vec<HashMap<String, Value>>>,
 }
 
 #[derive(Clone)]
@@ -42,12 +65,13 @@ pub struct ResponseMetadata {
     pub duration_ms: u64,
 }
 
-#[derive(strum::Display)]
+#[derive(strum::Display, Debug)]
 // this is napi friendly copy of talos_agent::agent::errors::AgentErrorKind
 pub enum ClientErrorKind {
     Certification,
     CertificationTimeout,
-    ClientAborted,
+    SnapshotTimeout,
+    Cancelled,
     Messaging,
     Persistence,
     Internal,
@@ -55,6 +79,7 @@ pub enum ClientErrorKind {
     OutOfOrderSnapshotTimeout,
 }
 
+#[derive(Debug)]
 pub struct ClientError {
     pub kind: ClientErrorKind,
     pub reason: String,

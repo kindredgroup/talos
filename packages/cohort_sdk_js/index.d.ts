@@ -32,30 +32,27 @@ export interface JsConfig {
   timeoutMs: number
   kafka: JsKafkaConfig
 }
-export interface JsCertificationRequest {
-  candidate: JsCandidateData
-  timeoutMs: number
-}
-export interface JsCandidateData {
+export interface JsCertificationCandidate {
   readset: Array<string>
   writeset: Array<string>
-  statemap?: Array<Record<string, any>>
+  readvers: Array<number>
+  statemaps?: Array<Record<string, any>>
+}
+export interface JsCertificationRequestPayload {
+  candidate: JsCertificationCandidate
+  snapshot: number
+  timeoutMs: number
+}
+export interface JsCertificationCandidateCallbackResponse {
+  cancellationReason?: string
+  newRequest?: JsCertificationRequestPayload
 }
 export interface OoRequest {
   xid: string
   safepoint: number
   newVersion: number
-  attemptNr: number
-}
-export interface CapturedItemStateJs {
-  id: string
-  version: number
-}
-export interface CapturedStateJs {
-  snapshotVersion: number
-  items: Array<CapturedItemStateJs>
 }
 export class Initiator {
   static init(config: JsConfig): Promise<Initiator>
-  certify(jsCertificationRequest: JsCertificationRequest, getStateCallback: () => Promise<any>, oooCallback: (err: Error | null, value: OoRequest) => any): Promise<string>
+  certify(getStateCallback: () => Promise<any>, oooCallback: (err: Error | null, value: OoRequest) => any): Promise<string>
 }

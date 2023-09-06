@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 // $coverage:ignore-start
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -5,6 +7,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use strum::{Display, EnumString};
+
+#[derive(Clone)]
+pub struct CandidateData {
+    pub readset: Vec<String>,
+    pub writeset: Vec<String>,
+    pub statemap: Option<Vec<HashMap<String, Value>>>,
+    // The "snapshot" is intentionally messing here. We will compute it ourselves before feeding this data to Talos
+}
+
+#[derive(Clone)]
+pub struct CertificationRequest {
+    pub candidate: CandidateData,
+    pub timeout_ms: u64,
+}
 
 #[derive(Display, Debug, Deserialize, EnumString, PartialEq, Eq)]
 pub enum BusinessActionType {

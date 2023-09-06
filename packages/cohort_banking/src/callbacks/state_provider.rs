@@ -1,23 +1,30 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use cohort_sdk::model::callbacks::{CapturedItemState, CapturedState, ItemStateProvider};
+use cohort_sdk::model::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
 use rust_decimal::Decimal;
-use tokio_postgres::Row;
+use tokio_postgres::{types::ToSql, Row};
 
 use crate::{
-    model::{bank_account::BankAccount, requests::TransferRequest},
+    model::{bank_account::BankAccount, requests::CertificationRequest},
     state::postgres::database::{Database, DatabaseError},
 };
 
-pub struct StateProviderImpl {
-    pub request: TransferRequest,
-    pub database: Arc<Database>,
-    pub single_query_strategy: bool,
+#[derive(Debug, PartialEq, PartialOrd)]
+pub struct CapturedState {
+    pub snapshot_version: u64,
+    pub items: Vec<CapturedItemState>,
 }
 
-impl StateProviderImpl {
-    pub fn account_from_row(row: &Row) -> Result<BankAccount, DatabaseError> {
+#[derive(Debug, PartialEq, PartialOrd)]
+pub struct CapturedItemState {
+    pub id: String,
+    pub version: u64,
+}
+
+impl TryFrom<&Row> for BankAccount {
+    type Error = DatabaseError;
+
+    fn try_from(row: &Row) -> Result<Self, Self::Error> {
         Ok(BankAccount {
             name: row
                 .try_get::<&str, String>("name")
@@ -33,20 +40,27 @@ impl StateProviderImpl {
                 .map_err(|e| DatabaseError::deserialise_payload(e.to_string(), "Cannot read account amount".into()))?,
         })
     }
+}
 
-    async fn get_state_using_two_queries(&self) -> Result<CapturedState, String> {
+pub struct StateProviderImpl {
+    pub database: Arc<Database>,
+    pub single_query_strategy: bool,
+}
+
+impl StateProviderImpl {
+    async fn get_state_using_two_queries(&self, accounts: &[&(dyn ToSql + Sync)]) -> Result<CapturedState, String> {
         let list = self
             .database
             .query_many(
                 r#"SELECT ba.* FROM bank_accounts ba WHERE ba."number" = $1 OR ba."number" = $2"#,
-                &[&self.request.from, &self.request.to],
-                Self::account_from_row,
+                accounts,
+                |row| BankAccount::try_from(row),
             )
             .await
             .map_err(|e| e.to_string())?;
 
         if list.len() != 2 {
-            return Err(format!("Unable to load state of accounts: '{}' and '{}'", self.request.from, self.request.to));
+            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", accounts[0], accounts[1]));
         }
 
         let snapshot_version = self
@@ -73,11 +87,10 @@ impl StateProviderImpl {
                     version: account.version,
                 })
                 .collect(),
-            abort_reason: None,
         })
     }
 
-    async fn get_state_using_one_query(&self) -> Result<CapturedState, String> {
+    async fn get_state_using_one_query(&self, accounts: &[&(dyn ToSql + Sync)]) -> Result<CapturedState, String> {
         let list = self
             .database
             .query_many(
@@ -92,10 +105,10 @@ impl StateProviderImpl {
                     bank_accounts ba, cohort_snapshot cs
                 WHERE
                     ba."number" = $1 OR ba."number" = $2"#,
-                &[&self.request.from, &self.request.to],
+                accounts,
                 // convert RAW output into tuple (bank account, snap ver)
                 |row| {
-                    let account = Self::account_from_row(row)?;
+                    let account = BankAccount::try_from(row)?;
                     let snapshot_version = row
                         .try_get::<&str, i64>("snapshot_version")
                         .map_err(|e| DatabaseError::deserialise_payload(e.to_string(), "Cannot read snapshot_version".into()))?;
@@ -106,7 +119,7 @@ impl StateProviderImpl {
             .map_err(|e| e.to_string())?;
 
         if list.len() != 2 {
-            return Err(format!("Unable to load state of accounts: '{}' and '{}'", self.request.from, self.request.to));
+            return Err(format!("Unable to load state of accounts: '{:?}' and '{:?}'", accounts[0], accounts[1]));
         }
 
         Ok(CapturedState {
@@ -118,18 +131,35 @@ impl StateProviderImpl {
                     version: tuple.0.version,
                 })
                 .collect(),
-            abort_reason: None,
         })
     }
-}
 
-#[async_trait]
-impl ItemStateProvider for StateProviderImpl {
-    async fn get_state(&self) -> Result<CapturedState, String> {
-        if self.single_query_strategy {
-            self.get_state_using_one_query().await
+    pub async fn get_certification_candidate(&self, request: CertificationRequest) -> Result<CertificationCandidateCallbackResponse, String> {
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        // This example doesn't handle `Cancelled` scenario.
+        // If user cancellation is needed, add additional logic in this fn to return `Cancelled` instead of `Proceed` in the result.
+        // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+        let mut accounts: Vec<&(dyn ToSql + Sync)> = vec![];
+        request.candidate.readset.iter().for_each(|x| accounts.push(x));
+
+        let state = if self.single_query_strategy {
+            self.get_state_using_one_query(&accounts).await
         } else {
-            self.get_state_using_two_queries().await
-        }
+            self.get_state_using_two_queries(&accounts).await
+        }?;
+
+        let candidate = CertificationCandidate {
+            readset: request.candidate.readset,
+            writeset: request.candidate.writeset,
+            statemaps: request.candidate.statemap,
+            readvers: state.items.into_iter().map(|x| x.version).collect(),
+        };
+
+        Ok(CertificationCandidateCallbackResponse::Proceed(CertificationRequestPayload {
+            candidate,
+            snapshot: state.snapshot_version,
+            timeout_ms: request.timeout_ms,
+        }))
     }
 }

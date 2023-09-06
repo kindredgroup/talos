@@ -5,8 +5,8 @@ import { Pond } from "./pond"
 
 import { logger } from "./logger"
 
-import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
-import { Initiator, JsCertificationRequest, OoRequest } from "cohort_sdk_js"
+import { CapturedItemState, CapturedState, CertificationCandidate, CertificationRequest, TransferRequest, TransferRequestMessage } from "./model"
+import { Initiator, JsCertificationRequestPayload, OoRequest } from "cohort_sdk_js"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
 
 export class BankingApp {
@@ -79,22 +79,19 @@ export class BankingApp {
     }
 
     async handleTransaction(tx: TransferRequest): Promise<any> {
-        const request: JsCertificationRequest = this.createNewCertRequest(tx)
-
         const span_s = Date.now()
         let stateEnd = 0
         let stateDuration = 0
         let ooinstallEnd = 0
         let ooinstallDuration = 0
         await this.initiator.certify(
-            request,
             async () => {
                 const s = Date.now()
-                const r = await this.loadState(tx) as any
+                const newRequest = await this.createNewRequest(tx) as any
                 const n = Date.now()
                 stateEnd = n - span_s
                 stateDuration = n - s
-                return r
+                return { newRequest }
             },
             async (_e, request: OoRequest) => {
                 const s = Date.now()
@@ -113,17 +110,19 @@ export class BankingApp {
         return this.handledCount / ((nowMs - this.startedAtMs) / 1_000.0)
     }
 
-    private createNewCertRequest(tx: TransferRequest): JsCertificationRequest {
-        let request: JsCertificationRequest = {
-            timeoutMs: 0,
+    private async createNewRequest(tx: TransferRequest): Promise<JsCertificationRequestPayload> {
+        const state = await this.loadState(tx)
+
+        return {
             candidate: {
                 readset: [tx.from, tx.to],
                 writeset: [tx.from, tx.to],
-                statemap: [{ "TRANSFER": tx }]
-            }
+                readvers: state.items.map(i => i.version),
+                statemaps: [{ "TRANSFER": tx }],
+            },
+            snapshot: state.snapshotVersion,
+            timeoutMs: 0,
         }
-
-        return request
     }
 
     private async loadState(tx: TransferRequest): Promise<CapturedState> {

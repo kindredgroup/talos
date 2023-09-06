@@ -13,3 +13,11 @@ export class CapturedItemState {
 export class CapturedState {
     constructor(public snapshotVersion: number, public items: CapturedItemState[]) {}
 }
+
+export class CertificationCandidate {
+    constructor(public readset: string[], public writeset: string[], public readvers: number[], public statemaps: [Map<string, any>] | null) {}
+}
+
+export class CertificationRequest {
+    constructor(public candidate: CertificationCandidate, public snapshot: number, public timeoutMs: number) {}
+}
