@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use async_trait::async_trait;
 use cohort_sdk::{
     cohort::Cohort,
-    model::{CandidateData, CertificationRequest, ClientErrorKind, Config},
+    model::{ClientErrorKind, Config},
 };
 
 use opentelemetry_api::{
@@ -13,9 +13,9 @@ use opentelemetry_api::{
 use talos_agent::messaging::api::Decision;
 
 use crate::{
-    callbacks::{oo_installer::OutOfOrderInstallerImpl, state_provider::StateProviderImpl},
+    callbacks::{certification_candidate_provider::CertificationCandidateProviderImpl, oo_installer::OutOfOrderInstallerImpl},
     examples_support::queue_processor::Handler,
-    model::requests::{BusinessActionType, TransferRequest},
+    model::requests::{BusinessActionType, CandidateData, CertificationRequest, TransferRequest},
     state::postgres::{database::Database, database_config::DatabaseConfig},
 };
 
@@ -63,14 +63,12 @@ impl Handler<TransferRequest> for BankingApp {
     async fn handle(&self, request: TransferRequest) -> Result<(), String> {
         log::debug!("processig new banking transfer request: {:?}", request);
 
-        let request_copy = request.clone();
-
         let statemap = vec![HashMap::from([(
             BusinessActionType::TRANSFER.to_string(),
             TransferRequest::new(request.from.clone(), request.to.clone(), request.amount).json(),
         )])];
 
-        let request = CertificationRequest {
+        let certification_request = CertificationRequest {
             timeout_ms: 0,
             candidate: CandidateData {
                 readset: vec![request.from.clone(), request.to.clone()],
@@ -80,15 +78,14 @@ impl Handler<TransferRequest> for BankingApp {
         };
 
         let single_query_strategy = true;
-        let state_provider = StateProviderImpl {
+        let state_provider = CertificationCandidateProviderImpl {
             database: Arc::clone(&self.database),
-            request: request_copy.clone(),
             single_query_strategy,
         };
+        let request_payload_callback = || state_provider.get_certification_candidate(certification_request.clone());
 
         let oo_inst = OutOfOrderInstallerImpl {
             database: Arc::clone(&self.database),
-            request: request_copy,
             detailed_logging: false,
             counter_oo_no_data_found: Arc::clone(&self.counter_oo_no_data_found),
             single_query_strategy,
@@ -98,7 +95,7 @@ impl Handler<TransferRequest> for BankingApp {
             .cohort_api
             .as_ref()
             .expect("Banking app is not initialised")
-            .certify(request, &state_provider, &oo_inst)
+            .certify(&request_payload_callback, &oo_inst)
             .await
         {
             Ok(rsp) => {

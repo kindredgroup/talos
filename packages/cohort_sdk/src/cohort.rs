@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use futures::Future;
 use opentelemetry_api::{
     global,
     metrics::{Counter, Histogram, Unit},
@@ -26,7 +27,7 @@ use crate::{
     delay_controller::DelayController,
     model::{
         self,
-        callbacks::{CapturedState, ItemStateProvider, OutOfOrderInstallOutcome, OutOfOrderInstaller},
+        callback::{CertificationCandidateCallbackResponse, OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller},
         internal::CertificationAttemptOutcome,
         CertificationResponse, ClientError, Config, ResponseMetadata,
     },
@@ -144,332 +145,6 @@ impl Cohort {
         })
     }
 
-    pub async fn certify<S, O>(
-        &self,
-        request: model::CertificationRequest,
-        state_provider: &S,
-        oo_installer: &O,
-    ) -> Result<model::CertificationResponse, ClientError>
-    where
-        S: ItemStateProvider,
-        O: OutOfOrderInstaller,
-    {
-        let span_1 = Instant::now();
-        let response = self.send_to_talos(request, state_provider).await?;
-        let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
-
-        let h_talos = Arc::clone(&self.talos_histogram);
-        tokio::spawn(async move {
-            h_talos.record(span_1_val * 100.0, &[]);
-        });
-
-        if response.decision == Decision::Aborted {
-            return Ok(response);
-        }
-
-        // system error if we have Commit decision but no safepoint is given
-        let safepoint = response.safepoint.unwrap();
-        let new_version = response.version;
-
-        let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
-        let mut attempt = 0;
-        let span_2 = Instant::now();
-
-        let mut is_not_save = 0_u64;
-        let mut giveups = 0_u64;
-
-        let result = loop {
-            attempt += 1;
-
-            let span_3 = Instant::now();
-            let install_result = oo_installer.install(response.xid.clone(), safepoint, new_version, attempt).await;
-            let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
-
-            let h_install = Arc::clone(&self.oo_install_histogram);
-
-            tokio::spawn(async move {
-                h_install.record(span_3_val * 100.0, &[]);
-            });
-
-            let error = match install_result {
-                Ok(OutOfOrderInstallOutcome::Installed) => None,
-                Ok(OutOfOrderInstallOutcome::InstalledAlready) => None,
-                Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
-                    is_not_save += 1;
-                    // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
-                    Some(ClientError {
-                        kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
-                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
-                        cause: None,
-                    })
-                }
-                Err(error) => Some(ClientError {
-                    kind: model::ClientErrorKind::OutOfOrderCallbackFailed,
-                    reason: error,
-                    cause: None,
-                }),
-            };
-
-            if let Some(client_error) = error {
-                if attempt >= self.config.retry_oo_attempts_max {
-                    giveups += 1;
-                    break Err(client_error);
-                }
-
-                // try again
-                controller.sleep().await;
-            } else {
-                break Ok(response);
-            }
-        };
-
-        let span_2_val = span_2.elapsed().as_nanos() as f64 / 1_000_000_f64;
-        let total_sleep = controller.total_sleep_time;
-
-        let c_not_safe = Arc::clone(&self.oo_not_safe_counter);
-        let h_total_sleep = Arc::clone(&self.oo_wait_histogram);
-        let h_attempts = Arc::clone(&self.oo_attempts_histogram);
-        let h_span_2 = Arc::clone(&self.oo_install_and_wait_histogram);
-        let c_giveups = Arc::clone(&self.oo_giveups_counter);
-        let c_retry = Arc::clone(&self.oo_retry_counter);
-
-        tokio::spawn(async move {
-            if is_not_save > 0 {
-                c_not_safe.add(is_not_save, &[]);
-            }
-            if total_sleep > 0 {
-                h_total_sleep.record(total_sleep as f64 * 100.0, &[]);
-            }
-            if giveups > 0 {
-                c_giveups.add(giveups, &[]);
-            }
-            if attempt > 1 {
-                c_retry.add(attempt as u64 - 1, &[]);
-            }
-
-            h_attempts.record(attempt as u64, &[]);
-            h_span_2.record(span_2_val * 100.0, &[]);
-        });
-        result
-    }
-
-    async fn send_to_talos<S>(&self, request: model::CertificationRequest, state_provider: &S) -> Result<model::CertificationResponse, ClientError>
-    where
-        S: ItemStateProvider,
-    {
-        let started_at = Instant::now();
-        let mut attempts = 0;
-
-        let mut delay_controller = DelayController::new(self.config.retry_backoff.min_ms, self.config.retry_backoff.max_ms);
-        let mut talos_aborts = 0_u64;
-        let mut agent_errors = 0_u64;
-        let mut db_errors = 0_u64;
-
-        let mut recent_conflict: Option<u64> = None;
-        let mut recent_abort: Option<CertificationResponse> = None;
-
-        let result = loop {
-            // One of these will be sent to client if we failed
-            let result: Option<Result<CertificationResponse, ClientError>>;
-
-            attempts += 1;
-            let is_success = match self.send_to_talos_attempt(request.clone(), state_provider, recent_conflict).await {
-                CertificationAttemptOutcome::ClientAborted { reason } => {
-                    result = Some(Err(ClientError {
-                        kind: model::ClientErrorKind::ClientAborted,
-                        reason,
-                        cause: None,
-                    }));
-                    false
-                }
-                CertificationAttemptOutcome::Success { mut response } => {
-                    response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
-                    response.metadata.attempts = attempts;
-                    result = Some(Ok(response));
-                    true
-                }
-                CertificationAttemptOutcome::Aborted { mut response } => {
-                    talos_aborts += 1;
-                    response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
-                    response.metadata.attempts = attempts;
-                    recent_conflict = response.conflict;
-                    recent_abort = Some(response.clone());
-                    // result = recent_abort.map(|a| Ok(a));
-                    result = Some(Ok(response));
-                    false
-                }
-                CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
-                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
-                    result = recent_abort.clone().map(Ok);
-                    false
-                }
-                CertificationAttemptOutcome::AgentError { error } => {
-                    result = Some(Err(ClientError::from(error)));
-                    agent_errors += 1;
-                    false
-                }
-                CertificationAttemptOutcome::DataError { reason } => {
-                    result = Some(Err(ClientError {
-                        kind: model::ClientErrorKind::Persistence,
-                        reason,
-                        cause: None,
-                    }));
-                    db_errors += 1;
-                    false
-                }
-            };
-
-            let rslt_response = result.unwrap();
-            if is_success || self.config.retry_attempts_max <= attempts {
-                break rslt_response;
-            }
-
-            match rslt_response {
-                Ok(response) => {
-                    log::debug!(
-                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
-                        request.candidate.statemap,
-                        response.decision,
-                        attempts
-                    );
-                }
-                Err(error) => {
-                    log::debug!(
-                        "Unsuccessful transaction with error: {:?}. {} This might retry. Attempts: {}",
-                        request.candidate.statemap,
-                        error,
-                        attempts
-                    );
-                }
-            }
-
-            delay_controller.sleep().await;
-        };
-
-        let c_talos_aborts = Arc::clone(&self.talos_aborts_counter);
-        let c_agent_errors = Arc::clone(&self.agent_errors_counter);
-        let c_db_errors = Arc::clone(&self.db_errors_counter);
-        let h_agent_retries = Arc::clone(&self.agent_retries_histogram);
-
-        if agent_errors > 0 || db_errors > 0 || talos_aborts > 0 || attempts > 0 {
-            tokio::spawn(async move {
-                c_talos_aborts.add(talos_aborts, &[]);
-                c_agent_errors.add(agent_errors, &[]);
-                c_db_errors.add(db_errors, &[]);
-                h_agent_retries.record(attempts as u64, &[]);
-            });
-        }
-
-        result
-    }
-
-    async fn send_to_talos_attempt<S>(
-        &self,
-        request: model::CertificationRequest,
-        state_provider: &S,
-        previous_conflict: Option<u64>,
-    ) -> CertificationAttemptOutcome
-    where
-        S: ItemStateProvider,
-    {
-        let timeout = if request.timeout_ms > 0 {
-            Duration::from_millis(request.timeout_ms)
-        } else {
-            Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64)
-        };
-
-        let local_state: CapturedState = match self.await_for_snapshot(state_provider, previous_conflict, timeout).await {
-            Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
-            Err(SnapshotPollErrorType::Timeout { waited }) => {
-                return CertificationAttemptOutcome::SnapshotTimeout {
-                    waited,
-                    conflict: previous_conflict.unwrap(),
-                }
-            }
-            Ok(local_state) => local_state,
-        };
-
-        if let Some(reason) = local_state.abort_reason {
-            return CertificationAttemptOutcome::ClientAborted { reason };
-        }
-
-        log::debug!("loaded state: {}, {:?}", local_state.snapshot_version, local_state.items);
-
-        let (snapshot, readvers) = Self::select_snapshot_and_readvers(local_state.snapshot_version, local_state.items.iter().map(|i| i.version).collect());
-
-        let xid = uuid::Uuid::new_v4().to_string();
-        let agent_request = CertificationRequest {
-            message_key: xid.clone(),
-            candidate: CandidateData {
-                xid: xid.clone(),
-                statemap: request.candidate.statemap,
-                readset: request.candidate.readset,
-                writeset: request.candidate.writeset,
-                readvers,
-                snapshot,
-            },
-            timeout: if request.timeout_ms > 0 {
-                Some(Duration::from_millis(request.timeout_ms))
-            } else {
-                None
-            },
-        };
-
-        match self.talos_agent.certify(agent_request).await {
-            Ok(agent_response) => {
-                let response = CertificationResponse {
-                    xid: agent_response.xid,
-                    decision: agent_response.decision,
-                    safepoint: agent_response.safepoint,
-                    version: agent_response.version,
-                    metadata: ResponseMetadata { duration_ms: 0, attempts: 0 },
-                    conflict: agent_response.conflict.map(|cm| cm.version),
-                };
-
-                if response.decision == Decision::Aborted {
-                    CertificationAttemptOutcome::Aborted { response }
-                } else {
-                    CertificationAttemptOutcome::Success { response }
-                }
-            }
-            Err(error) => CertificationAttemptOutcome::AgentError { error },
-        }
-    }
-
-    async fn await_for_snapshot<S>(&self, state_provider: &S, previous_conflict: Option<u64>, timeout: Duration) -> Result<CapturedState, SnapshotPollErrorType>
-    where
-        S: ItemStateProvider,
-    {
-        match previous_conflict {
-            None => state_provider.get_state().await.map_err(|reason| SnapshotPollErrorType::FetchError { reason }),
-            Some(conflict) => {
-                let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
-                let poll_started_at = Instant::now();
-                loop {
-                    let result_local_state = state_provider.get_state().await;
-                    match result_local_state {
-                        Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
-                        Ok(current_state) => {
-                            if current_state.abort_reason.is_some() {
-                                break Ok(current_state);
-                            } else if current_state.snapshot_version < conflict {
-                                // not safe yet
-                                let waited = poll_started_at.elapsed();
-                                if waited >= timeout {
-                                    return Err(SnapshotPollErrorType::Timeout { waited });
-                                }
-                                delay_controller.sleep().await;
-                                continue;
-                            } else {
-                                break Ok(current_state);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     fn select_snapshot_and_readvers(cpt_snapshot: u64, cpt_versions: Vec<u64>) -> (u64, Vec<u64>) {
         if cpt_versions.is_empty() {
             log::debug!(
@@ -508,7 +183,343 @@ impl Cohort {
         self.agent_services.decision_reader.abort();
         self.agent_services.state_manager.abort();
     }
+
+    /// Certifies a candidate in talos and install the statemap if the certification is successful.
+    /// Uses two callbacks
+    ///  - First callback to build the request payload to send to talos for certification
+    ///  - The installer callback will be called to do the out of order install.
+    pub async fn certify<F, Fut, O>(&self, get_certification_candidate_callback: &F, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
+        O: OutOfOrderInstaller,
+    {
+        let span_1 = Instant::now();
+        // 1. Get the snapshot
+        // 2. Send for certification
+        let response = self.send_to_talos(get_certification_candidate_callback).await?;
+        let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
+
+        let h_talos = Arc::clone(&self.talos_histogram);
+        tokio::spawn(async move {
+            h_talos.record(span_1_val * 100.0, &[]);
+        });
+
+        if response.safepoint.is_none() || response.statemaps.is_none() {
+            return Ok(response);
+        }
+
+        let oooinstall_payload = OutOfOrderInstallRequest {
+            xid: response.xid.clone(),
+            version: response.version,
+            safepoint: response.safepoint.unwrap(),
+            statemaps: response.statemaps.clone().unwrap(),
+        };
+
+        // 3. OOO install
+        self.install_statemaps_oo(oooinstall_payload, oo_installer).await?;
+
+        Ok(response)
+    }
+
+    /// Installs the statemap for candidate messages with committed decisions received from talos.
+    async fn install_statemaps_oo<O>(&self, install_payload: OutOfOrderInstallRequest, oo_installer: &O) -> Result<(), ClientError>
+    where
+        O: OutOfOrderInstaller,
+    {
+        let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
+        let mut attempt = 0;
+        let span_2 = Instant::now();
+
+        let mut is_not_save = 0_u64;
+        let mut giveups = 0_u64;
+
+        let safepoint = install_payload.safepoint;
+        let result = loop {
+            attempt += 1;
+
+            let span_3 = Instant::now();
+
+            let install_result = oo_installer.install(install_payload.clone()).await;
+            let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
+
+            let h_install = Arc::clone(&self.oo_install_histogram);
+
+            tokio::spawn(async move {
+                h_install.record(span_3_val * 100.0, &[]);
+            });
+
+            let error = match install_result {
+                Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
+                    is_not_save += 1;
+                    // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
+                    Some(ClientError {
+                        kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
+                        reason: format!("Timeout waitig for safepoint: {}", safepoint),
+                        cause: None,
+                    })
+                }
+                Ok(_) => None,
+                Err(error) => Some(ClientError {
+                    kind: model::ClientErrorKind::OutOfOrderCallbackFailed,
+                    reason: error,
+                    cause: None,
+                }),
+            };
+
+            if let Some(client_error) = error {
+                if attempt >= self.config.retry_oo_attempts_max {
+                    giveups += 1;
+                    break Err(client_error);
+                }
+
+                // try again
+                controller.sleep().await;
+            } else {
+                break Ok(());
+            }
+        };
+
+        let span_2_val = span_2.elapsed().as_nanos() as f64 / 1_000_000_f64;
+        let total_sleep = controller.total_sleep_time;
+
+        let c_not_safe = Arc::clone(&self.oo_not_safe_counter);
+        let h_total_sleep = Arc::clone(&self.oo_wait_histogram);
+        let h_attempts = Arc::clone(&self.oo_attempts_histogram);
+        let h_span_2 = Arc::clone(&self.oo_install_and_wait_histogram);
+        let c_giveups = Arc::clone(&self.oo_giveups_counter);
+        let c_retry = Arc::clone(&self.oo_retry_counter);
+
+        tokio::spawn(async move {
+            if is_not_save > 0 {
+                c_not_safe.add(is_not_save, &[]);
+            }
+            if total_sleep > 0 {
+                h_total_sleep.record(total_sleep as f64 * 100.0, &[]);
+            }
+            if giveups > 0 {
+                c_giveups.add(giveups, &[]);
+            }
+            if attempt > 1 {
+                c_retry.add(attempt as u64 - 1, &[]);
+            }
+
+            h_attempts.record(attempt as u64, &[]);
+            h_span_2.record(span_2_val * 100.0, &[]);
+        });
+
+        log::debug!("Total attempts used to install: {attempt}");
+        result
+    }
+
+    async fn send_to_talos<F, Fut>(&self, get_certification_candidate_callback: &F) -> Result<model::CertificationResponse, ClientError>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
+    {
+        let started_at = Instant::now();
+        let mut result: Option<Result<CertificationResponse, ClientError>>;
+
+        let mut delay_controller = DelayController::new(self.config.retry_backoff.min_ms, self.config.retry_backoff.max_ms);
+
+        let mut attempts = 0;
+        let mut talos_aborts = 0_u64;
+        let mut agent_errors = 0_u64;
+        let mut db_errors = 0_u64;
+
+        let mut recent_conflict: Option<u64> = None;
+        let mut recent_abort: Option<CertificationResponse> = None;
+
+        // The loop exits when either of the below conditions are met.
+        //  1. When commit decision is received from talos agent/certifier.
+        //  2. When an clientabort is requested.
+        //  3. When all retries are exhausted.
+        let final_result = loop {
+            // Await for snapshot and build the certification request payload.
+            // Send the certification payload to talos
+            match self.send_to_talos_attempt(&get_certification_candidate_callback, recent_conflict).await {
+                CertificationAttemptOutcome::Success { mut response } => {
+                    response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
+                    response.metadata.attempts = attempts;
+                    break Ok(response);
+                }
+                CertificationAttemptOutcome::Aborted { mut response } => {
+                    talos_aborts += 1;
+                    response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
+                    response.metadata.attempts = attempts;
+
+                    // TODO: GK - aborts by rule 2 will not have any conflict version.
+                    recent_conflict = response.conflict;
+                    recent_abort = Some(response.clone());
+                    result = Some(Ok(response));
+                }
+                CertificationAttemptOutcome::AgentError { error } => {
+                    result = Some(Err(ClientError::from(error)));
+                    agent_errors += 1;
+                }
+
+                CertificationAttemptOutcome::Cancelled { reason } => {
+                    break Err(ClientError {
+                        kind: model::ClientErrorKind::Cancelled,
+                        reason,
+                        cause: None,
+                    });
+                }
+                CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
+                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
+                    result = recent_abort.clone().map(Ok);
+                }
+                CertificationAttemptOutcome::DataError { reason } => {
+                    result = Some(Err(ClientError {
+                        kind: model::ClientErrorKind::Persistence,
+                        reason,
+                        cause: None,
+                    }));
+                    db_errors += 1;
+                }
+            }
+
+            let rslt_response = result.unwrap();
+            attempts += 1;
+            if attempts >= self.config.retry_attempts_max {
+                break rslt_response;
+            }
+
+            match rslt_response {
+                Ok(response) => {
+                    log::debug!(
+                        "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
+                        response.statemaps,
+                        response.decision,
+                        attempts
+                    );
+                }
+                Err(error) => {
+                    log::debug!("Unsuccessful transaction with error: {:?}. This might retry. Attempts: {}", error, attempts);
+                }
+            }
+
+            delay_controller.sleep().await;
+        };
+
+        let c_talos_aborts = Arc::clone(&self.talos_aborts_counter);
+        let c_agent_errors = Arc::clone(&self.agent_errors_counter);
+        let c_db_errors = Arc::clone(&self.db_errors_counter);
+        let h_agent_retries = Arc::clone(&self.agent_retries_histogram);
+
+        if agent_errors > 0 || db_errors > 0 || talos_aborts > 0 || attempts > 0 {
+            tokio::spawn(async move {
+                c_talos_aborts.add(talos_aborts, &[]);
+                c_agent_errors.add(agent_errors, &[]);
+                c_db_errors.add(db_errors, &[]);
+                h_agent_retries.record(attempts as u64, &[]);
+            });
+        }
+
+        final_result
+    }
+
+    async fn send_to_talos_attempt<F, Fut>(&self, get_certification_candidate_callback: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
+    {
+        let timeout = Duration::from_millis(self.config.snapshot_wait_timeout_ms as u64);
+
+        let request = match self
+            .create_candidate_for_certification(get_certification_candidate_callback, previous_conflict, timeout)
+            .await
+        {
+            Err(SnapshotPollErrorType::FetchError { reason }) => return CertificationAttemptOutcome::DataError { reason },
+            Err(SnapshotPollErrorType::Timeout { waited }) => {
+                return CertificationAttemptOutcome::SnapshotTimeout {
+                    waited,
+                    conflict: previous_conflict.unwrap(),
+                }
+            }
+            Ok(CertificationCandidateCallbackResponse::Cancelled(reason)) => {
+                return CertificationAttemptOutcome::Cancelled { reason };
+            }
+            Ok(CertificationCandidateCallbackResponse::Proceed(request)) => request,
+        };
+
+        log::debug!("loaded state: {}, {:?}", request.snapshot, request.candidate);
+
+        let (snapshot, readvers) = Self::select_snapshot_and_readvers(request.snapshot, request.candidate.readvers);
+
+        let xid = uuid::Uuid::new_v4().to_string();
+        let agent_request = CertificationRequest {
+            message_key: xid.clone(),
+            candidate: CandidateData {
+                xid,
+                statemap: request.candidate.statemaps.clone(),
+                readset: request.candidate.readset,
+                writeset: request.candidate.writeset,
+                readvers,
+                snapshot,
+            },
+            timeout: if request.timeout_ms > 0 {
+                Some(Duration::from_millis(request.timeout_ms))
+            } else {
+                None
+            },
+        };
+
+        match self.talos_agent.certify(agent_request).await {
+            Ok(agent_response) => {
+                let response = CertificationResponse {
+                    xid: agent_response.xid,
+                    decision: agent_response.decision,
+                    safepoint: agent_response.safepoint,
+                    version: agent_response.version,
+                    metadata: ResponseMetadata { duration_ms: 0, attempts: 0 },
+                    conflict: agent_response.conflict.map(|cm| cm.version),
+                    statemaps: request.candidate.statemaps,
+                };
+
+                if response.decision == Decision::Aborted {
+                    CertificationAttemptOutcome::Aborted { response }
+                } else {
+                    CertificationAttemptOutcome::Success { response }
+                }
+            }
+            Err(error) => CertificationAttemptOutcome::AgentError { error },
+        }
+    }
+
+    async fn create_candidate_for_certification<F, Fut>(
+        &self,
+        get_candidate_callback: &F,
+        previous_conflict: Option<u64>,
+        timeout: Duration,
+    ) -> Result<CertificationCandidateCallbackResponse, SnapshotPollErrorType>
+    where
+        F: Fn() -> Fut,
+        Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
+    {
+        let conflict = previous_conflict.unwrap_or(0);
+
+        let mut delay_controller = DelayController::new(self.config.backoff_on_conflict.min_ms, self.config.backoff_on_conflict.max_ms);
+        let poll_started_at = Instant::now();
+
+        loop {
+            let candidate_callback_result = get_candidate_callback().await;
+            match candidate_callback_result {
+                Err(reason) => return Err(SnapshotPollErrorType::FetchError { reason }),
+                Ok(CertificationCandidateCallbackResponse::Proceed(request)) if request.snapshot < conflict => {
+                    let waited = poll_started_at.elapsed();
+                    if waited >= timeout {
+                        return Err(SnapshotPollErrorType::Timeout { waited });
+                    }
+                    delay_controller.sleep().await;
+                    continue;
+                }
+                Ok(request) => return Ok(request),
+            }
+        }
+    }
 }
+#[derive(Debug)]
 pub enum SnapshotPollErrorType {
     Timeout { waited: Duration },
     FetchError { reason: String },

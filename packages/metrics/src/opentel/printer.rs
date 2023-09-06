@@ -51,7 +51,7 @@ impl MetricsToStringPrinter {
         let mut out: String = "".to_owned();
         let serde_value = serde_json::to_value(metrics).map_err(|e| e.to_string())?;
         let container = serde_json::from_value::<MetricsDataContainer>(serde_value).map_err(|e| e.to_string())?;
-        let percentile_labels = vec![25.0, 50.0, 75.0, 90.0, 95.0, 98.0, 99.0, 99.9, 99.99, 100.0];
+        let percentile_labels = [25.0, 50.0, 75.0, 90.0, 95.0, 98.0, 99.0, 99.9, 99.99, 100.0];
 
         if let Some(ref filter) = self.resource_filter {
             let mut filter_passed = filter.is_empty();
