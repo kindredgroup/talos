@@ -70,14 +70,14 @@ impl Initiator {
     #[napi]
     pub async fn certify(
         &self,
-        #[napi(ts_arg_type = "() => Promise<any>")] get_state_callback: ThreadsafeFunction<()>,
+        #[napi(ts_arg_type = "() => Promise<any>")] make_new_request_callback: ThreadsafeFunction<()>,
         ooo_callback: ThreadsafeFunction<OoRequest>,
     ) -> napi::Result<String> {
         // println!("Initiator.certify()");
-        let item_state_provider_impl = ItemStateProviderImpl { get_state_callback };
+        let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         // println!("Initiator.certify(): invoking cohort.certify(...)");
-        let make_new_request = || item_state_provider_impl.get_state();
+        let make_new_request = || new_request_provider.make_new_request();
         let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error_to_napi_error)?;
 
         // println!("Initiator.certify(): after cohort.certify(...)");
@@ -117,14 +117,14 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
     }
 }
 
-pub struct ItemStateProviderImpl {
-    get_state_callback: ThreadsafeFunction<()>,
+pub struct NewRequestProvider {
+    make_new_request_callback: ThreadsafeFunction<()>,
 }
 
-impl ItemStateProviderImpl {
-    async fn get_state(&self) -> Result<CertificationCandidateCallbackResponse, String> {
+impl NewRequestProvider {
+    async fn make_new_request(&self) -> Result<CertificationCandidateCallbackResponse, String> {
         let result = self
-            .get_state_callback
+            .make_new_request_callback
             .call_async::<Promise<JsCertificationCandidateCallbackResponse>>(Ok(()))
             .await
             .map_err(map_error_to_napi_error);
