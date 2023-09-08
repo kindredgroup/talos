@@ -7,7 +7,8 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{ReplicatorSnapshotProvider, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+    callbacks::ReplicatorSnapshotProvider,
+    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
     errors::ServiceError,
     models::StatemapInstallerQueue,
 };

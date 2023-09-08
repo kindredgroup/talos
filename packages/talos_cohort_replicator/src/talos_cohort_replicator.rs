@@ -5,7 +5,8 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{sync::mpsc, task::JoinHandle, try_join};
 
 use crate::{
-    core::{Replicator, ReplicatorInstaller, ReplicatorSnapshotProvider},
+    callbacks::{ReplicatorInstaller, ReplicatorSnapshotProvider},
+    core::Replicator,
     errors::ServiceError,
     models::ReplicatorCandidate,
     services::{

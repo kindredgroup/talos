@@ -6,7 +6,7 @@ use banking_common::state::postgres::{
     database_config::DatabaseConfig,
 };
 use banking_replicator::{app::BankingReplicatorApp, statemap_installer::BankStatemapInstaller};
-use talos_cohort_replicator::{CohortReplicatorConfig, ReplicatorSnapshotProvider};
+use talos_cohort_replicator::{callbacks::ReplicatorSnapshotProvider, CohortReplicatorConfig};
 
 use talos_common_utils::{env_var, env_var_with_defaults};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;

@@ -3,7 +3,10 @@ use std::sync::Arc;
 use banking_common::state::postgres::{database::Database, database_config::DatabaseConfig};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
-use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, ReplicatorInstaller, ReplicatorSnapshotProvider};
+use talos_cohort_replicator::{
+    callbacks::{ReplicatorInstaller, ReplicatorSnapshotProvider},
+    talos_cohort_replicator, CohortReplicatorConfig,
+};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::task::JoinHandle;
 

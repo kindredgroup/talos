@@ -3,7 +3,8 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-    core::{ReplicatorChannel, ReplicatorInstaller, StatemapInstallationStatus, StatemapItem},
+    callbacks::ReplicatorInstaller,
+    core::{ReplicatorChannel, StatemapInstallationStatus, StatemapItem},
     errors::ServiceError,
 };
 

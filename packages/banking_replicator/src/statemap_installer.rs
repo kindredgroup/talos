@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Duration};
 use async_trait::async_trait;
 use banking_common::{model::TransferRequest, state::postgres::database::Database};
 use deadpool_postgres::Transaction;
-use talos_cohort_replicator::{ReplicatorInstaller, StatemapItem};
+use talos_cohort_replicator::{callbacks::ReplicatorInstaller, StatemapItem};
 use tokio_postgres::types::ToSql;
 
 const BANK_ACCOUNTS_UPDATE_QUERY: &str = r#"
