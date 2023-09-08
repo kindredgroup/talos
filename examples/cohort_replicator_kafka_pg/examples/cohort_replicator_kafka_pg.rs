@@ -55,7 +55,10 @@ async fn main() {
         user: env_var!("COHORT_PG_USER"),
         pool_size: env_var_with_defaults!("COHORT_PG_POOL_SIZE", u32, 10),
     };
-    let database = Database::init_db(cfg_db.clone()).await.map_err(|e| e.to_string()).unwrap();
+    let database = Database::init_db(cfg_db.clone())
+        .await
+        .map_err(|e| e.to_string())
+        .expect("Unable to initialise database");
 
     let pg_statemap_installer = BankStatemapInstaller {
         database: Arc::clone(&database),
@@ -78,12 +81,13 @@ async fn main() {
 
     let app = BankingReplicatorApp::new(kafka_config, cfg_db, config, Arc::new(pg_statemap_installer))
         .await
-        .unwrap();
-    let handle = app.run(snapshot_api).await.unwrap();
+        .expect("Unable to create an instance of Banking Replicator");
+
+    let h_replicator = app.run(snapshot_api).await.unwrap();
 
     tokio::select! {
 
-        _ = handle => {}
+        _ = h_replicator => {}
 
         // CTRL + C termination signal
         _ = signal::ctrl_c() => {

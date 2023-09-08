@@ -557,7 +557,7 @@ dependencies = [
  "cohort_banking",
  "env_logger",
  "log",
- "rdkafka 0.29.0",
+ "rdkafka 0.34.0",
  "rdkafka-sys",
  "rust_decimal",
  "serde",
@@ -612,6 +612,9 @@ dependencies = [
  "napi-derive",
  "serde",
  "serde_json",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "talos_cohort_replicator",
  "talos_rdkafka_utils",
  "thiserror",
  "uuid",
@@ -1973,10 +1976,28 @@ dependencies = [
 ]
 
 [[package]]
-name = "rdkafka-sys"
-version = "4.5.0+1.9.2"
+name = "rdkafka"
+version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bb0676c2112342ac7165decdedbc4e7086c0af384479ccce534546b10687a5d"
+checksum = "053adfa02fab06e86c01d586cc68aa47ee0ff4489a59469081dc12cbcde578bf"
+dependencies = [
+ "futures-channel",
+ "futures-util",
+ "libc",
+ "log",
+ "rdkafka-sys",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "slab",
+ "tokio",
+]
+
+[[package]]
+name = "rdkafka-sys"
+version = "4.6.0+2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad63c279fca41a27c231c450a2d2ad18288032e9cbb159ad16c9d96eba35aaaf"
 dependencies = [
  "libc",
  "libz-sys",

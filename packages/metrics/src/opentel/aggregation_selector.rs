@@ -1,6 +1,6 @@
 use opentelemetry_sdk::metrics::{reader::AggregationSelector, Aggregation, InstrumentKind};
 
-use super::buckets::BUCKETS_4K;
+use super::buckets::BUCKETS_4K as BUCKETS;
 
 #[derive(Debug)]
 pub struct CustomHistogramSelector {
@@ -18,7 +18,7 @@ impl Default for CustomHistogramSelector {
 impl CustomHistogramSelector {
     pub fn new_with_4k_buckets() -> Result<Self, String> {
         let mut buckets: Vec<f64> = Vec::new();
-        for b in BUCKETS_4K {
+        for b in BUCKETS {
             buckets.push(b as f64)
         }
 

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 // $coverage:ignore-start
-use cohort_sdk::model::{BackoffConfig, Config};
+use cohort_sdk::model::BackoffConfig;
 use napi_derive::napi;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
@@ -20,6 +20,7 @@ impl From<JsBackoffConfig> for BackoffConfig {
     }
 }
 
+#[derive(Clone)]
 #[napi(object)]
 pub struct JsKafkaConfig {
     pub brokers: Vec<String>,
@@ -53,60 +54,6 @@ impl From<JsKafkaConfig> for KafkaConfig {
             // consumer_config_overrides: HashMap::new(),
             producer_send_timeout_ms: val.producer_send_timeout_ms,
             log_level: val.log_level,
-        }
-    }
-}
-
-// unsafe impl Send for JsConfig {}
-// unsafe impl Sync for JsConfig {}
-#[napi(object)]
-pub struct JsConfig {
-    // cohort configs
-    //
-    pub backoff_on_conflict: JsBackoffConfig,
-    pub retry_backoff: JsBackoffConfig,
-
-    pub retry_attempts_max: u32,
-    pub retry_oo_backoff: JsBackoffConfig,
-    pub retry_oo_attempts_max: u32,
-
-    pub snapshot_wait_timeout_ms: u32,
-
-    //
-    // agent config values
-    //
-    pub agent: String,
-    pub cohort: String,
-    // The size of internal buffer for candidates
-    pub buffer_size: u32,
-    pub timeout_ms: u32,
-
-    pub kafka: JsKafkaConfig,
-}
-
-impl From<JsConfig> for Config {
-    fn from(val: JsConfig) -> Self {
-        Config {
-            //
-            // cohort configs
-            //
-            retry_attempts_max: val.retry_attempts_max,
-            retry_backoff: val.retry_backoff.into(),
-            backoff_on_conflict: val.backoff_on_conflict.into(),
-            retry_oo_backoff: val.retry_oo_backoff.into(),
-            retry_oo_attempts_max: val.retry_oo_attempts_max,
-            snapshot_wait_timeout_ms: val.snapshot_wait_timeout_ms,
-
-            //
-            // agent config values
-            //
-            agent: val.agent,
-            cohort: val.cohort,
-            // The size of internal buffer for candidates
-            buffer_size: val.buffer_size,
-            timeout_ms: val.timeout_ms,
-
-            kafka: val.kafka.into(),
         }
     }
 }

@@ -31,9 +31,15 @@ log = { version = "0.4", features = [
 # db migrations
 #refinery = {version="0.8", features=["tokio-postgres"]}
 # crate depencies
-cohort_sdk =            { path = "../cohort_sdk" }
-talos_rdkafka_utils =   { path = "../../packages/talos_rdkafka_utils" }
+cohort_sdk = { path = "../cohort_sdk" }
+talos_cohort_replicator = { path = "../../packages/talos_cohort_replicator" }
+talos_certifier = { path = "../talos_certifier" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils" }
+
 async-trait = "0.1.72"
+# rdkafka = { version = "0.34.0", features = ["sasl"] }
+# rdkafka-sys = { version = "4.3.0" }
 
 [build-dependencies]
 napi-build = "2.0.1"

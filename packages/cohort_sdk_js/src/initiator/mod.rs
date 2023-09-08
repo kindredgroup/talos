@@ -1,16 +1,69 @@
-use crate::models::JsConfig;
+use crate::map_error_to_napi_error;
+use crate::models::{JsBackoffConfig, JsKafkaConfig};
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
 use cohort_sdk::model::callback::{
     CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OutOfOrderInstallOutcome, OutOfOrderInstallRequest,
     OutOfOrderInstaller,
 };
+use cohort_sdk::model::Config;
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fmt::Display;
+
+#[napi(object)]
+pub struct JsInitiatorConfig {
+    // cohort configs
+    //
+    pub backoff_on_conflict: JsBackoffConfig,
+    pub retry_backoff: JsBackoffConfig,
+
+    pub retry_attempts_max: u32,
+    pub retry_oo_backoff: JsBackoffConfig,
+    pub retry_oo_attempts_max: u32,
+
+    pub snapshot_wait_timeout_ms: u32,
+
+    //
+    // agent config values
+    //
+    pub agent: String,
+    pub cohort: String,
+    // The size of internal buffer for candidates
+    pub buffer_size: u32,
+    pub timeout_ms: u32,
+
+    pub kafka: JsKafkaConfig,
+}
+
+impl From<JsInitiatorConfig> for Config {
+    fn from(val: JsInitiatorConfig) -> Self {
+        Config {
+            //
+            // cohort configs
+            //
+            retry_attempts_max: val.retry_attempts_max,
+            retry_backoff: val.retry_backoff.into(),
+            backoff_on_conflict: val.backoff_on_conflict.into(),
+            retry_oo_backoff: val.retry_oo_backoff.into(),
+            retry_oo_attempts_max: val.retry_oo_attempts_max,
+            snapshot_wait_timeout_ms: val.snapshot_wait_timeout_ms,
+
+            //
+            // agent config values
+            //
+            agent: val.agent,
+            cohort: val.cohort,
+            // The size of internal buffer for candidates
+            buffer_size: val.buffer_size,
+            timeout_ms: val.timeout_ms,
+
+            kafka: val.kafka.into(),
+        }
+    }
+}
 
 #[napi(object)]
 pub struct JsCertificationCandidate {
@@ -62,7 +115,7 @@ pub struct Initiator {
 #[napi]
 impl Initiator {
     #[napi]
-    pub async fn init(config: JsConfig) -> napi::Result<Initiator> {
+    pub async fn init(config: JsInitiatorConfig) -> napi::Result<Initiator> {
         let cohort = Cohort::create(config.into()).await.map_err(map_error_to_napi_error)?;
         Ok(Initiator { cohort })
     }
@@ -150,23 +203,9 @@ impl NewRequestProvider {
     }
 }
 
-// pub struct JsClientError {
-//     client_error: ClientError
-// }
-/// # Errors
-/// Convert rust error into `napi::Error`
-fn map_error_to_napi_error<T: Display>(e: T) -> napi::Error {
-    napi::Error::from_reason(e.to_string())
-}
 #[napi(object)]
 pub struct OoRequest {
     pub xid: String,
     pub safepoint: u32,
     pub new_version: u32,
 }
-
-// impl From<JsClientError> for napi::Error {
-//     fn from(client: JSScyllaError) -> Self {
-//         map_error_to_napi_error(scylla_error)
-//     }
-// }
