@@ -181,6 +181,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "banking_common"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "deadpool",
+ "deadpool-postgres",
+ "env_logger",
+ "log",
+ "refinery",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "strum 0.25.0",
+ "tokio-postgres",
+]
+
+[[package]]
+name = "banking_replicator"
+version = "0.0.1"
+dependencies = [
+ "async-trait",
+ "banking_common",
+ "cohort_sdk",
+ "deadpool",
+ "deadpool-postgres",
+ "env_logger",
+ "futures",
+ "log",
+ "metrics",
+ "opentelemetry",
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+ "refinery",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "strum 0.25.0",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "talos_cohort_replicator",
+ "talos_rdkafka_utils",
+ "tokio",
+ "tokio-postgres",
+ "uuid",
+]
+
+[[package]]
 name = "base64"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -443,9 +490,8 @@ version = "0.0.1"
 dependencies = [
  "async-channel",
  "async-trait",
+ "banking_common",
  "cohort_sdk",
- "deadpool",
- "deadpool-postgres",
  "env_logger",
  "futures",
  "log",
@@ -454,7 +500,6 @@ dependencies = [
  "opentelemetry_api",
  "opentelemetry_sdk",
  "rand",
- "refinery",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -474,6 +519,7 @@ version = "0.0.1"
 dependencies = [
  "async-channel",
  "async-trait",
+ "banking_common",
  "cohort_banking",
  "cohort_sdk",
  "deadpool-postgres",
@@ -506,6 +552,8 @@ name = "cohort_replicator_kafka_pg"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "banking_common",
+ "banking_replicator",
  "cohort_banking",
  "env_logger",
  "log",
@@ -545,6 +593,7 @@ dependencies = [
  "strum 0.25.0",
  "talos_agent",
  "talos_certifier",
+ "talos_cohort_replicator",
  "talos_rdkafka_utils",
  "tokio",
  "uuid",

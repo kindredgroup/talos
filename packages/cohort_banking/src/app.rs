@@ -1,6 +1,10 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use banking_common::{
+    model::{BusinessActionType, TransferRequest},
+    state::postgres::{database::Database, database_config::DatabaseConfig},
+};
 use cohort_sdk::{
     cohort::Cohort,
     model::{ClientErrorKind, Config},
@@ -15,8 +19,7 @@ use talos_agent::messaging::api::Decision;
 use crate::{
     callbacks::{certification_candidate_provider::CertificationCandidateProviderImpl, oo_installer::OutOfOrderInstallerImpl},
     examples_support::queue_processor::Handler,
-    model::requests::{BusinessActionType, CandidateData, CertificationRequest, TransferRequest},
-    state::postgres::{database::Database, database_config::DatabaseConfig},
+    model::requests::{CandidateData, CertificationRequest},
 };
 
 pub struct BankingApp {

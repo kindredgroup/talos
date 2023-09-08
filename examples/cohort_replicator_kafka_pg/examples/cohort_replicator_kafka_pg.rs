@@ -1,15 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use cohort_banking::{
-    callbacks::statemap_installer::BankStatemapInstaller,
-    state::postgres::{database::Database, database_config::DatabaseConfig},
+use banking_common::state::postgres::{
+    database::{Database, DatabaseError},
+    database_config::DatabaseConfig,
 };
-use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::KafkaConsumer;
-use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, ReplicatorSnapshotProvider};
+use banking_replicator::{app::BankingReplicatorApp, statemap_installer::BankStatemapInstaller};
+use talos_cohort_replicator::{CohortReplicatorConfig, ReplicatorSnapshotProvider};
 
-use cohort_banking::state::postgres::database::DatabaseError;
 use talos_common_utils::{env_var, env_var_with_defaults};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::signal;
@@ -47,10 +45,6 @@ async fn main() {
     //  a. Create Kafka consumer
     let mut kafka_config = KafkaConfig::from_env(None);
     kafka_config.group_id = env_var!("BANK_REPLICATOR_KAFKA_GROUP_ID");
-    let kafka_consumer = KafkaConsumer::new(&kafka_config);
-
-    // b. Subscribe to topic.
-    kafka_consumer.subscribe().await.unwrap();
 
     // e. Create postgres statemap installer instance.
     let cfg_db = DatabaseConfig {
@@ -61,7 +55,7 @@ async fn main() {
         user: env_var!("COHORT_PG_USER"),
         pool_size: env_var_with_defaults!("COHORT_PG_POOL_SIZE", u32, 10),
     };
-    let database = Database::init_db(cfg_db).await.map_err(|e| e.to_string()).unwrap();
+    let database = Database::init_db(cfg_db.clone()).await.map_err(|e| e.to_string()).unwrap();
 
     let pg_statemap_installer = BankStatemapInstaller {
         database: Arc::clone(&database),
@@ -82,14 +76,14 @@ async fn main() {
 
     let snapshot_api = SnapshotApi { db: Arc::clone(&database) };
 
-    let all_async_services = tokio::spawn(async move {
-        let result = talos_cohort_replicator(kafka_consumer, Arc::new(pg_statemap_installer), snapshot_api, config).await;
-        log::info!("Result from the services ={result:?}");
-    });
+    let app = BankingReplicatorApp::new(kafka_config, cfg_db, config, Arc::new(pg_statemap_installer))
+        .await
+        .unwrap();
+    let handle = app.run(snapshot_api).await.unwrap();
 
     tokio::select! {
 
-        _ = all_async_services => {}
+        _ = handle => {}
 
         // CTRL + C termination signal
         _ = signal::ctrl_c() => {

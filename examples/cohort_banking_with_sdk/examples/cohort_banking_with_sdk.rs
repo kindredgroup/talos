@@ -1,8 +1,10 @@
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use async_channel::Receiver;
-use cohort_banking::state::postgres::database_config::DatabaseConfig;
-use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueueProcessor, model::requests::TransferRequest};
+use banking_common::model::TransferRequest;
+use banking_common::state::postgres::database_config::DatabaseConfig;
+use cohort_banking::app::BankingApp;
+use cohort_banking::examples_support::queue_processor::QueueProcessor;
 use cohort_sdk::model::{BackoffConfig, Config};
 use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};

@@ -1,14 +1,13 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
+use banking_common::{
+    model::TransferRequest,
+    state::postgres::database::{Database, DatabaseError},
+};
 use cohort_sdk::model::callback::{OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller};
 use opentelemetry_api::metrics::Counter;
 use tokio_postgres::types::ToSql;
-
-use crate::{
-    model::requests::TransferRequest,
-    state::postgres::database::{Database, DatabaseError},
-};
 
 pub struct OutOfOrderInstallerImpl {
     pub database: Arc<Database>,

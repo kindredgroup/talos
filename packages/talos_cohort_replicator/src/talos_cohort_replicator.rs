@@ -38,6 +38,7 @@ fn create_channel<T>(channel_size: usize) -> (tokio::sync::mpsc::Sender<T>, toki
 // }
 
 /// Configs used by the Cohort Replicator
+#[derive(Clone, Debug)]
 pub struct CohortReplicatorConfig {
     /// Replicator and Installer stats. Defaults to `false`.
     pub enable_stats: bool,

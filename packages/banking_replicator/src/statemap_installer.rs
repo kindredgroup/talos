@@ -1,11 +1,10 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use banking_common::{model::TransferRequest, state::postgres::database::Database};
 use deadpool_postgres::Transaction;
 use talos_cohort_replicator::{ReplicatorInstaller, StatemapItem};
 use tokio_postgres::types::ToSql;
-
-use crate::{model::requests::TransferRequest, state::postgres::database::Database};
 
 const BANK_ACCOUNTS_UPDATE_QUERY: &str = r#"
 UPDATE bank_accounts ba SET

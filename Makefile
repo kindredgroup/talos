@@ -176,6 +176,18 @@ dev.run_replicator:
 	$(call pp,run replicator...)
 	cargo run --bin replicator --release
 
+## dev.run_initiator_js: 🧪 Runs Initiator JS app
+dev.run_initiator_js:
+	$(call pp,run Initiator JS...)
+	cd ./cohort_banking_initiator_js
+	npm start
+
+## dev.run_replicator_js: 🧪 Runs Replicator JS app
+dev.run_replicator_js:
+	$(call pp,run Replicator JS...)
+	cd ./cohort_banking_replicator_js
+	npm start
+
 ## lint: 🧹 Checks for lint failures on rust
 lint:
 	$(call pp,lint rust...)
