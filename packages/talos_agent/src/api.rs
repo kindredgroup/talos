@@ -47,8 +47,8 @@ pub struct AgentConfig {
     pub agent: String,
     pub cohort: String,
     // The size of internal buffer for candidates
-    pub buffer_size: usize,
-    pub timeout_ms: u64,
+    pub buffer_size: u32,
+    pub timeout_ms: u32,
 }
 
 #[derive(Clone, Debug)]

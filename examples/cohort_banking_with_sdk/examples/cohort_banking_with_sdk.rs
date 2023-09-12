@@ -273,7 +273,7 @@ async fn get_params() -> Result<LaunchParams, String> {
             stop_type: stop_type.unwrap(),
             threads: threads.unwrap(),
             accounts: accounts.unwrap(),
-            scaling_config: scaling_config.unwrap(),
+            scaling_config: scaling_config.unwrap_or(HashMap::new()),
             metric_print_raw: metric_print_raw.is_some(),
         })
     }

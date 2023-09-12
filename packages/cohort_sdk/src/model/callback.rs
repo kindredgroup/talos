@@ -40,11 +40,6 @@ pub enum OutOfOrderInstallOutcome {
     SafepointCondition,
 }
 
-// #[async_trait]
-// pub trait CertificationRequestProvider {
-//     async fn get_candidate_to_certify(&self) -> Result<CertificationCandidateCallbackResponse, String>;
-// }
-
 #[async_trait]
 pub trait OutOfOrderInstaller {
     async fn install(&self, install_item: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String>;

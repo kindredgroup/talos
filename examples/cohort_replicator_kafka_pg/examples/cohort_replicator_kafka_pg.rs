@@ -59,7 +59,7 @@ async fn main() {
         password: env_var!("COHORT_PG_PASSWORD"),
         port: env_var!("COHORT_PG_PORT"),
         user: env_var!("COHORT_PG_USER"),
-        pool_size: env_var_with_defaults!("COHORT_PG_POOL_SIZE", usize, 10),
+        pool_size: env_var_with_defaults!("COHORT_PG_POOL_SIZE", u32, 10),
     };
     let database = Database::init_db(cfg_db).await.map_err(|e| e.to_string()).unwrap();
 
