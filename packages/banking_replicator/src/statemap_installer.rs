@@ -10,8 +10,8 @@ const BANK_ACCOUNTS_UPDATE_QUERY: &str = r#"
 UPDATE bank_accounts ba SET
 "amount" =
 (CASE
-    WHEN ba."number" = ($1)::TEXT THEN ba."amount" + ($3)::DECIMAL
-    WHEN ba."number" = ($2)::TEXT THEN ba."amount" - ($3)::DECIMAL
+    WHEN ba."number" = ($1)::TEXT THEN ba."amount" - ($3)::DECIMAL
+    WHEN ba."number" = ($2)::TEXT THEN ba."amount" + ($3)::DECIMAL
     END),
     "version" = ($4)::BIGINT
     WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)

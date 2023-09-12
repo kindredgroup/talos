@@ -103,7 +103,7 @@ async fn main() -> Result<(), String> {
             password: "".into(),
             // The maximum time librdkafka may use to deliver a message (including retries)
             producer_config_overrides: HashMap::from([("message.timeout.ms".into(), "15000".into())]),
-            consumer_config_overrides: HashMap::from([("fetch.wait.max.ms".into(), "6000".into())]),
+            consumer_config_overrides: HashMap::from([("fetch.wait.max.ms".into(), "6000".into()), ("enable.auto.commit".into(), "false".into())]),
             // consumer_config_overrides: HashMap::new(),
             producer_send_timeout_ms: Some(10),
             log_level: Some("info".into()),

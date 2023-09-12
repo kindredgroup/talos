@@ -1,17 +1,20 @@
 mod callback_impl;
 
+use std::sync::Arc;
+
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 
 use serde_json::Value;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
-use talos_cohort_replicator::{CohortReplicatorConfig, StatemapItem};
+use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
 
 use crate::{map_error_to_napi_error, models::JsKafkaConfig};
 
 use self::callback_impl::{SnapshotProviderDelegate, StatemapInstallerDelegate};
 
+#[derive(Clone)]
 #[napi(object)]
 pub struct JsReplicatorConfig {
     pub enable_stats: bool,
@@ -68,35 +71,58 @@ pub struct JsStatemapAndSnapshot {
 pub struct Replicator {
     kafka_config: JsKafkaConfig,
     config: JsReplicatorConfig,
-    snapshot_provider: SnapshotProviderDelegate,
-    statemap_installer: StatemapInstallerDelegate,
+    // snapshot_provider: SnapshotProviderDelegate,
+    // snapshot_provider_callback: ThreadsafeFunction<()>,
+    // statemap_installer: StatemapInstallerDelegate,
 }
 
 #[napi]
 impl Replicator {
     #[napi]
-    pub async fn new(
+    pub async fn init(
         kafka_config: JsKafkaConfig,
         config: JsReplicatorConfig,
-        snapshot_provider_callback: ThreadsafeFunction<()>,
-        statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
+        // statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
     ) -> napi::Result<Replicator> {
         Ok(Replicator {
             kafka_config,
             config,
-            snapshot_provider: SnapshotProviderDelegate {
-                callback: snapshot_provider_callback,
-            },
-            statemap_installer: StatemapInstallerDelegate {
-                callback: statemap_installer_callback,
-            },
+            // snapshot_provider_callback,
+            // snapshot_provider: SnapshotProviderDelegate {
+            //     callback: snapshot_provider_callback,
+            // },
+            // statemap_installer: StatemapInstallerDelegate {
+            //     callback: statemap_installer_callback,
+            // },
         })
     }
 
     #[napi]
-    pub async fn run(&self) -> napi::Result<()> {
+    pub async fn run(
+        &self,
+        #[napi(ts_arg_type = "() => Promise<number>")] snapshot_provider_callback: ThreadsafeFunction<()>,
+        statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
+    ) -> napi::Result<()> {
         let kafka_consumer = KafkaConsumer::new(&self.kafka_config.clone().into());
         kafka_consumer.subscribe().await.map_err(map_error_to_napi_error)?;
+
+        let installer = Arc::new(StatemapInstallerDelegate {
+            callback: statemap_installer_callback,
+        });
+        let config: CohortReplicatorConfig = self.config.clone().into();
+        // let provider = self.snapshot_provider;
+        let _service_handle = tokio::spawn(async move {
+            let result = talos_cohort_replicator(
+                kafka_consumer,
+                installer,
+                SnapshotProviderDelegate {
+                    callback: snapshot_provider_callback,
+                },
+                config,
+            )
+            .await;
+            log::info!("Result from the services ={result:?}");
+        });
 
         Ok(())
     }

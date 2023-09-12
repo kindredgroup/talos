@@ -1,18 +1,20 @@
-import { Pool } from "pg"
+import { Replicator } from "cohort_sdk_js"
+import { Database } from "./database"
 
-import { logger } from "./logger"
-import { ReplicatorApp } from "./replicator-app"
-import { DB_CONFIG } from "./cfg/config-db-pool"
+import { KAFKA_CONFIG } from "./cfg/config-kafka"
+import { REPLICATOR_CONFIG } from "./cfg/config-replicator"
 
-new Promise(async (resolve) => {
-    const database = new Pool(DB_CONFIG)
-    database.on("error",   (e, _) => { logger.error("DBPool.error: Error: %s", e) })
-    database.on("release", (e, _) => { if (e) { logger.error("DBPool.release: Error: %s", e) } })
+import { MetricsCollector } from "./metrics"
 
-    const c = await database.connect()
-    await c.query("SELECT 1 as test")
-    c.release()
-    
-    const app = new ReplicatorApp()
-    await app.run()
+new Promise(async (_resolve) => {
+    const database = await Database.init()
+    const replicator = await Replicator.init(KAFKA_CONFIG, REPLICATOR_CONFIG)
+
+    const metricsCollector = new MetricsCollector()
+    metricsCollector.run()
+
+    await replicator.run(
+        async () => await database.getSnapshot(),
+        async (_, params) => await database.install(params, { delayMs: 2, maxAttempts: 50 })
+    )
 })

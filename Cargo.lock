@@ -617,6 +617,7 @@ dependencies = [
  "talos_cohort_replicator",
  "talos_rdkafka_utils",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 

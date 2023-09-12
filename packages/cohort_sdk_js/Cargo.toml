@@ -32,6 +32,7 @@ log = { version = "0.4", features = [
 #refinery = {version="0.8", features=["tokio-postgres"]}
 # crate depencies
 cohort_sdk = { path = "../cohort_sdk" }
+tokio = { workspace = true, features = ["full"] }
 talos_cohort_replicator = { path = "../../packages/talos_cohort_replicator" }
 talos_certifier = { path = "../talos_certifier" }
 talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }

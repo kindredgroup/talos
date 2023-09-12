@@ -11,7 +11,7 @@ logger.info("App: Cohort JS Application: %d", 111)
 logger.info("App: ---------------------")
 
 const CHANNEL_NAME = "banking-transactions"
-const COUNT = 100_000
+const COUNT = 10_000
 const RATE = 5000
 
 const printMetrics = (spans: Array<any>) => {
