@@ -221,7 +221,7 @@ impl<T> SuffixTrait<T> for Suffix<T>
 where
     T: Sized + Clone + std::fmt::Debug,
 {
-    fn get(&mut self, version: u64) -> SuffixResult<Option<SuffixItem<T>>> {
+    fn get(&self, version: u64) -> SuffixResult<Option<SuffixItem<T>>> {
         let index = self.index_from_head(version).ok_or(SuffixError::VersionToIndexConversionError(version))?;
         let suffix_item = self.messages.get(index).and_then(|x| x.as_ref()).cloned();
 

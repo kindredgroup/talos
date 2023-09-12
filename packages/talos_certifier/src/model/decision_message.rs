@@ -46,6 +46,7 @@ pub trait DecisionMessageTrait {
     fn get_candidate_version(&self) -> u64;
     fn get_safepoint(&self) -> Option<u64>;
     fn get_decision(&self) -> &Decision;
+    fn is_abort(&self) -> bool;
     fn is_duplicate(&self) -> bool;
     fn get_decided_at(&self) -> i128;
 }
@@ -62,6 +63,10 @@ impl DecisionMessageTrait for DecisionMessage {
     }
     fn get_decision(&self) -> &Decision {
         &self.decision
+    }
+
+    fn is_abort(&self) -> bool {
+        self.decision == Decision::Aborted
     }
 
     fn is_duplicate(&self) -> bool {

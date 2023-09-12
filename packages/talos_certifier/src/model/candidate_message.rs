@@ -4,8 +4,6 @@ use std::collections::HashMap;
 
 use crate::certifier::CertifierCandidate;
 
-use super::delivery_order::DeliveryOrder;
-
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "_typ")]
 pub struct CandidateMessage {
@@ -25,7 +23,7 @@ pub struct CandidateMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub on_commit: Option<HashMap<String, Vec<DeliveryOrder>>>,
+    pub on_commit: Option<Value>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<Vec<HashMap<String, Value>>>,

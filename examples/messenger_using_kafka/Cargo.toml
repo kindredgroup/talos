@@ -1,0 +1,23 @@
+[package]
+# [package]
+name = "messenger_using_kafka"
+version = "0.0.1"
+edition = "2021"
+keywords = ["talos"]
+description = "Example on consuming `talos_messenger`"
+
+[dev-dependencies]
+# Logging
+log = { workspace = true }
+env_logger = { workspace = true }
+# Async
+tokio = { workspace = true }
+
+
+# internal crates
+talos_certifier = { path = "../../packages/talos_certifier" }
+talos_suffix = { path = "../../packages/talos_suffix" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_common_utils = { path = "../../packages/talos_common_utils" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils" }
+talos_messenger = { path = "../../packages/talos_messenger" }

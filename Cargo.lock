@@ -1355,6 +1355,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "messenger_using_kafka"
+version = "0.0.1"
+dependencies = [
+ "env_logger",
+ "log",
+ "talos_certifier",
+ "talos_certifier_adapters",
+ "talos_common_utils",
+ "talos_messenger",
+ "talos_rdkafka_utils",
+ "talos_suffix",
+ "tokio",
+]
+
+[[package]]
 name = "metrics"
 version = "0.0.1"
 dependencies = [
@@ -2618,6 +2633,27 @@ dependencies = [
  "env_logger",
  "log",
  "serial_test",
+]
+
+[[package]]
+name = "talos_messenger"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.3",
+ "async-trait",
+ "env_logger",
+ "indexmap 2.0.0",
+ "log",
+ "mockall",
+ "rand",
+ "serde",
+ "serde_json",
+ "talos_certifier",
+ "talos_suffix",
+ "thiserror",
+ "time 0.3.26",
+ "tokio",
+ "tokio-test",
 ]
 
 [[package]]
