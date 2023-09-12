@@ -11,8 +11,6 @@ logger.info("App: Cohort JS Application: %d", 111)
 logger.info("App: ---------------------")
 
 const CHANNEL_NAME = "banking-transactions"
-const COUNT = 10_000
-const RATE = 5000
 
 const printMetrics = (spans: Array<any>) => {
     for (let span of spans) {
@@ -20,7 +18,36 @@ const printMetrics = (spans: Array<any>) => {
     }
 }
 
+class LaunchParams {
+    transactionsCount: number = 10_000
+    targetRatePerSecond: number = 1_000
+
+    static parse(args: string[]): LaunchParams {
+        const params = new LaunchParams()
+        if (args.length <= 2) {
+            logger.warn("No launch parameters found, using defaults.")
+            return params
+        }
+
+        for (let i = 2; i < args.length; i++) {
+            const arg = args[i].toLowerCase()
+
+            if (arg.startsWith("count")) {
+                params.transactionsCount = parseInt(arg.replaceAll("count=", ""))
+            } else if (arg.startsWith("rate")) {
+                params.targetRatePerSecond = parseInt(arg.replaceAll("rate=", ""))
+            }
+        }
+
+        return params
+    }
+}
+
 new Promise(async (resolve) => {
+    logger.info("args: %s", JSON.stringify(process.argv, null, 2))
+
+    const params = LaunchParams.parse(process.argv)
+
     const database = new Pool(DB_CONFIG)
     database.on("error",   (e, _) => { logger.error("DBPool.error: Error: %s", e) })
     database.on("release", (e, _) => { if (e) { logger.error("DBPool.release: Error: %s", e) } })
@@ -40,12 +67,12 @@ new Promise(async (resolve) => {
     }
 
     const app = new BankingApp(
-        COUNT,
+        params.transactionsCount,
         new Pond(400),
         database,
         queue,
         fnFinish,
     )
     await app.init()
-    const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: COUNT, rate: RATE })
+    const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: params.transactionsCount, rate: params.targetRatePerSecond })
 })
