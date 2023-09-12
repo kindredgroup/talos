@@ -69,7 +69,7 @@ impl From<JsInitiatorConfig> for Config {
 pub struct JsCertificationCandidate {
     pub readset: Vec<String>,
     pub writeset: Vec<String>,
-    pub readvers: Vec<u32>,
+    pub readvers: Vec<i64>,
     pub statemaps: Option<Vec<HashMap<String, Value>>>,
 }
 
@@ -87,7 +87,7 @@ impl From<JsCertificationCandidate> for CertificationCandidate {
 #[napi(object)]
 pub struct JsCertificationRequestPayload {
     pub candidate: JsCertificationCandidate,
-    pub snapshot: u32,
+    pub snapshot: i64,
     pub timeout_ms: u32,
 }
 
@@ -124,7 +124,7 @@ impl Initiator {
     pub async fn certify(
         &self,
         #[napi(ts_arg_type = "() => Promise<any>")] make_new_request_callback: ThreadsafeFunction<()>,
-        ooo_callback: ThreadsafeFunction<OoRequest>,
+        ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
     ) -> napi::Result<String> {
         // println!("Initiator.certify()");
         let new_request_provider = NewRequestProvider { make_new_request_callback };
@@ -139,13 +139,13 @@ impl Initiator {
 }
 
 struct OutOfOrderInstallerImpl {
-    ooo_callback: ThreadsafeFunction<OoRequest>,
+    ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
 }
 
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
     async fn install(&self, request: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
-        let oorequest = OoRequest {
+        let oorequest = OutOfOrderRequest {
             xid: request.xid,
             safepoint: request.safepoint.try_into().unwrap(),
             new_version: request.version.try_into().unwrap(),
@@ -153,7 +153,7 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
 
         let result = self
             .ooo_callback
-            .call_async::<Promise<u32>>(Ok(oorequest))
+            .call_async::<Promise<i64>>(Ok(oorequest))
             .await
             .map_err(map_error_to_napi_error);
         match result {
@@ -204,8 +204,8 @@ impl NewRequestProvider {
 }
 
 #[napi(object)]
-pub struct OoRequest {
+pub struct OutOfOrderRequest {
     pub xid: String,
-    pub safepoint: u32,
-    pub new_version: u32,
+    pub safepoint: i64,
+    pub new_version: i64,
 }

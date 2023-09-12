@@ -44,8 +44,6 @@ class LaunchParams {
 }
 
 new Promise(async (resolve) => {
-    logger.info("args: %s", JSON.stringify(process.argv, null, 2))
-
     const params = LaunchParams.parse(process.argv)
 
     const database = new Pool(DB_CONFIG)

@@ -6,7 +6,7 @@ import { Pond } from "./pond"
 import { logger } from "./logger"
 
 import { CapturedItemState, CapturedState, CertificationCandidate, CertificationRequest, TransferRequest, TransferRequestMessage } from "./model"
-import { Initiator, JsCertificationRequestPayload, OoRequest } from "cohort_sdk_js"
+import { Initiator, JsCertificationRequestPayload, OutOfOrderRequest } from "cohort_sdk_js"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
 
 export class BankingApp {
@@ -93,7 +93,7 @@ export class BankingApp {
                 stateDuration = n - s
                 return { newRequest }
             },
-            async (_e, request: OoRequest) => {
+            async (_e, request: OutOfOrderRequest) => {
                 const s = Date.now()
                 const r = await this.installOutOfOrder(tx, request) as any
                 const n = Date.now()
@@ -154,7 +154,7 @@ export class BankingApp {
         }
     }
 
-    private async installOutOfOrder(tx: TransferRequest, request: OoRequest): Promise<number> {
+    private async installOutOfOrder(tx: TransferRequest, request: OutOfOrderRequest): Promise<number> {
         let cnn: PoolClient
         try {
             // Params order:
