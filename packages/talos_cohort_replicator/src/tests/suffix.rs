@@ -81,7 +81,7 @@ fn test_replicator_suffix() {
     suffix.insert(8, TestReplicatorSuffixItem::default()).unwrap();
 
     // Message batch is empty as the decision is not added.
-    assert_eq!(suffix.get_message_batch_from_version(5, Some(5)), None);
+    assert!(suffix.get_message_batch_from_version(5, Some(5)).is_empty());
 
     // Nothing happens for version 50 updates as the item doesn't exist.
     suffix.set_safepoint(50, Some(2));
@@ -97,32 +97,32 @@ fn test_replicator_suffix() {
     assert_eq!(item_at_version3.item.decision.unwrap(), CandidateDecisionOutcome::Committed);
     assert!(!item_at_version3.item.is_installed);
     // Message batch will be one as only version 3's decision is recorded..
-    assert_eq!(suffix.get_message_batch_from_version(0, None).unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch_from_version(0, None).len(), 1);
 
     suffix.update_decision(4, 12).unwrap();
     // Message batch will still be 1 as there was no version 1 inserted.
     // So the decision will be discarded
-    assert_eq!(suffix.get_message_batch_from_version(0, Some(4)).unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch_from_version(0, Some(4)).len(), 1);
 
     suffix.update_decision(5, 19).unwrap();
     // Message batch will be 2 as safepoint is not set a decision is made, therefore version 3 and 4 are picked.
     // version 3 is considered as commited as the safepoint and decision_outcome is set.
     // version 4 is considered as aborted at this point as safepoint is not set.
-    assert_eq!(suffix.get_message_batch_from_version(0, Some(10)).unwrap().len(), 2);
-    assert_eq!(suffix.get_message_batch_from_version(3, Some(10)).unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch_from_version(0, Some(10)).len(), 2);
+    assert_eq!(suffix.get_message_batch_from_version(3, Some(10)).len(), 1);
 
     //add safepoint and decision for version 8
     suffix.update_decision(8, 19).unwrap();
     suffix.set_safepoint(8, Some(2));
     suffix.set_decision_outcome(8, Some(CandidateDecisionOutcome::Committed));
     // Message batch will be 3, as version 3,5, and 8 are not installed.
-    assert_eq!(suffix.get_message_batch_from_version(0, Some(10)).unwrap().len(), 3);
+    assert_eq!(suffix.get_message_batch_from_version(0, Some(10)).len(), 3);
 
     //add safepoint and decision for version 5
     suffix.set_safepoint(5, Some(2));
     suffix.set_decision_outcome(5, Some(CandidateDecisionOutcome::Committed));
     // Message batch will be 3  as version 3, 4 and 5 has Some safepoint value
-    assert_eq!(suffix.get_message_batch_from_version(0, Some(10)).unwrap().len(), 3);
+    assert_eq!(suffix.get_message_batch_from_version(0, Some(10)).len(), 3);
 }
 
 #[test]
@@ -145,10 +145,10 @@ fn test_replicator_suffix_installed() {
     suffix.set_decision_outcome(3, Some(CandidateDecisionOutcome::Committed));
 
     // Batch returns one item as only version 3 is decided, others haven't got the decisions yet.
-    assert_eq!(suffix.get_message_batch_from_version(0, Some(1)).unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch_from_version(0, Some(1)).len(), 1);
     suffix.set_item_installed(3);
     // Batch returns 0 items as version 3 is already installed, others haven't got the decisions yet.
-    assert!(suffix.get_message_batch_from_version(0, Some(1)).is_none());
+    assert!(suffix.get_message_batch_from_version(0, Some(1)).is_empty());
 
     let suffix_item_3 = suffix.get(3).unwrap().unwrap();
     // confirm version 3 is marked as installed.
@@ -159,14 +159,14 @@ fn test_replicator_suffix_installed() {
     suffix.set_safepoint(9, Some(2));
     suffix.set_decision_outcome(9, Some(CandidateDecisionOutcome::Committed));
     // Batch returns 0, because there is a version in between which is not decided.
-    assert!(suffix.get_message_batch_from_version(0, Some(1)).is_none());
+    assert!(suffix.get_message_batch_from_version(0, Some(1)).is_empty());
 
     // update decision for version 6
     suffix.update_suffix_item_decision(6, 23).unwrap();
     suffix.set_safepoint(6, None);
     suffix.set_decision_outcome(6, Some(CandidateDecisionOutcome::Aborted));
     // Batch returns 2 items (version 6 &  9).
-    let batch = suffix.get_message_batch_from_version(0, None).unwrap();
+    let batch = suffix.get_message_batch_from_version(0, None);
     assert_eq!(batch.len(), 2);
 
     // Confirm the batch returned the correct item.
@@ -175,7 +175,7 @@ fn test_replicator_suffix_installed() {
     // Mark version 9 as installed.
     suffix.set_item_installed(9);
     // Although version 9 is installed, version 6 is not, therefore it is picked up here.
-    assert_eq!(suffix.get_message_batch_from_version(3, Some(1)).unwrap().len(), 1);
+    assert_eq!(suffix.get_message_batch_from_version(3, Some(1)).len(), 1);
 
     assert_eq!(suffix.get_suffix_meta().head, 3);
 }
