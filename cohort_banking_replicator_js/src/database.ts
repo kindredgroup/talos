@@ -95,12 +95,13 @@ export class Database {
         metric.callbackInstallCount++
 
         try {
+            let recentError = null as any
             while (attemptNr <= retry.maxAttempts) {
                 attemptNr++
 
                 if (attemptNr > retry.maxAttempts) {
                     const elapsedSec = (Date.now() - startedAt) / 1000.0
-                    throw `Statemap install timed out after: ${elapsedSec} sec`
+                    throw { message: `Statemap install timed out after: ${elapsedSec} sec`, error: recentError }
                 }
 
                 await cnn.query('BEGIN')
@@ -145,15 +146,22 @@ export class Database {
                     break
 
                 } catch (e) {
-                    await cnn.query('ROLLBACK')
+                    let error = { installError: e, rollbackError: null }
+                    try {
+                        await cnn.query('ROLLBACK')
+                    } catch (e) {
+                        error.rollbackError = e
+                    } finally {
+                        recentError = error
+                    }
+
                     await new Promise(resolve => setTimeout(resolve, retry.delayMs))
                 }
             }
         } finally {
             cnn?.release()
+            metric.attemptsUsed = attemptNr
+            this.metricsChannel.postMessage(metric)
         }
-
-        metric.attemptsUsed = attemptNr
-        this.metricsChannel.postMessage(metric)
     }
 }
