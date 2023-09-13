@@ -29,7 +29,7 @@ impl Default for StatemapQueueServiceConfig {
 }
 
 pub async fn statemap_queue_service<S>(
-    mut statemaps_rx: mpsc::Receiver<Vec<StatemapItem>>,
+    mut statemaps_rx: mpsc::Receiver<(u64, Vec<StatemapItem>)>,
     mut statemap_installation_rx: mpsc::Receiver<StatemapInstallationStatus>,
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
     snapshot_api: S,
@@ -57,9 +57,8 @@ where
         tokio::select! {
             statemap_batch_option = statemaps_rx.recv() => {
 
-                if let Some(statemaps) = statemap_batch_option {
+                if let Some((ver, statemaps)) = statemap_batch_option {
 
-                    let ver = statemaps.first().unwrap().version;
                     // Inserts the statemaps to the map
 
                     let safepoint = if let Some(first_statemap) = statemaps.first() {

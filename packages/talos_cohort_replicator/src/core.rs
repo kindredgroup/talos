@@ -6,7 +6,7 @@ use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, Chann
 
 use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
-    utils::{get_filtered_batch, get_statemap_from_suffix_items},
+    utils::get_statemap_from_suffix_items,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,25 +114,18 @@ where
         }
     }
 
-    pub(crate) fn generate_statemap_batch(&mut self) -> (Vec<u64>, Vec<(u64, Vec<StatemapItem>)>) {
+    pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>)> {
         // get batch of items from suffix to install.
-        let items_option = self.suffix.get_message_batch_from_version(self.last_installing, None);
+        let items = self.suffix.get_message_batch_from_version(self.last_installing, None);
 
-        let mut statemaps_batch = vec![];
-
-        let mut current_batch_versions: Vec<u64> = vec![];
-
-        if let Some(items) = items_option {
-            current_batch_versions = items.iter().map(|i| i.item_ver).collect();
-            let filtered_message_batch = get_filtered_batch(items.iter().copied());
-            // generate the statemap from each item in batch.
-            statemaps_batch = get_statemap_from_suffix_items(filtered_message_batch);
-
-            if let Some(last_item) = items.last() {
-                self.last_installing = last_item.item_ver;
-            }
-        }
-        (current_batch_versions, statemaps_batch)
+        let Some(last_item) = items.last() else {
+            // We don't have to explicitly check the vec is empty since if items.last() returns `None`
+            // we implicitly know the vec is empty.
+            return vec![];
+        };
+        self.last_installing = last_item.item_ver;
+        // generate the statemap from each item in batch.
+        get_statemap_from_suffix_items(items.into_iter())
     }
 
     pub(crate) async fn commit_till_last_installed(&mut self) {
