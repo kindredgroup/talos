@@ -84,6 +84,8 @@ impl Replicator {
         config: JsReplicatorConfig,
         // statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
     ) -> napi::Result<Replicator> {
+        env_logger::builder().format_timestamp_millis().init();
+
         Ok(Replicator {
             kafka_config,
             config,

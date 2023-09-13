@@ -606,6 +606,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "cohort_sdk",
+ "env_logger",
  "log",
  "napi",
  "napi-build",
