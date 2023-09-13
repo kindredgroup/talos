@@ -50,7 +50,8 @@ export class Database {
 
             logger.warn("Database.getSnapshot(): %d", version)
 
-            return version
+            return Number(version)
+
         } finally {
             cnn?.release()
             const metric = new MetricsSet()

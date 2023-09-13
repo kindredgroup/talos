@@ -49,7 +49,7 @@ where
     let mut statemap_installer_queue = StatemapInstallerQueue::default();
 
     //Gets snapshot initial version from db.
-    statemap_installer_queue.update_snapshot(snapshot_api.get_snapshot().await.unwrap_or(0));
+    statemap_installer_queue.update_snapshot(snapshot_api.get_snapshot().await.unwrap());
 
     // let mut last_item_send_for_install = 0;
 

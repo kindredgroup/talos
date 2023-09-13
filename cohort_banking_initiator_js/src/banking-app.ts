@@ -192,7 +192,7 @@ export class BankingApp {
             }
 
             // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
-            const snapshot = result.rows[0].snapshot
+            const snapshot = Number(result.rows[0].snapshot)
             if (snapshot < request.safepoint) {
                 // safepoint condition
                 return 2
