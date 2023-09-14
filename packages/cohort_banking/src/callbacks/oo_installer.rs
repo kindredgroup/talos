@@ -16,8 +16,6 @@ pub struct OutOfOrderInstallerImpl {
     pub single_query_strategy: bool,
 }
 
-pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
-
 impl OutOfOrderInstallerImpl {
     async fn install_using_single_query(
         &self,

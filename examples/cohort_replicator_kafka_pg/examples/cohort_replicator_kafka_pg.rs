@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use banking_common::state::postgres::{
-    database::{Database, DatabaseError},
+    database::{Database, DatabaseError, SNAPSHOT_SINGLETON_ROW_ID},
     database_config::DatabaseConfig,
 };
 use banking_replicator::{app::BankingReplicatorApp, statemap_installer::BankStatemapInstaller};
@@ -11,8 +11,6 @@ use talos_cohort_replicator::{callbacks::ReplicatorSnapshotProvider, CohortRepli
 use talos_common_utils::{env_var, env_var_with_defaults};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::signal;
-
-pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 
 pub struct SnapshotApi {
     db: Arc<Database>,

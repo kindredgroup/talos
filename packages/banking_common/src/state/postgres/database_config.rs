@@ -1,3 +1,5 @@
+use talos_common_utils::{env_var, env_var_with_defaults};
+
 #[derive(Clone, Debug)]
 pub struct DatabaseConfig {
     pub pool_size: u32,
@@ -9,6 +11,18 @@ pub struct DatabaseConfig {
 }
 
 impl DatabaseConfig {
+    pub fn from_env(prefix: Option<&'static str>) -> Result<Self, String> {
+        let prefix = if let Some(prefix) = prefix { format!("{}_", prefix) } else { "".into() };
+        Ok(Self {
+            pool_size: env_var_with_defaults!(format!("{}PG_POOL_SIZE", prefix), u32, 10),
+            host: env_var_with_defaults!(format!("{}PG_HOST", prefix), String, "127.0.0.1".into()),
+            port: env_var!(format!("{}PG_PORT", prefix)),
+            user: env_var!(format!("{}PG_USER", prefix)),
+            password: env_var!(format!("{}PG_PASSWORD", prefix)),
+            database: env_var!(format!("{}PG_DATABASE", prefix)),
+        })
+    }
+
     pub fn get_connection_string(&self, database: &str) -> String {
         format!("postgres://{}:{}@{}:{}/{}", self.user, self.password, self.host, self.port, database)
     }
