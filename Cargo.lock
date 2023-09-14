@@ -189,11 +189,11 @@ dependencies = [
  "deadpool-postgres",
  "env_logger",
  "log",
- "refinery",
  "rust_decimal",
  "serde",
  "serde_json",
  "strum 0.25.0",
+ "talos_common_utils",
  "tokio-postgres",
 ]
 
@@ -500,6 +500,7 @@ dependencies = [
  "opentelemetry_api",
  "opentelemetry_sdk",
  "rand",
+ "refinery",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -507,6 +508,7 @@ dependencies = [
  "talos_agent",
  "talos_certifier",
  "talos_cohort_replicator",
+ "talos_common_utils",
  "talos_suffix",
  "tokio",
  "tokio-postgres",
