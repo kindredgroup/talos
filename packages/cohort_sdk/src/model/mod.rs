@@ -30,7 +30,6 @@ pub struct ResponseMetadata {
 }
 
 #[derive(strum::Display, Debug)]
-// this is napi friendly copy of talos_agent::agent::errors::AgentErrorKind
 pub enum ClientErrorKind {
     Certification,
     CertificationTimeout,

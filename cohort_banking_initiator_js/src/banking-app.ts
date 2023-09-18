@@ -5,9 +5,9 @@ import { Pond } from "./pond"
 
 import { logger } from "./logger"
 
-import { CapturedItemState, CapturedState, CertificationCandidate, CertificationRequest, TransferRequest, TransferRequestMessage } from "./model"
-import { Initiator, JsCertificationRequestPayload, OutOfOrderRequest } from "cohort_sdk_js"
+import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
+import { Initiator, JsCertificationRequestPayload, OutOfOrderRequest } from "cohort_sdk_client"
 
 export class BankingApp {
     private startedAtMs: number = 0
@@ -25,13 +25,14 @@ export class BankingApp {
 
     async init() {
         this.initiator = await Initiator.init(sdkConfig)
+
         this.queue.onmessage = (event: MessageEvent<TransferRequestMessage>) => {
             this.pond.submit(async () => {
                 try {
                     const spans = await this.processQueueItem(event)
                     this.spans.push(spans)
                 } catch (e) {
-                    logger.error("Failed to process tx: %s", e)
+                    logger.error("%s", e)
                 }
             })
         }
@@ -59,7 +60,7 @@ export class BankingApp {
             const subSpans = await this.handleTransaction(event.data.request)
             spans.processDetails = subSpans
         } catch (e) {
-            logger.error("Unable to process tx: %s. Error:: %s", JSON.stringify(event.data), e)
+            logger.error("Unable to process tx: %s. Error: %s", JSON.stringify(event.data), e)
         } finally {
             this.handledCount++
             spans.process = Date.now() - span_s
@@ -148,7 +149,7 @@ export class BankingApp {
             return new CapturedState(Number(result.rows[0].snapshot_version), items)
         } catch (e) {
             logger.error("BankingApp.loadState(): %s", e)
-            throw e
+            throw new Error(`Unable to load state for tx: ${ JSON.stringify(tx) }`, { cause: e })
         } finally {
             cnn?.release()
         }
@@ -203,6 +204,7 @@ export class BankingApp {
 
         } catch (e) {
             logger.error("BankingApp.installOutOfOrder(): %s", e)
+            throw new Error(`Unable to complete out of order installation of tx: ${ JSON.stringify(tx) }`, { cause: e })
         } finally {
             cnn?.release()
         }

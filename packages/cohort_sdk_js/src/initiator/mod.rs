@@ -1,12 +1,13 @@
 use crate::map_error_to_napi_error;
 use crate::models::{JsBackoffConfig, JsKafkaConfig};
+use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
 use cohort_sdk::model::callback::{
     CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OutOfOrderInstallOutcome, OutOfOrderInstallRequest,
     OutOfOrderInstaller,
 };
-use cohort_sdk::model::Config;
+use cohort_sdk::model::{ClientError, Config};
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
@@ -108,16 +109,16 @@ pub struct JsCertificationCandidateCallbackResponse {
 }
 
 #[napi]
-pub struct Initiator {
+pub struct InternalInitiator {
     cohort: Cohort,
 }
 
 #[napi]
-impl Initiator {
+impl InternalInitiator {
     #[napi]
-    pub async fn init(config: JsInitiatorConfig) -> napi::Result<Initiator> {
-        let cohort = Cohort::create(config.into()).await.map_err(map_error_to_napi_error)?;
-        Ok(Initiator { cohort })
+    pub async fn init(config: JsInitiatorConfig) -> napi::Result<InternalInitiator> {
+        let cohort = Cohort::create(config.into()).await.map_err(map_error)?;
+        Ok(InternalInitiator { cohort })
     }
 
     #[napi]
@@ -125,16 +126,12 @@ impl Initiator {
         &self,
         #[napi(ts_arg_type = "() => Promise<any>")] make_new_request_callback: ThreadsafeFunction<()>,
         ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
-    ) -> napi::Result<String> {
-        // println!("Initiator.certify()");
+    ) -> napi::Result<()> {
         let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
-        // println!("Initiator.certify(): invoking cohort.certify(...)");
         let make_new_request = || new_request_provider.make_new_request();
-        let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error_to_napi_error)?;
-
-        // println!("Initiator.certify(): after cohort.certify(...)");
-        Ok("Success".to_string())
+        let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error)?;
+        Ok(())
     }
 }
 
@@ -151,11 +148,8 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
             new_version: request.version.try_into().unwrap(),
         };
 
-        let result = self
-            .ooo_callback
-            .call_async::<Promise<i64>>(Ok(oorequest))
-            .await
-            .map_err(map_error_to_napi_error);
+        let result = self.ooo_callback.call_async::<Promise<i64>>(Ok(oorequest)).await;
+
         match result {
             Ok(promise) => promise
                 .await
@@ -208,4 +202,9 @@ pub struct OutOfOrderRequest {
     pub xid: String,
     pub safepoint: i64,
     pub new_version: i64,
+}
+
+fn map_error(e: ClientError) -> napi::Error {
+    let container = SdkErrorContainer::new(e.kind.into(), e.reason, e.cause);
+    napi::Error::from_reason(container.json().to_string())
 }
