@@ -5,13 +5,16 @@ use std::{borrow::BorrowMut, fmt::Debug};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{
     core::{SuffixMeta, SuffixResult},
+    errors::SuffixError,
     Suffix, SuffixItem, SuffixTrait,
 };
+
+use crate::{core::MessengerCommitActions, models::commit_actions::publish::OnCommitActions, utlis::get_allowed_commit_actions};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum SuffixItemState {
     Awaiting,
-    Inflight(u32),
+    Inflight,
     Complete(SuffixItemCompleteStateReason),
 }
 
@@ -36,11 +39,27 @@ pub struct MessengerCandidate {
 
 impl From<CandidateMessage> for MessengerCandidate {
     fn from(candidate: CandidateMessage) -> Self {
+        let CandidateMessage { version, on_commit, .. } = &candidate;
+
+        let (state, commit_actions) = match on_commit {
+            Some(actions) => {
+                if let Some(on_commit_actions_parsed) = get_allowed_commit_actions(version, &actions) {
+                    // Has on_commit_actions for messenger to act on.
+                    // error!("Commit Actions... {on_commit_actions_parsed:?}");
+                    (SuffixItemState::Awaiting, Some(on_commit_actions_parsed))
+                } else {
+                    // There are on_commit actions, but not the ones required by messenger
+                    (SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions), None)
+                }
+            }
+            // There are no on_commit actions
+            None => (SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions), None),
+        };
         MessengerCandidate {
             candidate,
             safepoint: None,
             decision: None,
-            state: SuffixItemState::Awaiting,
+            state,
         }
     }
 }
@@ -65,8 +84,9 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     fn get_safepoint(&self) -> &Option<u64> {
         &self.safepoint
     }
-    fn get_commit_actions(&self) -> &Option<Value> {
-        &self.candidate.on_commit
+    fn get_commit_actions(&self) -> Option<Box<Value>> {
+        self.candidate.on_commit.clone()
+        // &None
     }
 
     fn is_abort(&self) -> Option<bool> {
@@ -82,7 +102,7 @@ pub trait MessengerSuffixItemTrait {
     //  Getters
     fn get_state(&self) -> &SuffixItemState;
     fn get_safepoint(&self) -> &Option<u64>;
-    fn get_commit_actions(&self) -> &Option<Value>;
+    fn get_commit_actions(&self) -> Option<Box<Value>>;
 
     fn is_abort(&self) -> Option<bool>;
 }
@@ -99,7 +119,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>>;
     fn installed_all_prior_decided_items(&self, version: u64) -> bool;
 
-    fn get_on_commit_actions_to_process(&self) -> Vec<&SuffixItem<T>>;
+    fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions>;
     // updates
     fn update_prune_index(&mut self, version: u64);
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_message: &D);
@@ -138,18 +158,29 @@ where
         todo!()
     }
 
-    fn get_on_commit_actions_to_process(&self) -> Vec<&SuffixItem<T>> {
-        let debug_items = self
-            .messages
-            .iter()
-            // Remove `None` items
-            .flatten()
-            // Take while contiguous decided.
-            .take_while(|x| x.is_decided)
-            // Filter only awaiting ones.
-            .filter(|&x| x.item.get_state().eq(&SuffixItemState::Awaiting));
+    fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions> {
+        // let debug_items = self
+        //     .messages
+        //     .iter()
+        //     // Remove `None` items
+        //     .flatten()
+        //     // Take while contiguous decided.
+        //     .take_while(|x| x.is_decided)
+        //     // Filter only awaiting ones.
+        //     .filter(|&x| x.item.get_state().eq(&SuffixItemState::Awaiting));
 
-        error!("Items decided and in awaiting count... {}", debug_items.count());
+        // let count = debug_items.count();
+        // if count > 0 {
+        //     error!("Items decided and in awaiting count... {}", count);
+        // } else {
+        //     let debug_items = self
+        //         .messages
+        //         .iter()
+        //         // Remove `None` items
+        //         .flatten()
+        //         .collect::<Vec<&SuffixItem<T>>>();
+        //     error!("Items  \n\t\t{:#?}", debug_items);
+        // }
 
         let items = self
             .messages
@@ -172,19 +203,31 @@ where
             // Take while contiguous ones, whose safepoint is already processed.
             .take_while(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
+                    error!("take while early exit for version {:?}", x.item_ver);
                     return false;
                 };
 
                 match self.get(*safepoint) {
-                    // If we find the suffix item from the safepoint, we need to ensure that it is processed
-                    Ok(Some(safepoint_item)) => matches!(safepoint_item.item.get_state(), SuffixItemState::Complete(..)),
-                    // safepoint_item.item.get_state().eq(&MessengerSuffixItemState::Complete(..)),
+                    // If we find the suffix item from the safepoint, we need to ensure that it already in `Complete` state
+                    Ok(Some(safepoint_item)) => {
+                        error!("State of safepoint items is {:?}", safepoint_item.item.get_state());
+                        matches!(safepoint_item.item.get_state(), SuffixItemState::Complete(..))
+                    }
                     // If we couldn't find the item in suffix, it could be because it was pruned and it is safe to assume that we can consider it.
-                    Ok(None) => true,
-                    _ => false,
+                    _ => true,
                 }
             })
-            .collect::<Vec<&SuffixItem<T>>>();
+            .filter_map(|x| {
+                let Some(actions) = x.item.get_commit_actions() else {
+                    return None;
+                };
+
+                Some(MessengerCommitActions {
+                    version: x.item_ver,
+                    commit_actions: actions.clone(),
+                })
+            })
+            .collect();
 
         items
     }

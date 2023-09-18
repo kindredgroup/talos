@@ -2,7 +2,7 @@
 
 use std::collections::VecDeque;
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 
 use crate::{
     core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
@@ -188,12 +188,12 @@ where
     pub fn update_decision_suffix_item(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         // When Certifier is catching up with messages ignore the messages which are prior to the head
         if version < self.meta.head {
-            info!("Returned due to version < self.meta.head for version={version} and decision version={decision_ver}");
+            error!("Returned due to version < self.meta.head for version={version} and decision version={decision_ver}");
             return Ok(());
         }
 
         let Some(sfx_item) = self.get(version)? else {
-            info!(
+            error!(
                 "Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}",
                 self.index_from_head(version)
             );

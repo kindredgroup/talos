@@ -12,6 +12,8 @@ log = { workspace = true }
 env_logger = { workspace = true }
 # Async
 tokio = { workspace = true }
+rdkafka = { version = "0.33.2", features = ["sasl"] }
+async-trait = { workspace = true }
 
 
 # internal crates
