@@ -18,7 +18,6 @@
   "dependencies": {
     "@types/pg": "^8.10.2",
     "cohort_sdk_client": "file:../cohort_sdk_client",
-    "cohort_sdk_js": "file:../packages/cohort_sdk_js",
     "nodejs-dashboard": "^0.5.1",
     "pg": "^8.11.3",
     "ts-node": "^10.9.1",
