@@ -6,15 +6,19 @@ edition = "2021"
 keywords = ["talos"]
 description = "Example on consuming `talos_messenger`"
 
-[dev-dependencies]
+[dependencies]
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
 # Async
 tokio = { workspace = true }
-rdkafka = { version = "0.33.2", features = ["sasl"] }
 async-trait = { workspace = true }
+# Serde
+serde = { workspace = true }
+serde_json = { workspace = true }
 
+# Kafka
+rdkafka = { version = "0.33.2", features = ["sasl"] }
 
 # internal crates
 talos_certifier = { path = "../../packages/talos_certifier" }

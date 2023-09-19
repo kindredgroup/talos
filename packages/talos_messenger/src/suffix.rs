@@ -1,15 +1,11 @@
 use log::error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{borrow::BorrowMut, fmt::Debug};
+use std::fmt::Debug;
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
-use talos_suffix::{
-    core::{SuffixMeta, SuffixResult},
-    errors::SuffixError,
-    Suffix, SuffixItem, SuffixTrait,
-};
+use talos_suffix::{core::SuffixMeta, Suffix, SuffixItem, SuffixTrait};
 
-use crate::{core::MessengerCommitActions, models::commit_actions::publish::OnCommitActions, utlis::get_allowed_commit_actions};
+use crate::{core::MessengerCommitActions, utlis::has_supported_commit_actions};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum SuffixItemState {
@@ -41,19 +37,18 @@ impl From<CandidateMessage> for MessengerCandidate {
     fn from(candidate: CandidateMessage) -> Self {
         let CandidateMessage { version, on_commit, .. } = &candidate;
 
-        let (state, commit_actions) = match on_commit {
+        let state = match on_commit {
             Some(actions) => {
-                if let Some(on_commit_actions_parsed) = get_allowed_commit_actions(version, &actions) {
-                    // Has on_commit_actions for messenger to act on.
-                    // error!("Commit Actions... {on_commit_actions_parsed:?}");
-                    (SuffixItemState::Awaiting, Some(on_commit_actions_parsed))
+                // GK_START_HERE
+                if has_supported_commit_actions(version, actions) {
+                    SuffixItemState::Awaiting
                 } else {
                     // There are on_commit actions, but not the ones required by messenger
-                    (SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions), None)
+                    SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions)
                 }
             }
             // There are no on_commit actions
-            None => (SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions), None),
+            None => SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions),
         };
         MessengerCandidate {
             candidate,
@@ -116,7 +111,6 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
     // fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn get_suffix_meta(&self) -> &SuffixMeta;
-    fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>>;
     fn installed_all_prior_decided_items(&self, version: u64) -> bool;
 
     fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions>;
@@ -141,7 +135,7 @@ where
         }
     }
 
-    fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>> {
+    fn get_last_installed(&self, _to_version: Option<u64>) -> Option<&SuffixItem<T>> {
         todo!()
     }
 
@@ -150,11 +144,7 @@ where
         &self.meta
     }
 
-    fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Option<Vec<&SuffixItem<T>>> {
-        todo!()
-    }
-
-    fn installed_all_prior_decided_items(&self, version: u64) -> bool {
+    fn installed_all_prior_decided_items(&self, _version: u64) -> bool {
         todo!()
     }
 
@@ -232,7 +222,7 @@ where
         items
     }
 
-    fn update_prune_index(&mut self, version: u64) {
+    fn update_prune_index(&mut self, _version: u64) {
         todo!()
     }
 

@@ -1362,6 +1362,8 @@ dependencies = [
  "env_logger",
  "log",
  "rdkafka 0.33.2",
+ "serde",
+ "serde_json",
  "talos_certifier",
  "talos_certifier_adapters",
  "talos_common_utils",

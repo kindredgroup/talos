@@ -1,32 +1,9 @@
-use async_trait::async_trait;
-use futures_util::future::{join_all, try_join, try_join_all};
-use log::warn;
-use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::{KafkaConsumer, KafkaProducer};
-use talos_common_utils::env_var;
-use talos_rdkafka_utils::kafka_config::KafkaConfig;
-use talos_suffix::{core::SuffixConfig, Suffix};
-use tokio::{sync::mpsc, task::JoinHandle, try_join};
+use futures_util::future::try_join_all;
 
 use crate::{
-    core::{MessengerPublisher, MessengerSystemService},
+    core::MessengerSystemService,
     errors::{MessengerServiceError, MessengerServiceErrorKind, MessengerServiceResult},
-    services::{MessengerInboundService, PublishActionService},
-    suffix::MessengerCandidate,
 };
-
-async fn flatten_service_result(handle: JoinHandle<MessengerServiceResult>) -> MessengerServiceResult {
-    match handle.await {
-        Ok(Ok(result)) => Ok(result),
-        Ok(Err(err)) => Err(err),
-        Err(err) => Err(MessengerServiceError {
-            kind: MessengerServiceErrorKind::System,
-            reason: err.to_string(),
-            data: None,
-            service: "Main service".to_owned(),
-        }),
-    }
-}
 
 // pub async fn talos_messenger_service() -> Result<((), ()), MessengerServiceError> {
 //     // 0. Create required items.

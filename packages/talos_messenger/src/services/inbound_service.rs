@@ -14,22 +14,16 @@
 //  a. Mark that item as processed.
 //  b. Prune the store if contiguous items are processed.
 
-use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
-use log::{error, info, warn};
-use serde_json::Value;
-use talos_certifier::{
-    model::{Decision, DecisionMessageTrait},
-    ports::MessageReciever,
-    ChannelMessage,
-};
-use talos_suffix::{core::SuffixConfig, Suffix, SuffixTrait};
+use log::{info, warn};
+
+use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use talos_suffix::{Suffix, SuffixTrait};
 use tokio::sync::mpsc;
 
 use crate::{
     core::{MessengerChannelFeedback, MessengerCommitActions, MessengerSystemService},
     errors::MessengerServiceResult,
-    models::commit_actions::publish::OnCommitActions,
     suffix::{MessengerCandidate, MessengerSuffixTrait, SuffixItemState},
 };
 

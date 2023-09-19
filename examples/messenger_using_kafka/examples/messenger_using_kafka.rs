@@ -1,13 +1,7 @@
-use std::time::Duration;
-
-use async_trait::async_trait;
-use log::{error, warn};
-use rdkafka::consumer::Consumer;
 use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::{kafka, KafkaConsumer, KafkaProducer};
+use talos_certifier_adapters::{KafkaConsumer, KafkaProducer};
 use talos_common_utils::env_var;
 use talos_messenger::{
-    core::{MessengerPublisher, MessengerSystemService},
     services::{MessengerInboundService, PublishActionService},
     suffix::MessengerCandidate,
     talos_messenger_service::TalosMessengerService,
@@ -16,14 +10,7 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::sync::mpsc;
 
-pub struct TestMessengerPublisher;
-
-#[async_trait]
-impl MessengerPublisher for TestMessengerPublisher {
-    async fn send(&self) -> () {
-        warn!("Message Published!!!");
-    }
-}
+use messenger_using_kafka::kafka_producer::MessengerKafkaPublisher;
 
 #[tokio::main]
 async fn main() {
@@ -51,8 +38,8 @@ async fn main() {
     // b. Subscribe to topic.
     kafka_consumer.subscribe().await.unwrap();
 
-    let (tx_feedback_channel, mut rx_feedback_channel) = mpsc::channel(10_000);
-    let (tx_actions_channel, mut rx_actions_channel) = mpsc::channel(10_000);
+    let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(10_000);
+    let (tx_actions_channel, rx_actions_channel) = mpsc::channel(10_000);
 
     let suffix_config = SuffixConfig {
         capacity: 400_000,
@@ -68,8 +55,13 @@ async fn main() {
         suffix,
     };
 
+    // TODO: GK - create topic should be part of publish.
+    kafka_config.topic = "test.messenger.topic".to_string();
+    let kafka_producer = KafkaProducer::new(&kafka_config);
+    let messenger_kafka_publisher = MessengerKafkaPublisher { publisher: kafka_producer };
+
     let publish_service = PublishActionService {
-        publisher: TestMessengerPublisher,
+        publisher: messenger_kafka_publisher,
         rx_actions_channel,
         tx_feedback_channel,
     };
