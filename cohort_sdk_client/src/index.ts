@@ -1,7 +1,11 @@
 import { Initiator } from "./initiator"
+import { Replicator } from "./replicator"
 import {
     JsCertificationRequestPayload,
     JsInitiatorConfig,
+    JsKafkaConfig,
+    JsReplicatorConfig,
+    JsStatemapAndSnapshot,
     JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,
     SdkErrorKind,
@@ -17,8 +21,12 @@ export {
     Initiator,
     JsInitiatorConfig,
     JsCertificationRequestPayload,
+    JsKafkaConfig,
+    JsReplicatorConfig,
+    JsStatemapAndSnapshot,
     JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,
+    Replicator,
     SdkErrorKind,
     TalosSdkError,
 }

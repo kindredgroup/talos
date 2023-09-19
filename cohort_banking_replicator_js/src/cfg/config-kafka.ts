@@ -1,4 +1,4 @@
-import { JsKafkaConfig } from "cohort_sdk_js"
+import { JsKafkaConfig } from "cohort_sdk_client"
 
 const kafkaConfig: JsKafkaConfig = {
     brokers: ["127.0.0.1:9092"],

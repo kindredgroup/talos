@@ -2,7 +2,7 @@ import { Pool, PoolClient } from "pg"
 import { BroadcastChannel } from "worker_threads"
 
 import { logger } from "./logger"
-import { JsStatemapAndSnapshot } from "cohort_sdk_js"
+import { JsStatemapAndSnapshot } from "cohort_sdk_client"
 import { DB_CONFIG } from "./cfg/config-db-pool"
 import { METRICS_CHANNEL_NAME, MetricsSet } from "./metrics"
 

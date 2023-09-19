@@ -1,11 +1,11 @@
-import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind } from "cohort_sdk_js"
+import { InternalReplicator, JsKafkaConfig, JsReplicatorConfig, JsStatemapAndSnapshot, SdkErrorKind } from "cohort_sdk_js"
 import { isSdkError } from "./internal"
 import { TalosSdkError } from "."
 
-export class Initiator {
-    static async init(config: JsInitiatorConfig): Promise<Initiator> {
+export class Replicator {
+    static async init(kafkaConfig: JsKafkaConfig, config: JsReplicatorConfig): Promise<Replicator> {
         try {
-            return new Initiator(await InternalInitiator.init(config))
+            return new Replicator(await InternalReplicator.init(kafkaConfig, config))
         } catch(e) {
             const reason: string = e.message
             if (isSdkError(reason)) {
@@ -17,12 +17,12 @@ export class Initiator {
         }
     }
 
-    constructor(readonly impl: InternalInitiator) {}
+    constructor(readonly impl: InternalReplicator) {}
 
-    async certify(makeNewRequestCallback: () => Promise<any>, oooCallback: (err: Error | null, value: OutOfOrderRequest) => any): Promise<void> {
+    async run(snapshotProviderCallback: () => Promise<number>, statemapInstallerCallback: (err: Error | null, value: JsStatemapAndSnapshot) => any) {
         try {
-            return await this.impl.certify(makeNewRequestCallback, oooCallback)
-        } catch (e) {
+            await this.impl.run(snapshotProviderCallback, statemapInstallerCallback)
+        } catch(e) {
             const reason: string = e.message
             if (isSdkError(reason)) {
                 const rawError = JSON.parse(reason)

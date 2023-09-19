@@ -68,17 +68,17 @@ pub struct JsStatemapAndSnapshot {
 }
 
 #[napi]
-pub struct Replicator {
+pub struct InternalReplicator {
     kafka_config: JsKafkaConfig,
     config: JsReplicatorConfig,
 }
 
 #[napi]
-impl Replicator {
+impl InternalReplicator {
     #[napi]
-    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig) -> napi::Result<Replicator> {
+    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig) -> napi::Result<InternalReplicator> {
         env_logger::builder().format_timestamp_millis().init();
-        Ok(Replicator { kafka_config, config })
+        Ok(InternalReplicator { kafka_config, config })
     }
 
     #[napi]

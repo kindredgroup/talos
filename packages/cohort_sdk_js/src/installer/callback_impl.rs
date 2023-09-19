@@ -5,8 +5,6 @@ use talos_cohort_replicator::{
     StatemapItem,
 };
 
-use crate::map_error_to_napi_error;
-
 use super::JsStatemapAndSnapshot;
 
 pub struct SnapshotProviderDelegate {
@@ -16,10 +14,14 @@ pub struct SnapshotProviderDelegate {
 #[async_trait]
 impl ReplicatorSnapshotProvider for SnapshotProviderDelegate {
     async fn get_snapshot(&self) -> Result<u64, String> {
-        let result = self.callback.call_async::<Promise<i64>>(Ok(())).await.map_err(map_error_to_napi_error);
+        let result = self.callback.call_async::<Promise<i64>>(Ok(())).await;
 
         match result {
-            Ok(promise) => promise.await.map(|v| v as u64).map_err(|e| e.to_string()),
+            Ok(promise) => promise
+                .await
+                .map(|v| v as u64)
+                // Here reason is empty with NAPI 2.10.3
+                .map_err(|e| format!("Unable to retrieve snapshot. Native reason reported from JS: \"{}\"", e.reason)),
 
             Err(e) => Err(e.to_string()),
         }
@@ -38,10 +40,13 @@ impl ReplicatorInstaller for StatemapInstallerDelegate {
             version: version as i64,
         };
 
-        let result = self.callback.call_async::<Promise<()>>(Ok(data)).await.map_err(map_error_to_napi_error);
+        let result = self.callback.call_async::<Promise<()>>(Ok(data)).await;
 
         match result {
-            Ok(promise) => promise.await.map_err(|e| e.to_string()),
+            Ok(promise) => promise
+                .await
+                // Here reason is empty with NAPI 2.10.3
+                .map_err(|e| format!("Unable to install statemap. Native reason reported from JS: \"{}\"", e.reason)),
 
             Err(e) => Err(e.to_string()),
         }

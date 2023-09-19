@@ -1,4 +1,4 @@
-import { Replicator } from "cohort_sdk_js"
+import { Replicator } from "cohort_sdk_client"
 import { Database } from "./database"
 
 import { KAFKA_CONFIG } from "./cfg/config-kafka"
