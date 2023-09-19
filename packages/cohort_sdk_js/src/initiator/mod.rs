@@ -1,4 +1,3 @@
-use crate::map_error_to_napi_error;
 use crate::models::{JsBackoffConfig, JsKafkaConfig};
 use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
@@ -8,7 +7,9 @@ use cohort_sdk::model::callback::{
     OutOfOrderInstaller,
 };
 use cohort_sdk::model::{ClientError, Config};
+use napi::bindgen_prelude::FromNapiValue;
 use napi::bindgen_prelude::Promise;
+use napi::bindgen_prelude::ToNapiValue;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 use serde_json::Value;
@@ -108,6 +109,23 @@ pub struct JsCertificationCandidateCallbackResponse {
     pub new_request: Option<JsCertificationRequestPayload>,
 }
 
+#[napi(string_enum)]
+pub enum JsOutOfOrderInstallOutcome {
+    Installed,
+    InstalledAlready,
+    SafepointCondition,
+}
+
+impl From<JsOutOfOrderInstallOutcome> for OutOfOrderInstallOutcome {
+    fn from(value: JsOutOfOrderInstallOutcome) -> Self {
+        match value {
+            JsOutOfOrderInstallOutcome::Installed => OutOfOrderInstallOutcome::Installed,
+            JsOutOfOrderInstallOutcome::SafepointCondition => OutOfOrderInstallOutcome::SafepointCondition,
+            JsOutOfOrderInstallOutcome::InstalledAlready => OutOfOrderInstallOutcome::InstalledAlready,
+        }
+    }
+}
+
 #[napi]
 pub struct InternalInitiator {
     cohort: Cohort,
@@ -148,17 +166,13 @@ impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
             new_version: request.version.try_into().unwrap(),
         };
 
-        let result = self.ooo_callback.call_async::<Promise<i64>>(Ok(oorequest)).await;
+        let result = self.ooo_callback.call_async::<Promise<JsOutOfOrderInstallOutcome>>(Ok(oorequest)).await;
 
         match result {
             Ok(promise) => promise
                 .await
-                .map(|code| match code {
-                    1 => OutOfOrderInstallOutcome::InstalledAlready,
-                    2 => OutOfOrderInstallOutcome::SafepointCondition,
-                    _ => OutOfOrderInstallOutcome::Installed,
-                })
-                .map_err(|e| e.to_string()),
+                .map(|outcome| outcome.into())
+                .map_err(|e| format!("Unable to install out of orer item. Native reason provided by JS: \"{}\"", e.reason)),
             Err(e) => Err(e.to_string()),
         }
     }
@@ -173,8 +187,8 @@ impl NewRequestProvider {
         let result = self
             .make_new_request_callback
             .call_async::<Promise<JsCertificationCandidateCallbackResponse>>(Ok(()))
-            .await
-            .map_err(map_error_to_napi_error);
+            .await;
+
         match result {
             Ok(promise) => promise
                 .await
@@ -185,12 +199,15 @@ impl NewRequestProvider {
                         CertificationCandidateCallbackResponse::Proceed(
                             js_data
                                 .new_request
-                                .expect("Invalid response from 'get_state_callback'. Provide cancellation reason or new request. Currently both are empty.")
+                                .expect(
+                                    "Invalid response from 'make_new_request_callback'. Provide cancellation reason or new request. Currently both are empty.",
+                                )
                                 .into(),
                         )
                     }
                 })
-                .map_err(|e| e.to_string()),
+                // Here reason is empty with NAPI 2.10.3
+                .map_err(|e| format!("Unable to create new certification request. Native reason reported from JS: \"{}\"", e.reason)),
 
             Err(e) => Err(e.to_string()),
         }

@@ -2,6 +2,7 @@ import { Initiator } from "./initiator"
 import {
     JsCertificationRequestPayload,
     JsInitiatorConfig,
+    JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,
     SdkErrorKind,
  } from "cohort_sdk_js"
@@ -16,6 +17,7 @@ export {
     Initiator,
     JsInitiatorConfig,
     JsCertificationRequestPayload,
+    JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,
     SdkErrorKind,
     TalosSdkError,
