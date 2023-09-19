@@ -35,12 +35,9 @@ impl From<ClientErrorKind> for SdkErrorKind {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase", tag = "_typ")]
 #[napi]
 pub struct SdkErrorContainer {
-    /// Should always hold the name of this class. This attribute is used
-    /// by JS layer to recognise out container and safely parse it from JSON string
-    /// back to structured object.
-    pub typ: String,
     pub kind: SdkErrorKind,
     pub reason: String,
     pub cause: Option<String>,
@@ -55,12 +52,7 @@ pub const SDK_CONTAINER_TYPE: &str = "SdkErrorContainer";
 #[napi]
 impl SdkErrorContainer {
     pub fn new(kind: SdkErrorKind, reason: String, cause: Option<String>) -> Self {
-        Self {
-            typ: SDK_CONTAINER_TYPE.into(),
-            kind,
-            reason,
-            cause,
-        }
+        Self { kind, reason, cause }
     }
 
     pub fn json(&self) -> Value {

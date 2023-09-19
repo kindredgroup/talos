@@ -111,9 +111,11 @@ new Promise(async (resolve) => {
         queue,
         fnFinish,
     )
+
     try {
         await app.init()
     } catch (e) {
+        console.log(JSON.stringify(e, null, 2))
         if (e instanceof TalosSdkError) {
             const sdkError = e as TalosSdkError
             if (sdkError.kind == SdkErrorKind.Messaging) {
