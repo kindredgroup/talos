@@ -252,7 +252,7 @@ impl Cohort {
             let error = match install_result {
                 Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
                     is_not_save += 1;
-                    // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with anotuer error.
+                    // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with another error.
                     Some(ClientError {
                         kind: model::ClientErrorKind::OutOfOrderSnapshotTimeout,
                         reason: format!("Timeout waitig for safepoint: {}", safepoint),

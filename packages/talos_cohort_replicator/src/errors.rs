@@ -29,3 +29,17 @@ pub struct ServiceError {
 //     // Exhausted retry and no install
 
 // }
+
+#[derive(strum::Display, Debug, Clone)]
+pub enum ReplicatorErrorKind {
+    Messaging,
+    Internal,
+    Persistence,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReplicatorError {
+    pub kind: ReplicatorErrorKind,
+    pub reason: String,
+    pub cause: Option<String>,
+}

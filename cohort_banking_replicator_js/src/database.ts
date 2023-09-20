@@ -35,23 +35,21 @@ export class Database {
         let cnn = null
         try {
             cnn = await this.pool.connect()
-
             const result = await cnn.query({
                 name: "getSnapshot",
                 text: `SELECT "version" FROM cohort_snapshot WHERE id = $1`,
                 values: ["SINGLETON"]
             })
-
             if (result.rowCount === 0) {
                 throw "There is no snapshot in the database."
             }
-
             const version = result.rows[0].version
-
-            logger.warn("Database.getSnapshot(): %d", version)
-
+            logger.info("Database.getSnapshot(): %d", version)
             return Number(version)
-
+        } catch (e) {
+            // This print here is important, without it the original reason is lost when using NAPI 2.10.
+            logger.error("Database.getSnapshot(): %s", e)
+            throw new Error(`Unable to load initial stapshot. Reason: ${e.message}`, { cause: e })
         } finally {
             cnn?.release()
             const metric = new MetricsSet()

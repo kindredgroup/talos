@@ -76,6 +76,7 @@ new Promise(async (resolve) => {
     try {
         await app.init()
     } catch (e) {
+        // this is an example of error parsing
         console.log(JSON.stringify(e, null, 2))
         if (e instanceof TalosSdkError) {
             const sdkError = e as TalosSdkError
