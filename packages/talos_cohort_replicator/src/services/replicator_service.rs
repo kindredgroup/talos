@@ -45,7 +45,7 @@ where
                 // 2. Add/update to suffix.
                 match msg {
                     // 2.1 For CM - Install messages on the version
-                    ChannelMessage::Candidate( message) => {
+                    ChannelMessage::Candidate(message) => {
                         let version = message.version;
                         replicator.process_consumer_message(version, message.into()).await;
                     },

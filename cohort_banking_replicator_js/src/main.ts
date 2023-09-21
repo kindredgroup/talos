@@ -32,5 +32,7 @@ new Promise(async (_resolve) => {
         } else {
             logger.error("Error: %s", e)
         }
+
+        throw e
     }
 })

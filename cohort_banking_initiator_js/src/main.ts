@@ -83,8 +83,8 @@ new Promise(async (resolve) => {
             if (sdkError.kind == SdkErrorKind.Messaging) {
                 logger.error("Unable to connect to kafka....")
             }
-            throw e
         }
+        throw e
     }
     const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: params.transactionsCount, rate: params.targetRatePerSecond })
 })
