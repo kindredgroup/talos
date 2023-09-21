@@ -76,14 +76,15 @@ new Promise(async (resolve) => {
     try {
         await app.init()
     } catch (e) {
+        // this is an example of error parsing
         console.log(JSON.stringify(e, null, 2))
         if (e instanceof TalosSdkError) {
             const sdkError = e as TalosSdkError
             if (sdkError.kind == SdkErrorKind.Messaging) {
                 logger.error("Unable to connect to kafka....")
             }
-            throw e
         }
+        throw e
     }
     const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: params.transactionsCount, rate: params.targetRatePerSecond })
 })

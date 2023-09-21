@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use crate::{
     callbacks::ReplicatorSnapshotProvider,
     core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
-    errors::ServiceError,
+    errors::{ReplicatorError, ReplicatorErrorKind},
     models::StatemapInstallerQueue,
 };
 
@@ -34,7 +34,7 @@ pub async fn statemap_queue_service<S>(
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
     snapshot_api: S,
     config: StatemapQueueServiceConfig,
-) -> Result<(), ServiceError>
+) -> Result<(), ReplicatorError>
 where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
@@ -49,9 +49,11 @@ where
     let mut statemap_installer_queue = StatemapInstallerQueue::default();
 
     //Gets snapshot initial version from db.
-    statemap_installer_queue.update_snapshot(snapshot_api.get_snapshot().await.unwrap());
-
-    // let mut last_item_send_for_install = 0;
+    statemap_installer_queue.update_snapshot(snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
+        kind: ReplicatorErrorKind::Persistence,
+        reason: "Unable to get initial snapshot".into(),
+        cause: Some(e.to_string()),
+    })?);
 
     loop {
         tokio::select! {

@@ -4,6 +4,7 @@ use napi::bindgen_prelude::ToNapiValue;
 use napi_derive::napi;
 use serde::Serialize;
 use serde_json::Value;
+use talos_cohort_replicator::errors::ReplicatorErrorKind;
 
 #[napi(string_enum)]
 #[derive(Serialize)]
@@ -30,6 +31,17 @@ impl From<ClientErrorKind> for SdkErrorKind {
             ClientErrorKind::Internal => SdkErrorKind::Internal,
             ClientErrorKind::OutOfOrderCallbackFailed => SdkErrorKind::OutOfOrderCallbackFailed,
             ClientErrorKind::OutOfOrderSnapshotTimeout => SdkErrorKind::OutOfOrderSnapshotTimeout,
+        }
+    }
+}
+
+impl From<ReplicatorErrorKind> for SdkErrorKind {
+    fn from(value: ReplicatorErrorKind) -> Self {
+        match value {
+            // will never happen in cohort
+            ReplicatorErrorKind::Internal => SdkErrorKind::Internal,
+            ReplicatorErrorKind::Messaging => SdkErrorKind::Messaging,
+            ReplicatorErrorKind::Persistence => SdkErrorKind::Persistence,
         }
     }
 }
