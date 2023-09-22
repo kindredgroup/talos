@@ -5,7 +5,7 @@ use std::{
 
 use async_trait::async_trait;
 use log::{error, info, warn};
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, time::Interval};
 
 use crate::{
     core::{ServiceResult, System, SystemService},
@@ -19,6 +19,7 @@ pub struct MessageReceiverService {
     pub message_channel_tx: mpsc::Sender<ChannelMessage>,
     pub commit_offset: Arc<AtomicI64>,
     pub system: System,
+    pub commit_interval: Interval,
 }
 
 impl MessageReceiverService {
@@ -33,6 +34,7 @@ impl MessageReceiverService {
             message_channel_tx,
             system,
             commit_offset,
+            commit_interval: tokio::time::interval(Duration::from_millis(10_000)),
         }
     }
 
@@ -45,7 +47,6 @@ impl MessageReceiverService {
 #[async_trait]
 impl SystemService for MessageReceiverService {
     async fn run(&mut self) -> ServiceResult {
-        let mut interval = tokio::time::interval(Duration::from_millis(10_000));
         tokio::select! {
           // ** Consume Messages from Kafka
           res = self.receiver.consume_message() => {
@@ -81,7 +82,7 @@ impl SystemService for MessageReceiverService {
             }
           }
           //** commit message
-          _ = interval.tick() => {
+          _ = self.commit_interval.tick() => {
             let offset = self.commit_offset.load(std::sync::atomic::Ordering::Relaxed);
             self.receiver.update_savepoint(offset).await?;
             self.receiver.commit().await?;
