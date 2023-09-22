@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use std::collections::HashMap;
+use tokio::task::JoinHandle;
 
 use crate::errors::SystemServiceError;
 
@@ -14,6 +15,7 @@ pub trait MessageReciever: SharedPortTraits {
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
     async fn subscribe(&self) -> Result<(), SystemServiceError>;
     async fn commit(&self) -> Result<(), SystemServiceError>;
+    fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>>;
     async fn update_savepoint(&mut self, offset: i64) -> Result<(), SystemServiceError>;
     async fn unsubscribe(&self);
 }

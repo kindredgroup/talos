@@ -85,7 +85,7 @@ impl SystemService for MessageReceiverService {
           _ = self.commit_interval.tick() => {
             let offset = self.commit_offset.load(std::sync::atomic::Ordering::Relaxed);
             self.receiver.update_savepoint(offset).await?;
-            self.receiver.commit().await?;
+            self.receiver.commit_async();
           }
         }
 
