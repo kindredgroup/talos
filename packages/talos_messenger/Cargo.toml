@@ -20,9 +20,13 @@ strum = { version = "0.25", features = ["derive"] }
 
 # Futures
 futures-util = "0.3.26"
+futures-executor = "0.3.28"
 
 # Error
 thiserror = { version = "1.0.31" }
+
+# Kafka
+rdkafka = { version = "0.33.2", features = ["sasl"] }
 
 # Time
 time = { version = "0.3.17" }

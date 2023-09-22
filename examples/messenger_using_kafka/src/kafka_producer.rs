@@ -1,24 +1,28 @@
 use async_trait::async_trait;
 use log::info;
-use talos_certifier::ports::MessagePublisher;
-use talos_certifier_adapters::KafkaProducer;
+use rdkafka::producer::ProducerContext;
 use talos_messenger::{
     core::{MessengerPublisher, PublishActionType},
+    kafka::producer::{KafkaProducer, MessengerProducerDeliveryOpaque},
     models::commit_actions::publish::KafkaAction,
 };
 
-pub struct MessengerKafkaPublisher {
-    pub publisher: KafkaProducer,
+pub struct MessengerKafkaPublisher<C: ProducerContext + 'static> {
+    pub publisher: KafkaProducer<C>,
 }
 
 #[async_trait]
-impl MessengerPublisher for MessengerKafkaPublisher {
+impl<C> MessengerPublisher for MessengerKafkaPublisher<C>
+where
+    C: ProducerContext<DeliveryOpaque = Box<MessengerProducerDeliveryOpaque>> + 'static,
+{
     type Payload = KafkaAction;
+    type AdditionalData = u32;
     fn get_publish_type(&self) -> PublishActionType {
         PublishActionType::Kafka
     }
 
-    async fn send(&self, payload: Self::Payload) -> () {
+    async fn send(&self, version: u64, payload: Self::Payload, additional_data: Self::AdditionalData) -> () {
         info!("[MessengerKafkaPublisher] Publishing message with payload=\n{payload:#?}");
 
         let mut bytes: Vec<u8> = Vec::new();
@@ -27,6 +31,13 @@ impl MessengerPublisher for MessengerKafkaPublisher {
         let payld = std::str::from_utf8(&bytes).unwrap();
         info!("[MessengerKafkaPublisher] base_record=\n{payld:#?}");
 
-        self.publisher.publish_message("test", payld, None).await.unwrap();
+        let delivery_opaque = MessengerProducerDeliveryOpaque {
+            version,
+            total_publish_count: additional_data,
+        };
+
+        self.publisher
+            .publish_to_topic("test.messenger.topic", "test", payld, None, Box::new(delivery_opaque))
+            .unwrap();
     }
 }

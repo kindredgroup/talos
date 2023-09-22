@@ -1358,6 +1358,7 @@ dependencies = [
 name = "messenger_using_kafka"
 version = "0.0.1"
 dependencies = [
+ "ahash 0.8.3",
  "async-trait",
  "env_logger",
  "log",
@@ -2646,11 +2647,13 @@ dependencies = [
  "ahash 0.8.3",
  "async-trait",
  "env_logger",
+ "futures-executor",
  "futures-util",
  "indexmap 2.0.0",
  "log",
  "mockall",
  "rand",
+ "rdkafka 0.33.2",
  "serde",
  "serde_json",
  "strum 0.25.0",

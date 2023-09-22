@@ -5,6 +5,8 @@ pub type MessengerServiceResult = Result<(), MessengerServiceError>;
 #[derive(Debug, PartialEq, Clone)]
 pub enum MessengerServiceErrorKind {
     System,
+    Channel,
+    Messaging,
 }
 
 #[derive(Debug, ThisError, PartialEq, Clone)]

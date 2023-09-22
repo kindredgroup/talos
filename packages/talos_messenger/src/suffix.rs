@@ -1,3 +1,4 @@
+use ahash::{HashMap, HashMapExt};
 use log::error;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -5,21 +6,41 @@ use std::fmt::Debug;
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixItem, SuffixTrait};
 
-use crate::{core::MessengerCommitActions, utlis::has_supported_commit_actions};
-
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum SuffixItemState {
-    Awaiting,
-    Inflight,
+    AwaitingDecision,
+    ReadyToProcess,
+    Processing,
+    PartiallyComplete,
     Complete(SuffixItemCompleteStateReason),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum SuffixItemCompleteStateReason {
+    /// When the decision is an abort
     Aborted,
+    /// When there are no commit actions.
     NoCommitActions,
+    /// When there are commit actions, but they are not required to be handled in messenger
     NoRelavantCommitActions,
+    //TODO: GK - Mark as error?
+    /// When there is an error?
+    // Error(String),
+    /// When all commit action has are completed.
     Processed,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct FilteredCommitAction {
+    pub payload: Value,
+    pub count: u32,
+    pub is_completed: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+pub struct CommitActionsWithVersion {
+    pub actions: HashMap<String, FilteredCommitAction>,
+    pub version: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -31,30 +52,19 @@ pub struct MessengerCandidate {
     pub decision: Option<Decision>,
 
     pub state: SuffixItemState,
+
+    pub commit_actions: HashMap<String, FilteredCommitAction>,
 }
 
 impl From<CandidateMessage> for MessengerCandidate {
     fn from(candidate: CandidateMessage) -> Self {
-        let CandidateMessage { version, on_commit, .. } = &candidate;
-
-        let state = match on_commit {
-            Some(actions) => {
-                // GK_START_HERE
-                if has_supported_commit_actions(version, actions) {
-                    SuffixItemState::Awaiting
-                } else {
-                    // There are on_commit actions, but not the ones required by messenger
-                    SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions)
-                }
-            }
-            // There are no on_commit actions
-            None => SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions),
-        };
         MessengerCandidate {
             candidate,
             safepoint: None,
             decision: None,
-            state,
+
+            state: SuffixItemState::AwaitingDecision,
+            commit_actions: HashMap::new(),
         }
     }
 }
@@ -72,6 +82,10 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
         self.state = state;
     }
 
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, FilteredCommitAction>) {
+        self.commit_actions = commit_actions
+    }
+
     fn get_state(&self) -> &SuffixItemState {
         &self.state
     }
@@ -79,8 +93,8 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     fn get_safepoint(&self) -> &Option<u64> {
         &self.safepoint
     }
-    fn get_commit_actions(&self) -> Option<Box<Value>> {
-        self.candidate.on_commit.clone()
+    fn get_commit_actions(&self) -> &HashMap<String, FilteredCommitAction> {
+        &self.commit_actions
         // &None
     }
 
@@ -94,10 +108,11 @@ pub trait MessengerSuffixItemTrait {
     fn set_safepoint(&mut self, safepoint: Option<u64>);
     fn set_decision(&mut self, decision: Decision);
     fn set_state(&mut self, state: SuffixItemState);
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, FilteredCommitAction>);
     //  Getters
     fn get_state(&self) -> &SuffixItemState;
     fn get_safepoint(&self) -> &Option<u64>;
-    fn get_commit_actions(&self) -> Option<Box<Value>>;
+    fn get_commit_actions(&self) -> &HashMap<String, FilteredCommitAction>;
 
     fn is_abort(&self) -> Option<bool>;
 }
@@ -108,15 +123,16 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
 
     //  Getters
     fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
+    fn get_item_state(&self, version: u64) -> Option<SuffixItemState>;
     fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
     // fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn get_suffix_meta(&self) -> &SuffixMeta;
     fn installed_all_prior_decided_items(&self, version: u64) -> bool;
 
-    fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions>;
+    fn get_suffix_items_to_process(&self) -> Vec<CommitActionsWithVersion>;
     // updates
     fn update_prune_index(&mut self, version: u64);
-    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_message: &D);
+    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
 }
 
 impl<T> MessengerSuffixTrait<T> for Suffix<T>
@@ -135,6 +151,14 @@ where
         }
     }
 
+    fn get_item_state(&self, version: u64) -> Option<SuffixItemState> {
+        if let Ok(Some(suffix_item)) = self.get(version) {
+            Some(suffix_item.item.get_state().clone())
+        } else {
+            None
+        }
+    }
+
     fn get_last_installed(&self, _to_version: Option<u64>) -> Option<&SuffixItem<T>> {
         todo!()
     }
@@ -148,48 +172,14 @@ where
         todo!()
     }
 
-    fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions> {
-        // let debug_items = self
-        //     .messages
-        //     .iter()
-        //     // Remove `None` items
-        //     .flatten()
-        //     // Take while contiguous decided.
-        //     .take_while(|x| x.is_decided)
-        //     // Filter only awaiting ones.
-        //     .filter(|&x| x.item.get_state().eq(&SuffixItemState::Awaiting));
-
-        // let count = debug_items.count();
-        // if count > 0 {
-        //     error!("Items decided and in awaiting count... {}", count);
-        // } else {
-        //     let debug_items = self
-        //         .messages
-        //         .iter()
-        //         // Remove `None` items
-        //         .flatten()
-        //         .collect::<Vec<&SuffixItem<T>>>();
-        //     error!("Items  \n\t\t{:#?}", debug_items);
-        // }
-
+    fn get_suffix_items_to_process(&self) -> Vec<CommitActionsWithVersion> {
         let items = self
             .messages
             .iter()
             // Remove `None` items
             .flatten()
-            // Take while contiguous decided.
-            .take_while(|x| x.is_decided)
-            // Filter only awaiting ones.
-            .filter(|&x| x.item.get_state().eq(&SuffixItemState::Awaiting))
-            // Filter out aborted items.
-            // Ideally this wouldn't happen as before this function is called we mark
-            //  candidate messages with no commit actions as `MessengerSuffixItemState::Processed` as soon as we receive them.
-            //  decision messages with no aborts as `MessengerSuffixItemState::Processed` as soon as we receive them.
-            .filter(|x| !x.item.is_abort().unwrap())
-            // Filter out candidate messages without on_commit actions.
-            // Ideally this wouldn't happen as before this function was called we marked
-            //  candidate messages with no commit actions as `MessengerSuffixItemState::Processed` as soon as we receive them.
-            .filter(|x| x.item.get_commit_actions().is_some())
+            // Filter only the items awaiting to be processed.
+            .filter(|&x| x.item.get_state().eq(&SuffixItemState::ReadyToProcess))
             // Take while contiguous ones, whose safepoint is already processed.
             .take_while(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
@@ -207,15 +197,9 @@ where
                     _ => true,
                 }
             })
-            .filter_map(|x| {
-                let Some(actions) = x.item.get_commit_actions() else {
-                    return None;
-                };
-
-                Some(MessengerCommitActions {
-                    version: x.item_ver,
-                    commit_actions: actions.clone(),
-                })
+            .map(|x| CommitActionsWithVersion {
+                version: x.item_ver,
+                actions: x.item.get_commit_actions().clone(),
             })
             .collect();
 
@@ -226,8 +210,19 @@ where
         todo!()
     }
 
-    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_message: &D) {
+    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D) {
+        let _ = self.update_decision_suffix_item(version, decision_version);
+
         if let Some(item_to_update) = self.get_mut(version) {
+            // If abort, mark the item as processed.
+            if decision_message.is_abort() {
+                item_to_update
+                    .item
+                    .set_state(SuffixItemState::Complete(crate::suffix::SuffixItemCompleteStateReason::Aborted));
+            } else if item_to_update.item.get_state().eq(&SuffixItemState::AwaitingDecision) {
+                item_to_update.item.set_state(SuffixItemState::ReadyToProcess);
+            }
+
             item_to_update.item.set_decision(decision_message.get_decision().clone());
             item_to_update.item.set_safepoint(decision_message.get_safepoint());
         }

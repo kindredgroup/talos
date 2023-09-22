@@ -1,7 +1,9 @@
+use ahash::{HashMap, HashMapExt};
 use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::{KafkaConsumer, KafkaProducer};
+use talos_certifier_adapters::KafkaConsumer;
 use talos_common_utils::env_var;
 use talos_messenger::{
+    kafka::producer::{KafkaProducer, MessengerKafkaProducerContext},
     services::{MessengerInboundService, PublishActionService},
     suffix::MessengerCandidate,
     talos_messenger_service::TalosMessengerService,
@@ -48,16 +50,26 @@ async fn main() {
     };
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(suffix_config);
 
+    let mut whitelisted_actions = HashMap::<&'static str, Vec<&'static str>>::new();
+
+    whitelisted_actions.insert("publish", vec!["kafka"]);
+
     let inbound_service = MessengerInboundService {
-        message_receiver_abcast: kafka_consumer,
+        message_receiver: kafka_consumer,
         tx_actions_channel,
         rx_feedback_channel,
         suffix,
+        allowed_actions: whitelisted_actions,
     };
 
     // TODO: GK - create topic should be part of publish.
     kafka_config.topic = "test.messenger.topic".to_string();
-    let kafka_producer = KafkaProducer::new(&kafka_config);
+
+    let tx_feedback_channel_clone = tx_feedback_channel.clone();
+    let custom_context = MessengerKafkaProducerContext {
+        tx_feedback_channel: tx_feedback_channel_clone,
+    };
+    let kafka_producer = KafkaProducer::with_context(&kafka_config, custom_context);
     let messenger_kafka_publisher = MessengerKafkaPublisher { publisher: kafka_producer };
 
     let publish_service = PublishActionService {
