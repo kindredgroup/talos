@@ -90,7 +90,7 @@ where
                     \n ");
             }
 
-            replicator.commit_till_last_installed().await;
+            replicator.commit().await;
         }
         // Receive feedback from installer.
         res = replicator_rx.recv() => {
@@ -110,6 +110,7 @@ where
 
                             // Prune suffix and update suffix head.
                             if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                                replicator.prepare_offset_for_commit().await;
                                 replicator.suffix.prune_till_version(version).unwrap();
                             }
                             total_items_installed += 1;
