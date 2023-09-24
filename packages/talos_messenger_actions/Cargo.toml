@@ -1,0 +1,46 @@
+[package]
+name = "talos_messenger_actions"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+doctest = false
+
+[dependencies]
+# Packages from workspace
+async-trait = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+
+# Strum
+strum = { version = "0.25", features = ["derive"] }
+
+# Futures
+futures-util = "0.3.26"
+futures-executor = "0.3.28"
+
+# Error
+thiserror = { version = "1.0.31" }
+
+# Kafka
+rdkafka = { version = "0.33.2", features = ["sasl"] }
+
+# Time
+time = { version = "0.3.17" }
+
+#  indexmap
+indexmap = { version = "2.0.0", features = ["rayon"] }
+ahash = "0.8.3"
+
+talos_certifier = { path = "../talos_certifier" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils" }
+talos_messenger_core = { path = "../../packages/talos_messenger_core" }
+
+[dev-dependencies]
+mockall = { version = "0.11.3" }
+tokio-test = { version = "0.4.2" }
+rand = { version = "0.8.5" }

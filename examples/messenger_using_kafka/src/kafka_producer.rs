@@ -1,11 +1,16 @@
 use async_trait::async_trait;
 use log::info;
 use rdkafka::producer::ProducerContext;
-use talos_messenger::{
-    core::{MessengerPublisher, PublishActionType},
-    kafka::producer::{KafkaProducer, MessengerProducerDeliveryOpaque},
-    models::commit_actions::publish::KafkaAction,
+use talos_messenger_actions::kafka::{
+    models::KafkaAction,
+    producer::{KafkaProducer, MessengerProducerDeliveryOpaque},
 };
+use talos_messenger_core::core::{MessengerPublisher, PublishActionType};
+// use talos_messenger::{
+//     core::{MessengerPublisher, PublishActionType},
+//     kafka::producer::{KafkaProducer, MessengerProducerDeliveryOpaque},
+//     models::commit_actions::publish::KafkaAction,
+// };
 
 pub struct MessengerKafkaPublisher<C: ProducerContext + 'static> {
     pub publisher: KafkaProducer<C>,

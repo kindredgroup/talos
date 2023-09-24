@@ -3,7 +3,7 @@ use log::warn;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::suffix::FilteredCommitAction;
+use crate::suffix::AllowedActionsMapValue;
 
 /// Retrieves the serde_json::Value for a given key
 pub fn get_value_by_key<'a>(payload: &'a Value, key: &str) -> Option<&'a Value> {
@@ -13,7 +13,7 @@ pub fn get_value_by_key<'a>(payload: &'a Value, key: &str) -> Option<&'a Value> 
 pub fn get_filtered_commit_actions(
     on_commit_actions: &Value,
     allowed_actions: &HashMap<&'static str, Vec<&'static str>>,
-) -> HashMap<String, FilteredCommitAction> {
+) -> HashMap<String, AllowedActionsMapValue> {
     let mut filtered_actions = HashMap::new();
 
     allowed_actions.iter().for_each(|(action_key, sub_action_keys)| {
@@ -22,7 +22,7 @@ pub fn get_filtered_commit_actions(
                 if let Some(sub_action) = get_value_by_key(action, sub_action_key) {
                     filtered_actions.insert(
                         sub_action_key.to_string(),
-                        FilteredCommitAction {
+                        AllowedActionsMapValue {
                             payload: sub_action.clone(),
                             count: 0,
                             is_completed: false,

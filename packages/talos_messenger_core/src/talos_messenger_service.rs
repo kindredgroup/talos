@@ -6,7 +6,6 @@ use crate::{
 };
 
 pub struct TalosMessengerService {
-    // pub system: System,
     pub services: Vec<Box<dyn MessengerSystemService + Send + Sync>>,
 }
 

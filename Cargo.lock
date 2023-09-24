@@ -1368,7 +1368,8 @@ dependencies = [
  "talos_certifier",
  "talos_certifier_adapters",
  "talos_common_utils",
- "talos_messenger",
+ "talos_messenger_actions",
+ "talos_messenger_core",
  "talos_rdkafka_utils",
  "talos_suffix",
  "tokio",
@@ -2641,7 +2642,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "talos_messenger"
+name = "talos_messenger_actions"
 version = "0.1.0"
 dependencies = [
  "ahash 0.8.3",
@@ -2659,8 +2660,33 @@ dependencies = [
  "strum 0.25.0",
  "talos_certifier",
  "talos_certifier_adapters",
- "talos_common_utils",
+ "talos_messenger_core",
  "talos_rdkafka_utils",
+ "thiserror",
+ "time 0.3.26",
+ "tokio",
+ "tokio-test",
+]
+
+[[package]]
+name = "talos_messenger_core"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.3",
+ "async-trait",
+ "env_logger",
+ "futures-executor",
+ "futures-util",
+ "indexmap 2.0.0",
+ "log",
+ "mockall",
+ "rand",
+ "rdkafka 0.33.2",
+ "serde",
+ "serde_json",
+ "strum 0.25.0",
+ "talos_certifier",
+ "talos_common_utils",
  "talos_suffix",
  "thiserror",
  "time 0.3.26",

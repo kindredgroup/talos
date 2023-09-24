@@ -31,7 +31,7 @@ pub enum SuffixItemCompleteStateReason {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct FilteredCommitAction {
+pub struct AllowedActionsMapValue {
     pub payload: Value,
     pub count: u32,
     pub is_completed: bool,
@@ -39,7 +39,7 @@ pub struct FilteredCommitAction {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct CommitActionsWithVersion {
-    pub actions: HashMap<String, FilteredCommitAction>,
+    pub actions: HashMap<String, AllowedActionsMapValue>,
     pub version: u64,
 }
 
@@ -53,7 +53,7 @@ pub struct MessengerCandidate {
 
     pub state: SuffixItemState,
 
-    pub commit_actions: HashMap<String, FilteredCommitAction>,
+    pub allowed_actions_map: HashMap<String, AllowedActionsMapValue>,
 }
 
 impl From<CandidateMessage> for MessengerCandidate {
@@ -64,7 +64,7 @@ impl From<CandidateMessage> for MessengerCandidate {
             decision: None,
 
             state: SuffixItemState::AwaitingDecision,
-            commit_actions: HashMap::new(),
+            allowed_actions_map: HashMap::new(),
         }
     }
 }
@@ -82,8 +82,8 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
         self.state = state;
     }
 
-    fn set_commit_action(&mut self, commit_actions: HashMap<String, FilteredCommitAction>) {
-        self.commit_actions = commit_actions
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapValue>) {
+        self.allowed_actions_map = commit_actions
     }
 
     fn get_state(&self) -> &SuffixItemState {
@@ -93,8 +93,8 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     fn get_safepoint(&self) -> &Option<u64> {
         &self.safepoint
     }
-    fn get_commit_actions(&self) -> &HashMap<String, FilteredCommitAction> {
-        &self.commit_actions
+    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapValue> {
+        &self.allowed_actions_map
         // &None
     }
 
@@ -104,16 +104,15 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
 }
 
 pub trait MessengerSuffixItemTrait {
-    //  Setters
-    fn set_safepoint(&mut self, safepoint: Option<u64>);
-    fn set_decision(&mut self, decision: Decision);
     fn set_state(&mut self, state: SuffixItemState);
-    fn set_commit_action(&mut self, commit_actions: HashMap<String, FilteredCommitAction>);
-    //  Getters
     fn get_state(&self) -> &SuffixItemState;
-    fn get_safepoint(&self) -> &Option<u64>;
-    fn get_commit_actions(&self) -> &HashMap<String, FilteredCommitAction>;
 
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapValue>);
+    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapValue>;
+
+    fn set_safepoint(&mut self, safepoint: Option<u64>);
+    fn get_safepoint(&self) -> &Option<u64>;
+    fn set_decision(&mut self, decision: Decision);
     fn is_abort(&self) -> Option<bool>;
 }
 

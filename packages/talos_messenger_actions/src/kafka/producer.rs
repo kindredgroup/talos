@@ -15,8 +15,8 @@ use talos_certifier_adapters::kafka::utils::build_kafka_headers;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::sync::mpsc;
 
-use crate::core::MessengerChannelFeedback;
 use futures_executor::block_on;
+use talos_messenger_core::core::MessengerChannelFeedback;
 
 #[derive(Debug)]
 pub struct MessengerProducerDeliveryOpaque {
@@ -87,6 +87,7 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
         value: &str,
         headers: Option<HashMap<String, String>>,
         delivery_opaque: C::DeliveryOpaque,
+        // TODO: GK - Update error type here.
     ) -> Result<(), SystemServiceError> {
         let record = BaseRecord::with_opaque_to(topic, delivery_opaque).payload(value).key(key);
 

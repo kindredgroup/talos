@@ -111,8 +111,6 @@ where
                             ChannelMessage::Candidate(message) => {
                                 let version = message.version;
                                 if message.version > 0 {
-
-
                                     // insert item to suffix
                                     let _ = self.suffix.insert(version, message.into());
 
@@ -134,7 +132,7 @@ where
                                             item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
 
                                         }
-                                        error!("[FILTERED ACTIONS] version={}  state={:?} actions={:#?}", version, item_to_update.item.state, item_to_update.item.commit_actions);
+                                        error!("[FILTERED ACTIONS] version={}  state={:?} actions={:#?}", version, item_to_update.item.state, item_to_update.item.allowed_actions_map);
                                     };
 
                                 } else {
@@ -180,13 +178,13 @@ where
 
                                     // TODO: GK - Put setter function for this and avoid repeating it.
                                     if let Some(item_to_update) = self.suffix.get_mut(version) {
-                                        if let Some(action_completed) = item_to_update.item.commit_actions.get_mut(&key) {
+                                        if let Some(action_completed) = item_to_update.item.allowed_actions_map.get_mut(&key) {
                                             action_completed.count += 1;
                                             action_completed.is_completed = action_completed.count  == total_count;
 
                                         }
 
-                                        if item_to_update.item.commit_actions.iter().all(|(_,  x)| x.is_completed) {
+                                        if item_to_update.item.allowed_actions_map.iter().all(|(_,  x)| x.is_completed) {
                                                 self.suffix.set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::Processed));
 
                                         }
@@ -198,7 +196,7 @@ where
 
                                     // TODO: GK - Put setter function for this.
                                     if let Some(item_to_update) = self.suffix.get_mut(version) {
-                                        if let Some(action_completed) = item_to_update.item.commit_actions.get_mut(&key) {
+                                        if let Some(action_completed) = item_to_update.item.allowed_actions_map.get_mut(&key) {
                                             action_completed.count += 1;
 
                                             if action_completed.count  == total_count {
@@ -207,7 +205,7 @@ where
                                             }
                                         }
 
-                                        if item_to_update.item.commit_actions.iter().all(|(_, x)| x.is_completed) {
+                                        if item_to_update.item.allowed_actions_map.iter().all(|(_, x)| x.is_completed) {
                                                 self.suffix.set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::Processed));
 
                                         }
