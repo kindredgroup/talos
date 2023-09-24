@@ -27,20 +27,20 @@ impl TalosMessengerService {
         Ok(())
     }
 
-    pub async fn shutdown(self) -> MessengerServiceResult {
-        let service_handle = self.services.into_iter().map(|service| tokio::spawn(async move { service.stop().await }));
+    // pub async fn shutdown(self) -> MessengerServiceResult {
+    //     let service_handle = self.services.into_iter().map(|service| tokio::spawn(async move { service.stop().await }));
 
-        let k = try_join_all(service_handle).await.map_err(|e| MessengerServiceError {
-            kind: MessengerServiceErrorKind::System,
-            reason: e.to_string(),
-            data: None,
-            service: "Main thread".to_string(),
-        })?;
+    //     let k = try_join_all(service_handle).await.map_err(|e| MessengerServiceError {
+    //         kind: MessengerServiceErrorKind::System,
+    //         reason: e.to_string(),
+    //         data: None,
+    //         service: "Main thread".to_string(),
+    //     })?;
 
-        for res in k {
-            res?
-        }
+    //     for res in k {
+    //         res?
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

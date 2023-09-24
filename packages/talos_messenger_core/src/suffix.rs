@@ -30,16 +30,21 @@ pub enum SuffixItemCompleteStateReason {
     Processed,
 }
 
+// #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+// pub struct AllowedActionsMapValueMeta {
+//     pub total_count: u32,
+//     pub completed_count: u32,
+// }
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct AllowedActionsMapValue {
+pub struct AllowedActionsMapItem {
     pub payload: Value,
     pub count: u32,
     pub is_completed: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct CommitActionsWithVersion {
-    pub actions: HashMap<String, AllowedActionsMapValue>,
+pub struct ActionsMapWithVersion {
+    pub actions: HashMap<String, AllowedActionsMapItem>,
     pub version: u64,
 }
 
@@ -53,7 +58,7 @@ pub struct MessengerCandidate {
 
     pub state: SuffixItemState,
 
-    pub allowed_actions_map: HashMap<String, AllowedActionsMapValue>,
+    pub allowed_actions_map: HashMap<String, AllowedActionsMapItem>,
 }
 
 impl From<CandidateMessage> for MessengerCandidate {
@@ -82,7 +87,7 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
         self.state = state;
     }
 
-    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapValue>) {
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>) {
         self.allowed_actions_map = commit_actions
     }
 
@@ -93,7 +98,7 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     fn get_safepoint(&self) -> &Option<u64> {
         &self.safepoint
     }
-    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapValue> {
+    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapItem> {
         &self.allowed_actions_map
         // &None
     }
@@ -107,8 +112,8 @@ pub trait MessengerSuffixItemTrait {
     fn set_state(&mut self, state: SuffixItemState);
     fn get_state(&self) -> &SuffixItemState;
 
-    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapValue>);
-    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapValue>;
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>);
+    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapItem>;
 
     fn set_safepoint(&mut self, safepoint: Option<u64>);
     fn get_safepoint(&self) -> &Option<u64>;
@@ -128,7 +133,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     fn get_suffix_meta(&self) -> &SuffixMeta;
     fn installed_all_prior_decided_items(&self, version: u64) -> bool;
 
-    fn get_suffix_items_to_process(&self) -> Vec<CommitActionsWithVersion>;
+    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
     // updates
     fn update_prune_index(&mut self, version: u64);
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
@@ -171,7 +176,7 @@ where
         todo!()
     }
 
-    fn get_suffix_items_to_process(&self) -> Vec<CommitActionsWithVersion> {
+    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
         let items = self
             .messages
             .iter()
@@ -196,7 +201,7 @@ where
                     _ => true,
                 }
             })
-            .map(|x| CommitActionsWithVersion {
+            .map(|x| ActionsMapWithVersion {
                 version: x.item_ver,
                 actions: x.item.get_commit_actions().clone(),
             })

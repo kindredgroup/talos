@@ -87,8 +87,7 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
         value: &str,
         headers: Option<HashMap<String, String>>,
         delivery_opaque: C::DeliveryOpaque,
-        // TODO: GK - Update error type here.
-    ) -> Result<(), SystemServiceError> {
+    ) -> Result<(), MessagePublishError> {
         let record = BaseRecord::with_opaque_to(topic, delivery_opaque).payload(value).key(key);
 
         let record = match headers {
@@ -96,18 +95,13 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
             None => record,
         };
 
-        Ok(self
-            .producer
-            .send(record)
-            // .send(record, Timeout::After(Duration::from_secs(1)))
-            // .await
-            .map_err(|(kafka_error, record)| MessagePublishError {
-                reason: kafka_error.to_string(),
-                data: Some(format!(
-                    "Topic={:?} partition={:?} key={:?} headers={:?} payload={:?}",
-                    self.topic, record.partition, record.key, record.headers, record.payload
-                )),
-            })?)
+        self.producer.send(record).map_err(|(kafka_error, record)| MessagePublishError {
+            reason: kafka_error.to_string(),
+            data: Some(format!(
+                "Topic={:?} partition={:?} key={:?} headers={:?} payload={:?}",
+                self.topic, record.partition, record.key, record.headers, record.payload
+            )),
+        })
     }
 }
 
