@@ -112,7 +112,7 @@ async fn main() -> Result<(), String> {
 
     let db_config = DatabaseConfig {
         pool_size: 100,
-        user: "admin".into(),
+        user: "postgres".into(),
         password: "admin".into(),
         host: "127.0.0.1".into(),
         port: "5432".into(),
