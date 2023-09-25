@@ -6,6 +6,7 @@ import { createGeneratorService } from "./load-generator"
 import { BankingApp } from "./banking-app"
 import { DB_CONFIG } from "./cfg/config-db-pool"
 import { Pond } from "./pond"
+import { TalosSdkError, SdkErrorKind } from "cohort_sdk_client"
 
 logger.info("App: Cohort JS Application: %d", 111)
 logger.info("App: ---------------------")
@@ -71,6 +72,19 @@ new Promise(async (resolve) => {
         queue,
         fnFinish,
     )
-    await app.init()
+
+    try {
+        await app.init()
+    } catch (e) {
+        // this is an example of error parsing
+        console.log(JSON.stringify(e, null, 2))
+        if (e instanceof TalosSdkError) {
+            const sdkError = e as TalosSdkError
+            if (sdkError.kind == SdkErrorKind.Messaging) {
+                logger.error("Unable to connect to kafka....")
+            }
+        }
+        throw e
+    }
     const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: params.transactionsCount, rate: params.targetRatePerSecond })
 })

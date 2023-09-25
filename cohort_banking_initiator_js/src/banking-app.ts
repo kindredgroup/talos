@@ -5,9 +5,9 @@ import { Pond } from "./pond"
 
 import { logger } from "./logger"
 
-import { CapturedItemState, CapturedState, CertificationCandidate, CertificationRequest, TransferRequest, TransferRequestMessage } from "./model"
-import { Initiator, JsCertificationRequestPayload, OutOfOrderRequest } from "cohort_sdk_js"
+import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
+import { Initiator, JsCertificationRequestPayload, JsOutOfOrderInstallOutcome, OutOfOrderRequest, TalosSdkError } from "cohort_sdk_client"
 
 export class BankingApp {
     private startedAtMs: number = 0
@@ -25,13 +25,14 @@ export class BankingApp {
 
     async init() {
         this.initiator = await Initiator.init(sdkConfig)
+
         this.queue.onmessage = (event: MessageEvent<TransferRequestMessage>) => {
             this.pond.submit(async () => {
                 try {
                     const spans = await this.processQueueItem(event)
                     this.spans.push(spans)
                 } catch (e) {
-                    logger.error("Failed to process tx: %s", e)
+                    logger.error("%s", e)
                 }
             })
         }
@@ -59,7 +60,17 @@ export class BankingApp {
             const subSpans = await this.handleTransaction(event.data.request)
             spans.processDetails = subSpans
         } catch (e) {
-            logger.error("Unable to process tx: %s. Error:: %s", JSON.stringify(event.data), e)
+            if (e instanceof TalosSdkError) {
+                const sdkError = e as TalosSdkError
+                logger.error("Unable to process tx: %s. TalosSdkError", JSON.stringify(event.data))
+                logger.error("TalosSdkError.message: %s", sdkError.message)
+                logger.error("TalosSdkError.kind: %s", sdkError.kind)
+                logger.error("TalosSdkError.name: %s", sdkError.name)
+                logger.error("TalosSdkError.cause: %s", sdkError.cause)
+                logger.error("TalosSdkError.stack: %s", sdkError.stack)
+            } else {
+                logger.error("Unable to process tx: %s. Error: %s", JSON.stringify(event.data), e)
+            }
         } finally {
             this.handledCount++
             spans.process = Date.now() - span_s
@@ -147,14 +158,15 @@ export class BankingApp {
             // take snapshot from any row
             return new CapturedState(Number(result.rows[0].snapshot_version), items)
         } catch (e) {
+            // This print here is important, without it the original reason is lost when using NAPI 2.10.
             logger.error("BankingApp.loadState(): %s", e)
-            throw e
+            throw new Error(`Unable to load state for tx: ${ JSON.stringify(tx) }. Reason: ${e.message}`, { cause: e })
         } finally {
             cnn?.release()
         }
     }
 
-    private async installOutOfOrder(tx: TransferRequest, request: OutOfOrderRequest): Promise<number> {
+    private async installOutOfOrder(tx: TransferRequest, request: OutOfOrderRequest): Promise<JsOutOfOrderInstallOutcome> {
         let cnn: PoolClient
         try {
             // Params order:
@@ -188,21 +200,23 @@ export class BankingApp {
 
             if (result.rowCount === 0) {
                 // installed already
-                return 1
+                return JsOutOfOrderInstallOutcome.InstalledAlready
             }
 
             // Quickly grab the snapshot to check whether safepoint condition is satisfied. Any row can be used for that.
             const snapshot = Number(result.rows[0].snapshot)
             if (snapshot < request.safepoint) {
                 // safepoint condition
-                return 2
+                return JsOutOfOrderInstallOutcome.SafepointCondition
             }
 
             // installed
-            return 0
+            return JsOutOfOrderInstallOutcome.Installed
 
         } catch (e) {
+            // This print here is important, without it the original reason is lost when using NAPI 2.10.
             logger.error("BankingApp.installOutOfOrder(): %s", e)
+            throw new Error(`Unable to complete out of order installation of tx: ${ JSON.stringify(tx) }`, { cause: e })
         } finally {
             cnn?.release()
         }

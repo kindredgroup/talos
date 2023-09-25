@@ -13,7 +13,7 @@ opentelemetry_api = { version = "0.20.0" }
 opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry = { version = "0.20.0" }
 rand = { version = "0.8.5" }
-rdkafka = { version = "0.33.0", features = ["sasl"] }
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 rdkafka-sys = { version = "4.3.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }

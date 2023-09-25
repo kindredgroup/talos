@@ -37,7 +37,7 @@ async fn prefill_db(accounts_file: String, db: Arc<Database>) {
         .expect("Unable to prefill accounts table");
     let updated_snapshot = prefill_snapshot(Arc::clone(&db), Snapshot { version: 0 })
         .await
-        .expect("Unable to prefil snapshot table");
+        .expect("Unable to prefill snapshot table");
 
     log::info!("----------------------------------");
     log::info!("Initial state is loaded into DB files");

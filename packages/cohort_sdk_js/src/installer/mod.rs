@@ -10,7 +10,7 @@ use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
 use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
 
-use crate::{map_error_to_napi_error, models::JsKafkaConfig};
+use crate::{models::JsKafkaConfig, sdk_errors::SdkErrorContainer};
 
 use self::callback_impl::{SnapshotProviderDelegate, StatemapInstallerDelegate};
 
@@ -68,35 +68,17 @@ pub struct JsStatemapAndSnapshot {
 }
 
 #[napi]
-pub struct Replicator {
+pub struct InternalReplicator {
     kafka_config: JsKafkaConfig,
     config: JsReplicatorConfig,
-    // snapshot_provider: SnapshotProviderDelegate,
-    // snapshot_provider_callback: ThreadsafeFunction<()>,
-    // statemap_installer: StatemapInstallerDelegate,
 }
 
 #[napi]
-impl Replicator {
+impl InternalReplicator {
     #[napi]
-    pub async fn init(
-        kafka_config: JsKafkaConfig,
-        config: JsReplicatorConfig,
-        // statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
-    ) -> napi::Result<Replicator> {
+    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig) -> napi::Result<InternalReplicator> {
         env_logger::builder().format_timestamp_millis().init();
-
-        Ok(Replicator {
-            kafka_config,
-            config,
-            // snapshot_provider_callback,
-            // snapshot_provider: SnapshotProviderDelegate {
-            //     callback: snapshot_provider_callback,
-            // },
-            // statemap_installer: StatemapInstallerDelegate {
-            //     callback: statemap_installer_callback,
-            // },
-        })
+        Ok(InternalReplicator { kafka_config, config })
     }
 
     #[napi]
@@ -106,25 +88,39 @@ impl Replicator {
         statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
     ) -> napi::Result<()> {
         let kafka_consumer = KafkaConsumer::new(&self.kafka_config.clone().into());
-        kafka_consumer.subscribe().await.map_err(map_error_to_napi_error)?;
+        let brokers = &self.kafka_config.brokers.clone();
+        let topic = &self.kafka_config.topic.clone();
 
-        let installer = Arc::new(StatemapInstallerDelegate {
-            callback: statemap_installer_callback,
-        });
+        kafka_consumer.subscribe().await.map_err(|e| {
+            // "kafka_consumer.subscribe()" never throws, leaving this mapping here jsut in case, but
+            // so far testing showed that even when kafka is down during startup this method finishes
+            // without error.
+            let sdk_error = SdkErrorContainer::new(
+                crate::sdk_errors::SdkErrorKind::Messaging,
+                format!("Unable to subscribe to kafka. Brokers: {:?}, topic: {}", brokers, topic),
+                Some(e.to_string()),
+            );
+
+            napi::Error::from_reason(sdk_error.json().to_string())
+        })?;
+
         let config: CohortReplicatorConfig = self.config.clone().into();
-        // let provider = self.snapshot_provider;
-        let _service_handle = tokio::spawn(async move {
-            let result = talos_cohort_replicator(
-                kafka_consumer,
-                installer,
-                SnapshotProviderDelegate {
-                    callback: snapshot_provider_callback,
-                },
-                config,
-            )
-            .await;
-            log::info!("Result from the services ={result:?}");
-        });
+
+        let _result = talos_cohort_replicator(
+            kafka_consumer,
+            Arc::new(StatemapInstallerDelegate {
+                callback: statemap_installer_callback,
+            }),
+            SnapshotProviderDelegate {
+                callback: snapshot_provider_callback,
+            },
+            config,
+        )
+        .await
+        .map_err(|e| {
+            let sdk_error = SdkErrorContainer::new(e.kind.clone().into(), e.reason, e.cause);
+            napi::Error::from_reason(sdk_error.json().to_string())
+        })?;
 
         Ok(())
     }

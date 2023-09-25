@@ -1,4 +1,4 @@
-import { JsReplicatorConfig } from "cohort_sdk_js"
+import { JsReplicatorConfig } from "cohort_sdk_client"
 
 const replicatorConfig: JsReplicatorConfig = {
     enableStats: true,
