@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use log::debug;
@@ -19,6 +19,7 @@ use talos_certifier::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
+use tokio::task::JoinHandle;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
@@ -27,7 +28,7 @@ use super::utils;
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
 pub struct KafkaConsumer {
-    pub consumer: StreamConsumer<DefaultConsumerContext>,
+    pub consumer: Arc<StreamConsumer<DefaultConsumerContext>>,
     pub topic: String,
     pub tpl: TopicPartitionList,
 }
@@ -38,7 +39,7 @@ impl KafkaConsumer {
 
         let topic = config.topic.clone();
         Self {
-            consumer,
+            consumer: Arc::new(consumer),
             topic,
             tpl: TopicPartitionList::new(),
         }
@@ -182,6 +183,29 @@ impl MessageReciever for KafkaConsumer {
         }
         Ok(())
     }
+
+    fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>> {
+        if self.tpl.count() > 0 {
+            let consumer_copy = Arc::clone(&self.consumer);
+            let tpl = self.tpl.clone();
+            let handle = tokio::task::spawn(async move {
+                consumer_copy.commit(&tpl, rdkafka::consumer::CommitMode::Async).map_err(|err| {
+                    MessageReceiverError {
+                        kind: MessageReceiverErrorKind::CommitError,
+                        version: None,
+                        reason: err.to_string(),
+                        data: None,
+                    }
+                    .into()
+                })
+            });
+
+            Some(handle)
+        } else {
+            None
+        }
+    }
+
     async fn update_savepoint(&mut self, offset: i64) -> Result<(), SystemServiceError> {
         // let partition = self.tpl.;
         let tpl = self.tpl.elements_for_topic(&self.topic);

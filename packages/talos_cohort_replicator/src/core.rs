@@ -81,6 +81,7 @@ where
     pub receiver: M,
     pub suffix: S,
     pub last_installing: u64,
+    pub next_commit_offset: Option<u64>,
     _phantom: PhantomData<T>,
 }
 
@@ -95,6 +96,7 @@ where
             receiver,
             suffix,
             last_installing: 0,
+            next_commit_offset: None,
             _phantom: PhantomData,
         }
     }
@@ -138,14 +140,20 @@ where
         get_statemap_from_suffix_items(items.into_iter())
     }
 
-    pub(crate) async fn commit_till_last_installed(&mut self) {
+    pub(crate) async fn prepare_offset_for_commit(&mut self) {
         if self.last_installing > 0 {
             if let Some(last_installed) = self.suffix.get_last_installed(Some(self.last_installing)) {
                 let version = last_installed.decision_ver.unwrap();
-                self.receiver.update_savepoint(version as i64).await.unwrap();
-
-                self.receiver.commit().await.unwrap();
+                self.next_commit_offset = Some(version);
             }
+        }
+    }
+
+    pub(crate) async fn commit(&mut self) {
+        if let Some(version) = self.next_commit_offset {
+            self.receiver.update_savepoint(version as i64).await.unwrap();
+            self.receiver.commit_async();
+            self.next_commit_offset = None;
         }
     }
 }

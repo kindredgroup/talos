@@ -1,7 +1,10 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use async_trait::async_trait;
-use tokio::sync::{broadcast, mpsc};
+use tokio::{
+    sync::{broadcast, mpsc},
+    task::JoinHandle,
+};
 
 use crate::{
     core::{System, SystemService},
@@ -40,6 +43,9 @@ impl MessageReciever for MockReciever {
 
     async fn commit(&self) -> Result<(), SystemServiceError> {
         Ok(())
+    }
+    fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>> {
+        None
     }
     async fn update_savepoint(&mut self, _version: i64) -> Result<(), SystemServiceError> {
         Ok(())
