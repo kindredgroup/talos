@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::info;
+use log::{error, info};
 use tokio::sync::mpsc;
 
 use talos_messenger_core::{
@@ -38,17 +38,19 @@ where
 
                     // TODO: GK - Make this block generic in next ticket to iterator in loop by PublishActionType
                     {
-                        let Some(kafka_actions) = get_actions_deserialised::<Vec<KafkaAction>>(&version, publish_actions_for_type, &self.publisher.get_publish_type().to_string()) else {
-                            continue;
-                        };
-                        let total_len = kafka_actions.len() as u32;
-                        for k_action in kafka_actions {
-                            info!("Received message for version={version} and publish_action={k_action:#?}");
+                        match  get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {
+                            Ok(actions) => {
 
+                                let total_len = actions.len() as u32;
+                                for action in actions {
+                                    // Send to Kafka
+                                    self.publisher.send(version, action, total_len ).await;
 
-                            // if kafka commit action send to Kafka publisher
-                            self.publisher.send(version, k_action, total_len ).await;
-
+                                }
+                            },
+                            Err(err) => {
+                                error!("Failed to deserialise for version={version} key={} for data={:?} with error={:?}",&self.publisher.get_publish_type(), err.data, err.reason )
+                            },
                         }
                     }
                 }

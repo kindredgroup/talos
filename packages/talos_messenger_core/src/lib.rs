@@ -4,3 +4,6 @@ pub mod services;
 pub mod suffix;
 pub mod talos_messenger_service;
 pub mod utlis;
+
+#[cfg(test)]
+mod tests;

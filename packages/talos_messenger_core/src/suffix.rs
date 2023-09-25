@@ -1,10 +1,45 @@
 use ahash::{HashMap, HashMapExt};
-use log::error;
+use log::{error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixItem, SuffixTrait};
+
+pub trait MessengerSuffixItemTrait {
+    fn set_state(&mut self, state: SuffixItemState);
+    fn set_safepoint(&mut self, safepoint: Option<u64>);
+    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>);
+    fn set_decision(&mut self, decision: Decision);
+
+    fn get_state(&self) -> &SuffixItemState;
+    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapItem>;
+    fn get_action_by_key_mut(&mut self, action_key: &str) -> Option<&mut AllowedActionsMapItem>;
+    fn get_safepoint(&self) -> &Option<u64>;
+
+    fn is_abort(&self) -> Option<bool>;
+}
+
+pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
+    //  Setters
+    fn set_item_state(&mut self, version: u64, process_state: SuffixItemState);
+
+    //  Getters
+    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
+    fn get_item_state(&self, version: u64) -> Option<SuffixItemState>;
+    fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
+    // fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
+    fn get_suffix_meta(&self) -> &SuffixMeta;
+    fn installed_all_prior_decided_items(&self, version: u64) -> bool;
+
+    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
+    // updates
+    fn update_prune_index(&mut self, version: u64);
+    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
+    fn update_action(&mut self, version: u64, action_key: &str, total_count: u32);
+
+    fn all_actions_completed(&self, version: u64) -> bool;
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum SuffixItemState {
@@ -37,9 +72,38 @@ pub enum SuffixItemCompleteStateReason {
 // }
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct AllowedActionsMapItem {
-    pub payload: Value,
-    pub count: u32,
-    pub is_completed: bool,
+    payload: Value,
+    count: u32,
+    is_completed: bool,
+}
+
+impl AllowedActionsMapItem {
+    pub fn new(payload: Value) -> Self {
+        AllowedActionsMapItem {
+            payload,
+            count: 0,
+            is_completed: false,
+        }
+    }
+    pub fn update_count(&mut self) {
+        self.count += 1;
+    }
+
+    pub fn mark_completed(&mut self) {
+        self.is_completed = true;
+    }
+
+    pub fn get_payload(&self) -> &Value {
+        &self.payload
+    }
+
+    pub fn get_count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn is_completed(&self) -> bool {
+        self.is_completed
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -51,14 +115,14 @@ pub struct ActionsMapWithVersion {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct MessengerCandidate {
     pub candidate: CandidateMessage,
-
-    pub safepoint: Option<u64>,
-
-    pub decision: Option<Decision>,
-
-    pub state: SuffixItemState,
-
-    pub allowed_actions_map: HashMap<String, AllowedActionsMapItem>,
+    /// Safepoint received for committed outcomes from certifier.
+    safepoint: Option<u64>,
+    /// Decision received from certifier.
+    decision: Option<Decision>,
+    /// Suffix item state.
+    state: SuffixItemState,
+    /// Filtered actions that need to be processed by the messenger
+    allowed_actions_map: HashMap<String, AllowedActionsMapItem>,
 }
 
 impl From<CandidateMessage> for MessengerCandidate {
@@ -106,37 +170,10 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     fn is_abort(&self) -> Option<bool> {
         Some(self.decision.clone()?.eq(&Decision::Aborted))
     }
-}
 
-pub trait MessengerSuffixItemTrait {
-    fn set_state(&mut self, state: SuffixItemState);
-    fn get_state(&self) -> &SuffixItemState;
-
-    fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>);
-    fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapItem>;
-
-    fn set_safepoint(&mut self, safepoint: Option<u64>);
-    fn get_safepoint(&self) -> &Option<u64>;
-    fn set_decision(&mut self, decision: Decision);
-    fn is_abort(&self) -> Option<bool>;
-}
-
-pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
-    //  Setters
-    fn set_item_state(&mut self, version: u64, process_state: SuffixItemState);
-
-    //  Getters
-    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
-    fn get_item_state(&self, version: u64) -> Option<SuffixItemState>;
-    fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
-    // fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
-    fn get_suffix_meta(&self) -> &SuffixMeta;
-    fn installed_all_prior_decided_items(&self, version: u64) -> bool;
-
-    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
-    // updates
-    fn update_prune_index(&mut self, version: u64);
-    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
+    fn get_action_by_key_mut(&mut self, action_key: &str) -> Option<&mut AllowedActionsMapItem> {
+        self.allowed_actions_map.get_mut(action_key)
+    }
 }
 
 impl<T> MessengerSuffixTrait<T> for Suffix<T>
@@ -229,6 +266,32 @@ where
 
             item_to_update.item.set_decision(decision_message.get_decision().clone());
             item_to_update.item.set_safepoint(decision_message.get_safepoint());
+        }
+    }
+
+    fn update_action(&mut self, version: u64, action_key: &str, total_count: u32) {
+        if let Some(item_to_update) = self.get_mut(version) {
+            if let Some(action) = item_to_update.item.get_action_by_key_mut(action_key) {
+                action.update_count();
+
+                if action.get_count() == total_count {
+                    action.mark_completed();
+                }
+            } else {
+                warn!("Could not update the action as item with version={version} does not have action_key={action_key}! ");
+            }
+        } else {
+            warn!("Could not update the action as item with version={version} was not found! ");
+        }
+    }
+
+    fn all_actions_completed(&self, version: u64) -> bool {
+        if let Ok(Some(item)) = self.get(version) {
+            item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed())
+        } else {
+            warn!("could not find item for version={version}");
+            // TODO: GK - handle this in another way for future?
+            true
         }
     }
 }

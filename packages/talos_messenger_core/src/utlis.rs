@@ -1,9 +1,10 @@
+use std::any::type_name;
+
 use ahash::{HashMap, HashMapExt};
-use log::warn;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::suffix::AllowedActionsMapItem;
+use crate::{errors::ActionError, suffix::AllowedActionsMapItem};
 
 /// Retrieves the serde_json::Value for a given key
 pub fn get_value_by_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
@@ -23,14 +24,7 @@ pub fn get_allowed_commit_actions(
         if let Some(action) = get_value_by_key(on_commit_actions, action_key) {
             for sub_action_key in sub_action_keys {
                 if let Some(sub_action) = get_value_by_key(action, sub_action_key) {
-                    filtered_actions.insert(
-                        sub_action_key.to_string(),
-                        AllowedActionsMapItem {
-                            payload: sub_action.clone(),
-                            count: 0,
-                            is_completed: false,
-                        },
-                    );
+                    filtered_actions.insert(sub_action_key.to_string(), AllowedActionsMapItem::new(sub_action.clone()));
                 }
             }
         }
@@ -40,16 +34,14 @@ pub fn get_allowed_commit_actions(
 }
 
 /// Retrieves sub actions under publish by using a look key.
-pub fn get_actions_deserialised<T: DeserializeOwned>(version: &u64, actions: &Value, key: &str) -> Option<T> {
+pub fn get_actions_deserialised<T: DeserializeOwned>(actions: &Value) -> Result<T, ActionError> {
     match serde_json::from_value(actions.clone()) {
-        Ok(res) => Some(res),
-        Err(err) => {
-            warn!(
-                "Failed to parse {key} on commit actions for version={version} with error={:?} for {actions}",
-                err
-            );
-            None
-        }
+        Ok(res) => Ok(res),
+        Err(err) => Err(ActionError {
+            kind: crate::errors::ActionErrorKind::Deserialisation,
+            reason: format!("Deserialisation to type={} failed, with error={:?}", type_name::<T>(), err),
+            data: actions.to_string(),
+        }),
     }
 }
 
