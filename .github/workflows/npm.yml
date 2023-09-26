@@ -1,6 +1,7 @@
 name: cohort_sdk_js
 on:
-    workflow_call:
+    #workflow_call:
+    push:
 env:
     SDK_JS_HOME: cohort_sdk_js
 jobs:
