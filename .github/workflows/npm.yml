@@ -57,5 +57,5 @@ jobs:
               uses: actions/upload-artifact@v3
               with:
                   name: bindings-${{ matrix.settings.target }}
-                  path: $SDK_JS_HOME/${{ env.LIBRARY_NAME }}.*.node
+                  path: ${{ env.SDK_JS_HOME }}/${{ env.LIBRARY_NAME }}.*.node
                   if-no-files-found: error
