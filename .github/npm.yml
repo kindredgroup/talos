@@ -1,0 +1,51 @@
+name:
+on:
+    workflow_call:
+env:
+    SDK_JS_HOME: cohort_sdk_js
+jobs:
+    npm:
+        strategy:
+            matrix:
+                settings:
+                  - host: macos-latest
+                    target: darwin-arm64
+                    buildCommand: |
+                        cd $SDK_JS_HOME && npm run build -- --target darwin-arm64
+            name: stable - ${{ matrix.settings.target }} - node@16
+            runs-on: ${{ matrix.settings.host }}
+            steps:
+                - uses: actions/checkout@v3
+
+                - name: Setup node
+                  uses: actions/setup-node@v3
+                  with:
+                      node-version: 16
+                      check-latest: true
+
+                - name: Install
+                  uses: actions-rs/toolchain@v1
+                  with:
+                      profile: minimal
+                      override: true
+                      toolchain: stable
+                      target: ${{ matrix.settings.target }}
+
+                - name: List content before build
+                  shell: bash
+                  run: ls -l
+
+                # - name: Cache cargo TODO deal with caching
+                - name: Install node dependencies
+                  run: cd $SDK_JS_HOME && npm install
+
+                - name: Cargo build
+                  run: cargo build
+
+                - name: Build
+                  shell: bash
+                  run: ${{ matrix.settings.buildCommand }}
+
+                - name: List content after build
+                  shell: bash
+                  run: ls -l
