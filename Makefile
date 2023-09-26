@@ -179,6 +179,11 @@ dev.histogram_decision_timeline_from_kafka:
 	$(call pp,histogram_decision_timeline_from_kafka...)
 	cargo run --bin histogram_decision_timeline_from_kafka --release -- $(args)
 
+## example.messenger_kafka: 🧪 Runs the example messenger that uses Kafka.
+example.messenger_kafka:
+	$(call pp,run app...)
+	cargo run -r --example messenger_using_kafka
+
 ## lint: 🧹 Checks for lint failures on rust
 lint:
 	$(call pp,lint rust...)

@@ -101,3 +101,6 @@ Temporary Items
 tasklist.md
 
 docs/.*.bkp
+
+# Temporary testing bin
+packages/talos_messenger_actions/src/bin/test**.rs

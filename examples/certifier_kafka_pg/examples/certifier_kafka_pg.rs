@@ -19,6 +19,8 @@ async fn main() -> Result<(), impl std::error::Error> {
     info!("Talos certifier starting...");
 
     let kafka_config = KafkaConfig::from_env(None);
+    // kafka_config.extend(None, None);
+
     let pg_config = PgConfig::from_env();
     let mock_config = get_mock_config();
     let suffix_config = Some(SuffixConfig {
