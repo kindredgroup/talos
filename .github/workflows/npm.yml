@@ -49,4 +49,4 @@ jobs:
 
             - name: List content after build
               shell: bash
-              run: ls -l
+              run: ls -l && ls -l $SDK_JS_HOME
