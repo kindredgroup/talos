@@ -5,6 +5,7 @@ on:
 env:
     LIBRARY_NAME: cohort_sdk_js
     SDK_JS_HOME: packages/cohort_sdk_js
+    DEBUG: "napi:*"
 jobs:
     npm:
         strategy:

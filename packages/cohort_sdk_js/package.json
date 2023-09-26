@@ -27,7 +27,7 @@
   },
   "scripts": {
     "artifacts": "napi artifacts -d .",
-    "build": "DEBUG=true napi build --platform --release",
+    "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "test": "ava",
     "universal": "napi universal",
