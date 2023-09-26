@@ -3,6 +3,7 @@ on:
     #workflow_call:
     push:
 env:
+    LIBRARY_NAME: cohort_sdk_js
     SDK_JS_HOME: packages/cohort_sdk_js
 jobs:
     npm:
@@ -50,3 +51,10 @@ jobs:
             - name: List content after build
               shell: bash
               run: ls -l && ls -l $SDK_JS_HOME
+
+            - name: Upload built binary
+              uses: actions/upload-artifact@v3
+              with:
+                  name: bindings-${{ matrix.settings.target }}
+                  path: $SDK_JS_HOME/${{ env.LIBRARY_NAME }}.*.node
+                  if-no-files-found: error
