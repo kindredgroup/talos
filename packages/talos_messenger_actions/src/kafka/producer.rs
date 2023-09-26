@@ -83,13 +83,21 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
     pub fn publish_to_topic(
         &self,
         topic: &str,
-        key: &str,
+        partition: Option<i32>,
+        key: Option<&str>,
         value: &str,
         headers: Option<HashMap<String, String>>,
         delivery_opaque: C::DeliveryOpaque,
     ) -> Result<(), MessagePublishError> {
-        let record = BaseRecord::with_opaque_to(topic, delivery_opaque).payload(value).key(key);
+        let record = BaseRecord::with_opaque_to(topic, delivery_opaque).payload(value);
 
+        // Add partition if applicable
+        let record = if let Some(part) = partition { record.partition(part) } else { record };
+
+        // Add key if applicable
+        let record = if let Some(key_str) = key { record.key(key_str) } else { record };
+
+        // Add headers if applicable
         let record = match headers {
             Some(x) => record.headers(build_kafka_headers(x)),
             None => record,
@@ -116,7 +124,7 @@ impl MessagePublisher for KafkaProducer {
             None => record,
         };
 
-        debug!("Preparing to send the Decision Message. ");
+        debug!("Preparing to publish the message. ");
         let delivery_result = self
             .producer
             .send(record)
@@ -127,7 +135,7 @@ impl MessagePublisher for KafkaProducer {
                 data: Some(format!("{:?}", record)),
             })?;
 
-        debug!("Sent the Decision Message successfully {:?} ", delivery_result.to_owned());
+        debug!("Published the message successfully {:?} ", delivery_result.to_owned());
         Ok(())
     }
 }

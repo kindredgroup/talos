@@ -33,8 +33,8 @@ where
         let mut bytes: Vec<u8> = Vec::new();
         serde_json::to_writer(&mut bytes, &payload.value).unwrap();
 
-        let payld = std::str::from_utf8(&bytes).unwrap();
-        info!("[MessengerKafkaPublisher] base_record=\n{payld:#?}");
+        let payload_str = std::str::from_utf8(&bytes).unwrap();
+        info!("[MessengerKafkaPublisher] base_record=\n{payload_str:#?}");
 
         let delivery_opaque = MessengerProducerDeliveryOpaque {
             version,
@@ -42,7 +42,14 @@ where
         };
 
         self.publisher
-            .publish_to_topic("test.messenger.topic", "test", payld, None, Box::new(delivery_opaque))
+            .publish_to_topic(
+                &payload.topic,
+                payload.partition,
+                payload.key.as_deref(),
+                payload_str,
+                None,
+                Box::new(delivery_opaque),
+            )
             .unwrap();
     }
 }

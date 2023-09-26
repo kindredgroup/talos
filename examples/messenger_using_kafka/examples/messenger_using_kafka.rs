@@ -50,7 +50,7 @@ async fn main() {
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(suffix_config);
 
     let mut whitelisted_actions = HashMap::<&'static str, Vec<&'static str>>::new();
-
+    // TODO: GK - Set through env
     whitelisted_actions.insert("publish", vec!["kafka"]);
 
     let inbound_service = MessengerInboundService {
