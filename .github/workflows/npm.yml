@@ -10,7 +10,7 @@ jobs:
             matrix:
                 settings:
                   - host: macos-latest
-                    target: darwin-arm64
+                    target: aarch64-apple-darwin
                     buildCommand: |
                         cd $SDK_JS_HOME && npm run build -- --target darwin-arm64
         name: stable - ${{ matrix.settings.target }} - node@16
