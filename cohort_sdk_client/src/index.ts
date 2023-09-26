@@ -9,7 +9,7 @@ import {
     JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,
     SdkErrorKind,
- } from "cohort_sdk_js"
+ } from "@kindredgroup/cohort_sdk_js"
 
 class TalosSdkError extends Error {
     constructor(readonly kind: SdkErrorKind, readonly message: string, options?: ErrorOptions) {

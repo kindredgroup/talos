@@ -1,4 +1,4 @@
-import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind } from "cohort_sdk_js"
+import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind } from "@kindredgroup/cohort_sdk_js"
 import { isSdkError } from "./internal"
 import { TalosSdkError } from "."
 

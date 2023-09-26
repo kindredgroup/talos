@@ -27,8 +27,7 @@ dependencies = [
  "examples_support",
  "log",
  "rand",
- "rdkafka 0.33.2",
- "rdkafka-sys",
+ "rdkafka",
  "serde",
  "serde_json",
  "strum 0.25.0",
@@ -534,8 +533,7 @@ dependencies = [
  "opentelemetry_api",
  "opentelemetry_sdk",
  "rand",
- "rdkafka 0.29.0",
- "rdkafka-sys",
+ "rdkafka",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -559,8 +557,7 @@ dependencies = [
  "cohort_banking",
  "env_logger",
  "log",
- "rdkafka 0.34.0",
- "rdkafka-sys",
+ "rdkafka",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -588,8 +585,7 @@ dependencies = [
  "opentelemetry_api",
  "opentelemetry_sdk",
  "rand",
- "rdkafka 0.34.0",
- "rdkafka-sys",
+ "rdkafka",
  "serde",
  "serde_json",
  "strum 0.25.0",
@@ -797,27 +793,26 @@ dependencies = [
 
 [[package]]
 name = "deadpool"
-version = "0.9.5"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "421fe0f90f2ab22016f32a9881be5134fdd71c65298917084b0c7477cbc3856e"
+checksum = "fb84100978c1c7b37f09ed3ce3e5f843af02c2a2c431bae5b19230dad2c1b490"
 dependencies = [
  "async-trait",
  "deadpool-runtime",
  "num_cpus",
- "retain_mut",
  "tokio",
 ]
 
 [[package]]
 name = "deadpool-postgres"
-version = "0.10.5"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "836a24a9d49deefe610b8b60c767a7412e9a931d79a89415cd2d2d71630ca8d7"
+checksum = "40b75ba49590d27f677d3bebaf76cd15889ca8b308bc7ba99bfa25f1d7269c13"
 dependencies = [
  "deadpool",
- "log",
  "tokio",
  "tokio-postgres",
+ "tracing",
 ]
 
 [[package]]
@@ -1577,9 +1572,9 @@ checksum = "0ab1bc2a289d34bd04a330323ac98a1b4bc82c9d9fcb1e66b63caa84da26b575"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.91"
+version = "0.9.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "866b5f16f90776b9bb8dc1e1802ac6f0513de3a7a7465867bfbc563dc737faac"
+checksum = "db4d56a4c0478783083cfafcc42493dd4a981d41669da64b4572a2a089b51b1d"
 dependencies = [
  "cc",
  "libc",
@@ -1966,42 +1961,6 @@ dependencies = [
 
 [[package]]
 name = "rdkafka"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd7c5d6d17442bcb9f943aae96d67d98c6d36af60442dd5da62aaa7fcbb25c48"
-dependencies = [
- "futures-channel",
- "futures-util",
- "libc",
- "log",
- "rdkafka-sys",
- "serde",
- "serde_derive",
- "serde_json",
- "slab",
- "tokio",
-]
-
-[[package]]
-name = "rdkafka"
-version = "0.33.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da18026aad1c24033da3da726200de7e911e75c2e2cc2f77ffb9b4502720faae"
-dependencies = [
- "futures-channel",
- "futures-util",
- "libc",
- "log",
- "rdkafka-sys",
- "serde",
- "serde_derive",
- "serde_json",
- "slab",
- "tokio",
-]
-
-[[package]]
-name = "rdkafka"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "053adfa02fab06e86c01d586cc68aa47ee0ff4489a59469081dc12cbcde578bf"
@@ -2123,12 +2082,6 @@ checksum = "581008d2099240d37fb08d77ad713bcaec2c4d89d50b5b21a8bb1996bbab68ab"
 dependencies = [
  "bytecheck",
 ]
-
-[[package]]
-name = "retain_mut"
-version = "0.1.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4389f1d5789befaf6029ebd9f7dac4af7f7e3d61b69d4f30e2ac02b57e7712b0"
 
 [[package]]
 name = "rkyv"
@@ -2547,8 +2500,7 @@ dependencies = [
  "log",
  "mockall",
  "multimap",
- "rdkafka 0.33.2",
- "rdkafka-sys",
+ "rdkafka",
  "serde",
  "serde_json",
  "strum 0.25.0",
@@ -2594,7 +2546,7 @@ dependencies = [
  "logger",
  "metrics",
  "mockall",
- "rdkafka 0.33.2",
+ "rdkafka",
  "refinery",
  "serde",
  "serde_json",
@@ -2703,7 +2655,7 @@ dependencies = [
  "env_logger",
  "log",
  "mockall",
- "rdkafka 0.33.2",
+ "rdkafka",
  "serial_test",
  "talos_common_utils",
  "thiserror",
@@ -2983,7 +2935,19 @@ checksum = "8ce8c33a8d48bd45d624a6e523445fd21ec13d3653cd51f681abf67418f54eb8"
 dependencies = [
  "cfg-if",
  "pin-project-lite",
+ "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-attributes"
+version = "0.1.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f4f31f56159e98206da9efd823404b79b6ef3143b4a7ab76e67b1751b25a4ab"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.29",
 ]
 
 [[package]]

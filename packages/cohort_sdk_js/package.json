@@ -1,6 +1,8 @@
 {
-  "name": "cohort_sdk_js",
-  "version": "0.1.13",
+  "name": "@kindredgroup/cohort_sdk_js",
+  "version": "0.0.1",
+  "author": "Kindredgroup",
+  "license": "UNLICENSED",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {
@@ -12,9 +14,10 @@
       ]
     }
   },
-  "license": "MIT",
+  "dependencies": {
+    "@napi-rs/cli": "^2.16.0"
+  },
   "devDependencies": {
-    "@napi-rs/cli": "^2.14.0",
     "ava": "^4.3.3",
     "uuid": "^9.0.0",
     "esbuild": "^0.18.0"
@@ -25,14 +28,23 @@
   "engines": {
     "node": ">= 10"
   },
+  "files": [
+    "dist/talos/**",
+    "index.d.ts",
+    "index.js",
+    "cohort_sdk_js*",
+    "scripts/postinstall.sh"
+  ],
   "scripts": {
-    "artifacts": "napi artifacts",
+    "artifacts": "napi artifacts -d .",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
     "test": "ava",
+    "postinstall": "scripts/postinstall.sh",
     "universal": "napi universal",
     "version": "napi version",
-    "prepublishOnly": "napi prepublish -t npm && esbuild --minify --outfile=index.js --allow-overwrite index.js"
+    "prepack": "scripts/bundle-talos.sh",
+    "_prepublishOnly": "napi prepublish -t npm && esbuild --minify --outfile=index.js --allow-overwrite index.js"
   },
   "packageManager": "yarn@3.3.1",
   "optionalDependencies": {
