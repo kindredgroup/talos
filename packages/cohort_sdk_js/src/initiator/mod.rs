@@ -1,22 +1,77 @@
-use crate::models::JsConfig;
+use crate::models::{JsBackoffConfig, JsKafkaConfig};
+use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
 use cohort_sdk::model::callback::{
     CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OutOfOrderInstallOutcome, OutOfOrderInstallRequest,
     OutOfOrderInstaller,
 };
+use cohort_sdk::model::{ClientError, Config};
+use napi::bindgen_prelude::FromNapiValue;
 use napi::bindgen_prelude::Promise;
+use napi::bindgen_prelude::ToNapiValue;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fmt::Display;
+
+#[napi(object)]
+pub struct JsInitiatorConfig {
+    // cohort configs
+    //
+    pub backoff_on_conflict: JsBackoffConfig,
+    pub retry_backoff: JsBackoffConfig,
+
+    pub retry_attempts_max: u32,
+    pub retry_oo_backoff: JsBackoffConfig,
+    pub retry_oo_attempts_max: u32,
+
+    pub snapshot_wait_timeout_ms: u32,
+
+    //
+    // agent config values
+    //
+    pub agent: String,
+    pub cohort: String,
+    // The size of internal buffer for candidates
+    pub buffer_size: u32,
+    pub timeout_ms: u32,
+
+    pub kafka: JsKafkaConfig,
+}
+
+impl From<JsInitiatorConfig> for Config {
+    fn from(val: JsInitiatorConfig) -> Self {
+        Config {
+            //
+            // cohort configs
+            //
+            retry_attempts_max: val.retry_attempts_max,
+            retry_backoff: val.retry_backoff.into(),
+            backoff_on_conflict: val.backoff_on_conflict.into(),
+            retry_oo_backoff: val.retry_oo_backoff.into(),
+            retry_oo_attempts_max: val.retry_oo_attempts_max,
+            snapshot_wait_timeout_ms: val.snapshot_wait_timeout_ms,
+
+            //
+            // agent config values
+            //
+            agent: val.agent,
+            cohort: val.cohort,
+            // The size of internal buffer for candidates
+            buffer_size: val.buffer_size,
+            timeout_ms: val.timeout_ms,
+
+            kafka: val.kafka.into(),
+        }
+    }
+}
 
 #[napi(object)]
 pub struct JsCertificationCandidate {
     pub readset: Vec<String>,
     pub writeset: Vec<String>,
-    pub readvers: Vec<u32>,
+    pub readvers: Vec<i64>,
     pub statemaps: Option<Vec<HashMap<String, Value>>>,
 }
 
@@ -34,7 +89,7 @@ impl From<JsCertificationCandidate> for CertificationCandidate {
 #[napi(object)]
 pub struct JsCertificationRequestPayload {
     pub candidate: JsCertificationCandidate,
-    pub snapshot: u32,
+    pub snapshot: i64,
     pub timeout_ms: u32,
 }
 
@@ -54,64 +109,70 @@ pub struct JsCertificationCandidateCallbackResponse {
     pub new_request: Option<JsCertificationRequestPayload>,
 }
 
+#[napi(string_enum)]
+pub enum JsOutOfOrderInstallOutcome {
+    Installed,
+    InstalledAlready,
+    SafepointCondition,
+}
+
+impl From<JsOutOfOrderInstallOutcome> for OutOfOrderInstallOutcome {
+    fn from(value: JsOutOfOrderInstallOutcome) -> Self {
+        match value {
+            JsOutOfOrderInstallOutcome::Installed => OutOfOrderInstallOutcome::Installed,
+            JsOutOfOrderInstallOutcome::SafepointCondition => OutOfOrderInstallOutcome::SafepointCondition,
+            JsOutOfOrderInstallOutcome::InstalledAlready => OutOfOrderInstallOutcome::InstalledAlready,
+        }
+    }
+}
+
 #[napi]
-pub struct Initiator {
+pub struct InternalInitiator {
     cohort: Cohort,
 }
 
 #[napi]
-impl Initiator {
+impl InternalInitiator {
     #[napi]
-    pub async fn init(config: JsConfig) -> napi::Result<Initiator> {
-        let cohort = Cohort::create(config.into()).await.map_err(map_error_to_napi_error)?;
-        Ok(Initiator { cohort })
+    pub async fn init(config: JsInitiatorConfig) -> napi::Result<InternalInitiator> {
+        let cohort = Cohort::create(config.into()).await.map_err(map_error)?;
+        Ok(InternalInitiator { cohort })
     }
 
     #[napi]
     pub async fn certify(
         &self,
         #[napi(ts_arg_type = "() => Promise<any>")] make_new_request_callback: ThreadsafeFunction<()>,
-        ooo_callback: ThreadsafeFunction<OoRequest>,
-    ) -> napi::Result<String> {
-        // println!("Initiator.certify()");
+        ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
+    ) -> napi::Result<()> {
         let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
-        // println!("Initiator.certify(): invoking cohort.certify(...)");
         let make_new_request = || new_request_provider.make_new_request();
-        let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error_to_napi_error)?;
-
-        // println!("Initiator.certify(): after cohort.certify(...)");
-        Ok("Success".to_string())
+        let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error)?;
+        Ok(())
     }
 }
 
 struct OutOfOrderInstallerImpl {
-    ooo_callback: ThreadsafeFunction<OoRequest>,
+    ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
 }
 
 #[async_trait]
 impl OutOfOrderInstaller for OutOfOrderInstallerImpl {
     async fn install(&self, request: OutOfOrderInstallRequest) -> Result<OutOfOrderInstallOutcome, String> {
-        let oorequest = OoRequest {
+        let oorequest = OutOfOrderRequest {
             xid: request.xid,
             safepoint: request.safepoint.try_into().unwrap(),
             new_version: request.version.try_into().unwrap(),
         };
 
-        let result = self
-            .ooo_callback
-            .call_async::<Promise<u32>>(Ok(oorequest))
-            .await
-            .map_err(map_error_to_napi_error);
+        let result = self.ooo_callback.call_async::<Promise<JsOutOfOrderInstallOutcome>>(Ok(oorequest)).await;
+
         match result {
             Ok(promise) => promise
                 .await
-                .map(|code| match code {
-                    1 => OutOfOrderInstallOutcome::InstalledAlready,
-                    2 => OutOfOrderInstallOutcome::SafepointCondition,
-                    _ => OutOfOrderInstallOutcome::Installed,
-                })
-                .map_err(|e| e.to_string()),
+                .map(|outcome| outcome.into())
+                .map_err(|e| format!("Unable to install out of orer item. Native reason provided by JS: \"{}\"", e.reason)),
             Err(e) => Err(e.to_string()),
         }
     }
@@ -126,8 +187,8 @@ impl NewRequestProvider {
         let result = self
             .make_new_request_callback
             .call_async::<Promise<JsCertificationCandidateCallbackResponse>>(Ok(()))
-            .await
-            .map_err(map_error_to_napi_error);
+            .await;
+
         match result {
             Ok(promise) => promise
                 .await
@@ -138,35 +199,29 @@ impl NewRequestProvider {
                         CertificationCandidateCallbackResponse::Proceed(
                             js_data
                                 .new_request
-                                .expect("Invalid response from 'get_state_callback'. Provide cancellation reason or new request. Currently both are empty.")
+                                .expect(
+                                    "Invalid response from 'make_new_request_callback'. Provide cancellation reason or new request. Currently both are empty.",
+                                )
                                 .into(),
                         )
                     }
                 })
-                .map_err(|e| e.to_string()),
+                // Here reason is empty with NAPI 2.10.3
+                .map_err(|e| format!("Unable to create new certification request. Native reason reported from JS: \"{}\"", e.reason)),
 
             Err(e) => Err(e.to_string()),
         }
     }
 }
 
-// pub struct JsClientError {
-//     client_error: ClientError
-// }
-/// # Errors
-/// Convert rust error into `napi::Error`
-fn map_error_to_napi_error<T: Display>(e: T) -> napi::Error {
-    napi::Error::from_reason(e.to_string())
-}
 #[napi(object)]
-pub struct OoRequest {
+pub struct OutOfOrderRequest {
     pub xid: String,
-    pub safepoint: u32,
-    pub new_version: u32,
+    pub safepoint: i64,
+    pub new_version: i64,
 }
 
-// impl From<JsClientError> for napi::Error {
-//     fn from(client: JSScyllaError) -> Self {
-//         map_error_to_napi_error(scylla_error)
-//     }
-// }
+fn map_error(e: ClientError) -> napi::Error {
+    let container = SdkErrorContainer::new(e.kind.into(), e.reason, e.cause);
+    napi::Error::from_reason(container.json().to_string())
+}

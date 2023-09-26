@@ -21,19 +21,23 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1", features = ["serde"] }
 chrono = { version = "0.4.19", features = ["serde"] }
-# Logging
-log = { version = "0.4", features = [
-    "kv_unstable",
-    "std",
-    "kv_unstable_serde",
-] }
 
 # db migrations
 #refinery = {version="0.8", features=["tokio-postgres"]}
 # crate depencies
-cohort_sdk =            { path = "../cohort_sdk" }
-talos_rdkafka_utils =   { path = "../../packages/talos_rdkafka_utils" }
+env_logger = { workspace = true }
+log = { workspace = true }
+
+cohort_sdk = { path = "../cohort_sdk" }
+tokio = { workspace = true, features = ["full"] }
+talos_cohort_replicator = { path = "../../packages/talos_cohort_replicator" }
+talos_certifier = { path = "../talos_certifier" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils" }
+
 async-trait = "0.1.72"
+# rdkafka = { version = "0.34.0", features = ["sasl"] }
+# rdkafka-sys = { version = "4.3.0" }
 
 [build-dependencies]
 napi-build = "2.0.1"

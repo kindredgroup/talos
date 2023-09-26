@@ -1,0 +1,25 @@
+{
+  "name": "cohort_banking_replicator_js",
+  "version": "1.0.0",
+  "description": "",
+  "type": "commonjs",
+  "main": "dist/main.js",
+  "scripts": {
+    "start": "rm -rf dist && npx tsc && node --max_semi_space_size=128 --max-old-space-size=2048 dist/main.js",
+    "start-dashboard": "rm -rf dist && npx tsc && nodejs-dashboard -- node  --max_semi_space_size=128 --max-old-space-size=2048 -r nodejs-dashboard dist/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^20.5.1",
+    "@types/pg": "^8.10.2",
+    "nodejs-dashboard": "^0.5.1",
+    "typescript": "^5.1.6"
+  },
+  "dependencies": {
+    "cohort_sdk_client": "file:../cohort_sdk_client",
+    "pg": "^8.11.3",
+    "winston": "^3.10.0"
+  }
+}

@@ -1,18 +1,17 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use banking_common::{model::TransferRequest, state::postgres::database::Database};
 use deadpool_postgres::Transaction;
-use talos_cohort_replicator::{ReplicatorInstaller, StatemapItem};
+use talos_cohort_replicator::{callbacks::ReplicatorInstaller, StatemapItem};
 use tokio_postgres::types::ToSql;
-
-use crate::{model::requests::TransferRequest, state::postgres::database::Database};
 
 const BANK_ACCOUNTS_UPDATE_QUERY: &str = r#"
 UPDATE bank_accounts ba SET
 "amount" =
 (CASE
-    WHEN ba."number" = ($1)::TEXT THEN ba."amount" + ($3)::DECIMAL
-    WHEN ba."number" = ($2)::TEXT THEN ba."amount" - ($3)::DECIMAL
+    WHEN ba."number" = ($1)::TEXT THEN ba."amount" - ($3)::DECIMAL
+    WHEN ba."number" = ($2)::TEXT THEN ba."amount" + ($3)::DECIMAL
     END),
     "version" = ($4)::BIGINT
     WHERE ba."number" IN (($1)::TEXT, ($2)::TEXT)

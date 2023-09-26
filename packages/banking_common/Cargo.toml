@@ -1,0 +1,22 @@
+[package]
+name = "banking_common"
+version = "0.0.1"
+edition = "2021"
+
+[dependencies]
+async-trait =       { workspace = true }
+env_logger =        { workspace = true }
+log =               { workspace = true }
+
+serde =             { workspace = true }
+serde_json =        { workspace = true }
+
+rust_decimal =      { version = "1.30.0", features = ["db-tokio-postgres", "serde-with-float"] }
+strum =             { version = "0.25", features = ["derive"] }
+
+# Postgres
+tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
+deadpool =          { version = "0.9.5" }
+deadpool-postgres = { version = "0.10" }
+
+talos_common_utils = { path = "../talos_common_utils" }

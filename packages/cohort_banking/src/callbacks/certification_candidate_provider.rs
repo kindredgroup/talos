@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
+use banking_common::state::postgres::database::{Database, DatabaseError};
 use cohort_sdk::model::callback::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
 use rust_decimal::Decimal;
 use tokio_postgres::Row;
 
-use crate::{
-    model::{bank_account::BankAccount, requests::CertificationRequest},
-    state::postgres::database::{Database, DatabaseError},
-};
+use crate::model::{bank_account::BankAccount, requests::CertificationRequest};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub struct CapturedState {

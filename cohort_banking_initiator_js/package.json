@@ -13,14 +13,13 @@
   "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^20.5.1",
+    "@types/pg": "^8.10.2",
+    "nodejs-dashboard": "^0.5.1",
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "@types/pg": "^8.10.2",
-    "cohort_sdk_js": "file:../packages/cohort_sdk_js",
-    "nodejs-dashboard": "^0.5.1",
+    "cohort_sdk_client": "file:../cohort_sdk_client",
     "pg": "^8.11.3",
-    "ts-node": "^10.9.1",
     "winston": "^3.10.0"
   }
 }

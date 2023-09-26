@@ -1,5 +1,4 @@
-pub mod models;
-// pub mod installer;
 pub mod initiator;
-// #[macro_use]
-// extern crate napi_derive;
+pub mod installer;
+pub mod models;
+pub mod sdk_errors;

@@ -11,25 +11,23 @@ serde =             { workspace = true }
 serde_json =        { workspace = true }
 tokio =             { workspace = true, features = ["full"] }
 
-# Postgres
-refinery =          { version = "0.8.7", features = ["tokio-postgres"] }
-rust_decimal =      { version = "1.30.0", features = ["db-tokio-postgres", "serde-with-float"] }
-tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
-deadpool =          { version = "0.9.5" }
-deadpool-postgres = { version = "0.10" }
-
 async-channel =     { version = "1.8.0" }
 futures =           { version = "0.3.28" }
 opentelemetry_api = { version = "0.20.0" }
 opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry =     { version = "0.20.0" }
 rand =              { version = "0.8.5" }
+refinery =          { version = "0.8.7", features = ["tokio-postgres"] }
+rust_decimal =      { version = "1.30.0", features = ["db-tokio-postgres", "serde-with-float"] }
 strum =             { version = "0.25", features = ["derive"] }
+tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
 uuid =              { version = "1.2.2", features = ["v4"] }
 
-talos_agent =                { path = "../talos_agent" }
 cohort_sdk =                 { path = "../cohort_sdk" }
+banking_common =             { path = "../banking_common" }
+talos_agent =                { path = "../talos_agent" }
 metrics =                    { path = "../metrics" }
 talos_certifier =            { path = "../talos_certifier" }
-talos_cohort_replicator =            { path = "../talos_cohort_replicator" }
+talos_cohort_replicator =    { path = "../talos_cohort_replicator" }
+talos_common_utils =         { path = "../talos_common_utils" }
 talos_suffix =               { path = "../talos_suffix" }

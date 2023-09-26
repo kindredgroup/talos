@@ -13,15 +13,16 @@ opentelemetry_api = { version = "0.20.0" }
 opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry = { version = "0.20.0" }
 rand = { version = "0.8.5" }
-rdkafka = { version = "0.33.0", features = ["sasl"] }
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 rdkafka-sys = { version = "4.3.0" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { version = "0.25", features = ["derive"] }
-metrics = { path = "../metrics" }
-talos_agent = { path = "../talos_agent" }
-talos_certifier = { path = "../talos_certifier" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils" }
+metrics =                   { path = "../metrics" }
+talos_agent =               { path = "../talos_agent" }
+talos_certifier =           { path = "../talos_certifier" }
+talos_cohort_replicator =   { path = "../../packages/talos_cohort_replicator" }
+talos_rdkafka_utils =       { path = "../talos_rdkafka_utils" }
 uuid = { version = "1.2.2", features = ["v4"] }
 
 tokio = { workspace = true, features = ["full"] }

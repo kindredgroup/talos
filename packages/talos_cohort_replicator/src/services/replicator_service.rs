@@ -3,7 +3,7 @@ use std::{fmt::Debug, time::Duration};
 
 use crate::{
     core::{Replicator, ReplicatorChannel, StatemapItem},
-    errors::ServiceError,
+    errors::ReplicatorError,
     models::ReplicatorCandidate,
     suffix::ReplicatorSuffixTrait,
 };
@@ -22,7 +22,7 @@ pub async fn replicator_service<S, M>(
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
     config: ReplicatorServiceConfig,
-) -> Result<(), ServiceError>
+) -> Result<(), ReplicatorError>
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage> + Send + Sync,
@@ -45,7 +45,7 @@ where
                 // 2. Add/update to suffix.
                 match msg {
                     // 2.1 For CM - Install messages on the version
-                    ChannelMessage::Candidate( message) => {
+                    ChannelMessage::Candidate(message) => {
                         let version = message.version;
                         replicator.process_consumer_message(version, message.into()).await;
                     },

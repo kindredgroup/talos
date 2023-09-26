@@ -1,21 +1,21 @@
-import { JsConfig } from "cohort_sdk_js"
+import { JsInitiatorConfig } from "cohort_sdk_client"
 
-const SDK_CONFIG: JsConfig = {
+const SDK_CONFIG: JsInitiatorConfig = {
     backoffOnConflict: {
         minMs: 2,
         maxMs: 1500,
       },
       retryBackoff: {
-        minMs: 2,
+        minMs: 20,
         maxMs: 1500,
       },
-      retryAttemptsMax: 2,
+      retryAttemptsMax: 10,
       retryOoBackoff: {
-        minMs: 2,
-        maxMs: 1500,
+        minMs: 20,
+        maxMs: 1000,
       },
-      retryOoAttemptsMax: 2,
-      snapshotWaitTimeoutMs: 2,
+      retryOoAttemptsMax: 10,
+      snapshotWaitTimeoutMs: 10_000,
       agent: "cohort-js",
       cohort: "cohort-js",
       bufferSize: 100_000,
@@ -28,7 +28,9 @@ const SDK_CONFIG: JsConfig = {
         producerSendTimeoutMs: 10,
         logLevel: "info",
         producerConfigOverrides: {},
-        consumerConfigOverrides: {},
+        consumerConfigOverrides: {
+            "enable.auto.commit": "false"
+        },
         username: "",
         password: "",
       },

@@ -5,8 +5,9 @@ use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{sync::mpsc, task::JoinHandle, try_join};
 
 use crate::{
-    core::{Replicator, ReplicatorInstaller, ReplicatorSnapshotProvider},
-    errors::ServiceError,
+    callbacks::{ReplicatorInstaller, ReplicatorSnapshotProvider},
+    core::Replicator,
+    errors::ReplicatorError,
     models::ReplicatorCandidate,
     services::{
         replicator_service::{replicator_service, ReplicatorServiceConfig},
@@ -38,6 +39,7 @@ fn create_channel<T>(channel_size: usize) -> (tokio::sync::mpsc::Sender<T>, toki
 // }
 
 /// Configs used by the Cohort Replicator
+#[derive(Clone, Debug)]
 pub struct CohortReplicatorConfig {
     /// Replicator and Installer stats. Defaults to `false`.
     pub enable_stats: bool,
@@ -55,15 +57,18 @@ pub struct CohortReplicatorConfig {
     pub statemap_installer_threadpool: u64,
 }
 
-async fn flatten_service_result<T>(handle: JoinHandle<Result<T, ServiceError>>) -> Result<T, ServiceError> {
+async fn flatten_service_result<T>(handle: JoinHandle<Result<T, ReplicatorError>>) -> Result<T, ReplicatorError> {
     match handle.await {
         Ok(Ok(result)) => Ok(result),
         Ok(Err(err)) => Err(err),
-        Err(err) => Err(ServiceError {
-            reason: format!("handling failed with error={err:?}"),
+        Err(err) => Err(ReplicatorError {
+            kind: crate::errors::ReplicatorErrorKind::Internal,
+            reason: err.to_string(),
+            cause: None,
         }),
     }
 }
+
 /// Entry point to replicator and statemap installer
 ///
 
@@ -72,7 +77,7 @@ pub async fn talos_cohort_replicator<M, Snap>(
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>, // Used by Statemap queue service
     snapshot_api: Snap,                                             // Used by Statemap Installer service.
     config: CohortReplicatorConfig,
-) -> Result<((), (), ()), ServiceError>
+) -> Result<((), (), ()), ReplicatorError>
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
     Snap: ReplicatorSnapshotProvider + Send + Sync + 'static,

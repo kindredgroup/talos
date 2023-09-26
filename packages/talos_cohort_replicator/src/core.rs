@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use log::warn;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -61,15 +60,6 @@ impl StatemapItem {
             safepoint,
         }
     }
-}
-
-#[async_trait]
-pub trait ReplicatorInstaller {
-    async fn install(&self, sm: Vec<StatemapItem>, version: u64) -> Result<(), String>;
-}
-#[async_trait]
-pub trait ReplicatorSnapshotProvider {
-    async fn get_snapshot(&self) -> Result<u64, String>;
 }
 
 pub struct Replicator<T, S, M>

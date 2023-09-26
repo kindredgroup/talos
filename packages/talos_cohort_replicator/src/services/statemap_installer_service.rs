@@ -3,8 +3,9 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::{
-    core::{ReplicatorChannel, ReplicatorInstaller, StatemapInstallationStatus, StatemapItem},
-    errors::ServiceError,
+    callbacks::ReplicatorInstaller,
+    core::{ReplicatorChannel, StatemapInstallationStatus, StatemapItem},
+    errors::ReplicatorError,
 };
 
 use log::{debug, error};
@@ -62,7 +63,7 @@ pub async fn installation_service(
     mut installation_rx: mpsc::Receiver<(u64, Vec<StatemapItem>)>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
     config: StatemapInstallerConfig,
-) -> Result<(), ServiceError> {
+) -> Result<(), ReplicatorError> {
     let permit_count = config.thread_pool.unwrap_or(50) as usize;
     let semaphore = Arc::new(Semaphore::new(permit_count));
 

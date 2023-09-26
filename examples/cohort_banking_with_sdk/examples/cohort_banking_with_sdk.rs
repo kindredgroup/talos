@@ -1,8 +1,10 @@
 use std::{collections::HashMap, env, sync::Arc, time::Duration};
 
 use async_channel::Receiver;
-use cohort_banking::state::postgres::database_config::DatabaseConfig;
-use cohort_banking::{app::BankingApp, examples_support::queue_processor::QueueProcessor, model::requests::TransferRequest};
+use banking_common::model::TransferRequest;
+use banking_common::state::postgres::database_config::DatabaseConfig;
+use cohort_banking::app::BankingApp;
+use cohort_banking::examples_support::queue_processor::QueueProcessor;
 use cohort_sdk::model::{BackoffConfig, Config};
 use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
@@ -101,7 +103,7 @@ async fn main() -> Result<(), String> {
             password: "".into(),
             // The maximum time librdkafka may use to deliver a message (including retries)
             producer_config_overrides: HashMap::from([("message.timeout.ms".into(), "15000".into())]),
-            consumer_config_overrides: HashMap::from([("fetch.wait.max.ms".into(), "6000".into())]),
+            consumer_config_overrides: HashMap::from([("fetch.wait.max.ms".into(), "6000".into()), ("enable.auto.commit".into(), "false".into())]),
             // consumer_config_overrides: HashMap::new(),
             producer_send_timeout_ms: Some(10),
             log_level: Some("info".into()),

@@ -48,16 +48,6 @@ pg.migrate:
 	$(call pp,running migrations on database...)
 	cargo run --example pg_migrations
 
-## pg.create_cohort: 🥁 Create database for cohort and applies DB sql
-pg.create_cohort:
-	$(call pp,creating database for cohort...)
-	cargo run --package cohort --bin run_db_migrations create-db migrate-db
-
-## pg.migrate_cohort: 🥁 Run sql on database for cohort
-pg.migrate_cohort:
-	$(call pp,running migrations on database for cohort...)
-	cargo run --package cohort --bin run_db_migrations
-
 # TEST / DEPLOY ###################################################################################
 
 ## install: 🧹 Installs dependencies
@@ -75,11 +65,6 @@ build:
 	$(call pp,build rust...)
 	cargo build
 
-## dev.run-agent-client: 🧪 Runs agent
-dev.run-agent-client:
-	$(call pp,run-agent-client app...)
-	cargo run --example agent_client --release -- $(args)
-
 ## init.samply: 🧪 Installs Samply profiler
 init.samply:
 	cargo install samply
@@ -88,24 +73,29 @@ init.samply:
 init.flamegraph:
 	cargo install flamegraph
 
-## dev.agent-run-profiler-samply: 🧪 Runs agent with Samply profiler
-dev.agent-run-profiler-samply:
+## agent.run-client: 🧪 Executes load test through Talos Agent
+agent.run-client:
+	$(call pp,runing Talos Agent example...)
+	cargo run --example agent_client --release -- $(args)
+
+## agent.run-profiler-samply: 🧪 Runs agent with Samply profiler
+agent.run-profiler-samply:
 	$(call pp,run-agent app...)
 	cargo build --example agent_client
 	samply record -o logs/samply-agent.json -s cargo run --example agent_client
 	samply load logs/samply-agent.json
 
-## dev.agent-run-profiler-flamegraph: 🧪 Runs agent with Flamegraph profiler
+## agent.run-profiler-flamegraph: 🧪 Runs agent with Flamegraph profiler
 # Add CARGO_PROFILE_RELEASE_DEBUG=true to .env
-dev.agent-run-profiler-flamegraph:
+agent.run-profiler-flamegraph:
 	$(call pp,run-agent app...)
 	cargo build --example agent_client
 	rm logs/flamegraph-agent.svg | true
 	sudo cargo flamegraph -o logs/flamegraph-agent.svg --open --example agent_client
 
-## dev.agent-run-profiler-xcode-cpu: 🧪 Runs agent with XCode profiler for Time (CPU) Profiler (OSX only)
+## agent.run-profiler-xcode-cpu: 🧪 Runs agent with XCode profiler for Time (CPU) Profiler (OSX only)
 # Make sure XCode is installed
-dev.agent-run-profiler-xcode-cpu:
+agent.run-profiler-xcode-cpu:
 	$(call pp,run-agent app...)
 	cargo build --release --example agent_client
 	scripts/sign-binary-for-profiling.sh target/release/examples/agent_client
@@ -115,9 +105,9 @@ dev.agent-run-profiler-xcode-cpu:
 	xctrace record --template 'Time Profiler' --output logs/agent-time.trace --attach `pgrep agent_client`
 	open logs/agent-cpu.trace
 
-## dev.agent-run-profiler-xcode-mem: 🧪 Runs agent with XCode profiler for Allocations (OSX only)
+## agent.run-profiler-xcode-mem: 🧪 Runs agent with XCode profiler for Allocations (OSX only)
 # Make sure XCode is installed
-dev.agent-run-profiler-xcode-mem:
+agent.run-profiler-xcode-mem:
 	$(call pp,run-agent app...)
 	cargo build --release --example agent_client
 	scripts/sign-binary-for-profiling.sh target/release/examples/agent_client
@@ -127,54 +117,67 @@ dev.agent-run-profiler-xcode-mem:
 	xctrace record --template 'Allocations' --output logs/agent-allocations.trace --attach `pgrep agent_client`
 	open logs/agent-allocations.trace
 
-## dev.run: 🧪 Runs rust app in watch mode
+## dev.run: 🧪 Runs Talos Certifier app in watch mode
 dev.run:
 	$(call pp,run app...)
 	cargo  watch -q -c -x 'run --example certifier_kafka_pg'
-## run: 🧪 Runs rust app
+
+## run: 🧪 Runs Talos Certifier app
 run:
-	$(call pp,run app...)
+	$(call pp,running Talos Certifier...)
 	cargo run --example certifier_kafka_pg
 
-## run.release: 🧪 Runs rust app in release mode
+## run.release: 🧪 Runs Talos Certifier app in release mode
 run.release:
-	$(call pp,run app...)
+	$(call pp,running Talos Certifier...)
 	cargo run -r --example certifier_kafka_pg
 
-## run.with_mock_db: 🧪 Runs certifier with mock DB
+## run.with_mock_db: 🧪 Runs Talos Certifier with mock DB in release mode
 run.with_mock_db:
 	$(call pp,run app...)
 	cargo run -r --example certifier_kafka_dbmock
 
-## dev.preload_db: 🧪 Injects initial data into DB if it's not there yet
-dev.preload_db:
-	$(call pp,run preload_db...)
-	cargo run --bin preload_db -- $(args)
+## cohort_banking.create_db: 🥁 Creates database for Cohort Banking and applies DB sql
+cohort_banking.create_db:
+	$(call pp,creating database for cohort...)
+	cargo run --package cohort_banking --bin run_db_migrations create-db migrate-db
 
-## dev.cohort_banking: 🧪 Runs Cohort with built-in replicator and executes banking transactions
-dev.cohort_banking:
-	$(call pp,run cohort_banking...)
-	cargo run --example cohort_banking --release -- $(args)
+## cohort_banking.migrate_db: 🥁 Run sdatabase migrations for Cohort Banking
+cohort_banking.migrate_db:
+	$(call pp,running migrations on banking database for cohort...)
+	cargo run --package cohort_banking --bin run_db_migrations
 
-## dev.cohort_banking_with_sdk: 🧪 Runs an example of rust app "Cohort Banking" which use cohort_sdk.
-dev.cohort_banking_with_sdk:
-	$(call pp,run cohort_banking...)
+## cohort_banking.preload_db: 🧪 Injects initial data into Cohort Banking DB
+cohort_banking.preload_db:
+	$(call pp,populating banking database for cohort...)
+	cargo run --package cohort_banking --bin preload_db -- $(args)
+
+## cohort_banking.run_initiator_load_test_in_rust: 🧪 Executes load test through Cohort Initiator implemented in Rust
+cohort_banking.run_initiator_load_test_in_rust:
+	$(call pp,running "Cohort Initiator" implemented in Rust...)
 	cargo run --example cohort_banking_with_sdk --release -- $(args)
+
+## cohort_banking.run_replicator_rust: 🧪 Rust Cohort Banking Replicator implemented in Rust
+cohort_banking.run_replicator_rust:
+	$(call pp,running "Cohort Replicator" implemented in Rust...)
+	cargo run --example cohort_replicator_kafka_pg --release -- $(args)
+
+## cohort_banking.run_initiator_js: 🧪 Executes load test through Cohort Initiator implemented in JS
+cohort_banking.run_initiator_load_test_in_js:
+	$(call pp,running "Cohort Initiator" implemented in JS...)
+	cd ./cohort_banking_initiator_js
+	npm start -- $(args)
+
+## cohort_banking.run_replicator_js: 🧪 Runs Replicator JS app
+cohort_banking.run_replicator_js:
+	$(call pp,running "Cohort Replicator" implemented in JS...)
+	cd ./cohort_banking_replicator_js
+	npm start
 
 ## dev.histogram_decision_timeline_from_kafka: 🧪 Reads all decisions from kafka and prints processing timeline as csv
 dev.histogram_decision_timeline_from_kafka:
 	$(call pp,histogram_decision_timeline_from_kafka...)
 	cargo run --bin histogram_decision_timeline_from_kafka --release -- $(args)
-
-## example.replicator_kafka_pg: 🧪 Runs the example replicator with installer for Kafka and Postgres
-example.replicator_kafka_pg:
-	$(call pp,run app...)
-	cargo run -r --example cohort_replicator_kafka_pg
-
-## dev.run_replicator: 🧪 Runs replicator
-dev.run_replicator:
-	$(call pp,run replicator...)
-	cargo run --bin replicator --release
 
 ## lint: 🧹 Checks for lint failures on rust
 lint:

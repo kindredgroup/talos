@@ -1,14 +1,13 @@
 use std::{collections::HashSet, sync::Arc};
 
 use async_trait::async_trait;
+use banking_common::{
+    model::TransferRequest,
+    state::postgres::database::{Database, DatabaseError},
+};
 use cohort_sdk::model::callback::{OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller};
 use opentelemetry_api::metrics::Counter;
 use tokio_postgres::types::ToSql;
-
-use crate::{
-    model::requests::TransferRequest,
-    state::postgres::database::{Database, DatabaseError},
-};
 
 pub struct OutOfOrderInstallerImpl {
     pub database: Arc<Database>,
@@ -16,8 +15,6 @@ pub struct OutOfOrderInstallerImpl {
     pub counter_oo_no_data_found: Arc<Counter<u64>>,
     pub single_query_strategy: bool,
 }
-
-pub static SNAPSHOT_SINGLETON_ROW_ID: &str = "SINGLETON";
 
 impl OutOfOrderInstallerImpl {
     async fn install_using_single_query(
