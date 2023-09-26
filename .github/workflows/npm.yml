@@ -3,7 +3,7 @@ on:
     #workflow_call:
     push:
 env:
-    SDK_JS_HOME: cohort_sdk_js
+    SDK_JS_HOME: packages/cohort_sdk_js
 jobs:
     npm:
         strategy:
