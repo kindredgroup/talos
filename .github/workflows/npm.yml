@@ -20,8 +20,10 @@ jobs:
                         cd $SDK_JS_HOME && npm run build -- --target x86_64-apple-darwin
                   - host: macos-latest
                     target: aarch64-apple-darwin
-                    customiseHostCommand: |
-                        brew update && brew install cyrus-sasl && export PKG_CONFIG_PATH="/usr/local/opt/cyrus-sasl/lib/pkgconfig"
+                    customiseHostCommand: |-
+                        brew update && brew install cyrus-sasl &&
+                        export PKG_CONFIG_PATH="/usr/local/opt/cyrus-sasl/lib/pkgconfig" &&
+                        ls -lah $PKG_CONFIG_PATH
                     buildCommand: |
                         cd $SDK_JS_HOME && npm run build -- --target aarch64-apple-darwin
                   - host: windows-latest
