@@ -614,6 +614,7 @@ dependencies = [
  "napi-build",
  "napi-derive",
  "openssl-sys",
+ "sasl2-sys",
  "serde",
  "serde_json",
  "talos_certifier",
