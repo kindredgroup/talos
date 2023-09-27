@@ -89,10 +89,26 @@ where
             Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
                 self.suffix.set_item_state(version, SuffixItemState::PartiallyComplete);
 
-                self.suffix.update_action(version, action_key, total_count);
-                if self.suffix.all_actions_completed(version) {
+                self.suffix.update_item_action(version, action_key, total_count);
+                if self.suffix.are_all_item_actions_completed(version) {
                     self.suffix
                         .set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::Processed));
+
+                    //  Pruning of suffix.
+                    self.suffix.update_prune_index_from_version(version);
+
+                    // Check prune eligibility by looking at the prune meta info.
+                    let prune_index = self.suffix.get_meta().prune_index;
+                    if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
+                        // Call prune method on suffix.
+                        let _ = self.suffix.prune_till_index(index_to_prune);
+                        error!(
+                            "Its safe to prune version ={version} with prune_index={prune_index:?}, new head={}",
+                            self.suffix.get_meta().head
+                        );
+                    } else {
+                        error!("Cannot prune prune_index={prune_index:?} - suffix_meta={:?}", self.suffix.get_meta());
+                    }
                 }
             }
             _ => (),
@@ -164,12 +180,12 @@ where
 
                             self.suffix.update_item_decision(version, decision_version, &decision_message);
 
-                            self.process_next_actions().await?
+                            self.process_next_actions().await?;
 
 
                             // TODO: GK - Calculate the safe offset to commit.
 
-                            // TODO: GK - Prune suffix.
+
 
                         },
                     }
@@ -190,11 +206,50 @@ where
                             self.handle_item_actioned_success(version, &key, total_count);
 
 
-                            // self.suffix.messages.iter().flatten().for_each(|item|
-                            //     error!("version={} decision={:?} state={:?} action_state={:#?}", item.item_ver, item.item.decision, item.item.get_state(), item.item.commit_actions.iter().map(|x| (x.1.count, x.1.is_completed)).collect::<Vec<(u32, bool)>>())
-                            // );
-                            // info!("Suffix dump ={:?}")
+                            self.suffix.messages.iter().flatten().for_each(|item|
+                                error!("version={}  state={:?} action_state={:#?}", item.item_ver, item.item.get_state(), item.item.get_commit_actions().iter().map(|x| (x.1.get_count(), x.1.is_completed())).collect::<Vec<(u32, bool)>>())
+                            );
+                            // info!("Suffix dump ={:?}");
                             // info!("State on completion ={:?}", item_state);
+
+
+
+
+                            // TODO: GK - Prune suffix.
+
+                            // let prune_start_index = suffix_meta.prune_start_threshold;
+                            // let min_items_after_prune = suffix_meta.min_size_after_prune;
+
+                            // // If there is Some prune_threshold_index && if prune_index > prune_threshold_index - Okay to prune.
+                            // // If min_items_after_prune is Some &&  prune_index is some and if len of prune_index + 1 .. len() >= min_items_after_prune, then prune.
+                            // let prune_index = suffix_meta.prune_index;
+                            // if let Some(prune_index) = prune_index {
+                            //     let continue_futher_check = match prune_start_index {
+                            //             Some(index) =>  prune_index >= index,
+                            //             None => true,
+                            //         };
+
+                            //     let can_prune = if continue_futher_check {
+                            //         match min_items_after_prune {
+                            //             Some(min_count) =>  self.suffix.messages.range(prune_index + 1 .. ).count() >= min_count,
+                            //             None => true,
+                            //         }
+                            //     } else { false};
+
+                            //     if can_prune {
+                            //         error!("Its safe to prune version ={version} with prune_index={prune_index}");
+                            //         // Call prune method on suffix.
+                            //     } else {
+                            //         error!("Cannot prune prune_index={prune_index} - suffix_meta={:?}", self.suffix.get_meta());
+                            //     }
+                            // }
+                            // let k = match prune_start_index {
+                            //     Some(index) => if prun,
+                            //     None => true,
+                            // };
+
+
+                            // 4. Prune the suffix
                         },
                     }
                     // Process the next items with commit actions
