@@ -14,7 +14,7 @@ async-trait =   { workspace = true }
 env_logger =    { workspace = true }
 log =           { workspace = true }
 rand =          { version = "0.8.5" }
-rdkafka =       { version = "0.33.2", features = ["sasl"] }
+rdkafka =       { version = "0.34.0", features = ["sasl"] }
 rdkafka-sys =   { version = "4.3.0" }
 serde =         { workspace = true }
 serde_json =    { workspace = true }
