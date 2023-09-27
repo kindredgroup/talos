@@ -21,7 +21,7 @@ jobs:
                   - host: macos-latest
                     target: aarch64-apple-darwin
                     customiseHostCommand: |
-                        brew update && brew install cyrus-sasl
+                        brew update && brew install cyrus-sasl && export PKG_CONFIG_PATH="/usr/local/opt/cyrus-sasl/lib/pkgconfig"
                     buildCommand: |
                         cd $SDK_JS_HOME && npm run build -- --target aarch64-apple-darwin
                   - host: windows-latest
@@ -60,7 +60,7 @@ jobs:
               shell: bash
               run: ls -l
 
-            - name: Customise Host Image
+            - name: Customise host image
               shell: bash
               run: ${{ matrix.settings.customiseHostCommand }}
 
