@@ -30,8 +30,8 @@ jobs:
 
                   - host: windows-latest
                     target: x86_64-pc-windows-msvc
-                    jsPackageHome: packages\cohort_sdk_js
-                    finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.*.node
+                    jsPackageHome: packages\\cohort_sdk_js
+                    finalPackageName: packages\cohort_sdk_js\cohort_sdk_js.*.node
                     customiseHostCommand: ECHO 'No customisartions are needed'
                     buildCommand: npm run build -- --target x86_64-pc-windows-msvc
 
@@ -65,7 +65,7 @@ jobs:
               shell: bash
               run: ${{ matrix.settings.customiseHostCommand }}
 
-            - name: List current directory
+            - name: Show current directory name
               shell: bash
               run: pwd
 
