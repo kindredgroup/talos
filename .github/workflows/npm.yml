@@ -24,9 +24,9 @@ jobs:
                     customiseHostCommand: |-
                         brew update && brew install cyrus-sasl &&
                         export PKG_CONFIG_PATH="/usr/local/opt/cyrus-sasl/lib/pkgconfig" &&
-                        export PATH="/usr/local/opt/cyrus-sasl/sbin:$PATH" >> /Users/runner/.bash_profile &&
+                        echo 'export PATH=/usr/local/opt/cyrus-sasl/sbin:$PATH' >> /Users/runner/.bash_profile &&
                         echo "ls -lah $PKG_CONFIG_PATH" && ls -lah $PKG_CONFIG_PATH &&
-                        cat /Users/runner/.bash_profile
+                        echo "cat /Users/runner/.bash_profile" && cat /Users/runner/.bash_profile
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   - host: windows-latest
