@@ -22,12 +22,11 @@ jobs:
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
                     customiseHostCommand: |-
+                        echo "find / -name libsasl2" &&
+                        find / -name libsasl2 &&
                         brew update && brew install cyrus-sasl &&
-                        export PKG_CONFIG_PATH="/usr/local/opt/cyrus-sasl/lib/pkgconfig" &&
-                        echo '\n' >> /Users/runner/.bash_profile &&
-                        echo 'PATH=/usr/local/opt/cyrus-sasl/sbin:$PATH' >> /Users/runner/.bash_profile &&
-                        echo "ls -lah $PKG_CONFIG_PATH" && ls -lah $PKG_CONFIG_PATH &&
-                        echo "cat /Users/runner/.bash_profile" && cat /Users/runner/.bash_profile
+                        echo "find / -name libsasl2" &&
+                        find / -name libsasl2
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   - host: windows-latest
