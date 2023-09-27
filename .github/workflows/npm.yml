@@ -56,17 +56,21 @@ jobs:
                   toolchain: stable
                   target: ${{ matrix.settings.target }}
 
-            - name: List content before build
-              shell: bash
-              run: ls -l
-
             - name: Customise host image
               shell: bash
               run: ${{ matrix.settings.customiseHostCommand }}
 
+            - name: List current directory
+              shell: bash
+              run: pwd
+
+            - name: List content before build
+              shell: bash
+              run: ls -l .
+
             # - name: Cache cargo TODO deal with caching
             - name: Install node dependencies
-              run: cd $SDK_JS_HOME && npm install -verbose
+              run: cd $SDK_JS_HOME && pwd && ls -l . && npm install -verbose
 
             - name: Cargo build
               run: cargo build
