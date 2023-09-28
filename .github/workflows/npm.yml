@@ -25,6 +25,8 @@ jobs:
                       brew install FiloSottile/musl-cross/musl-cross
                       brew install FiloSottile/musl-cross/musl-cross --with-aarch64
                       brew install openssl@1.1
+                      brew --prefix
+                      find $(brew --prefix) -name "libcrypto.*"
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   - host: windows-latest
@@ -33,14 +35,14 @@ jobs:
                     finalPackageName: packages\cohort_sdk_js\cohort_sdk_js.*.node
                     # customiseHostCommand: ECHO 'No customizations are needed'
                     customiseHostCommand: |-
+                      SET
                       choco install openssl --version=1.1.1.2100
                       choco install make
                       ECHO "ProgramData = "
-                      ECHO %ProgramData%
-                      DIR C:\ProgramData
-                      DIR C:\ProgramData\chocolatey
-                      DIR C:\ProgramData\chocolatey\lib
+                      ECHO "%ProgramData%"
+                      DIR C:\
                       setx OPENSSL_LIB_DIR C:\ProgramData\chocolatey\lib
+                      SET
                     buildCommand: npm run build -- --target x86_64-pc-windows-msvc
 
                   - host: ubuntu-latest
