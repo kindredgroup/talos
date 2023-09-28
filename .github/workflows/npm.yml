@@ -22,6 +22,7 @@ jobs:
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
                     customiseHostCommand: |-
+                      find $(brew --prefix) -name "libcrypto.*"
                       brew install FiloSottile/musl-cross/musl-cross
                       brew install FiloSottile/musl-cross/musl-cross --with-aarch64
                       brew install openssl@1.1
