@@ -35,7 +35,6 @@ jobs:
                     finalPackageName: packages\cohort_sdk_js\cohort_sdk_js.*.node
                     # customiseHostCommand: ECHO 'No customizations are needed'
                     customiseHostCommand: |-
-                      SET
                       choco install openssl --version=1.1.1.2100
                       choco install make
                       ECHO "ProgramData = "
@@ -43,7 +42,6 @@ jobs:
                       DIR "C:\\ProgramData\\chocolatey"
                       DIR "C:\ProgramData\chocolatey"
                       setx OPENSSL_LIB_DIR "C:\\ProgramData\\chocolatey\\lib"
-                      SET
                     buildCommand: npm run build -- --target x86_64-pc-windows-msvc
 
                   - host: ubuntu-latest
