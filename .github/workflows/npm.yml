@@ -14,21 +14,24 @@ jobs:
                     target: x86_64-apple-darwin
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-x64.node
-                    customiseHostCommand: echo 'No customisartions are needed'
+                    customiseHostCommand: echo 'No customizations are needed'
                     buildCommand: npm run build -- --target x86_64-apple-darwin
 
                   - host: macos-latest
                     target: aarch64-apple-darwin
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
-                    customiseHostCommand: echo 'No customisartions are needed'
+                    customiseHostCommand: echo 'No customizations are needed'
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   - host: windows-latest
                     target: x86_64-pc-windows-msvc
                     jsPackageHome: packages\\cohort_sdk_js
                     finalPackageName: packages\cohort_sdk_js\cohort_sdk_js.*.node
-                    customiseHostCommand: ECHO 'No customisartions are needed'
+                    # customiseHostCommand: ECHO 'No customizations are needed'
+                    customiseHostCommand: |-
+                      choco install openssl.light
+                      choco install make
                     buildCommand: npm run build -- --target x86_64-pc-windows-msvc
 
                   - host: ubuntu-latest

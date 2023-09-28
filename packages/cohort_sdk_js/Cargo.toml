@@ -21,8 +21,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1", features = ["serde"] }
 chrono = { version = "0.4.19", features = ["serde"] }
-openssl-sys = { version = "0.9", features = ["vendored"] }
-sasl2-sys = { version = "0.1.20+2.1.28", features = ["vendored"] }
+# openssl-sys = { version = "0.9", features = ["vendored"] }
+# sasl2-sys = { version = "0.1.20+2.1.28", features = ["vendored"] }
 
 # db migrations
 #refinery = {version="0.8", features=["tokio-postgres"]}
