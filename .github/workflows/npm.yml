@@ -40,8 +40,9 @@ jobs:
                       choco install make
                       ECHO "ProgramData = "
                       ECHO "%ProgramData%"
-                      DIR C:\
-                      setx OPENSSL_LIB_DIR C:\ProgramData\chocolatey\lib
+                      DIR "C:\\ProgramData\\chocolatey"
+                      DIR "C:\ProgramData\chocolatey"
+                      setx OPENSSL_LIB_DIR "C:\\ProgramData\\chocolatey\\lib"
                       SET
                     buildCommand: npm run build -- --target x86_64-pc-windows-msvc
 
