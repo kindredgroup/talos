@@ -28,15 +28,15 @@ jobs:
                       set -a
                       find $(brew --prefix) -name "libcrypto.*"
                       echo ""
-                      echo "find /usr/local -name "libsasl2.*""
-                      find /usr/local -name "libsasl2.*"
-                      echo "After search for libsasl2"
+                      echo "find /usr/local -name *sasl.*"
+                      find /usr/local -name "*sasl.*"
+                      echo "After search for sasl"
                       brew install cyrus-sasl
                       ehco ""
                       ehco "ls -lah /usr/local/opt/"
                       ls -lah /usr/local/opt/
-                      ehco ""
-                      ehco "ls -lah /usr/local/opt/cyrus-sasl"
+                      echo ""
+                      echo "ls -lah /usr/local/opt/cyrus-sasl"
                       ls -lah /usr/local/opt/cyrus-sasl
                       echo 'export PATH="/usr/local/opt/cyrus-sasl/sbin:$PATH"' >> /Users/runner/.bash_profile
                       export LDFLAGS="-L/usr/local/opt/cyrus-sasl/lib"
