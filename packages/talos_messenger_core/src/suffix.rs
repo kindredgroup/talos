@@ -1,5 +1,5 @@
 use ahash::{HashMap, HashMapExt};
-use log::{error, info, warn};
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
@@ -226,14 +226,12 @@ where
             // Take while contiguous ones, whose safepoint is already processed.
             .take_while(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
-                    error!("take while early exit for version {:?}", x.item_ver);
                     return false;
                 };
 
                 match self.get(*safepoint) {
                     // If we find the suffix item from the safepoint, we need to ensure that it already in `Complete` state
                     Ok(Some(safepoint_item)) => {
-                        error!("State of safepoint items is {:?}", safepoint_item.item.get_state());
                         matches!(safepoint_item.item.get_state(), SuffixItemState::Complete(..))
                     }
                     // If we couldn't find the item in suffix, it could be because it was pruned and it is safe to assume that we can consider it.
@@ -284,28 +282,34 @@ where
     }
 
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize> {
-        let start_index = self.get_meta().prune_index.unwrap_or(0);
+        let current_prune_index = self.get_meta().prune_index;
+
+        let start_index = current_prune_index.unwrap_or(0);
 
         let end_index = match self.index_from_head(version) {
             Some(index) if index > start_index => index,
-            _ => self.suffix_length(),
+            _ => self.suffix_length() - 1,
         };
+
+        debug!(
+            "[Update prune index] Calculating prune index in suffix slice between index {start_index} <-> {end_index}. Current prune index version {current_prune_index:?}.",
+        );
+
         // 1. Get the last contiguous item that is completed.
-        let last_contiguous_completed_item = self
+        let safe_prune_version = self
             .messages
-            .range(start_index..end_index)
+            .range(start_index..=end_index)
             .flatten()
-            .take_while(|item| {
-                info!("Item check... {} and state={:?}", item.item_ver, item.item.get_state());
-                matches!(item.item.get_state(), SuffixItemState::Complete(..))
-            })
-            .last()?;
-        error!("[Prune check.... !!] checked from start={start_index} to end={end_index} and found item={last_contiguous_completed_item:?}");
+            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
+            .last()?
+            .item_ver;
 
         // 2. Update the prune index.
-        let index = self.index_from_head(last_contiguous_completed_item.item_ver)?;
+        let index = self.index_from_head(safe_prune_version)?;
 
         self.update_prune_index(index.into());
+        debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
+
         Some(index)
     }
 

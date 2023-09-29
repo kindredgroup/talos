@@ -206,7 +206,7 @@ impl MessageReciever for KafkaConsumer {
         }
     }
 
-    async fn update_savepoint(&mut self, offset: i64) -> Result<(), SystemServiceError> {
+    fn update_savepoint(&mut self, offset: i64) -> Result<(), Box<SystemServiceError>> {
         // let partition = self.tpl.;
         let tpl = self.tpl.elements_for_topic(&self.topic);
         if !tpl.is_empty() {
@@ -221,6 +221,11 @@ impl MessageReciever for KafkaConsumer {
             })?;
         }
         Ok(())
+    }
+
+    async fn update_savepoint_async(&mut self, _offset: i64) -> Result<(), SystemServiceError> {
+        // For future, maybe for another abcast. Not needed in here.
+        unimplemented!()
     }
 }
 

@@ -16,7 +16,7 @@
 
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
-use log::{error, info, warn};
+use log::{debug, info, warn};
 
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{Suffix, SuffixTrait};
@@ -49,11 +49,6 @@ where
     async fn process_next_actions(&mut self) -> MessengerServiceResult {
         let items_to_process = self.suffix.get_suffix_items_to_process();
 
-        error!(
-            "Items to process count... {:#?}",
-            items_to_process.iter().map(|x| x.version).collect::<Vec<u64>>()
-        );
-
         for item in items_to_process {
             let ver = item.version;
 
@@ -83,7 +78,7 @@ where
     /// Handles the feedback received from other services when they have successfully processed the action.
     /// Will update the individual action for the count and completed flag and also update state of the suffix item.
     ///
-    pub(crate) fn handle_item_actioned_success(&mut self, version: u64, action_key: &str, total_count: u32) {
+    pub(crate) async fn handle_item_actioned_success(&mut self, version: u64, action_key: &str, total_count: u32) {
         let item_state = self.suffix.get_item_state(version);
         match item_state {
             Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
@@ -97,26 +92,27 @@ where
                     //  Pruning of suffix.
                     self.suffix.update_prune_index_from_version(version);
 
+                    debug!("[Actions] All actions in Version {version} completed!");
                     // Check prune eligibility by looking at the prune meta info.
-                    let prune_index = self.suffix.get_meta().prune_index;
                     if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
                         // Call prune method on suffix.
                         let _ = self.suffix.prune_till_index(index_to_prune);
-                        error!(
-                            "Its safe to prune version ={version} with prune_index={prune_index:?}, new head={}",
-                            self.suffix.get_meta().head
-                        );
-                    } else {
-                        error!("Cannot prune prune_index={prune_index:?} - suffix_meta={:?}", self.suffix.get_meta());
+
+                        // TODO: GK - Calculate the safe offset to commit.
+                        let commit_offset = version + 1;
+                        debug!("[Commit] Updating tpl to version .. {commit_offset}");
+                        let _ = self.message_receiver.update_savepoint(commit_offset as i64);
+
+                        self.message_receiver.commit_async();
                     }
                 }
+                debug!(
+                    "[Action] State version={version} changed from {item_state:?} => {:?}",
+                    self.suffix.get_item_state(version)
+                );
             }
             _ => (),
         };
-        error!(
-            "State change for version={version} from {item_state:?} => {:?}",
-            self.suffix.get_item_state(version)
-        );
     }
 }
 
@@ -165,7 +161,6 @@ where
                                         item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
 
                                     }
-                                    error!("[FILTERED ACTIONS] version={}  state={:?} actions={:#?}", version, item_to_update.item.get_state(), item_to_update.item.get_commit_actions());
                                 };
 
                             } else {
@@ -182,19 +177,10 @@ where
 
                             self.process_next_actions().await?;
 
-
-                            // TODO: GK - Calculate the safe offset to commit.
-
-
-
                         },
                     }
 
                 }
-                // Next condition - Commit, get processed/published info.
-
-
-
                 // Receive feedback from publisher.
                 Some(feedback) = self.rx_feedback_channel.recv() => {
                     match feedback {
@@ -203,53 +189,7 @@ where
                         MessengerChannelFeedback::Success(version, key, total_count) => {
                             info!("Successfully received version={version} count={total_count}");
 
-                            self.handle_item_actioned_success(version, &key, total_count);
-
-
-                            self.suffix.messages.iter().flatten().for_each(|item|
-                                error!("version={}  state={:?} action_state={:#?}", item.item_ver, item.item.get_state(), item.item.get_commit_actions().iter().map(|x| (x.1.get_count(), x.1.is_completed())).collect::<Vec<(u32, bool)>>())
-                            );
-                            // info!("Suffix dump ={:?}");
-                            // info!("State on completion ={:?}", item_state);
-
-
-
-
-                            // TODO: GK - Prune suffix.
-
-                            // let prune_start_index = suffix_meta.prune_start_threshold;
-                            // let min_items_after_prune = suffix_meta.min_size_after_prune;
-
-                            // // If there is Some prune_threshold_index && if prune_index > prune_threshold_index - Okay to prune.
-                            // // If min_items_after_prune is Some &&  prune_index is some and if len of prune_index + 1 .. len() >= min_items_after_prune, then prune.
-                            // let prune_index = suffix_meta.prune_index;
-                            // if let Some(prune_index) = prune_index {
-                            //     let continue_futher_check = match prune_start_index {
-                            //             Some(index) =>  prune_index >= index,
-                            //             None => true,
-                            //         };
-
-                            //     let can_prune = if continue_futher_check {
-                            //         match min_items_after_prune {
-                            //             Some(min_count) =>  self.suffix.messages.range(prune_index + 1 .. ).count() >= min_count,
-                            //             None => true,
-                            //         }
-                            //     } else { false};
-
-                            //     if can_prune {
-                            //         error!("Its safe to prune version ={version} with prune_index={prune_index}");
-                            //         // Call prune method on suffix.
-                            //     } else {
-                            //         error!("Cannot prune prune_index={prune_index} - suffix_meta={:?}", self.suffix.get_meta());
-                            //     }
-                            // }
-                            // let k = match prune_start_index {
-                            //     Some(index) => if prun,
-                            //     None => true,
-                            // };
-
-
-                            // 4. Prune the suffix
+                            self.handle_item_actioned_success(version, &key, total_count).await;
                         },
                     }
                     // Process the next items with commit actions

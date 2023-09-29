@@ -135,6 +135,24 @@ impl From<MessageReceiverError> for SystemServiceError {
         }
     }
 }
+impl From<MessageReceiverError> for Box<SystemServiceError> {
+    fn from(msg_rx_error: MessageReceiverError) -> Self {
+        match msg_rx_error.kind {
+            MessageReceiverErrorKind::ParseError => Box::new(SystemServiceError {
+                kind: SystemServiceErrorKind::ParseError,
+                reason: msg_rx_error.reason,
+                data: msg_rx_error.data,
+                service: "Message Receiver Servicer".to_string(),
+            }),
+            _ => Box::new(SystemServiceError {
+                kind: SystemServiceErrorKind::MessageReceiverError(msg_rx_error.kind),
+                reason: msg_rx_error.reason,
+                data: msg_rx_error.data,
+                service: "Message Receiver Servicer".to_string(),
+            }),
+        }
+    }
+}
 impl From<MessagePublishError> for SystemServiceError {
     fn from(msg_rx_error: MessagePublishError) -> Self {
         SystemServiceError {

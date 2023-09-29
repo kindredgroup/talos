@@ -141,7 +141,7 @@ where
 
     pub(crate) async fn commit(&mut self) {
         if let Some(version) = self.next_commit_offset {
-            self.receiver.update_savepoint(version as i64).await.unwrap();
+            self.receiver.update_savepoint(version as i64).unwrap();
             self.receiver.commit_async();
             self.next_commit_offset = None;
         }
