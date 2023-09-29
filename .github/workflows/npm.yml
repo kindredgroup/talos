@@ -24,7 +24,14 @@ jobs:
                     target: aarch64-apple-darwin
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
-                    customiseHostCommand: echo 'No customizations are needed'
+                    customiseHostCommand: |-
+                      touch ~/.cargo/config
+                      cat <<EOT >> ~/.cargo/config
+                      [target.aarch64-apple-darwin]
+                      rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+                      EOT
+                      echo "~/.cargo/config"
+                      cat ~/.cargo/config
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   # - host: windows-latest
