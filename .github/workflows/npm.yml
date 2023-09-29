@@ -13,12 +13,12 @@ jobs:
             fail-fast: false
             matrix:
                 settings:
-                  - host: macos-latest
-                    target: x86_64-apple-darwin
-                    jsPackageHome: packages/cohort_sdk_js
-                    finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-x64.node
-                    customiseHostCommand: echo 'No customizations are needed'
-                    buildCommand: npm run build -- --target x86_64-apple-darwin
+                  # - host: macos-latest
+                  #   target: x86_64-apple-darwin
+                  #   jsPackageHome: packages/cohort_sdk_js
+                  #   finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-x64.node
+                  #   customiseHostCommand: echo 'No customizations are needed'
+                  #   buildCommand: npm run build -- --target x86_64-apple-darwin
 
                   - host: macos-latest
                     target: aarch64-apple-darwin

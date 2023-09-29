@@ -13,11 +13,12 @@ opentelemetry_api = { version = "0.20.0" }
 opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry = { version = "0.20.0" }
 rand = { version = "0.8.5" }
+
 rdkafka = { version = "0.34.0", features = ["sasl"] }
+rdkafka-sys = { version = "4.6.0", features = ["ssl-vendored", "gssapi-vendored"] }
 openssl-sys = { version = "0.9", features = ["vendored"] }
-sasl2-sys = { version = "0.1", features = ["vendored"] }
-#openssl = { version = "0.10.57" }
-#sasl2-sys = { version = "0.1.20", features = ["vendored", "openssl-vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }
+
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { version = "0.25", features = ["derive"] }

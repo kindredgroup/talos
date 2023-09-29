@@ -9,7 +9,12 @@ async-trait =   { workspace = true }
 env_logger =    { workspace = true }
 log =           { workspace = true }
 multimap =      { version = "0.9.0" }
+
 rdkafka =       { version = "0.34.0", features = ["sasl"] }
+rdkafka-sys = { version = "4.6.0", features = ["ssl-vendored", "gssapi-vendored"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
+openssl = { version = "0.10", features = ["vendored"] }
+
 serde =         { workspace = true }
 serde_json =    { workspace = true }
 strum =         { version = "0.25", features = ["derive"] }
