@@ -6,7 +6,7 @@ env:
     DEBUG: "napi:*"
     OPENSSL_DIR: /usr/local
     OPENSSL_LIB_DIR: /usr/local/lib
-    SASL2_DIR: /usr/local/sasl2
+    SASL2_DIR: /usr/local
 jobs:
     npm:
         strategy:
