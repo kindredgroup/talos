@@ -5,8 +5,6 @@ on:
 env:
     DEBUG: "napi:*"
     OPENSSL_DIR: /usr/local
-    OPENSSL_LIB_DIR: /usr/local/lib
-    SASL2_DIR: /usr/local/opt/cyrus-sasl
 jobs:
     npm:
         strategy:
@@ -32,6 +30,9 @@ jobs:
                       EOT
                       echo "~/.cargo/config"
                       cat ~/.cargo/config
+                      brew install openssl@1.1
+                      echo 'find $(brew --prefix)/ -name "ssl3.h"'
+                      find $(brew --prefix)/ -name "ssl3.h"
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   # - host: windows-latest
