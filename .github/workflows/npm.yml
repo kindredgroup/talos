@@ -34,15 +34,7 @@ jobs:
                       echo "~/.cargo/config"
                       cat ~/.cargo/config
                       echo ""
-                      echo 'find $(brew --prefix) -name "ssl3.h"'
-                      find $(brew --prefix) -name "ssl3.h"
-                      echo ""
-                      echo 'find $(brew --prefix) -name "sasl.h"'
-                      find $(brew --prefix) -name "sasl.h"
                       brew install cyrus-sasl
-                      echo ""
-                      echo 'find $(brew --prefix) -name "sasl.h"'
-                      find $(brew --prefix) -name "sasl.h"
                       echo ""
                       echo "ls -l LDFLAGS"
                       ls -lah /usr/local/Cellar/openssl@1.1/1.1.1w/lib
@@ -50,9 +42,11 @@ jobs:
                       echo ""
                       echo "rustup toolchain list before isntall"
                       rustup toolchain list
-                      rustup toolchain install stable-aarch64-apple-darwin
+                      rustup toolchain install --force-non-host stable-aarch64-apple-darwin
                       echo ""
                       echo "rustup toolchain list after isntall"
+                      rustup toolchain list
+                      rustup default stable-aarch64-apple-darwin
                       rustup toolchain list
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
