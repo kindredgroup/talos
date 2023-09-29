@@ -25,14 +25,13 @@ jobs:
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
                     customiseHostCommand: |-
-                      env
                       find $(brew --prefix) -name "libcrypto.*"
-                      find $(brew --prefix) -name "libsasl2.*"
-                      brew install FiloSottile/musl-cross/musl-cross
+                      echo ""
+                      echo "find /usr/local -name "libsasl2.*""
+                      find /usr/local -name "libsasl2.*"
                       brew install FiloSottile/musl-cross/musl-cross --with-aarch64
                       brew install cyrus-sasl
                       ls -lah /usr/local/lib/
-                      env
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   # - host: windows-latest
