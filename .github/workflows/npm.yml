@@ -35,28 +35,7 @@ jobs:
                       cat ~/.cargo/config
                       echo ""
                       brew install cyrus-sasl
-                      echo ""
-                      echo "ls -l LDFLAGS"
-                      ls -lah /usr/local/Cellar/openssl@1.1/1.1.1w/lib
-                      ls -lah /usr/local/opt/cyrus-sasl/lib
-                      echo ""
-                      echo "PATH"
-                      echo "$PATH"
-                      echo ""
-                      echo "rustup toolchain list before isntall"
-                      rustup toolchain list
-                      rustup toolchain install --force-non-host stable-aarch64-apple-darwin
-                      echo ""
-                      echo "rustup toolchain list after isntall"
-                      rustup toolchain list
-                      rustup default stable-aarch64-apple-darwin
-                      rustup toolchain list
                     buildCommand: |-
-                      echo "PATH"
-                      echo "$PATH"
-                      echo "rustup toolchain list"
-                      rustup toolchain list
-                      echo ""
                       npm run build -- --target aarch64-apple-darwin
 
                   # - host: windows-latest
