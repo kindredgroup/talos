@@ -32,8 +32,8 @@ jobs:
                       find /usr/local -name "*sasl.*"
                       echo "After search for sasl"
                       brew install cyrus-sasl
-                      ehco ""
-                      ehco "ls -lah /usr/local/opt/"
+                      echo ""
+                      echo "ls -lah /usr/local/opt/"
                       ls -lah /usr/local/opt/
                       echo ""
                       echo "ls -lah /usr/local/opt/cyrus-sasl"
