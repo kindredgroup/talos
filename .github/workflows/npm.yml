@@ -34,11 +34,11 @@ jobs:
                       brew install openssl@1.1
                       echo 'find $(brew --prefix) -name "ssl3.h"'
                       find $(brew --prefix) -name "ssl3.h"
-                      echp ""
+                      echo ""
                       echo 'find $(brew --prefix) -name "sasl.h"'
                       find $(brew --prefix) -name "sasl.h"
                       brew install cyrus-sasl
-                      echp ""
+                      echo ""
                       echo 'find $(brew --prefix) -name "sasl.h"'
                       find $(brew --prefix) -name "sasl.h"
                     buildCommand: npm run build -- --target aarch64-apple-darwin
