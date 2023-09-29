@@ -53,6 +53,8 @@ jobs:
                       rustup default stable-aarch64-apple-darwin
                       rustup toolchain list
                     buildCommand: |-
+                      echo "PATH"
+                      echo "$PATH"
                       echo "rustup toolchain list"
                       rustup toolchain list
                       echo ""
