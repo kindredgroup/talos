@@ -6,6 +6,7 @@ env:
     DEBUG: "napi:*"
     OPENSSL_DIR: /usr/local
     OPENSSL_LIB_DIR: /usr/local/lib
+    SASL2_DIR: /usr/local/sasl2
 jobs:
     npm:
         strategy:
@@ -26,8 +27,11 @@ jobs:
                     customiseHostCommand: |-
                       env
                       find $(brew --prefix) -name "libcrypto.*"
+                      find $(brew --prefix) -name "libsasl2.*"
                       brew install FiloSottile/musl-cross/musl-cross
                       brew install FiloSottile/musl-cross/musl-cross --with-aarch64
+                      brew install cyrus-sasl
+                      ls -lah /usr/local/lib/
                       env
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
