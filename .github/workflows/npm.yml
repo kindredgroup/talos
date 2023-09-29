@@ -52,7 +52,11 @@ jobs:
                       rustup toolchain list
                       rustup default stable-aarch64-apple-darwin
                       rustup toolchain list
-                    buildCommand: npm run build -- --target aarch64-apple-darwin
+                    buildCommand: |-
+                      echo "rustup toolchain list"
+                      rustup toolchain list
+                      echo ""
+                      npm run build -- --target aarch64-apple-darwin
 
                   # - host: windows-latest
                   #   target: x86_64-pc-windows-msvc
