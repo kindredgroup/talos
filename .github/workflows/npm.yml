@@ -13,35 +13,18 @@ jobs:
             fail-fast: false
             matrix:
                 settings:
-                  # - host: macos-latest
-                  #   target: x86_64-apple-darwin
-                  #   jsPackageHome: packages/cohort_sdk_js
-                  #   finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-x64.node
-                  #   customiseHostCommand: echo 'No customizations are needed'
-                  #   buildCommand: npm run build -- --target x86_64-apple-darwin
+                  - host: macos-latest
+                    target: x86_64-apple-darwin
+                    jsPackageHome: packages/cohort_sdk_js
+                    finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-x64.node
+                    customiseHostCommand: echo 'No customizations are needed'
+                    buildCommand: npm run build -- --target x86_64-apple-darwin
 
                   - host: macos-latest
                     target: aarch64-apple-darwin
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
-                    customiseHostCommand: |-
-                      set -a
-                      find $(brew --prefix) -name "libcrypto.*"
-                      echo ""
-                      echo "find /usr/local -name *sasl.*"
-                      find /usr/local -name "*sasl.*"
-                      echo "After search for sasl"
-                      brew install cyrus-sasl
-                      echo ""
-                      echo "ls -lah /usr/local/opt/"
-                      ls -lah /usr/local/opt/
-                      echo ""
-                      echo "ls -lah /usr/local/opt/cyrus-sasl"
-                      ls -lah /usr/local/opt/cyrus-sasl
-                      echo 'export PATH="/usr/local/opt/cyrus-sasl/sbin:$PATH"' >> /Users/runner/.bash_profile
-                      export LDFLAGS="-L/usr/local/opt/cyrus-sasl/lib"
-                      export CPPFLAGS="-I/usr/local/opt/cyrus-sasl/include"
-                      env
+                    customiseHostCommand: echo 'No customizations are needed'
                     buildCommand: npm run build -- --target aarch64-apple-darwin
 
                   # - host: windows-latest

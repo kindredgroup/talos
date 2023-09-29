@@ -28,4 +28,4 @@ rust_decimal = { version = "1.30.0", features = [
 thiserror = { version = "1.0.31" }
 time = { version = "0.3.17" }
 tokio = { workspace = true, features = ["full"] }
-uuid = { version = "1.2.2", features = ["v4"] }
+uuid = { version = "1.4.1", features = ["v4"] }

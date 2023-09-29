@@ -23,7 +23,7 @@ opentelemetry_api = { version = "0.20.0" }
 opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry =     { version = "0.20.0" }
 strum =             { version = "0.25", features = ["derive"] }
-uuid =              { version = "1.2.2", features = ["v4"] }
+uuid =              { version = "1.4.1", features = ["v4"] }
 
 banking_common =            { path = "../banking_common" }
 cohort_sdk =                { path = "../cohort_sdk" }

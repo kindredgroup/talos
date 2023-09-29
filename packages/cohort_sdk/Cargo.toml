@@ -14,9 +14,8 @@ opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry = { version = "0.20.0" }
 rand = { version = "0.8.5" }
 rdkafka = { version = "0.34.0", features = ["sasl"] }
-rdkafka-sys = { version = "4.6.0" }
-#openssl-sys = { version = "0.9", features = ["vendored"] }
-# sasl2-sys = { version = "0.1.20", features = ["vendored"] }
+openssl-sys = { version = "0.9", features = ["vendored"] }
+sasl2-sys = { version = "0.1", features = ["vendored"] }
 #openssl = { version = "0.10.57" }
 #sasl2-sys = { version = "0.1.20", features = ["vendored", "openssl-vendored"] }
 serde = { workspace = true }
@@ -27,6 +26,6 @@ talos_agent =               { path = "../talos_agent" }
 talos_certifier =           { path = "../talos_certifier" }
 talos_cohort_replicator =   { path = "../../packages/talos_cohort_replicator" }
 talos_rdkafka_utils =       { path = "../talos_rdkafka_utils" }
-uuid = { version = "1.2.2", features = ["v4"] }
+uuid =                      { version = "1.4.1", features = ["v4"] }
 
 tokio = { workspace = true, features = ["full"] }
