@@ -22,9 +22,9 @@ mockall = "0.11.0"
 thiserror = "1.0.31"
 
 rdkafka = { version = "0.34.0", features = ["sasl"] }
-rdkafka-sys = { version = "4.6.0", features = ["ssl-vendored", "gssapi-vendored"] }
-openssl-sys = { version = "0.9", features = ["vendored"] }
-openssl = { version = "0.10", features = ["vendored"] }
+#rdkafka-sys = { version = "4.6.0", features = ["ssl-vendored", "gssapi-vendored"] }
+#openssl-sys = { version = "0.9", features = ["vendored"] }
+#openssl = { version = "0.10", features = ["vendored", "v111"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
