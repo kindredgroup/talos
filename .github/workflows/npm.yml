@@ -45,7 +45,6 @@ jobs:
                       echo ""
                       echo "rustup toolchain list before isntall"
                       rustup toolchain list
-                      rustup toolchain uninstall stable-x86_64-apple-darwin
                       rustup toolchain install --force-non-host stable-aarch64-apple-darwin
                       echo ""
                       echo "rustup toolchain list after isntall"
@@ -125,8 +124,8 @@ jobs:
             - name: Install node dependencies
               run: cd ${{ matrix.settings.jsPackageHome }} && pwd && ls -l . && npm install -verbose
 
-            - name: Cargo build
-              run: cargo build
+            # - name: Cargo build
+            #   run: cargo build
 
             - name: NAPI-RS build
               shell: bash
