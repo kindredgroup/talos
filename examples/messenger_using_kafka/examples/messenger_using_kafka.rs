@@ -2,10 +2,7 @@ use ahash::{HashMap, HashMapExt};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
 use talos_common_utils::env_var;
-use talos_messenger_actions::kafka::{
-    producer::{KafkaProducer, MessengerKafkaProducerContext},
-    service::KafkaActionService,
-};
+use talos_messenger_actions::kafka::{context::MessengerProducerContext, producer::KafkaProducer, service::KafkaActionService};
 use talos_messenger_core::{services::MessengerInboundService, suffix::MessengerCandidate, talos_messenger_service::TalosMessengerService};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
@@ -65,7 +62,7 @@ async fn main() {
     kafka_config.topic = "test.messenger.topic".to_string();
 
     let tx_feedback_channel_clone = tx_feedback_channel.clone();
-    let custom_context = MessengerKafkaProducerContext {
+    let custom_context = MessengerProducerContext {
         tx_feedback_channel: tx_feedback_channel_clone,
     };
     let kafka_producer = KafkaProducer::with_context(&kafka_config, custom_context);
