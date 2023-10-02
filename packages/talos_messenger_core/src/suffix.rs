@@ -1,12 +1,12 @@
 use ahash::{HashMap, HashMapExt};
-use log::{error, warn};
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixItem, SuffixTrait};
 
-pub trait MessengerSuffixItemTrait {
+pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_state(&mut self, state: SuffixItemState);
     fn set_safepoint(&mut self, safepoint: Option<u64>);
     fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>);
@@ -22,23 +22,33 @@ pub trait MessengerSuffixItemTrait {
 
 pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     //  Setters
+    /// Sets the state of an item by version.
     fn set_item_state(&mut self, version: u64, process_state: SuffixItemState);
 
     //  Getters
+    /// Get suffix meta
+    fn get_meta(&self) -> &SuffixMeta;
+    /// Get suffix item as mutable reference.
     fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
+
+    /// Checks if suffix ready to prune
+    ///
+    // fn is_safe_prune() -> bool;
+    /// Get the state of an item by version.
     fn get_item_state(&self, version: u64) -> Option<SuffixItemState>;
-    fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
-    // fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
-    fn get_suffix_meta(&self) -> &SuffixMeta;
-    fn installed_all_prior_decided_items(&self, version: u64) -> bool;
-
+    /// Gets the suffix items eligible to process.
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
-    // updates
-    fn update_prune_index(&mut self, version: u64);
+    /// Updates the decision for a version.
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
-    fn update_action(&mut self, version: u64, action_key: &str, total_count: u32);
+    /// Updates the action for a version using the action_key for lookup.
+    fn update_item_action(&mut self, version: u64, action_key: &str, total_count: u32);
 
-    fn all_actions_completed(&self, version: u64) -> bool;
+    /// Checks if all versions prioir to this version are already completed, and updates the prune index.
+    /// If the prune index was updated, returns the new prune_index, else returns None.
+    fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize>;
+
+    /// Checks if all commit actions are completed for the version
+    fn are_all_item_actions_completed(&self, version: u64) -> bool;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -178,7 +188,7 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
 
 impl<T> MessengerSuffixTrait<T> for Suffix<T>
 where
-    T: MessengerSuffixItemTrait + Debug + Clone,
+    T: MessengerSuffixItemTrait,
 {
     // TODO: GK - Elevate this to core suffix
     fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>> {
@@ -200,17 +210,9 @@ where
         }
     }
 
-    fn get_last_installed(&self, _to_version: Option<u64>) -> Option<&SuffixItem<T>> {
-        todo!()
-    }
-
     // TODO: GK - Elevate this to core suffix
-    fn get_suffix_meta(&self) -> &SuffixMeta {
+    fn get_meta(&self) -> &SuffixMeta {
         &self.meta
-    }
-
-    fn installed_all_prior_decided_items(&self, _version: u64) -> bool {
-        todo!()
     }
 
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
@@ -224,14 +226,12 @@ where
             // Take while contiguous ones, whose safepoint is already processed.
             .take_while(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
-                    error!("take while early exit for version {:?}", x.item_ver);
                     return false;
                 };
 
                 match self.get(*safepoint) {
                     // If we find the suffix item from the safepoint, we need to ensure that it already in `Complete` state
                     Ok(Some(safepoint_item)) => {
-                        error!("State of safepoint items is {:?}", safepoint_item.item.get_state());
                         matches!(safepoint_item.item.get_state(), SuffixItemState::Complete(..))
                     }
                     // If we couldn't find the item in suffix, it could be because it was pruned and it is safe to assume that we can consider it.
@@ -245,10 +245,6 @@ where
             .collect();
 
         items
-    }
-
-    fn update_prune_index(&mut self, _version: u64) {
-        todo!()
     }
 
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D) {
@@ -269,7 +265,7 @@ where
         }
     }
 
-    fn update_action(&mut self, version: u64, action_key: &str, total_count: u32) {
+    fn update_item_action(&mut self, version: u64, action_key: &str, total_count: u32) {
         if let Some(item_to_update) = self.get_mut(version) {
             if let Some(action) = item_to_update.item.get_action_by_key_mut(action_key) {
                 action.update_count();
@@ -285,7 +281,39 @@ where
         }
     }
 
-    fn all_actions_completed(&self, version: u64) -> bool {
+    fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize> {
+        let current_prune_index = self.get_meta().prune_index;
+
+        let start_index = current_prune_index.unwrap_or(0);
+
+        let end_index = match self.index_from_head(version) {
+            Some(index) if index > start_index => index,
+            _ => self.suffix_length() - 1,
+        };
+
+        debug!(
+            "[Update prune index] Calculating prune index in suffix slice between index {start_index} <-> {end_index}. Current prune index version {current_prune_index:?}.",
+        );
+
+        // 1. Get the last contiguous item that is completed.
+        let safe_prune_version = self
+            .messages
+            .range(start_index..=end_index)
+            .flatten()
+            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
+            .last()?
+            .item_ver;
+
+        // 2. Update the prune index.
+        let index = self.index_from_head(safe_prune_version)?;
+
+        self.update_prune_index(index.into());
+        debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
+
+        Some(index)
+    }
+
+    fn are_all_item_actions_completed(&self, version: u64) -> bool {
         if let Ok(Some(item)) = self.get(version) {
             item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed())
         } else {

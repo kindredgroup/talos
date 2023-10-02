@@ -129,7 +129,7 @@ where
             .collect()
     }
 
-    pub fn find_prune_till_index(&mut self, prune_till_index: usize) -> usize {
+    pub fn find_prune_till_index(&self, prune_till_index: usize) -> usize {
         let prune_till_index = self
             .messages
             .range(..prune_till_index + 1)
@@ -141,7 +141,7 @@ where
         prune_till_index
     }
 
-    pub fn get_safe_prune_index(&mut self) -> Option<usize> {
+    pub fn get_safe_prune_index(&self) -> Option<usize> {
         // If `prune_start_threshold=None` don't prune.
         let Some(prune_threshold) = self.meta.prune_start_threshold else {
             debug!("[SUFFIX PRUNE CHECK] As suffix.meta.prune_start_threshold is None, pruning is disabled.");
