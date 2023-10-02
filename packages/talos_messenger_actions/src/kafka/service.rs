@@ -31,11 +31,7 @@ where
                 Some(actions) = self.rx_actions_channel.recv() => {
                     let MessengerCommitActions {version, commit_actions } = actions;
 
-                    let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()) else {
-                        // If publish is not present, continue the loop.
-                        continue;
-                    };
-
+                    if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string())
                     // TODO: GK - Make this block generic in next ticket to iterator in loop by PublishActionType
                     {
                         match  get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {

@@ -98,10 +98,9 @@ where
                         // Call prune method on suffix.
                         let _ = self.suffix.prune_till_index(index_to_prune);
 
-                        // TODO: GK - Calculate the safe offset to commit.
                         let commit_offset = version + 1;
                         debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                        let _ = self.message_receiver.update_savepoint(commit_offset as i64);
+                        let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
 
                         self.message_receiver.commit_async();
                     }
