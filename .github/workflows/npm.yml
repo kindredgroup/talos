@@ -21,7 +21,7 @@ jobs:
                     customiseHostCommand: echo 'No customizations are needed'
                     buildCommand: npm run build -- --target x86_64-apple-darwin
 
-                  - host: macos-13-xl
+                  - host: macos-latest-large
                     target: aarch64-apple-darwin
                     jsPackageHome: packages/cohort_sdk_js
                     finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
