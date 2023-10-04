@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
-use talos_suffix::{core::SuffixMeta, Suffix, SuffixItem, SuffixTrait};
+use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
 
 pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_state(&mut self, state: SuffixItemState);
@@ -26,10 +26,6 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     fn set_item_state(&mut self, version: u64, process_state: SuffixItemState);
 
     //  Getters
-    /// Get suffix meta
-    fn get_meta(&self) -> &SuffixMeta;
-    /// Get suffix item as mutable reference.
-    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
 
     /// Checks if suffix ready to prune
     ///
@@ -48,7 +44,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize>;
 
     /// Checks if all commit actions are completed for the version
-    fn are_all_item_actions_completed(&self, version: u64) -> bool;
+    fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -190,12 +186,6 @@ impl<T> MessengerSuffixTrait<T> for Suffix<T>
 where
     T: MessengerSuffixItemTrait,
 {
-    // TODO: GK - Elevate this to core suffix
-    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>> {
-        let index = self.index_from_head(version)?;
-        self.messages.get_mut(index)?.as_mut()
-    }
-
     fn set_item_state(&mut self, version: u64, process_state: SuffixItemState) {
         if let Some(item_to_update) = self.get_mut(version) {
             item_to_update.item.set_state(process_state)
@@ -208,11 +198,6 @@ where
         } else {
             None
         }
-    }
-
-    // TODO: GK - Elevate this to core suffix
-    fn get_meta(&self) -> &SuffixMeta {
-        &self.meta
     }
 
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
@@ -313,13 +298,12 @@ where
         Some(index)
     }
 
-    fn are_all_item_actions_completed(&self, version: u64) -> bool {
+    fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool> {
         if let Ok(Some(item)) = self.get(version) {
-            item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed())
+            Ok(item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed()))
         } else {
             warn!("could not find item for version={version}");
-            // TODO: GK - handle this in another way for future?
-            true
+            Err(talos_suffix::errors::SuffixError::ItemNotFound(version, None))
         }
     }
 }
