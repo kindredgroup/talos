@@ -37,7 +37,7 @@ where
     pub tx_actions_channel: mpsc::Sender<MessengerCommitActions>,
     pub rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
     pub suffix: Suffix<MessengerCandidate>,
-    pub allowed_actions: HashMap<&'static str, Vec<&'static str>>,
+    pub allowed_actions: HashMap<String, Vec<String>>,
 }
 
 impl<M> MessengerInboundService<M>

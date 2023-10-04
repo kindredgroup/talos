@@ -1,7 +1,25 @@
 use ahash::{HashMap, HashMapExt};
 use serde_json::{json, Value};
 
-use crate::utlis::{get_actions_deserialised, get_allowed_commit_actions};
+use crate::utlis::{create_whitelist_actions_from_str, get_actions_deserialised, get_allowed_commit_actions, ActionsParserConfig};
+
+// Start - testing create_whitelist_actions_from_str function
+#[test]
+fn test_fn_create_whitelist_actions_from_str() {
+    let config = ActionsParserConfig {
+        case_sensitive: false,
+        key_value_delimiter: ":",
+    };
+
+    let actions_str = "foo:test, foo:test2, bar,FOO:test3";
+
+    let action_map = create_whitelist_actions_from_str(actions_str, &config);
+
+    assert_eq!(action_map.len(), 2);
+    assert_eq!(action_map.get("foo").unwrap().len(), 3);
+    assert!(action_map.contains_key("bar"));
+}
+// End - testing create_whitelist_actions_from_str function
 
 // Start - testing get_allowed_commit_actions function
 #[test]
@@ -38,25 +56,28 @@ fn test_fn_get_allowed_commit_actions_allowed_actions_negative_scenarios() {
 
     // When allowed action is supported type by the messenger, but the sub actions are not provided
     allowed_actions.clear();
-    allowed_actions.insert("publish", vec![]);
+    allowed_actions.insert("publish".to_string(), vec![]);
     let result = get_allowed_commit_actions(&on_commit_actions, &allowed_actions);
     assert!(result.is_empty());
 
     // When allowed action is supported type by the messenger, but the sub actions are not supported
     allowed_actions.clear();
-    allowed_actions.insert("publish", vec!["sqs", "sns"]);
+    allowed_actions.insert("publish".to_string(), vec!["sqs".to_string(), "sns".to_string()]);
     let result = get_allowed_commit_actions(&on_commit_actions, &allowed_actions);
     assert!(result.is_empty());
 
     // When allowed action is non supported type by the messenger, with empty sub type
     allowed_actions.clear();
-    allowed_actions.insert("random", vec![]);
+    allowed_actions.insert("random".to_string(), vec![]);
     let result = get_allowed_commit_actions(&on_commit_actions, &allowed_actions);
     assert!(result.is_empty());
 
     // When allowed action is non supported type by the messenger, but has valid sub actions
     allowed_actions.clear();
-    allowed_actions.insert("random", vec!["sqs", "sns", "kafka", "mqtt"]);
+    allowed_actions.insert(
+        "random".to_string(),
+        vec!["sqs".to_string(), "sns".to_string(), "kafka".to_string(), "mqtt".to_string()],
+    );
     let result = get_allowed_commit_actions(&on_commit_actions, &allowed_actions);
     assert!(result.is_empty());
 }
@@ -64,7 +85,10 @@ fn test_fn_get_allowed_commit_actions_allowed_actions_negative_scenarios() {
 #[test]
 fn test_fn_get_allowed_commit_actions_on_commit_action_negative_scenarios() {
     let mut allowed_actions = HashMap::new();
-    allowed_actions.insert("publish", vec!["sqs", "sns", "kafka", "mqtt"]);
+    allowed_actions.insert(
+        "publish".to_string(),
+        vec!["sqs".to_string(), "sns".to_string(), "kafka".to_string(), "mqtt".to_string()],
+    );
 
     // When on_commit_actions are not present
     let on_commit_actions = serde_json::json!({});
@@ -153,7 +177,10 @@ fn test_fn_get_allowed_commit_actions_positive_scenario() {
         }
     });
 
-    allowed_actions.insert("publish", vec!["sqs", "sns", "kafka", "mqtt"]);
+    allowed_actions.insert(
+        "publish".to_string(),
+        vec!["sqs".to_string(), "sns".to_string(), "kafka".to_string(), "mqtt".to_string()],
+    );
     let result = get_allowed_commit_actions(&on_commit_actions, &allowed_actions);
     assert_eq!(result.len(), 2);
 }

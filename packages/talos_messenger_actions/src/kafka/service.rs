@@ -31,15 +31,13 @@ where
                 Some(actions) = self.rx_actions_channel.recv() => {
                     let MessengerCommitActions {version, commit_actions } = actions;
 
-                    if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string())
-                    // TODO: GK - Make this block generic in next ticket to iterator in loop by PublishActionType
-                    {
+                    if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()){
                         match  get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {
                             Ok(actions) => {
 
                                 let total_len = actions.len() as u32;
                                 for action in actions {
-                                    // Send to Kafka
+                                    // Publish the message
                                     self.publisher.send(version, action, total_len ).await;
 
                                 }

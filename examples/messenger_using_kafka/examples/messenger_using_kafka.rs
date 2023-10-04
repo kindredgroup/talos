@@ -1,9 +1,13 @@
-use ahash::{HashMap, HashMapExt};
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
 use talos_common_utils::env_var;
 use talos_messenger_actions::kafka::{context::MessengerProducerContext, producer::KafkaProducer, service::KafkaActionService};
-use talos_messenger_core::{services::MessengerInboundService, suffix::MessengerCandidate, talos_messenger_service::TalosMessengerService};
+use talos_messenger_core::{
+    services::MessengerInboundService,
+    suffix::MessengerCandidate,
+    talos_messenger_service::TalosMessengerService,
+    utlis::{create_whitelist_actions_from_str, ActionsParserConfig},
+};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::sync::mpsc;
@@ -46,20 +50,16 @@ async fn main() {
     };
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(suffix_config);
 
-    let mut whitelisted_actions = HashMap::<&'static str, Vec<&'static str>>::new();
-    // TODO: GK - Set through env
-    whitelisted_actions.insert("publish", vec!["kafka"]);
+    let actions_from_env = env_var!("TALOS_MESSENGER_ACTIONS_WHITELIST");
+    let allowed_actions = create_whitelist_actions_from_str(&actions_from_env, &ActionsParserConfig::default());
 
     let inbound_service = MessengerInboundService {
         message_receiver: kafka_consumer,
         tx_actions_channel,
         rx_feedback_channel,
         suffix,
-        allowed_actions: whitelisted_actions,
+        allowed_actions,
     };
-
-    // TODO: GK - create topic should be part of publish.
-    kafka_config.topic = "test.messenger.topic".to_string();
 
     let tx_feedback_channel_clone = tx_feedback_channel.clone();
     let custom_context = MessengerProducerContext {

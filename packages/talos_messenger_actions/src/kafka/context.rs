@@ -26,7 +26,7 @@ impl ProducerContext for MessengerProducerContext {
         match result {
             Ok(msg) => {
                 info!("Message {:?} {:?}", msg.key(), msg.offset());
-                // TODO: GK - what to do on error? Panic?
+                // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
                 let _ = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(
                     version,
                     "kafka".to_string(),
@@ -34,7 +34,7 @@ impl ProducerContext for MessengerProducerContext {
                 )));
             }
             Err(err) => {
-                // TODO: GK - what to do on error? Panic?
+                // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
                 let _ = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Error(version, err.0.to_string())));
             }
         }
