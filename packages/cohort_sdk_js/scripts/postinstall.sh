@@ -47,6 +47,7 @@ ls -lah
 
 if [ "$SKIP_NAPI_RS_STEP" == "true" ]; then
     echo "Skipping NAPI RS build step..."
+    exit 0
 else
     echo "Executing 'npx napi build --platform --release' in 'dist/talos/packages/cohort_sdk_js'"
     cd dist/talos/packages/cohort_sdk_js
