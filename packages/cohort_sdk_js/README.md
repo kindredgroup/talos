@@ -1,0 +1,1 @@
+# The internal JavaScript binding for Cohort SDK

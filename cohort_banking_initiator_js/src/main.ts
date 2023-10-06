@@ -6,7 +6,7 @@ import { createGeneratorService } from "./load-generator"
 import { BankingApp } from "./banking-app"
 import { DB_CONFIG } from "./cfg/config-db-pool"
 import { Pond } from "./pond"
-import { TalosSdkError, SdkErrorKind } from "cohort_sdk_client"
+import { TalosSdkError, SdkErrorKind } from "@kindredgroup/cohort_sdk_client"
 
 logger.info("App: Cohort JS Application: %d", 111)
 logger.info("App: ---------------------")

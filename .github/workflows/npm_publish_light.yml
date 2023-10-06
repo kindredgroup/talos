@@ -14,6 +14,8 @@ jobs:
                   - host: macos-latest
                     dirSdkJs: packages/cohort_sdk_js
                     dirSdkJsClient: cohort_sdk_client
+                    dirCohortInitiator: cohort_banking_initiator_js
+                    dirCohortReplicator: cohort_banking_replicator_js
                     customiseHostCommand: echo "No customizations needed"
 
         name: stable - ${{ matrix.settings.target }} - node@16
@@ -30,36 +32,28 @@ jobs:
 
             - name: Customise host image
               shell: bash
-              run: ${{ matrix.settings.customiseHostCommand }}
+              run: |-
+                echo "NPM_CONFIG_USERCONFIG=$NPM_CONFIG_USERCONFIG"
+                cat $NPM_CONFIG_USERCONFIG
+                echo ""
+                ${{ matrix.settings.customiseHostCommand }}
 
             - name: Setup version for ${{ matrix.settings.dirSdkJs }}
               id: sdk-js-version
               shell: bash
               run: |-
                 echo "Building SDK JS Library"
-                echo "NPM_CONFIG_USERCONFIG=$NPM_CONFIG_USERCONFIG"
-                cat $NPM_CONFIG_USERCONFIG
-                echo ""
                 cd ${{ matrix.settings.dirSdkJs }}
                 pwd
                 ls -l
                 npm ci --foreground-scripts
-                selectNodeName=${{ env.SDK_JS_PACKAGE_NAME }}
-                currentVersion=$(npm version | yq .$selectNodeName)
-                currentSha=$(git rev-parse --short HEAD)
-                newVersion="$currentVersion-$currentSha"
-                echo "D: selectNodeName=$selectNodeName"
-                echo "D: currentVersion=$currentVersion"
-                echo "D: currentSha=$currentSha"
-                echo "D: newVersion=$newVersion"
-                npm version $newVersion
-                echo "SDK_JS_PACKAGE_VERSION=$newVersion" >> "$GITHUB_OUTPUT"
+                ../../scripts/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_JS_PACKAGE_NAME }} "SDK_JS_PACKAGE_VERSION"
                 echo ""
 
             - name: Publishing ${{ matrix.settings.dirSdkJs }}
+              shell: bash
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              shell: bash
               run: |-
                 cd ${{ matrix.settings.dirSdkJs }}
                 pwd
@@ -70,34 +64,26 @@ jobs:
                 echo ""
 
             - name: Setup version for ${{ matrix.settings.dirSdkJsClient }}
+              id: sdk-client-version
+              shell: bash
               env:
                   SDK_JS_PACKAGE_VERSION: ${{ steps.sdk-js-version.outputs.SDK_JS_PACKAGE_VERSION }}
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              shell: bash
               run: |-
                 echo "Building SDK Client"
                 cd ${{ matrix.settings.dirSdkJsClient }}
                 pwd
                 ls -lah
                 rm package-lock.json || true
-                echo "Running: npm install "$SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION" --foreground-scripts"
+                echo "D: npm install $SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION --foreground-scripts"
                 npm install "$SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION" --foreground-scripts
-                selectNodeName=${{ env.SDK_CLIENT_PACKAGE_NAME }}
-                currentVersion=$(npm version | yq .$selectNodeName)
-                currentSha=$(git rev-parse --short HEAD)
-                newVersion="$currentVersion-$currentSha"
-                echo "D: selectNodeName=$selectNodeName"
-                echo "D: currentVersion=$currentVersion"
-                echo "D: currentSha=$currentSha"
-                echo "D: newVersion=$newVersion"
-                npm version $newVersion
-                ls -lah
+                ../scripts/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_CLIENT_PACKAGE_NAME }} "SDK_CLIENT_PACKAGE_VERSION"
                 echo ""
 
             - name: Build and Publishing ${{ matrix.settings.dirSdkJsClient }}
+              shell: bash
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              shell: bash
               run: |-
                 cd ${{ matrix.settings.dirSdkJsClient }}
                 pwd
@@ -108,3 +94,19 @@ jobs:
                 npm run build --foreground-scripts
                 npm publish --foreground-scripts
                 echo ""
+
+            - name: Building ${{ matrix.settings.dirCohortInitiator }}
+              env:
+                  SDK_CLIENT_PACKAGE_VERSION: ${{ steps.sdk-client-version.outputs.SDK_CLIENT_PACKAGE_VERSION }}
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  SKIP_NAPI_RS_STEP: true # this will re-use already bundled native lib
+              shell: bash
+              run: |-
+                cd ${{ matrix.settings.dirCohortInitiator }}
+                pwd
+                ls -l
+                rm package-lock.json || true
+                npm ci --foreground-scripts
+                echo "D: npm install $SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION --foreground-scripts"
+                npm install "$SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION" --foreground-scripts
+                npm run build --foreground-scripts

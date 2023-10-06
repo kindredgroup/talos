@@ -2,6 +2,8 @@
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # - Copies all talos sources into TARGET_DIR (default to dist/talos)
 # - Modifies Cargo.toml workspace file to include only packages/*.
+# - Builds native bindings using NAPI-RS
+# - Finally, cleans up and prepares the directory to be included NPM package
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 CURRENT_DIR=$(pwd)
@@ -39,7 +41,9 @@ cat ../../Cargo.toml \
     | grep -v "examples" \
     > $TARGET_DIR/Cargo.toml
 
+echo "D: cd $TARGET_DIR/packages/cohort_sdk_js/"
 cd $TARGET_DIR/packages/cohort_sdk_js/
+pwd
 
 echo "Building project"
 npm run build
@@ -47,20 +51,18 @@ npm run build
 echo "Current content is:"
 ls -lah
 
-echo "D: rm -rf $CURRENT_DIR/$TARGET_DIR/target"
-rm -rf $CURRENT_DIR/$TARGET_DIR/target
-
+echo "D: cd $CURRENT_DIR"
 cd $CURRENT_DIR
+pwd
 
-echo "Copying index files into module root"
-cp \
-    $TARGET_DIR/packages/cohort_sdk_js/index.*s \
-    $CURRENT_DIR
+echo "D: rm -rf $TARGET_DIR/target"
+rm -rf $TARGET_DIR/target
 
-echo "Moving node library into module root"
-mv \
-    $TARGET_DIR/packages/cohort_sdk_js/cohort_sdk_js* \
-    $CURRENT_DIR/
+echo "Copying index files into module root: $CURRENT_DIR"
+cp $TARGET_DIR/packages/cohort_sdk_js/index.*s $CURRENT_DIR
 
-echo "Current content of $CURRENT_DIR is:"
+echo "Moving node library into module root: $CURRENT_DIR"
+mv $TARGET_DIR/packages/cohort_sdk_js/cohort_sdk_js* $CURRENT_DIR/
+
+echo "The final content of $CURRENT_DIR"
 ls -lah
