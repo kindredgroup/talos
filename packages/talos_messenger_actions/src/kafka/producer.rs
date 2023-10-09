@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use log::{debug, info};
+use log::debug;
 use rdkafka::{
     config::{FromClientConfig, FromClientConfigAndContext},
     producer::{BaseRecord, DefaultProducerContext, ProducerContext, ThreadedProducer},
-    ClientContext, Message,
 };
 use talos_certifier::{
     errors::SystemServiceError,
@@ -13,50 +12,8 @@ use talos_certifier::{
 };
 use talos_certifier_adapters::kafka::utils::build_kafka_headers;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
-use tokio::sync::mpsc;
-
-use futures_executor::block_on;
-use talos_messenger_core::core::MessengerChannelFeedback;
-
-#[derive(Debug)]
-pub struct MessengerProducerDeliveryOpaque {
-    pub version: u64,
-    pub total_publish_count: u32,
-}
-
-pub struct MessengerKafkaProducerContext {
-    pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
-}
-
-impl ClientContext for MessengerKafkaProducerContext {}
-impl ProducerContext for MessengerKafkaProducerContext {
-    type DeliveryOpaque = Box<MessengerProducerDeliveryOpaque>;
-
-    fn delivery(&self, delivery_result: &rdkafka::producer::DeliveryResult<'_>, delivery_opaque: Self::DeliveryOpaque) {
-        let result = delivery_result.as_ref();
-
-        let version = delivery_opaque.version;
-
-        match result {
-            Ok(msg) => {
-                info!("Message {:?} {:?}", msg.key(), msg.offset());
-                // TODO: GK - what to do on error? Panic?
-                let _ = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(
-                    version,
-                    "kafka".to_string(),
-                    delivery_opaque.total_publish_count,
-                )));
-            }
-            Err(err) => {
-                // TODO: GK - what to do on error? Panic?
-                let _ = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Error(version, err.0.to_string())));
-            }
-        }
-    }
-}
 
 // Kafka Producer
-// #[derive(Clone)]
 pub struct KafkaProducer<C: ProducerContext + 'static = DefaultProducerContext> {
     producer: ThreadedProducer<C>,
     topic: String,

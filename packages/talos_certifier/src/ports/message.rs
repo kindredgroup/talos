@@ -16,7 +16,7 @@ pub trait MessageReciever: SharedPortTraits {
     async fn subscribe(&self) -> Result<(), SystemServiceError>;
     async fn commit(&self) -> Result<(), SystemServiceError>;
     fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>>;
-    fn update_savepoint(&mut self, offset: i64) -> Result<(), Box<SystemServiceError>>;
+    fn update_offset_to_commit(&mut self, offset: i64) -> Result<(), Box<SystemServiceError>>;
     async fn update_savepoint_async(&mut self, offset: i64) -> Result<(), SystemServiceError>;
     async fn unsubscribe(&self);
 }

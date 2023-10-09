@@ -1,10 +1,7 @@
 use async_trait::async_trait;
 use log::info;
 use rdkafka::producer::ProducerContext;
-use talos_messenger_actions::kafka::{
-    models::KafkaAction,
-    producer::{KafkaProducer, MessengerProducerDeliveryOpaque},
-};
+use talos_messenger_actions::kafka::{context::MessengerProducerDeliveryOpaque, models::KafkaAction, producer::KafkaProducer};
 use talos_messenger_core::core::{MessengerPublisher, PublishActionType};
 // use talos_messenger::{
 //     core::{MessengerPublisher, PublishActionType},
