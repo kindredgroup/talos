@@ -18,7 +18,7 @@ jobs:
                     dirCohortReplicator: cohort_banking_replicator_js
                     customiseHostCommand: echo "No customizations needed"
 
-        name: stable - ${{ matrix.settings.target }} - node@16
+        name: Publish SDK NPS with bundled Rust for node@16
         runs-on: ${{ matrix.settings.host }}
         steps:
             - uses: actions/checkout@v3
