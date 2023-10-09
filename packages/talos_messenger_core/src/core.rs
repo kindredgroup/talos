@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use strum::{Display, EnumIter, EnumString};
 
-use crate::errors::MessengerServiceResult;
+use crate::errors::{MessengerActionError, MessengerServiceResult};
 
 #[derive(Debug, Display, Serialize, Deserialize, EnumString, EnumIter, Clone, Eq, PartialEq)]
 pub enum CommitActionType {
@@ -34,13 +34,13 @@ pub trait MessengerSystemService {
     async fn stop(&self) -> MessengerServiceResult;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessengerCommitActions {
     pub version: u64,
     pub commit_actions: HashMap<String, Value>,
 }
 
 pub enum MessengerChannelFeedback {
-    Error(u64, String),
-    Success(u64, String, u32),
+    Error(u64, String, Box<MessengerActionError>),
+    Success(u64, String),
 }

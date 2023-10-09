@@ -10,6 +10,7 @@ use talos_messenger_core::{
 
 use super::models::KafkaAction;
 
+#[derive(Debug)]
 pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync> {
     pub publisher: M,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,

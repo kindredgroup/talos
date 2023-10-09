@@ -1,22 +1,6 @@
-// 1. Kafka - Get candidate message
-//  a. Store inmemory.
-// 2. Kafka - Get decision message.
-//  a. Update the store.
-// 3. Handle `On Commit` part of the message
-//  a. Can there be anything other than publishing to kafka?
-//  b. what if the topic doesnt exist?
-//  c. Any validation required on what is being published?
-//  d. Publish T(k) only if all prioir items are published or if safepoint of T(k) is published?
-//  e. If there are multiple messages to be published, should they be done serially?:-
-//      i. If to the same topic
-//     ii. If to another topic
-// 4. After a message was published:-
-//  a. Mark that item as processed.
-//  b. Prune the store if contiguous items are processed.
-
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{Suffix, SuffixTrait};
@@ -74,37 +58,63 @@ where
         Ok(())
     }
 
+    /// Checks if all actions are completed and updates the state of the item to `Processed`.
+    /// Also, checks if the suffix can be pruned and the message_receiver can be committed.
+    pub(crate) fn check_and_update_all_actions_complete(&mut self, version: u64, reason: SuffixItemCompleteStateReason) {
+        match self.suffix.are_all_actions_complete_for_version(version) {
+            Ok(is_completed) if is_completed => {
+                self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
+
+                //  Pruning of suffix.
+                self.suffix.update_prune_index_from_version(version);
+
+                debug!("[Actions] All actions for version {version} completed!");
+                // Check prune eligibility by looking at the prune meta info.
+                if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
+                    // Call prune method on suffix.
+                    let _ = self.suffix.prune_till_index(index_to_prune);
+
+                    let commit_offset = version + 1;
+                    debug!("[Commit] Updating tpl to version .. {commit_offset}");
+                    let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
+
+                    self.message_receiver.commit_async();
+                }
+            }
+            _ => {}
+        }
+    }
     ///
-    /// Handles the feedback received from other services when they have successfully processed the action.
-    /// Will update the individual action for the count and completed flag and also update state of the suffix item.
+    /// Handles the failed to process feedback received from other services
     ///
-    pub(crate) async fn handle_item_actioned_success(&mut self, version: u64, action_key: &str, total_count: u32) {
+    pub(crate) fn handle_action_failed(&mut self, version: u64, action_key: &str) {
         let item_state = self.suffix.get_item_state(version);
         match item_state {
             Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
                 self.suffix.set_item_state(version, SuffixItemState::PartiallyComplete);
 
-                self.suffix.update_item_action(version, action_key, total_count);
-                if self.suffix.are_all_item_actions_completed(version) {
-                    self.suffix
-                        .set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::Processed));
+                self.suffix.increment_item_action_count(version, action_key);
+                self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::ErrorProcessing);
+                debug!(
+                    "[Action] State version={version} changed from {item_state:?} => {:?}",
+                    self.suffix.get_item_state(version)
+                );
+            }
+            _ => (),
+        };
+    }
+    ///
+    /// Handles the feedback received from other services when they have successfully processed the action.
+    /// Will update the individual action for the count and completed flag and also update state of the suffix item.
+    ///
+    pub(crate) fn handle_action_success(&mut self, version: u64, action_key: &str) {
+        let item_state = self.suffix.get_item_state(version);
+        match item_state {
+            Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
+                self.suffix.set_item_state(version, SuffixItemState::PartiallyComplete);
 
-                    //  Pruning of suffix.
-                    self.suffix.update_prune_index_from_version(version);
-
-                    debug!("[Actions] All actions in Version {version} completed!");
-                    // Check prune eligibility by looking at the prune meta info.
-                    if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
-                        // Call prune method on suffix.
-                        let _ = self.suffix.prune_till_index(index_to_prune);
-
-                        let commit_offset = version + 1;
-                        debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                        let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
-
-                        self.message_receiver.commit_async();
-                    }
-                }
+                self.suffix.increment_item_action_count(version, action_key);
+                self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::Processed);
                 debug!(
                     "[Action] State version={version} changed from {item_state:?} => {:?}",
                     self.suffix.get_item_state(version)
@@ -183,12 +193,14 @@ where
                 // Receive feedback from publisher.
                 Some(feedback) = self.rx_feedback_channel.recv() => {
                     match feedback {
-                        // TODO: GK - What to do when we have error on publishing? Retry??
-                        MessengerChannelFeedback::Error(_, _) => panic!("Implement the error feedback"),
-                        MessengerChannelFeedback::Success(version, key, total_count) => {
-                            info!("Successfully received version={version} count={total_count}");
+                        MessengerChannelFeedback::Error(version, key, message_error) => {
+                            error!("Failed to process version={version} with error={message_error:?}");
+                            self.handle_action_failed(version, &key);
 
-                            self.handle_item_actioned_success(version, &key, total_count).await;
+                        },
+                        MessengerChannelFeedback::Success(version, key) => {
+                            info!("Successfully processed version={version} with action_key={key}");
+                            self.handle_action_success(version, &key);
                         },
                     }
                     // Process the next items with commit actions

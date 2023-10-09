@@ -37,7 +37,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     /// Updates the decision for a version.
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
     /// Updates the action for a version using the action_key for lookup.
-    fn update_item_action(&mut self, version: u64, action_key: &str, total_count: u32);
+    fn increment_item_action_count(&mut self, version: u64, action_key: &str);
 
     /// Checks if all versions prioir to this version are already completed, and updates the prune index.
     /// If the prune index was updated, returns the new prune_index, else returns None.
@@ -64,39 +64,30 @@ pub enum SuffixItemCompleteStateReason {
     NoCommitActions,
     /// When there are commit actions, but they are not required to be handled in messenger
     NoRelavantCommitActions,
-    //TODO: GK - Mark as error?
-    /// When there is an error?
-    // Error(String),
     /// When all commit action has are completed.
     Processed,
+    /// Error in processing
+    ErrorProcessing,
 }
 
-// #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-// pub struct AllowedActionsMapValueMeta {
-//     pub total_count: u32,
-//     pub completed_count: u32,
-// }
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct AllowedActionsMapItem {
     payload: Value,
     count: u32,
-    is_completed: bool,
+    total_count: u32,
 }
 
 impl AllowedActionsMapItem {
-    pub fn new(payload: Value) -> Self {
+    pub fn new(payload: Value, total_count: u32) -> Self {
         AllowedActionsMapItem {
             payload,
             count: 0,
-            is_completed: false,
+            total_count,
         }
     }
-    pub fn update_count(&mut self) {
-        self.count += 1;
-    }
 
-    pub fn mark_completed(&mut self) {
-        self.is_completed = true;
+    pub fn increment_count(&mut self) {
+        self.count += 1;
     }
 
     pub fn get_payload(&self) -> &Value {
@@ -108,7 +99,7 @@ impl AllowedActionsMapItem {
     }
 
     pub fn is_completed(&self) -> bool {
-        self.is_completed
+        self.total_count > 0 && self.total_count == self.count
     }
 }
 
@@ -250,14 +241,10 @@ where
         }
     }
 
-    fn update_item_action(&mut self, version: u64, action_key: &str, total_count: u32) {
+    fn increment_item_action_count(&mut self, version: u64, action_key: &str) {
         if let Some(item_to_update) = self.get_mut(version) {
             if let Some(action) = item_to_update.item.get_action_by_key_mut(action_key) {
-                action.update_count();
-
-                if action.get_count() == total_count {
-                    action.mark_completed();
-                }
+                action.increment_count();
             } else {
                 warn!("Could not update the action as item with version={version} does not have action_key={action_key}! ");
             }

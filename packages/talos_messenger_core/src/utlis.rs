@@ -4,7 +4,7 @@ use ahash::{HashMap, HashMapExt};
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::{errors::ActionError, suffix::AllowedActionsMapItem};
+use crate::{errors::MessengerActionError, suffix::AllowedActionsMapItem};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ActionsParserConfig<'a> {
@@ -80,7 +80,10 @@ pub fn get_allowed_commit_actions(on_commit_actions: &Value, allowed_actions: &H
         if let Some(action) = get_value_by_key(on_commit_actions, action_key) {
             for sub_action_key in sub_action_keys {
                 if let Some(sub_action) = get_value_by_key(action, sub_action_key) {
-                    filtered_actions.insert(sub_action_key.to_string(), AllowedActionsMapItem::new(sub_action.clone()));
+                    filtered_actions.insert(
+                        sub_action_key.to_string(),
+                        AllowedActionsMapItem::new(sub_action.clone(), get_total_action_count(sub_action)),
+                    );
                 }
             }
         }
@@ -89,19 +92,25 @@ pub fn get_allowed_commit_actions(on_commit_actions: &Value, allowed_actions: &H
     filtered_actions
 }
 
+pub fn get_total_action_count(action: &Value) -> u32 {
+    if let Some(actions_vec) = action.as_array() {
+        actions_vec.len() as u32
+    } else {
+        1
+    }
+}
+
 /// Retrieves sub actions under publish by using a look key.
-pub fn get_actions_deserialised<T: DeserializeOwned>(actions: &Value) -> Result<T, ActionError> {
+pub fn get_actions_deserialised<T: DeserializeOwned>(actions: &Value) -> Result<T, MessengerActionError> {
     match serde_json::from_value(actions.clone()) {
         Ok(res) => Ok(res),
-        Err(err) => Err(ActionError {
-            kind: crate::errors::ActionErrorKind::Deserialisation,
+        Err(err) => Err(MessengerActionError {
+            kind: crate::errors::MessengerActionErrorKind::Deserialisation,
             reason: format!("Deserialisation to type={} failed, with error={:?}", type_name::<T>(), err),
             data: actions.to_string(),
         }),
     }
 }
-
-pub fn parse_white_list() {}
 
 ///// Retrieves the oncommit actions that are supported by the system.
 // fn get_allowed_commit_actions(version: &u64, on_commit_actions: &Value) -> Option<OnCommitActions> {
