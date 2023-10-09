@@ -124,8 +124,9 @@ where
     pub fn retrieve_all_some_vec_items(&self) -> Vec<(usize, u64, Option<u64>)> {
         self.messages
             .iter()
+            .flatten()
             .enumerate()
-            .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
+            .map(|(i, x)| (i, x.item_ver, x.decision_ver))
             .collect()
     }
 

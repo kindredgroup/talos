@@ -275,18 +275,15 @@ async fn get_params() -> Result<LaunchParams, String> {
         }
     }
 
-    if stop_type.is_none() {
-        Err("Parameter --volume is required".into())
-    } else if target_rate.is_none() {
-        Err("Parameter --rate is required".into())
-    } else {
-        Ok(LaunchParams {
-            target_rate: target_rate.unwrap(),
-            stop_type: stop_type.unwrap(),
-            threads: threads.unwrap(),
-            collect_metrics: collect_metrics.unwrap(),
-        })
-    }
+    let stop_type = stop_type.ok_or("Parameter --volume is required")?;
+    let target_rate = target_rate.ok_or("Parameter --rate is required")?;
+
+    Ok(LaunchParams {
+        target_rate,
+        stop_type,
+        threads: threads.unwrap(),
+        collect_metrics: collect_metrics.unwrap(),
+    })
 }
 
 struct RequestGenerator {}
