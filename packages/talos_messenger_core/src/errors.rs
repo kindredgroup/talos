@@ -3,13 +3,14 @@ use thiserror::Error as ThisError;
 pub type MessengerServiceResult = Result<(), MessengerServiceError>;
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum ActionErrorKind {
+pub enum MessengerActionErrorKind {
     Deserialisation,
+    Publishing,
 }
 #[derive(Debug, ThisError, PartialEq, Clone)]
-#[error("Action Error {kind:?} with reason={reason} for data={data:?}")]
-pub struct ActionError {
-    pub kind: ActionErrorKind,
+#[error("Messenger action error {kind:?} with reason={reason} for data={data:?}")]
+pub struct MessengerActionError {
+    pub kind: MessengerActionErrorKind,
     pub reason: String,
     pub data: String,
 }

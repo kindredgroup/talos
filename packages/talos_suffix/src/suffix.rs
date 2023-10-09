@@ -124,8 +124,9 @@ where
     pub fn retrieve_all_some_vec_items(&self) -> Vec<(usize, u64, Option<u64>)> {
         self.messages
             .iter()
+            .flatten()
             .enumerate()
-            .filter_map(|(i, x)| x.is_some().then(|| (i, x.as_ref().unwrap().item_ver, x.as_ref().unwrap().decision_ver)))
+            .map(|(i, x)| (i, x.item_ver, x.decision_ver))
             .collect()
     }
 
@@ -228,8 +229,17 @@ where
         Ok(suffix_item)
     }
 
+    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>> {
+        let index = self.index_from_head(version)?;
+        self.messages.get_mut(index)?.as_mut()
+    }
+
+    fn get_meta(&self) -> &SuffixMeta {
+        &self.meta
+    }
+
     fn insert(&mut self, version: u64, message: T) -> SuffixResult<()> {
-        // // The very first item inserted on the suffix will automatically be made head of the suffix.
+        // The very first item inserted on the suffix will automatically be made head of the suffix.
         if self.meta.head == 0 {
             self.update_head(version);
         }
@@ -254,12 +264,6 @@ where
 
             self.meta.last_insert_vers = version;
         }
-
-        // info!(
-        //     "All some items on suffix insert where head ={}.... {:?}",
-        //     self.meta.head,
-        //     self.retrieve_all_some_vec_items()
-        // );
 
         Ok(())
     }

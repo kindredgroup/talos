@@ -263,22 +263,18 @@ async fn get_params() -> Result<LaunchParams, String> {
         }
     }
 
-    if stop_type.is_none() {
-        Err("Parameter --volume is required".into())
-    } else if accounts.is_none() {
-        Err("Parameter --accounts is required".into())
-    } else if target_rate.is_none() {
-        Err("Parameter --rate is required".into())
-    } else {
-        Ok(LaunchParams {
-            target_rate: target_rate.unwrap(),
-            stop_type: stop_type.unwrap(),
-            threads: threads.unwrap(),
-            accounts: accounts.unwrap(),
-            scaling_config: scaling_config.unwrap_or(HashMap::new()),
-            metric_print_raw: metric_print_raw.is_some(),
-        })
-    }
+    let stop_type = stop_type.ok_or("Parameter --volume is required")?;
+    let target_rate = target_rate.ok_or("Parameter --rate is required")?;
+    let accounts = accounts.ok_or("Parameter --accounts is required")?;
+
+    Ok(LaunchParams {
+        target_rate,
+        stop_type,
+        threads: threads.unwrap(),
+        accounts,
+        scaling_config: scaling_config.unwrap_or_default(),
+        metric_print_raw: metric_print_raw.is_some(),
+    })
 }
 
 struct TransferRequestGenerator {

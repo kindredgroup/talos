@@ -206,7 +206,7 @@ impl MessageReciever for KafkaConsumer {
         }
     }
 
-    fn update_savepoint(&mut self, offset: i64) -> Result<(), Box<SystemServiceError>> {
+    fn update_offset_to_commit(&mut self, offset: i64) -> Result<(), Box<SystemServiceError>> {
         // let partition = self.tpl.;
         let tpl = self.tpl.elements_for_topic(&self.topic);
         if !tpl.is_empty() {

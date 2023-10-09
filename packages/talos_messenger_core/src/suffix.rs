@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
-use talos_suffix::{core::SuffixMeta, Suffix, SuffixItem, SuffixTrait};
+use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
 
 pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_state(&mut self, state: SuffixItemState);
@@ -26,10 +26,6 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     fn set_item_state(&mut self, version: u64, process_state: SuffixItemState);
 
     //  Getters
-    /// Get suffix meta
-    fn get_meta(&self) -> &SuffixMeta;
-    /// Get suffix item as mutable reference.
-    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
 
     /// Checks if suffix ready to prune
     ///
@@ -41,14 +37,14 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     /// Updates the decision for a version.
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
     /// Updates the action for a version using the action_key for lookup.
-    fn update_item_action(&mut self, version: u64, action_key: &str, total_count: u32);
+    fn increment_item_action_count(&mut self, version: u64, action_key: &str);
 
     /// Checks if all versions prioir to this version are already completed, and updates the prune index.
     /// If the prune index was updated, returns the new prune_index, else returns None.
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize>;
 
     /// Checks if all commit actions are completed for the version
-    fn are_all_item_actions_completed(&self, version: u64) -> bool;
+    fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool>;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -68,39 +64,30 @@ pub enum SuffixItemCompleteStateReason {
     NoCommitActions,
     /// When there are commit actions, but they are not required to be handled in messenger
     NoRelavantCommitActions,
-    //TODO: GK - Mark as error?
-    /// When there is an error?
-    // Error(String),
     /// When all commit action has are completed.
     Processed,
+    /// Error in processing
+    ErrorProcessing,
 }
 
-// #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-// pub struct AllowedActionsMapValueMeta {
-//     pub total_count: u32,
-//     pub completed_count: u32,
-// }
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct AllowedActionsMapItem {
     payload: Value,
     count: u32,
-    is_completed: bool,
+    total_count: u32,
 }
 
 impl AllowedActionsMapItem {
-    pub fn new(payload: Value) -> Self {
+    pub fn new(payload: Value, total_count: u32) -> Self {
         AllowedActionsMapItem {
             payload,
             count: 0,
-            is_completed: false,
+            total_count,
         }
     }
-    pub fn update_count(&mut self) {
-        self.count += 1;
-    }
 
-    pub fn mark_completed(&mut self) {
-        self.is_completed = true;
+    pub fn increment_count(&mut self) {
+        self.count += 1;
     }
 
     pub fn get_payload(&self) -> &Value {
@@ -112,7 +99,7 @@ impl AllowedActionsMapItem {
     }
 
     pub fn is_completed(&self) -> bool {
-        self.is_completed
+        self.total_count > 0 && self.total_count == self.count
     }
 }
 
@@ -190,12 +177,6 @@ impl<T> MessengerSuffixTrait<T> for Suffix<T>
 where
     T: MessengerSuffixItemTrait,
 {
-    // TODO: GK - Elevate this to core suffix
-    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>> {
-        let index = self.index_from_head(version)?;
-        self.messages.get_mut(index)?.as_mut()
-    }
-
     fn set_item_state(&mut self, version: u64, process_state: SuffixItemState) {
         if let Some(item_to_update) = self.get_mut(version) {
             item_to_update.item.set_state(process_state)
@@ -208,11 +189,6 @@ where
         } else {
             None
         }
-    }
-
-    // TODO: GK - Elevate this to core suffix
-    fn get_meta(&self) -> &SuffixMeta {
-        &self.meta
     }
 
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
@@ -265,14 +241,10 @@ where
         }
     }
 
-    fn update_item_action(&mut self, version: u64, action_key: &str, total_count: u32) {
+    fn increment_item_action_count(&mut self, version: u64, action_key: &str) {
         if let Some(item_to_update) = self.get_mut(version) {
             if let Some(action) = item_to_update.item.get_action_by_key_mut(action_key) {
-                action.update_count();
-
-                if action.get_count() == total_count {
-                    action.mark_completed();
-                }
+                action.increment_count();
             } else {
                 warn!("Could not update the action as item with version={version} does not have action_key={action_key}! ");
             }
@@ -313,13 +285,12 @@ where
         Some(index)
     }
 
-    fn are_all_item_actions_completed(&self, version: u64) -> bool {
+    fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool> {
         if let Ok(Some(item)) = self.get(version) {
-            item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed())
+            Ok(item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed()))
         } else {
             warn!("could not find item for version={version}");
-            // TODO: GK - handle this in another way for future?
-            true
+            Err(talos_suffix::errors::SuffixError::ItemNotFound(version, None))
         }
     }
 }

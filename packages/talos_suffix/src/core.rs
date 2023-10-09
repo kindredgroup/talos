@@ -56,6 +56,8 @@ pub type SuffixItemType<T> = T;
 
 pub trait SuffixTrait<T> {
     fn get(&self, version: u64) -> SuffixResult<Option<SuffixItem<T>>>;
+    fn get_mut(&mut self, version: u64) -> Option<&mut SuffixItem<T>>;
+    fn get_meta(&self) -> &SuffixMeta;
     fn insert(&mut self, version: u64, message: SuffixItemType<T>) -> SuffixResult<()>;
     fn update_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>>;
