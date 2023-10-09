@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use log::{error, info};
 use tokio::sync::mpsc;
@@ -11,8 +13,8 @@ use talos_messenger_core::{
 use super::models::KafkaAction;
 
 #[derive(Debug)]
-pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync> {
-    pub publisher: M,
+pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync + 'static> {
+    pub publisher: Arc<M>,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
     pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
 }
@@ -37,9 +39,13 @@ where
                             Ok(actions) => {
 
                                 let total_len = actions.len() as u32;
+
                                 for action in actions {
+                                    let publisher = self.publisher.clone();
                                     // Publish the message
-                                    self.publisher.send(version, action, total_len ).await;
+                                    tokio::spawn(async move {
+                                        publisher.send(version, action, total_len ).await;
+                                    });
 
                                 }
                             },

@@ -14,7 +14,6 @@ use talos_certifier_adapters::kafka::utils::build_kafka_headers;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 // Kafka Producer
-// #[derive(Clone)]
 pub struct KafkaProducer<C: ProducerContext + 'static = DefaultProducerContext> {
     producer: ThreadedProducer<C>,
     topic: String,

@@ -69,7 +69,7 @@ async fn main() {
     let messenger_kafka_publisher = MessengerKafkaPublisher { publisher: kafka_producer };
 
     let publish_service = KafkaActionService {
-        publisher: messenger_kafka_publisher,
+        publisher: messenger_kafka_publisher.into(),
         rx_actions_channel,
         tx_feedback_channel,
     };
