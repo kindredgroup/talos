@@ -5,7 +5,7 @@ This is an example project demonstrating how to use Cohort SDK to communicate wi
 
 It is one of many components in Talos ecosystem. Section below describes the functionality of this application and how it depends on other components.
 
-Project is implemented in TypeScript and used the external library `cohort_sdk_client`, which in turn depends on `cohort_sdk_js`. The `cohort_sdk_js` is not desiged to be used directly, but only via its wrapper `cohort_sdk_client`. Both `cohort_sdk_*` libraries are shipped as NPM modules and hosted under `@kinderedgroup` in GitHub Packages NPM repository. While they both are NPM modules and can be installed via `npm install`, the installation of `cohort_sdk_js` has one extra step to compile native code on developer's machine. Please read more about it in the `cohort_sdk_js` package.
+Project is implemented in TypeScript and uses the external library `cohort_sdk_client`, which in turn depends on `cohort_sdk_js`. The `cohort_sdk_js` is not desiged to be used directly, but only via its wrapper `cohort_sdk_client`. Both `cohort_sdk_*` libraries are shipped as NPM modules and hosted under `@kinderedgroup` in GitHub Packages NPM repository. While they both are NPM modules and can be installed via `npm install`, the installation of `cohort_sdk_js` has one extra step to compile native code on developer's machine. Please read more about it in the `cohort_sdk_js` package.
 
 Cohort Initiator JS is TypeScript app. When launched it connects to Postgres database and to Kafka broker, sends some number of certification requests to Talos Certifier. Once all requests are processed the app prints basic performance metrics and shuts down.
 
@@ -94,13 +94,34 @@ make withenv RECIPE=cohort_banking.preload_db args="--accounts $accounts_file"
 
 ### Building Cohort Replicator and Initiator apps
 
-These sample apps depend on `@kindredgroup/cohort_sdk_client` package which is hosted at https://npm.pkg.github.com
+These sample apps depend on `@kindredgroup/cohort_sdk_client` package. It is hosted at [GitHub Packages](https://npm.pkg.github.com) repository.
+
+#### Authenticate to repository GitHub Packages
+TODO: (explain where to obtain token)
+```
+touch .npmrc-talos
+echo "@kindredgroup:registry=https://npm.pkg.github.com" >> .npmrc-talos
+NPM_CONFIG_USERCONFIG=.npmrc-talos
+npm login --registry https://npm.pkg.github.com
+# password is your GitHub token
+# Obtain token at GitHub website Profile -> Settings -> Developer settings -> Personal access tokens -> Tokens (classic)
+```
 
 #### For local development
 
 This section describes how to install cohort client SDK for local development of cohort.
 
-- In the Talos project at GitHub, under ["Packages"](https://github.com/orgs/kindredgroup/packages?repo_name=talos)
+In the Talos project at GitHub, under ["Packages"](https://github.com/orgs/kindredgroup/packages?repo_name=talos) find `cohort_sdk_client` and the version number you need to install locally.
+
+```
+cd $TALOS/cohort_banking_initiator_js
+
+# For example, the SDK version is "0.0.1-bfa8241"
+sdk_version=0.0.1-bfa8241
+npm i @kindredgroup/cohort_sdk_client-$sdk_version
+```
+
+For installing from branch simply use `npm ci`.
 
 ```
 cd $TALOS/cohort_banking_initiator_js
