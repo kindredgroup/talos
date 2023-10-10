@@ -16,7 +16,7 @@ selectNodeName=$1
 outputParamName=$2
 
 if [ "$selectNodeName" == "" ]; then
-    echo "Missing the furst parameter - npm package name"
+    echo "Missing the first parameter - npm package name"
     exit 1
 fi
 

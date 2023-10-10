@@ -94,6 +94,14 @@ make withenv RECIPE=cohort_banking.preload_db args="--accounts $accounts_file"
 
 ### Building Cohort Replicator and Initiator apps
 
+These sample apps depend on `@kindredgroup/cohort_sdk_client` package which is hosted at https://npm.pkg.github.com
+
+#### For local development
+
+This section describes how to install cohort client SDK for local development of cohort.
+
+- In the Talos project at GitHub, under ["Packages"](https://github.com/orgs/kindredgroup/packages?repo_name=talos)
+
 ```
 cd $TALOS/cohort_banking_initiator_js
 # This might take some time while native JS bindings are being compiled

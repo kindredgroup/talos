@@ -16,7 +16,6 @@ jobs:
                     dirSdkJsClient: cohort_sdk_client
                     dirCohortInitiator: cohort_banking_initiator_js
                     dirCohortReplicator: cohort_banking_replicator_js
-                    customiseHostCommand: echo "No customizations needed"
 
         name: Publish SDK NPS with bundled Rust for node@16
         runs-on: ${{ matrix.settings.host }}
@@ -36,7 +35,6 @@ jobs:
                 echo "NPM_CONFIG_USERCONFIG=$NPM_CONFIG_USERCONFIG"
                 cat $NPM_CONFIG_USERCONFIG
                 echo ""
-                ${{ matrix.settings.customiseHostCommand }}
 
             - name: Setup version for ${{ matrix.settings.dirSdkJs }} NPM
               id: sdk-js-version
