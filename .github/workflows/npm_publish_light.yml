@@ -1,3 +1,11 @@
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Creates and publishes @kindredgroup/cohort_sdk_js, @kindredgroup/cohort_sdk_client
+# NPM packages. The "cohort_sdk_js" is bundled together with Talos sources so that users
+# could build it locally.
+# Performs a basic build test by installing "cohort_sdk_client" into
+# "cohort_banking_initiator_js", "cohort_banking_replicator_js" apps and then builds apps.
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 name: Build and Publish Cohort SDK NPMs
 on:
     #workflow_call:
