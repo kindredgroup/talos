@@ -3,7 +3,7 @@
 # - Copies all talos sources into TARGET_DIR (default to dist/talos)
 # - Modifies Cargo.toml workspace file to include only packages/*.
 # - Builds native bindings using NAPI-RS
-# - Finally, cleans up and prepares the directory to be included NPM package
+# - Finally, cleans up and prepares the directory to be included as NPM package
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 CURRENT_DIR=$(pwd)
