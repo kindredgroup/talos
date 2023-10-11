@@ -1,0 +1,132 @@
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Creates and publishes @kindredgroup/cohort_sdk_js, @kindredgroup/cohort_sdk_client
+# NPM packages. The "cohort_sdk_js" is bundled together with Talos sources so that users
+# could build it locally.
+# Performs a basic build test by installing "cohort_sdk_client" into
+# "cohort_banking_initiator_js", "cohort_banking_replicator_js" apps and then builds apps.
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+name: Build and Publish Cohort SDK NPMs
+on:
+    #workflow_call:
+    push:
+env:
+    SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
+    SDK_CLIENT_PACKAGE_NAME: "@kindredgroup/cohort_sdk_client"
+jobs:
+    npm:
+        strategy:
+            fail-fast: false
+            matrix:
+                settings:
+                  - host: macos-latest
+                    dirSdkJs: packages/cohort_sdk_js
+                    dirSdkJsClient: cohort_sdk_client
+                    dirCohortInitiator: cohort_banking_initiator_js
+                    dirCohortReplicator: cohort_banking_replicator_js
+
+        name: Publish SDK NPS with bundled Rust for node@16
+        runs-on: ${{ matrix.settings.host }}
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Setup node
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 16
+                  check-latest: true
+                  registry-url: "https://npm.pkg.github.com"
+
+            - name: Customise host image
+              shell: bash
+              run: |-
+                echo "NPM_CONFIG_USERCONFIG=$NPM_CONFIG_USERCONFIG"
+                cat $NPM_CONFIG_USERCONFIG
+                echo ""
+
+            - name: Setup version for ${{ matrix.settings.dirSdkJs }} NPM
+              id: sdk-js-version
+              shell: bash
+              run: |-
+                echo "Building SDK JS Library"
+                cd ${{ matrix.settings.dirSdkJs }}
+                pwd
+                ls -l
+                npm ci --foreground-scripts
+                ../../scripts/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_JS_PACKAGE_NAME }} "SDK_JS_PACKAGE_VERSION"
+                echo ""
+
+            - name: Build and Publish ${{ matrix.settings.dirSdkJs }}
+              shell: bash
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                cd ${{ matrix.settings.dirSdkJs }}
+                pwd
+                ls -l
+                echo "Current version is"
+                npm version
+                npm publish --foreground-scripts
+                echo ""
+
+            - name: Setup version for ${{ matrix.settings.dirSdkJsClient }} NPM
+              id: sdk-client-version
+              shell: bash
+              env:
+                  SDK_JS_PACKAGE_VERSION: ${{ steps.sdk-js-version.outputs.SDK_JS_PACKAGE_VERSION }}
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                echo "Building SDK Client"
+                cd ${{ matrix.settings.dirSdkJsClient }}
+                pwd
+                ls -lah
+                rm package-lock.json || true
+                echo "D: npm install $SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION --foreground-scripts"
+                npm install "$SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION" --foreground-scripts
+                ../scripts/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_CLIENT_PACKAGE_NAME }} "SDK_CLIENT_PACKAGE_VERSION"
+                echo ""
+
+            - name: Build and Publish ${{ matrix.settings.dirSdkJsClient }} NPM
+              shell: bash
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                cd ${{ matrix.settings.dirSdkJsClient }}
+                pwd
+                ls -l
+                echo "Current version is"
+                npm version
+                npm ci --foreground-scripts
+                npm run build --foreground-scripts
+                npm publish --foreground-scripts
+                echo ""
+
+            - name: Build ${{ matrix.settings.dirCohortInitiator }}
+              env:
+                  SDK_CLIENT_PACKAGE_VERSION: ${{ steps.sdk-client-version.outputs.SDK_CLIENT_PACKAGE_VERSION }}
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  SKIP_NAPI_RS_STEP: true # this will re-use already bundled native lib
+              shell: bash
+              run: |-
+                cd ${{ matrix.settings.dirCohortInitiator }}
+                pwd
+                ls -l
+                rm package-lock.json || true
+                echo "D: npm install $SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION --foreground-scripts"
+                npm install "$SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION" --foreground-scripts
+                npm run build --foreground-scripts
+
+            - name: Build ${{ matrix.settings.dirCohortReplicator }}
+              env:
+                  SDK_CLIENT_PACKAGE_VERSION: ${{ steps.sdk-client-version.outputs.SDK_CLIENT_PACKAGE_VERSION }}
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  SKIP_NAPI_RS_STEP: true # this will re-use already bundled native lib
+              shell: bash
+              run: |-
+                cd ${{ matrix.settings.dirCohortInitiator }}
+                pwd
+                ls -l
+                rm package-lock.json || true
+                echo "D: npm install $SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION --foreground-scripts"
+                npm install "$SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION" --foreground-scripts
+                npm run build --foreground-scripts

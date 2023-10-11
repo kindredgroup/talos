@@ -1,0 +1,120 @@
+name: cohort_sdk_js
+on:
+    workflow_call:
+    #push:
+env:
+    DEBUG: "napi:*"
+    OPENSSL_DIR: /usr/local/Cellar/openssl@1.1/1.1.1w
+    SASL2_DIR: /usr/local/Cellar/cyrus-sasl/2.1.28_2
+    LDFLAGS: "-L/usr/local/Cellar/openssl@1.1/1.1.1w/lib -L/usr/local/opt/cyrus-sasl/lib"
+    CPPFLAGS: "-I/usr/local/Cellar/openssl@1.1/1.1.1w/include -I/usr/local/opt/cyrus-sasl/include"
+jobs:
+    npm:
+        strategy:
+            fail-fast: false
+            matrix:
+                settings:
+                  - host: macos-latest
+                    target: x86_64-apple-darwin
+                    jsPackageHome: packages/cohort_sdk_js
+                    finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-x64.node
+                    customiseHostCommand: echo 'No customizations are needed'
+                    buildCommand: npm run build -- --target x86_64-apple-darwin
+
+                  - host: macos-latest
+                    target: aarch64-apple-darwin
+                    jsPackageHome: packages/cohort_sdk_js
+                    finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.darwin-arm64.node
+                    customiseHostCommand: |-
+                      touch ~/.cargo/config
+                      cat <<EOT >> ~/.cargo/config
+                      [target.aarch64-apple-darwin]
+                      rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+                      EOT
+                      echo "~/.cargo/config"
+                      cat ~/.cargo/config
+                    buildCommand: |-
+                      npm run build -- --target aarch64-apple-darwin
+
+                  - host: windows-latest
+                    target: x86_64-pc-windows-msvc
+                    jsPackageHome: packages\\cohort_sdk_js
+                    finalPackageName: packages\cohort_sdk_js\cohort_sdk_js.*.node
+                    customiseHostCommand: ECHO 'No customizations are needed'
+                    # customiseHostCommand: |-
+                    #   choco install openssl --version=1.1.1.2100
+                    #   ECHO "C:\Program Files\OpenSSL\="
+                    #   ls -l "C:\\Program Files\\OpenSSL"
+                    #   setx OPENSSL_DIR "C:\\Program Files\\OpenSSL"
+                    buildCommand: npm run build -- --target x86_64-pc-windows-msvc
+
+                  - host: ubuntu-latest
+                    target: x86_64-unknown-linux-gnu
+                    jsPackageHome: packages/cohort_sdk_js
+                    finalPackageName: packages/cohort_sdk_js/cohort_sdk_js.linux-x64-gnu.node
+                    customiseHostCommand: sudo apt-get update -y && sudo apt-get install -y libsasl2-dev
+                    buildCommand: npm run build -- --target x86_64-unknown-linux-gnu
+
+        name: stable - ${{ matrix.settings.target }} - node@16
+        runs-on: ${{ matrix.settings.host }}
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Setup node
+              uses: actions/setup-node@v3
+              with:
+                  node-version: 16
+                  check-latest: true
+
+            - name: Install
+              uses: actions-rs/toolchain@v1
+              with:
+                  profile: minimal
+                  override: true
+                  toolchain: stable
+                  target: ${{ matrix.settings.target }}
+
+            - name: Cache cargo
+              uses: actions/cache@v3
+              with:
+                path: |
+                  ~/.cargo/registry/index/
+                  ~/.cargo/registry/cache/
+                  ~/.cargo/git/db/
+                  .cargo-cache
+                  target/
+                key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
+
+            - name: Customise host image
+              shell: bash
+              run: ${{ matrix.settings.customiseHostCommand }}
+
+            - name: Show current directory name
+              shell: bash
+              run: pwd
+
+            - name: List content before build
+              shell: bash
+              run: ls -l && ls -l ${{ matrix.settings.jsPackageHome }}
+
+            # - name: Cache cargo TODO deal with caching
+            - name: Install node dependencies
+              run: cd ${{ matrix.settings.jsPackageHome }} && pwd && ls -l . && npm install -verbose
+
+            # - name: Cargo build
+            #   run: cargo build
+
+            - name: NAPI-RS build
+              shell: bash
+              run: cd ${{ matrix.settings.jsPackageHome }} && ${{ matrix.settings.buildCommand }}
+
+            - name: List content after build
+              shell: bash
+              run: ls -l && ls -l ${{ matrix.settings.jsPackageHome }}
+
+            - name: Upload built binary
+              uses: actions/upload-artifact@v3
+              with:
+                  name: bindings-${{ matrix.settings.target }}
+                  path: ${{ matrix.settings.finalPackageName }}
+                  if-no-files-found: error

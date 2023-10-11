@@ -1,4 +1,4 @@
-import { InternalReplicator, JsKafkaConfig, JsReplicatorConfig, JsStatemapAndSnapshot, SdkErrorKind } from "cohort_sdk_js"
+import { InternalReplicator, JsKafkaConfig, JsReplicatorConfig, JsStatemapAndSnapshot, SdkErrorKind } from "@kindredgroup/cohort_sdk_js"
 import { isSdkError } from "./internal"
 import { TalosSdkError } from "."
 

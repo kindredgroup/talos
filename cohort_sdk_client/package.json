@@ -1,13 +1,13 @@
 {
-  "name": "cohort_sdk_client",
-  "version": "1.0.0",
+  "name": "@kindredgroup/cohort_sdk_client",
+  "version": "0.0.1",
+  "author": "Kindredgroup",
+  "license": "UNLICENSED",
   "description": "",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "keywords": [],
-  "author": "",
-  "license": "UNLICENSED",
   "devDependencies": {
     "@types/node": "^20.5.1",
     "typescript": "^5.1.6"
@@ -16,16 +16,16 @@
     "build": "npx tsc -d"
   },
   "dependencies": {
+    "@kindredgroup/cohort_sdk_js": "^0.0.1-b4185b0",
     "@types/pg": "^8.10.2",
-    "cohort_sdk_js": "file:../packages/cohort_sdk_js",
     "ts-node": "^10.9.1",
     "winston": "^3.10.0"
   },
   "optionalDependencies": {
-    "cohort_sdk_js-win32-x64-msvc": "0.0.1",
+    "cohort_sdk_js-darwin-arm64": "0.0.1",
+    "cohort_sdk_js-darwin-universal": "0.0.1",
     "cohort_sdk_js-darwin-x64": "0.0.1",
     "cohort_sdk_js-linux-x64-gnu": "0.0.1",
-    "cohort_sdk_js-darwin-arm64": "0.0.1",
-    "cohort_sdk_js-darwin-universal": "0.0.1"
+    "cohort_sdk_js-win32-x64-msvc": "0.0.1"
   }
 }

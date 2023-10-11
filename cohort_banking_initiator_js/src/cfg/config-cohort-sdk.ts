@@ -1,4 +1,4 @@
-import { JsInitiatorConfig } from "cohort_sdk_client"
+import { JsInitiatorConfig } from "@kindredgroup/cohort_sdk_client"
 
 const SDK_CONFIG: JsInitiatorConfig = {
     backoffOnConflict: {

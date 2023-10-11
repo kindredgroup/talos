@@ -1,4 +1,4 @@
-import { Replicator, TalosSdkError } from "cohort_sdk_client"
+import { Replicator, TalosSdkError } from "@kindredgroup/cohort_sdk_client"
 import { Database } from "./database"
 
 import { KAFKA_CONFIG } from "./cfg/config-kafka"

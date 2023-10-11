@@ -1,0 +1,15 @@
+{
+  "name": "cohort_sdk_js-darwin-universal",
+  "version": "0.0.27",
+  "os": [
+    "darwin"
+  ],
+  "main": "cohort_sdk_js.darwin-universal.node",
+  "files": [
+    "cohort_sdk_js.darwin-universal.node"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">= 10"
+  }
+}

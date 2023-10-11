@@ -7,7 +7,7 @@ import { logger } from "./logger"
 
 import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
-import { Initiator, JsCertificationRequestPayload, JsOutOfOrderInstallOutcome, OutOfOrderRequest, TalosSdkError } from "cohort_sdk_client"
+import { Initiator, JsCertificationRequestPayload, JsOutOfOrderInstallOutcome, OutOfOrderRequest, TalosSdkError } from "@kindredgroup/cohort_sdk_client"
 
 export class BankingApp {
     private startedAtMs: number = 0

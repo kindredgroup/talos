@@ -6,6 +6,10 @@ edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
+
+[build-dependencies]
+napi-build = "2.0.1"
+
 [dependencies]
 # lib for napi bindings
 napi = { version = "2.10.3", features = [
@@ -19,7 +23,7 @@ napi-derive = "2.9.3"
 thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-uuid = { version = "1", features = ["serde"] }
+uuid = { version = "1.4.1", features = ["v4", "serde"] }
 chrono = { version = "0.4.19", features = ["serde"] }
 
 # db migrations
@@ -27,20 +31,15 @@ chrono = { version = "0.4.19", features = ["serde"] }
 # crate depencies
 env_logger = { workspace = true }
 log = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
 cohort_sdk = { path = "../cohort_sdk" }
-tokio = { workspace = true, features = ["full"] }
-talos_cohort_replicator = { path = "../../packages/talos_cohort_replicator" }
+talos_cohort_replicator = { path = "../talos_cohort_replicator" }
 talos_certifier = { path = "../talos_certifier" }
-talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters" }
+talos_certifier_adapters = { path = "../talos_certifier_adapters" }
 talos_rdkafka_utils = { path = "../talos_rdkafka_utils" }
 
 async-trait = "0.1.72"
-# rdkafka = { version = "0.34.0", features = ["sasl"] }
-# rdkafka-sys = { version = "4.3.0" }
-
-[build-dependencies]
-napi-build = "2.0.1"
 
 #[dev-dependencies.cargo-husky]
 #version = "1"
