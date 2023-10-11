@@ -332,7 +332,7 @@ impl Cohort {
 
         // The loop exits when either of the below conditions are met.
         //  1. When commit decision is received from talos agent/certifier.
-        //  2. When an clientabort is requested.
+        //  2. When an client abort is requested.
         //  3. When all retries are exhausted.
         let final_result = loop {
             // Await for snapshot and build the certification request payload.

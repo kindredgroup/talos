@@ -19,9 +19,9 @@ export class Initiator {
 
     constructor(readonly impl: InternalInitiator) {}
 
-    async certify(makeNewRequestCallback: () => Promise<any>, oooCallback: (err: Error | null, value: OutOfOrderRequest) => any): Promise<void> {
+    async certify(makeNewRequestCallback: () => Promise<any>, oooInstallCallback: (err: Error | null, value: OutOfOrderRequest) => any): Promise<void> {
         try {
-            return await this.impl.certify(makeNewRequestCallback, oooCallback)
+            return await this.impl.certify(makeNewRequestCallback, oooInstallCallback)
         } catch (e) {
             const reason: string = e.message
             if (isSdkError(reason)) {
