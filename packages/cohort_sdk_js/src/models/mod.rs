@@ -1,9 +1,11 @@
-use std::collections::HashMap;
-
-// $coverage:ignore-start
 use cohort_sdk::model::BackoffConfig;
-use napi_derive::napi;
+use std::collections::HashMap;
+use talos_agent::messaging::api::Decision;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
+
+use napi::bindgen_prelude::FromNapiValue;
+use napi::bindgen_prelude::ToNapiValue;
+use napi_derive::napi;
 
 #[napi(object)]
 pub struct JsBackoffConfig {
@@ -54,6 +56,21 @@ impl From<JsKafkaConfig> for KafkaConfig {
             // consumer_config_overrides: HashMap::new(),
             producer_send_timeout_ms: val.producer_send_timeout_ms,
             log_level: val.log_level,
+        }
+    }
+}
+
+#[napi(string_enum)]
+pub enum JsDecision {
+    Committed,
+    Aborted,
+}
+
+impl From<Decision> for JsDecision {
+    fn from(value: Decision) -> Self {
+        match value {
+            Decision::Committed => JsDecision::Committed,
+            Decision::Aborted => JsDecision::Aborted,
         }
     }
 }
