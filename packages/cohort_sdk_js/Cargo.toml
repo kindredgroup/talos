@@ -34,6 +34,7 @@ log = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
 cohort_sdk = { path = "../cohort_sdk" }
+talos_agent = { path = "../talos_agent" }
 talos_cohort_replicator = { path = "../talos_cohort_replicator" }
 talos_certifier = { path = "../talos_certifier" }
 talos_certifier_adapters = { path = "../talos_certifier_adapters" }

@@ -95,7 +95,7 @@ export class BankingApp {
         let stateDuration = 0
         let ooinstallEnd = 0
         let ooinstallDuration = 0
-        await this.initiator.certify(
+        let result = await this.initiator.certify(
             async () => {
                 const s = Date.now()
                 const newRequest = await this.createNewRequest(tx) as any
@@ -113,6 +113,8 @@ export class BankingApp {
                 return r
             }
         )
+
+        // logger.info("tx: %s - [%s]; Completed in [attempts=%s, ms=%s]", result.xid, result.decision, result.metadata.attempts, result.metadata.durationMs)
 
         return { stateDuration, stateEnd, ooinstallDuration, ooinstallEnd }
     }
