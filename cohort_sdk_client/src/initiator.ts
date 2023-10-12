@@ -1,4 +1,4 @@
-import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind, JsCertificationResponse } from "@kindredgroup/cohort_sdk_js"
+import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind, JsCertificationResponse, JsCertificationCandidateCallbackResponse } from "@kindredgroup/cohort_sdk_js"
 import { isSdkError } from "./internal"
 import { TalosSdkError } from "."
 
@@ -19,8 +19,7 @@ export class Initiator {
 
     constructor(readonly impl: InternalInitiator) {}
 
-
-    async certify(makeNewRequestCallback: () => Promise<any>, oooInstallCallback: (err: Error | null, value: OutOfOrderRequest) => any): Promise<JsCertificationResponse> {
+    async certify(makeNewRequestCallback: () => Promise<any>, oooInstallCallback: (value: OutOfOrderRequest) => Promise<JsCertificationCandidateCallbackResponse>): Promise<JsCertificationResponse> {
         try {
             return await this.impl.certify(makeNewRequestCallback, oooInstallCallback)
         } catch (e) {
