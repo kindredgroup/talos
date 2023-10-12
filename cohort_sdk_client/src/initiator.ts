@@ -19,9 +19,22 @@ export class Initiator {
 
     constructor(readonly impl: InternalInitiator) {}
 
-    async certify(makeNewRequestCallback: () => Promise<any>, oooInstallCallback: (value: OutOfOrderRequest) => Promise<JsCertificationCandidateCallbackResponse>): Promise<JsCertificationResponse> {
+    async certify(makeNewRequestCallback: () => Promise<JsCertificationCandidateCallbackResponse>, oooInstallCallback: (oooRequest: OutOfOrderRequest) => Promise<JsCertificationCandidateCallbackResponse>): Promise<JsCertificationResponse> {
         try {
-            return await this.impl.certify(makeNewRequestCallback, oooInstallCallback)
+            // This will hide the 'error' parameter from callback (it comes from NAPI).
+            const adaptedOooInstallCallback = async (error: Error | null, oooRequest: OutOfOrderRequest): Promise<JsCertificationCandidateCallbackResponse> => {
+                if (error) {
+                    throw new TalosSdkError(
+                        SdkErrorKind.Internal,
+                        "Call from native code into 'oooInstallCallback' function provided by JS has failed at the NAPI layer. See the 'cause' field for more details.",
+                        { cause: error }
+                    )
+                } else {
+                    return await oooInstallCallback(oooRequest)
+                }
+            }
+
+            return await this.impl.certify(makeNewRequestCallback, adaptedOooInstallCallback)
         } catch (e) {
             const reason: string = e.message
             if (isSdkError(reason)) {

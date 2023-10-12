@@ -104,7 +104,7 @@ export class BankingApp {
                 stateDuration = n - s
                 return { newRequest }
             },
-            async (_e, request: OutOfOrderRequest) => {
+            async (request: OutOfOrderRequest) => {
                 const s = Date.now()
                 const r = await this.installOutOfOrder(tx, request) as any
                 const n = Date.now()
