@@ -2,9 +2,12 @@ import { Initiator } from "./initiator"
 import { Replicator } from "./replicator"
 import {
     JsCertificationRequestPayload,
+    JsCertificationResponse,
+    JsDecision,
     JsInitiatorConfig,
     JsKafkaConfig,
     JsReplicatorConfig,
+    JsResponseMetadata,
     JsStatemapAndSnapshot,
     JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,
@@ -20,10 +23,13 @@ class TalosSdkError extends Error {
 
 export {
     Initiator,
+    JsDecision,
     JsInitiatorConfig,
+    JsCertificationResponse,
     JsCertificationRequestPayload,
     JsKafkaConfig,
     JsReplicatorConfig,
+    JsResponseMetadata,
     JsStatemapAndSnapshot,
     JsOutOfOrderInstallOutcome,
     OutOfOrderRequest,

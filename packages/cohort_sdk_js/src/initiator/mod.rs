@@ -1,4 +1,4 @@
-use crate::models::{JsBackoffConfig, JsKafkaConfig};
+use crate::models::{JsBackoffConfig, JsDecision, JsKafkaConfig};
 use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
@@ -6,7 +6,7 @@ use cohort_sdk::model::callback::{
     CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OutOfOrderInstallOutcome, OutOfOrderInstallRequest,
     OutOfOrderInstaller,
 };
-use cohort_sdk::model::{ClientError, Config};
+use cohort_sdk::model::{CertificationResponse, ClientError, Config, ResponseMetadata};
 use napi::bindgen_prelude::FromNapiValue;
 use napi::bindgen_prelude::Promise;
 use napi::bindgen_prelude::ToNapiValue;
@@ -126,6 +126,46 @@ impl From<JsOutOfOrderInstallOutcome> for OutOfOrderInstallOutcome {
     }
 }
 
+#[napi(object)]
+pub struct JsCertificationResponse {
+    pub xid: String,
+    pub decision: JsDecision,
+    pub version: i64,
+    pub safepoint: Option<i64>,
+    pub conflict: Option<i64>,
+    pub metadata: JsResponseMetadata,
+    pub statemaps: Option<Vec<HashMap<String, Value>>>,
+}
+
+impl From<CertificationResponse> for JsCertificationResponse {
+    fn from(value: CertificationResponse) -> Self {
+        Self {
+            xid: value.xid,
+            decision: value.decision.into(),
+            version: value.version as i64,
+            safepoint: value.safepoint.map(|v| v as i64),
+            conflict: value.conflict.map(|v| v as i64),
+            metadata: value.metadata.into(),
+            statemaps: value.statemaps,
+        }
+    }
+}
+
+impl From<ResponseMetadata> for JsResponseMetadata {
+    fn from(value: ResponseMetadata) -> Self {
+        Self {
+            attempts: value.attempts,
+            duration_ms: value.duration_ms as i64,
+        }
+    }
+}
+
+#[napi(object)]
+pub struct JsResponseMetadata {
+    pub attempts: u32,
+    pub duration_ms: i64,
+}
+
 #[napi]
 pub struct InternalInitiator {
     cohort: Cohort,
@@ -144,12 +184,12 @@ impl InternalInitiator {
         &self,
         #[napi(ts_arg_type = "() => Promise<any>")] make_new_request_callback: ThreadsafeFunction<()>,
         ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
-    ) -> napi::Result<()> {
+    ) -> napi::Result<JsCertificationResponse> {
         let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         let make_new_request = || new_request_provider.make_new_request();
-        let _res = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error)?;
-        Ok(())
+        let response = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error)?;
+        Ok(response.into())
     }
 }
 
