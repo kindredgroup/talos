@@ -17,7 +17,7 @@ new Promise(async (_resolve) => {
     try {
         await replicator.run(
             async () => await database.getSnapshot(),
-            async (_, params) => await database.install(params, { delayMs: 2, maxAttempts: 50 })
+            async (data) => await database.install(data, { delayMs: 2, maxAttempts: 50 })
         )
         logger.info("Replciator is running ...")
     } catch (e) {

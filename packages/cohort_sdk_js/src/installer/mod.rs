@@ -85,7 +85,9 @@ impl InternalReplicator {
     pub async fn run(
         &self,
         #[napi(ts_arg_type = "() => Promise<number>")] snapshot_provider_callback: ThreadsafeFunction<()>,
-        statemap_installer_callback: ThreadsafeFunction<JsStatemapAndSnapshot>,
+        #[napi(ts_arg_type = "(error: Error | null, data: JsStatemapAndSnapshot) => Promise<void>")] statemap_installer_callback: ThreadsafeFunction<
+            JsStatemapAndSnapshot,
+        >,
     ) -> napi::Result<()> {
         let kafka_consumer = KafkaConsumer::new(&self.kafka_config.clone().into());
         let brokers = &self.kafka_config.brokers.clone();
