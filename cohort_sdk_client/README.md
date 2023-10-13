@@ -282,7 +282,7 @@ export interface JsStatemapItem {
   payload: any
 }
 ```
-The purpose of statemap installer callback is to "catch-up" on changes made by other* cohorts.
+The purpose of statemap installer callback is to "catch-up" on changes made by other cohorts (including your cohort).
 
 In the deployment where there is no Talos present, microservices typically implement eventual consistency model by utilising messaging broker. For example, Kafka. If changes are made to bank account in Cohort 1 that change will eventually propagate to Cohort 2 through messaging middleware.
 
@@ -290,13 +290,13 @@ In the deployment with Talos, the replicator, specifically this callback, is res
 
 However, there are few rules which Talos protocols expects you to implement.
 
-- Once you are done updating business objects in your database, it is very important to update the global stapshot. The replicator, specifically this callback, is the only place within cohort which is responsible for writing into snapshots table.
-- The version number in the snapshots table should only be incremented. If it happens that callabck is invoked with older version, then no change should be made to database.
-- The change to business objects and to snapshots table should be atomic (in a single DB transaction with isolation level matching repeatable read or stricter).
+- Once you are done updating business objects in your database, it is very important to update the global stapshot. The replicator, specifically this callback, is the only place within cohort which is responsible for writing into snapshot table.
+- The version number in the snapshot table should only be incremented. If it happens that callback is invoked with older version, then no change should be made to database.
+- The change to business objects and to snapshot table should be atomic (in a single DB transaction with isolation level matching repeatable read or stricter).
 - When callback is invoked, it is possible that your business objects are already updated. In this case, the job of callback is to update the snapshot table only.
-  - This may happen if replicator and initiator belong to the same cohort, so initiator's out of order installer may have executed before the replicator and updated our business objects. However, installer should never write to snapshots table.
-  - When replicator belong to different cohort, it is just catching up on the changes made by other cohorts, hence it may not encounter the state when business objects is already updated. Unless there was some contingency like unexpected restart.
-- And finally, when updating business obbjects, alo update their versions so that they match with snapshot version.
+  - This may happen if replicator and initiator belong to the same cohort, for example, out of order installer in initiator may have executed updated our business objects before the replicator. However, installer should never write to snapshot table.
+  - When replicator belong to different cohort, it is just catching up on the changes made by other cohorts, hence it may not encounter the state when business objects are updated already. Unless there was some contingency, like unexpected restart.
+- When updating business objects, also update their versions so that versions match with snapshot version.
 
 What value to write into snapshot table? Use this attribute: `JsStatemapAndSnapshot.version`
 What version to set into business objects? Use this attribute: `JsStatemapAndSnapshot.version`
