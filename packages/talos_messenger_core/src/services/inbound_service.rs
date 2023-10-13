@@ -149,12 +149,12 @@ where
                     // 2. Add/update to suffix.
                     match msg {
                         // 2.1 For CM - Install messages on the version
-                        ChannelMessage::Candidate(message) => {
+                        ChannelMessage::Candidate(candidate) => {
 
-                            let version = message.version;
-                            if message.version > 0 {
+                            let version = candidate.message.version;
+                            if version > 0 {
                                 // insert item to suffix
-                                let _ = self.suffix.insert(version, message.into());
+                                let _ = self.suffix.insert(version, candidate.message.into());
 
                                 if let Some(item_to_update) = self.suffix.get_mut(version){
                                     if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
@@ -178,11 +178,11 @@ where
 
                         },
                         // 2.2 For DM - Update the decision with outcome + safepoint.
-                        ChannelMessage::Decision(decision_version, decision_message) => {
-                            let version = decision_message.get_candidate_version();
-                            info!("[Decision Message] Version received = {} and {}", decision_version, version);
+                        ChannelMessage::Decision(decision) => {
+                            let version = decision.message.get_candidate_version();
+                            info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
-                            self.suffix.update_item_decision(version, decision_version, &decision_message);
+                            self.suffix.update_item_decision(version, decision.decision_version, &decision.message);
 
                             self.process_next_actions().await?;
 

@@ -7,7 +7,7 @@ use rdkafka::{
     Message, TopicPartitionList,
 };
 use talos_certifier::{
-    core::MessageVariant,
+    core::{CandidateChannelMessage, DecisionChannelMessage, MessageVariant},
     errors::SystemServiceError,
     model::{CandidateMessage, DecisionMessage},
     ports::{
@@ -111,6 +111,7 @@ impl MessageReciever for KafkaConsumer {
             data: None,
         })?;
 
+        let channel_meta = talos_certifier::ChannelMeta { headers: headers.clone() };
         let channel_msg = match utils::parse_message_variant(message_type).map_err(|e| MessageReceiverError {
             kind: MessageReceiverErrorKind::ParseError,
             version: Some(offset),
@@ -126,7 +127,13 @@ impl MessageReciever for KafkaConsumer {
                 })?;
                 msg.version = offset;
                 msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                ChannelMessage::Candidate(msg)
+                ChannelMessage::Candidate(
+                    CandidateChannelMessage {
+                        message: msg,
+                        meta: channel_meta,
+                    }
+                    .into(),
+                )
             }
             MessageVariant::Decision => {
                 let mut msg: DecisionMessage = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
@@ -149,7 +156,14 @@ impl MessageReciever for KafkaConsumer {
                     })?;
                 }
 
-                ChannelMessage::Decision(offset, msg)
+                ChannelMessage::Decision(
+                    DecisionChannelMessage {
+                        decision_version: offset,
+                        message: msg,
+                        meta: channel_meta,
+                    }
+                    .into(),
+                )
             }
         };
 

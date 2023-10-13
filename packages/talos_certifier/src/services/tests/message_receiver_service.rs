@@ -1,4 +1,7 @@
-use std::sync::{atomic::AtomicI64, Arc};
+use std::{
+    collections::HashMap,
+    sync::{atomic::AtomicI64, Arc},
+};
 
 use async_trait::async_trait;
 use tokio::{
@@ -7,7 +10,7 @@ use tokio::{
 };
 
 use crate::{
-    core::{System, SystemService},
+    core::{CandidateChannelMessage, System, SystemService},
     errors::SystemServiceError,
     model::CandidateMessage,
     ports::{common::SharedPortTraits, errors::MessageReceiverError, MessageReciever},
@@ -28,8 +31,8 @@ impl MessageReciever for MockReciever {
         let msg = self.consumer.recv().await.unwrap();
 
         let vers = match &msg {
-            ChannelMessage::Candidate(msg) => Some(msg.version),
-            ChannelMessage::Decision(vers, _) => Some(vers).copied(),
+            ChannelMessage::Candidate(msg) => Some(msg.message.version),
+            ChannelMessage::Decision(decision) => Some(decision.decision_version),
         };
 
         self.offset = vers;
@@ -88,22 +91,30 @@ async fn test_consume_message() {
 
     let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, commit_offset, system);
 
+    let candidate_message = CandidateMessage {
+        xid: "xid-1".to_string(),
+        version: 8,
+        agent: "agent-1".to_string(),
+        cohort: "cohort-1".to_string(),
+        snapshot: 5,
+        readvers: vec![],
+        readset: vec![],
+        writeset: vec!["ksp:w1".to_owned()],
+        metadata: None,
+        on_commit: None,
+        statemap: None,
+        published_at: 0,
+        received_at: 0,
+    };
+
     mock_channel_tx
-        .send(ChannelMessage::Candidate(CandidateMessage {
-            xid: "xid-1".to_string(),
-            version: 8,
-            agent: "agent-1".to_string(),
-            cohort: "cohort-1".to_string(),
-            snapshot: 5,
-            readvers: vec![],
-            readset: vec![],
-            writeset: vec!["ksp:w1".to_owned()],
-            metadata: None,
-            on_commit: None,
-            statemap: None,
-            published_at: 0,
-            received_at: 0,
-        }))
+        .send(ChannelMessage::Candidate(
+            CandidateChannelMessage {
+                message: candidate_message,
+                meta: crate::ChannelMeta { headers: HashMap::new() },
+            }
+            .into(),
+        ))
         .await
         .unwrap();
 
@@ -111,9 +122,9 @@ async fn test_consume_message() {
 
     assert!(result.is_ok());
 
-    if let Some(ChannelMessage::Candidate(msg)) = msg_channel_rx.recv().await {
-        assert_eq!(msg.version, 8);
-        assert_eq!(msg.xid, "xid-1".to_string());
+    if let Some(ChannelMessage::Candidate(candidate)) = msg_channel_rx.recv().await {
+        assert_eq!(candidate.message.version, 8);
+        assert_eq!(candidate.message.xid, "xid-1".to_string());
     }
 }
 
@@ -136,23 +147,29 @@ async fn test_consume_message_error() {
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
     let mut msg_receiver = MessageReceiverService::new(Box::new(mock_receiver), msg_channel_tx, commit_offset, system);
-
+    let candidate_message = CandidateMessage {
+        xid: "xid-1".to_string(),
+        version: 8,
+        agent: "agent-1".to_string(),
+        cohort: "cohort-1".to_string(),
+        snapshot: 5,
+        readvers: vec![],
+        readset: vec![],
+        writeset: vec!["ksp:w1".to_owned()],
+        metadata: None,
+        on_commit: None,
+        statemap: None,
+        published_at: 0,
+        received_at: 0,
+    };
     mock_channel_tx
-        .send(ChannelMessage::Candidate(CandidateMessage {
-            xid: "xid-1".to_string(),
-            version: 8,
-            agent: "agent-1".to_string(),
-            cohort: "cohort-1".to_string(),
-            snapshot: 5,
-            readvers: vec![],
-            readset: vec![],
-            writeset: vec!["ksp:w1".to_owned()],
-            metadata: None,
-            on_commit: None,
-            statemap: None,
-            published_at: 0,
-            received_at: 0,
-        }))
+        .send(ChannelMessage::Candidate(
+            CandidateChannelMessage {
+                message: candidate_message,
+                meta: crate::ChannelMeta { headers: HashMap::new() },
+            }
+            .into(),
+        ))
         .await
         .unwrap();
 

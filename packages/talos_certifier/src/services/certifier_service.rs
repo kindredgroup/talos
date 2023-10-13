@@ -9,6 +9,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
+use crate::core::DecisionOutboxChannelMessageMeta;
 use crate::{
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
     errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
@@ -89,7 +90,7 @@ impl CertifierService {
         Ok(dm)
     }
 
-    pub(crate) fn process_decision(&mut self, decision_version: &u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
+    pub(crate) fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
         // update the decision in suffix
         debug!(
             "[Process Decision message] Version {} and Decision Message {:?} ",
@@ -111,7 +112,7 @@ impl CertifierService {
 
         if candidate_version_index.is_some() && candidate_version_index.unwrap().le(&self.suffix.messages.len()) {
             self.suffix
-                .update_decision_suffix_item(candidate_version, *decision_version)
+                .update_decision_suffix_item(candidate_version, decision_version)
                 .map_err(CertificationError::SuffixError)?;
 
             // check if all prioir items are decided.
@@ -147,12 +148,19 @@ impl CertifierService {
 
     pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage>) -> ServiceResult {
         if let Err(certification_error) = match channel_message {
-            Some(ChannelMessage::Candidate(message)) => {
-                let decision_message = self.process_candidate(message)?;
+            Some(ChannelMessage::Candidate(candidate)) => {
+                let decision_message = self.process_candidate(&candidate.message)?;
+
+                let decision_outbox_channel_message = DecisionOutboxChannelMessage {
+                    message: decision_message.clone(),
+                    meta: DecisionOutboxChannelMessageMeta {
+                        headers: candidate.meta.headers.clone(),
+                    },
+                };
 
                 Ok(self
                     .decision_outbox_tx
-                    .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
+                    .send(decision_outbox_channel_message)
                     .await
                     .map_err(|e| SystemServiceError {
                         kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
@@ -162,7 +170,7 @@ impl CertifierService {
                     })?)
             }
 
-            Some(ChannelMessage::Decision(version, decision_message)) => self.process_decision(version, decision_message),
+            Some(ChannelMessage::Decision(decision)) => self.process_decision(decision.decision_version, &decision.message),
 
             None => Ok(()),
             // _ => (),

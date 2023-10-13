@@ -74,18 +74,19 @@ async fn main() -> Result<(), String> {
             _ => break,
         };
 
-        if let ChannelMessage::Decision(_, msg) = message {
+        if let ChannelMessage::Decision(decision) = message {
+            let decision_message = decision.message;
             // log::warn!("Decision {:?}", msg_decision);
             item_number += 1;
             if item_number % progress_frequency == 0 {
                 log::warn!("Progress: {} of {}", item_number, total_decisions);
             }
-            hist_candidate_published.include(&msg.metrics, msg.metrics.candidate_published);
-            hist_candidate_received.include(&msg.metrics, msg.metrics.candidate_received);
-            hist_candidate_processing_started.include(&msg.metrics, msg.metrics.candidate_processing_started);
-            hist_decision_created_at.include(&msg.metrics, msg.metrics.decision_created_at);
-            hist_db_save_started.include(&msg.metrics, msg.metrics.db_save_started);
-            hist_db_save_ended.include(&msg.metrics, msg.metrics.db_save_ended);
+            hist_candidate_published.include(&decision_message.metrics, decision_message.metrics.candidate_published);
+            hist_candidate_received.include(&decision_message.metrics, decision_message.metrics.candidate_received);
+            hist_candidate_processing_started.include(&decision_message.metrics, decision_message.metrics.candidate_processing_started);
+            hist_decision_created_at.include(&decision_message.metrics, decision_message.metrics.decision_created_at);
+            hist_db_save_started.include(&decision_message.metrics, decision_message.metrics.db_save_started);
+            hist_db_save_ended.include(&decision_message.metrics, decision_message.metrics.db_save_ended);
 
             if item_number == total_decisions {
                 break;
@@ -132,9 +133,9 @@ async fn aggregate_timelines(consumer: &mut KafkaConsumer) -> Result<(TimelineAg
             _ => break,
         };
 
-        if let ChannelMessage::Decision(_, msg_decision) = message {
+        if let ChannelMessage::Decision(decision) = message {
             total += 1;
-            aggregates.merge(msg_decision.metrics);
+            aggregates.merge(decision.message.metrics);
         }
     }
 

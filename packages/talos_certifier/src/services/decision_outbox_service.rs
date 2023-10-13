@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::{debug, error};
@@ -6,7 +6,7 @@ use log::{debug, error};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
-use crate::core::ServiceResult;
+use crate::core::{DecisionOutboxChannelMessageMeta, ServiceResult};
 use crate::{
     core::{DecisionOutboxChannelMessage, MessageVariant, System, SystemService},
     errors::{SystemServiceError, SystemServiceErrorKind},
@@ -71,7 +71,11 @@ impl DecisionOutboxService {
         Ok(decision)
     }
 
-    pub async fn publish_decision(publisher: &Arc<Box<dyn MessagePublisher + Send + Sync>>, decision_message: &DecisionMessage) -> ServiceResult {
+    pub async fn publish_decision(
+        publisher: &Arc<Box<dyn MessagePublisher + Send + Sync>>,
+        decision_message: &DecisionMessage,
+        meta: DecisionOutboxChannelMessageMeta,
+    ) -> ServiceResult {
         let xid = decision_message.xid.clone();
         let decision_str = serde_json::to_string(&decision_message).map_err(|e| {
             Box::new(SystemServiceError {
@@ -82,9 +86,15 @@ impl DecisionOutboxService {
             })
         })?;
 
-        let mut decision_publish_header = HashMap::new();
+        let mut decision_publish_header = meta.headers;
         decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
-        decision_publish_header.insert("certAgent".to_string(), decision_message.agent.clone());
+        decision_publish_header.insert("certXid".to_string(), decision_message.xid.to_owned());
+
+        if let Some(safepoint) = decision_message.safepoint {
+            decision_publish_header.insert("certSafepoint".to_string(), safepoint.to_string());
+        }
+        decision_publish_header.insert("certAgent".to_string(), decision_message.agent.to_owned());
+        // decision_publish_header.insert("certTime".to_string(), decision_message.safepoint.to_owned());
 
         debug!("Publishing message {}", decision_message.version);
         publisher
@@ -108,11 +118,15 @@ impl SystemService for DecisionOutboxService {
         let publisher = Arc::clone(&self.decision_publisher);
         let system = self.system.clone();
 
-        if let Some(DecisionOutboxChannelMessage::Decision(decision_message)) = self.decision_outbox_channel_rx.recv().await {
+        if let Some(decision_channel_message) = self.decision_outbox_channel_rx.recv().await {
+            let DecisionOutboxChannelMessage {
+                meta,
+                message: decision_message,
+            } = decision_channel_message;
             tokio::spawn(async move {
                 match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
                     Ok(decision) => {
-                        if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision).await {
+                        if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision, meta).await {
                             error!(
                                 "Error publishing message for version={} with reason={:?}",
                                 decision.version,
