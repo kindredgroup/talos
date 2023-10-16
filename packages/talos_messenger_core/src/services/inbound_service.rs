@@ -42,6 +42,7 @@ where
                     acc.insert(key.to_string(), value.get_payload().clone());
                     acc
                 }),
+                headers: item.headers,
             };
             // send for publishing
             self.tx_actions_channel.send(payload_to_send).await.map_err(|e| MessengerServiceError {
@@ -182,7 +183,9 @@ where
                             let version = decision.message.get_candidate_version();
                             info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
-                            self.suffix.update_item_decision(version, decision.decision_version, &decision.message);
+                            // TODO: GK - no hardcoded filters on headers
+                            let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
+                            self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
 
                             self.process_next_actions().await?;
 

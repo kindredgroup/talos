@@ -42,7 +42,7 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
         partition: Option<i32>,
         key: Option<&str>,
         value: &str,
-        headers: Option<HashMap<String, String>>,
+        headers: HashMap<String, String>,
         delivery_opaque: C::DeliveryOpaque,
     ) -> Result<(), MessagePublishError> {
         let record = BaseRecord::with_opaque_to(topic, delivery_opaque).payload(value);
@@ -54,10 +54,7 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
         let record = if let Some(key_str) = key { record.key(key_str) } else { record };
 
         // Add headers if applicable
-        let record = match headers {
-            Some(x) => record.headers(build_kafka_headers(x)),
-            None => record,
-        };
+        let record = record.headers(build_kafka_headers(headers));
 
         self.producer.send(record).map_err(|(kafka_error, record)| MessagePublishError {
             reason: kafka_error.to_string(),
