@@ -2539,6 +2539,7 @@ dependencies = [
 name = "talos_certifier_adapters"
 version = "0.0.1"
 dependencies = [
+ "ahash 0.8.3",
  "async-trait",
  "deadpool-postgres",
  "env_logger",

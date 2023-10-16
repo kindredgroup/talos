@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
+use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
-use talos_certifier::core::{DecisionOutboxChannelMessage, DecisionOutboxChannelMessageMeta, ServiceResult, SystemService};
+use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemService};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
 use talos_certifier::model::metrics::TxProcessingTimeline;
 use talos_certifier::model::{Decision, DecisionMessage};
@@ -46,7 +45,7 @@ impl SystemService for MockCertifierService {
                             duplicate_version: None,
                             metrics: TxProcessingTimeline::default(),
                         };
-                        let decision_outbox_channel_message = DecisionOutboxChannelMessage{ message: decision_message.clone(), meta: DecisionOutboxChannelMessageMeta{headers:HashMap::new()} };
+                        let decision_outbox_channel_message = DecisionOutboxChannelMessage{ message: decision_message.clone(), headers:HashMap::new() };
                         self.decision_outbox_tx
                             .send(decision_outbox_channel_message)
                             .await

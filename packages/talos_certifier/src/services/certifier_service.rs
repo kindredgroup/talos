@@ -9,7 +9,6 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
-use crate::core::DecisionOutboxChannelMessageMeta;
 use crate::{
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
     errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
@@ -153,9 +152,7 @@ impl CertifierService {
 
                 let decision_outbox_channel_message = DecisionOutboxChannelMessage {
                     message: decision_message.clone(),
-                    meta: DecisionOutboxChannelMessageMeta {
-                        headers: candidate.meta.headers.clone(),
-                    },
+                    headers: candidate.headers.clone(),
                 };
 
                 Ok(self

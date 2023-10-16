@@ -111,7 +111,6 @@ impl MessageReciever for KafkaConsumer {
             data: None,
         })?;
 
-        let channel_meta = talos_certifier::ChannelMeta { headers: headers.clone() };
         let channel_msg = match utils::parse_message_variant(message_type).map_err(|e| MessageReceiverError {
             kind: MessageReceiverErrorKind::ParseError,
             version: Some(offset),
@@ -130,7 +129,7 @@ impl MessageReciever for KafkaConsumer {
                 ChannelMessage::Candidate(
                     CandidateChannelMessage {
                         message: msg,
-                        meta: channel_meta,
+                        headers: headers.clone(),
                     }
                     .into(),
                 )
@@ -160,7 +159,7 @@ impl MessageReciever for KafkaConsumer {
                     DecisionChannelMessage {
                         decision_version: offset,
                         message: msg,
-                        meta: channel_meta,
+                        headers: headers.clone(),
                     }
                     .into(),
                 )

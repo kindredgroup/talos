@@ -1,7 +1,4 @@
-use std::{
-    collections::HashMap,
-    sync::{atomic::AtomicI64, Arc},
-};
+use std::sync::{atomic::AtomicI64, Arc};
 
 use crate::{
     core::{CandidateChannelMessage, DecisionChannelMessage},
@@ -12,6 +9,7 @@ use crate::{
     services::CertifierServiceConfig,
     ChannelMessage, SystemMessage,
 };
+use ahash::{HashMap, HashMapExt};
 use talos_suffix::core::SuffixConfig;
 use tokio::sync::{broadcast, mpsc};
 
@@ -26,7 +24,7 @@ async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>
             .send(ChannelMessage::Candidate(
                 CandidateChannelMessage {
                     message: candidate_message,
-                    meta: crate::ChannelMeta { headers: HashMap::new() },
+                    headers: HashMap::new(),
                 }
                 .into(),
             ))
@@ -224,7 +222,7 @@ async fn test_certification_process_decision() {
                     DecisionChannelMessage {
                         decision_version: decision.message.version,
                         message: decision.message,
-                        meta: crate::ChannelMeta { headers: HashMap::new() },
+                        headers: HashMap::new(),
                     }
                     .into(),
                 ))
@@ -295,7 +293,7 @@ async fn test_certification_process_decision_incorrect_version() {
                             version: 10,
                             ..decision.message
                         },
-                        meta: crate::ChannelMeta { headers: HashMap::new() },
+                        headers: HashMap::new(),
                     }
                     .into(),
                 ))
@@ -465,7 +463,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
                         DecisionChannelMessage {
                             decision_version: 6,
                             message: decision.message,
-                            meta: crate::ChannelMeta { headers: HashMap::new() },
+                            headers: HashMap::new(),
                         }
                         .into(),
                     ))
@@ -482,7 +480,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
                         DecisionChannelMessage {
                             decision_version: 7,
                             message: decision.message,
-                            meta: crate::ChannelMeta { headers: HashMap::new() },
+                            headers: HashMap::new(),
                         }
                         .into(),
                     ))
@@ -499,7 +497,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
                         DecisionChannelMessage {
                             decision_version: 8,
                             message: decision.message,
-                            meta: crate::ChannelMeta { headers: HashMap::new() },
+                            headers: HashMap::new(),
                         }
                         .into(),
                     ))
@@ -516,7 +514,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
                         DecisionChannelMessage {
                             decision_version: 10,
                             message: decision.message,
-                            meta: crate::ChannelMeta { headers: HashMap::new() },
+                            headers: HashMap::new(),
                         }
                         .into(),
                     ))
@@ -626,7 +624,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
                         DecisionChannelMessage {
                             decision_version: 6,
                             message: decision.message,
-                            meta: crate::ChannelMeta { headers: HashMap::new() },
+                            headers: HashMap::new(),
                         }
                         .into(),
                     ))
@@ -643,7 +641,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
                         DecisionChannelMessage {
                             decision_version: 7,
                             message: decision.message,
-                            meta: crate::ChannelMeta { headers: HashMap::new() },
+                            headers: HashMap::new(),
                         }
                         .into(),
                     ))

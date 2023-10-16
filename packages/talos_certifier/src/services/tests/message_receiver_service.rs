@@ -1,8 +1,6 @@
-use std::{
-    collections::HashMap,
-    sync::{atomic::AtomicI64, Arc},
-};
+use std::sync::{atomic::AtomicI64, Arc};
 
+use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -111,7 +109,7 @@ async fn test_consume_message() {
         .send(ChannelMessage::Candidate(
             CandidateChannelMessage {
                 message: candidate_message,
-                meta: crate::ChannelMeta { headers: HashMap::new() },
+                headers: HashMap::new(),
             }
             .into(),
         ))
@@ -166,7 +164,7 @@ async fn test_consume_message_error() {
         .send(ChannelMessage::Candidate(
             CandidateChannelMessage {
                 message: candidate_message,
-                meta: crate::ChannelMeta { headers: HashMap::new() },
+                headers: HashMap::new(),
             }
             .into(),
         ))

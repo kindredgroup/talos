@@ -1,5 +1,5 @@
+use ahash::HashMap;
 use async_trait::async_trait;
-use std::collections::HashMap;
 use tokio::task::JoinHandle;
 
 use crate::errors::SystemServiceError;
@@ -24,5 +24,5 @@ pub trait MessageReciever: SharedPortTraits {
 // The trait that should be implemented by any adapter that will publish the Decision message from Certifier Domain.
 #[async_trait]
 pub trait MessagePublisher: SharedPortTraits {
-    async fn publish_message(&self, key: &str, value: &str, headers: Option<HashMap<String, String>>) -> Result<(), SystemServiceError>;
+    async fn publish_message(&self, key: &str, value: &str, headers: HashMap<String, String>) -> Result<(), SystemServiceError>;
 }

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -14,6 +13,7 @@ use crate::{
     },
     SystemMessage,
 };
+use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -62,7 +62,7 @@ struct MockDecisionPublisher;
 
 #[async_trait]
 impl MessagePublisher for MockDecisionPublisher {
-    async fn publish_message(&self, _key: &str, _value: &str, _headers: Option<HashMap<String, String>>) -> Result<(), SystemServiceError> {
+    async fn publish_message(&self, _key: &str, _value: &str, _headers: HashMap<String, String>) -> Result<(), SystemServiceError> {
         Ok(())
     }
 }
@@ -124,7 +124,7 @@ async fn test_candidate_message_create_decision_message() {
                     conflict_version: None,
                     metrics: TxProcessingTimeline::default(),
                 },
-                meta: crate::core::DecisionOutboxChannelMessageMeta { headers: HashMap::new() },
+                headers: HashMap::new(),
             })
             .await
             .unwrap();
@@ -186,7 +186,7 @@ async fn test_save_and_publish_multiple_decisions() {
                     conflict_version: None,
                     metrics: TxProcessingTimeline::default(),
                 },
-                meta: crate::core::DecisionOutboxChannelMessageMeta { headers: HashMap::new() },
+                headers: HashMap::new(),
             })
             .await
             .unwrap();
@@ -207,7 +207,7 @@ async fn test_save_and_publish_multiple_decisions() {
                     conflict_version: None,
                     metrics: TxProcessingTimeline::default(),
                 },
-                meta: crate::core::DecisionOutboxChannelMessageMeta { headers: HashMap::new() },
+                headers: HashMap::new(),
             })
             .await
             .unwrap();
@@ -306,7 +306,7 @@ async fn test_capture_child_thread_dberror() {
                     conflict_version: None,
                     metrics: TxProcessingTimeline::default(),
                 },
-                meta: crate::core::DecisionOutboxChannelMessageMeta { headers: HashMap::new() },
+                headers: HashMap::new(),
             })
             .await
             .unwrap();
@@ -325,7 +325,7 @@ struct MockDecisionPublisherWithError;
 
 #[async_trait]
 impl MessagePublisher for MockDecisionPublisherWithError {
-    async fn publish_message(&self, _key: &str, _value: &str, _headers: Option<HashMap<String, String>>) -> Result<(), SystemServiceError> {
+    async fn publish_message(&self, _key: &str, _value: &str, _headers: HashMap<String, String>) -> Result<(), SystemServiceError> {
         Err(SystemServiceError {
             kind: SystemServiceErrorKind::MessagePublishError,
             reason: "Failed to Publish".to_string(),
@@ -361,13 +361,7 @@ async fn test_capture_publish_error() {
         metrics: TxProcessingTimeline::default(),
     };
 
-    if let Err(publish_error) = DecisionOutboxService::publish_decision(
-        &Arc::new(Box::new(mock_decision_publisher)),
-        &decision_message,
-        crate::core::DecisionOutboxChannelMessageMeta { headers: HashMap::new() },
-    )
-    .await
-    {
+    if let Err(publish_error) = DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message, HashMap::new()).await {
         assert!(publish_error.kind == SystemServiceErrorKind::MessagePublishError);
     }
 }

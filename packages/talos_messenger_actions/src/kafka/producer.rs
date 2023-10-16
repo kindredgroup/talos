@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use ahash::HashMap;
 use async_trait::async_trait;
 use log::debug;
 use rdkafka::{
@@ -73,13 +72,10 @@ impl<C: ProducerContext + 'static> KafkaProducer<C> {
 //  Message publisher traits
 #[async_trait]
 impl MessagePublisher for KafkaProducer {
-    async fn publish_message(&self, key: &str, value: &str, headers: Option<HashMap<String, String>>) -> Result<(), SystemServiceError> {
+    async fn publish_message(&self, key: &str, value: &str, headers: HashMap<String, String>) -> Result<(), SystemServiceError> {
         let record = BaseRecord::to(&self.topic).payload(value).key(key);
 
-        let record = match headers {
-            Some(x) => record.headers(build_kafka_headers(x)),
-            None => record,
-        };
+        let record = record.headers(build_kafka_headers(headers));
 
         debug!("Preparing to publish the message. ");
         let delivery_result = self
