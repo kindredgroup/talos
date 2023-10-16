@@ -95,7 +95,6 @@ impl DecisionOutboxService {
             decision_publish_header.insert("certSafepoint".to_string(), safepoint.to_string());
         }
         decision_publish_header.insert("certAgent".to_string(), decision_message.agent.to_owned());
-        // decision_publish_header.insert("certTime".to_string(), decision_message.safepoint.to_owned());
 
         debug!("Publishing message {}", decision_message.version);
         publisher
