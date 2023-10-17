@@ -118,11 +118,11 @@ If your business transaction requires a certification from Talos, it is expected
 
 The shape of the callback function looks like this:
 ```TypeScript
-async (oooRequest: JsOutOfOrderRequest): Promise<JsCertificationCandidateCallbackResponse>;
+async (oooRequest: JsOutOfOrderRequest): Promise<JsOutOfOrderInstallOutcome>;
 ```
 
 - It receives `JsOutOfOrderRequest`
-- It returns `JsCertificationCandidateCallbackResponse`
+- It returns `JsOutOfOrderInstallOutcome`
 
 What do you need to do inside "Out of Order Install Callback"?
 Two things:
@@ -173,10 +173,11 @@ Some things may go wrong when working with Initiator API. Possible errors can be
                 "\nTalosSdkError.kind: " + sdkError.kind
                 "\nTalosSdkError.name: " + sdkError.name
                 "\nTalosSdkError.cause: " + sdkError.cause
-                "\nTalosSdkError.stack: " + sdkError.stack
+                "\nTalosSdkError.stack: " + sdkError.stack)
             } else {
                 logger.error("Unable to process tx: %s. Error: %s", JSON.stringify(tx), e)
             }
+        }
 ```
 
 Where `TalosSdkError.kind` is defined as:

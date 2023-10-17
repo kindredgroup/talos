@@ -1,4 +1,4 @@
-import { Replicator, TalosSdkError } from "@kindredgroup/cohort_sdk_client"
+import { JsStatemapAndSnapshot, Replicator, TalosSdkError } from "@kindredgroup/cohort_sdk_client"
 import { Database } from "./database"
 
 import { KAFKA_CONFIG } from "./cfg/config-kafka"
@@ -17,7 +17,7 @@ new Promise(async (_resolve) => {
     try {
         await replicator.run(
             async () => await database.getSnapshot(),
-            async (data) => await database.install(data, { delayMs: 2, maxAttempts: 50 })
+            async (data: JsStatemapAndSnapshot) => await database.install(data, { delayMs: 2, maxAttempts: 50 })
         )
         logger.info("Replciator is running ...")
     } catch (e) {

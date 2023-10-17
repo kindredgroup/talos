@@ -1,4 +1,4 @@
-import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind, JsCertificationResponse, JsCertificationCandidateCallbackResponse } from "@kindredgroup/cohort_sdk_js"
+import { InternalInitiator, JsInitiatorConfig, OutOfOrderRequest, SdkErrorKind, JsCertificationResponse, JsCertificationCandidateCallbackResponse, JsOutOfOrderInstallOutcome } from "@kindredgroup/cohort_sdk_js"
 import { isSdkError } from "./internal"
 import { TalosSdkError } from "."
 
@@ -19,10 +19,10 @@ export class Initiator {
 
     constructor(readonly impl: InternalInitiator) {}
 
-    async certify(makeNewRequestCallback: () => Promise<JsCertificationCandidateCallbackResponse>, oooInstallCallback: (oooRequest: OutOfOrderRequest) => Promise<JsCertificationCandidateCallbackResponse>): Promise<JsCertificationResponse> {
+    async certify(makeNewRequestCallback: () => Promise<JsCertificationCandidateCallbackResponse>, oooInstallCallback: (oooRequest: OutOfOrderRequest) => Promise<JsOutOfOrderInstallOutcome>): Promise<JsCertificationResponse> {
         try {
             // This will hide the 'error' parameter from callback (it comes from NAPI).
-            const adaptedOooInstallCallback = async (error: Error | null, oooRequest: OutOfOrderRequest): Promise<JsCertificationCandidateCallbackResponse> => {
+            const adaptedOooInstallCallback = async (error: Error | null, oooRequest: OutOfOrderRequest): Promise<JsOutOfOrderInstallOutcome> => {
                 if (error) {
                     throw new TalosSdkError(
                         SdkErrorKind.Internal,
