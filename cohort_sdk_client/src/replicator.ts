@@ -19,9 +19,22 @@ export class Replicator {
 
     constructor(readonly impl: InternalReplicator) {}
 
-    async run(snapshotProviderCallback: () => Promise<number>, statemapInstallerCallback: (err: Error | null, value: JsStatemapAndSnapshot) => any) {
+    async run(snapshotProviderCallback: () => Promise<number>, statemapInstallerCallback: (data: JsStatemapAndSnapshot) => Promise<void>) {
         try {
-            await this.impl.run(snapshotProviderCallback, statemapInstallerCallback)
+            // This will hide the 'error' parameter from callback (it comes from NAPI).
+            const adaptedStatemapInstallerCallback = async (error: Error | null, data: JsStatemapAndSnapshot): Promise<void> => {
+                if (error) {
+                    throw new TalosSdkError(
+                        SdkErrorKind.Internal,
+                        "Call from native code into 'statemapInstallerCallback' function provided by JS has failed at the NAPI layer. See the 'cause' field for more details.",
+                        { cause: error }
+                    )
+                } else {
+                    return await statemapInstallerCallback(data)
+                }
+            }
+
+            await this.impl.run(snapshotProviderCallback, adaptedStatemapInstallerCallback)
         } catch(e) {
             const reason: string = e.message
             if (isSdkError(reason)) {

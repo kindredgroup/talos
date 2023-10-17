@@ -99,12 +99,13 @@ export class BankingApp {
             async () => {
                 const s = Date.now()
                 const newRequest = await this.createNewRequest(tx) as any
+                logger.info("%s", JSON.stringify(newRequest, null, 2))
                 const n = Date.now()
                 stateEnd = n - span_s
                 stateDuration = n - s
                 return { newRequest }
             },
-            async (_e, request: OutOfOrderRequest) => {
+            async (request: OutOfOrderRequest) => {
                 const s = Date.now()
                 const r = await this.installOutOfOrder(tx, request) as any
                 const n = Date.now()

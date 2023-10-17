@@ -22,6 +22,7 @@ const printMetrics = (spans: Array<any>) => {
 class LaunchParams {
     transactionsCount: number = 10_000
     targetRatePerSecond: number = 1_000
+    totalAccounts: number = 100_000
 
     static parse(args: string[]): LaunchParams {
         const params = new LaunchParams()
@@ -37,6 +38,8 @@ class LaunchParams {
                 params.transactionsCount = parseInt(arg.replaceAll("count=", ""))
             } else if (arg.startsWith("rate")) {
                 params.targetRatePerSecond = parseInt(arg.replaceAll("rate=", ""))
+            } else if (arg.startsWith("accounts")) {
+                params.totalAccounts = parseInt(arg.replaceAll("accounts=", ""))
             }
         }
 
@@ -86,5 +89,10 @@ new Promise(async (resolve) => {
         }
         throw e
     }
-    const _worker = createGeneratorService({ channelName: CHANNEL_NAME, count: params.transactionsCount, rate: params.targetRatePerSecond })
+    const _worker = createGeneratorService({
+        channelName: CHANNEL_NAME,
+        count: params.transactionsCount,
+        rate: params.targetRatePerSecond,
+        accounts: params.totalAccounts,
+     })
 })

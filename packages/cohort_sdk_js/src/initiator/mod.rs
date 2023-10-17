@@ -182,8 +182,10 @@ impl InternalInitiator {
     #[napi]
     pub async fn certify(
         &self,
-        #[napi(ts_arg_type = "() => Promise<any>")] make_new_request_callback: ThreadsafeFunction<()>,
-        ooo_callback: ThreadsafeFunction<OutOfOrderRequest>,
+        #[napi(ts_arg_type = "() => Promise<JsCertificationCandidateCallbackResponse>")] make_new_request_callback: ThreadsafeFunction<()>,
+        #[napi(ts_arg_type = "(error: Error | null, ooRequest: OutOfOrderRequest) => Promise<JsOutOfOrderInstallOutcome>")] ooo_callback: ThreadsafeFunction<
+            OutOfOrderRequest,
+        >,
     ) -> napi::Result<JsCertificationResponse> {
         let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
