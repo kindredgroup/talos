@@ -8,8 +8,8 @@
 
 name: Build and Publish Cohort SDK NPMs
 on:
-    #workflow_call:
-    push:
+    workflow_call:
+    # push:
 env:
     SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
     SDK_CLIENT_PACKAGE_NAME: "@kindredgroup/cohort_sdk_client"
