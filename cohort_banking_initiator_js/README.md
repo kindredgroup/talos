@@ -145,6 +145,6 @@ npm start
 ```
 cd $TALOS/cohort_banking_initiator_js
 
-# Genrate 1000 transation requests at the rate of 500 TPS
-npm start count=1000 rate=500
+# Genrate 1000 transation requests at the rate of 500 TPS, pick accounts from dataset containing 10k bank accounts
+npm start count=1000 rate=500 accounts=10000
 ```

@@ -87,7 +87,7 @@ Above mentioned reads, writes and statemap fields together are known as certific
 ```json
 [
     {
-        "TRANSFER: {
+        "TRANSFER": {
             "from": "account 1",
             "to": "account 2",
             "amount": "100.00"
@@ -203,7 +203,7 @@ export const enum SdkErrorKind {
 | `Persistence` | Error communicating with database |
 | `Internal` | Some unexpected SDK error |
 | `OutOfOrderCallbackFailed` | Error when invoking out of order installer callback |
-| `OutOfOrderSnapshotTimeout` | You have indicated that out of order install was not successful because of `JsOutOfOrderInstallOutcome.SafepointCondition` and we echausted all retry attempts. |
+| `OutOfOrderSnapshotTimeout` | You have indicated that out of order install was not successful because of `JsOutOfOrderInstallOutcome.SafepointCondition` and we exhausted all retry attempts. |
 
 ## The Initiator API Configuration
 
@@ -288,13 +288,13 @@ In the deployment where there is no Talos present, microservices typically imple
 
 In the deployment with Talos, the replicator, specifically this callback, is responsible for updating the database so that your cohort has the up-to-date view of bank account (or any other shared object). The async messaging is abstracted away from you by SDK. You just provide a handler how you want your database to be updated.
 
-However, there are few rules which Talos protocols expects you to implement.
+However, there are few rules which Talos protocol expects you to implement.
 
-- Once you are done updating business objects in your database, it is very important to update the global stapshot. The replicator, specifically this callback, is the only place within cohort which is responsible for writing into snapshot table.
+- Once you are done updating business objects in your database, it is very important to update the global snapshot. The replicator, specifically this callback, is the only place within cohort which is responsible for writing into snapshot table.
 - The version number in the snapshot table should only be incremented. If it happens that callback is invoked with older version, then no change should be made to database.
 - The change to business objects and to snapshot table should be atomic (in a single DB transaction with isolation level matching repeatable read or stricter).
 - When callback is invoked, it is possible that your business objects are already updated. In this case, the job of callback is to update the snapshot table only.
-  - This may happen if replicator and initiator belong to the same cohort, for example, out of order installer in initiator may have executed updated our business objects before the replicator. However, installer should never write to snapshot table.
+  - This may happen if replicator and initiator belong to the same cohort, for example, out of order installer in initiator may have executed and updated our business objects before the replicator. However, installer should never write to snapshot table.
   - When replicator belong to different cohort, it is just catching up on the changes made by other cohorts, hence it may not encounter the state when business objects are updated already. Unless there was some contingency, like unexpected restart.
 - When updating business objects, also update their versions so that versions match with snapshot version.
 
