@@ -1,3 +1,4 @@
+use ahash::HashMap;
 use async_trait::async_trait;
 use strum::{Display, EnumString};
 use tokio::sync::broadcast;
@@ -7,13 +8,23 @@ use crate::{
     model::{CandidateMessage, DecisionMessage},
 };
 
-type Version = u64;
 #[derive(Debug, Clone)]
-// TODO: double check this setting
-#[allow(clippy::large_enum_variant)]
+pub struct CandidateChannelMessage {
+    pub message: CandidateMessage,
+    pub headers: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DecisionChannelMessage {
+    pub decision_version: u64,
+    pub message: DecisionMessage,
+    pub headers: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
 pub enum ChannelMessage {
-    Candidate(CandidateMessage),
-    Decision(Version, DecisionMessage),
+    Candidate(Box<CandidateChannelMessage>),
+    Decision(Box<DecisionChannelMessage>),
 }
 
 #[derive(Debug, Display, Eq, PartialEq, EnumString)]
@@ -34,8 +45,9 @@ pub enum SystemMessage {
 pub type ServiceResult<T = ()> = Result<T, Box<SystemServiceError>>;
 
 #[derive(Debug)]
-pub enum DecisionOutboxChannelMessage {
-    Decision(DecisionMessage),
+pub struct DecisionOutboxChannelMessage {
+    pub message: DecisionMessage,
+    pub headers: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone)]

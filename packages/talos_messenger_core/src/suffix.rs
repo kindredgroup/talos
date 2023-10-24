@@ -11,11 +11,14 @@ pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_safepoint(&mut self, safepoint: Option<u64>);
     fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>);
     fn set_decision(&mut self, decision: Decision);
+    fn set_headers(&mut self, headers: HashMap<String, String>);
 
     fn get_state(&self) -> &SuffixItemState;
     fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapItem>;
     fn get_action_by_key_mut(&mut self, action_key: &str) -> Option<&mut AllowedActionsMapItem>;
     fn get_safepoint(&self) -> &Option<u64>;
+    fn get_headers(&self) -> &HashMap<String, String>;
+    fn get_headers_mut(&mut self) -> &mut HashMap<String, String>;
 
     fn is_abort(&self) -> Option<bool>;
 }
@@ -35,7 +38,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     /// Gets the suffix items eligible to process.
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
     /// Updates the decision for a version.
-    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D);
+    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D, headers: HashMap<String, String>);
     /// Updates the action for a version using the action_key for lookup.
     fn increment_item_action_count(&mut self, version: u64, action_key: &str);
 
@@ -107,6 +110,7 @@ impl AllowedActionsMapItem {
 pub struct ActionsMapWithVersion {
     pub actions: HashMap<String, AllowedActionsMapItem>,
     pub version: u64,
+    pub headers: HashMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -120,6 +124,8 @@ pub struct MessengerCandidate {
     state: SuffixItemState,
     /// Filtered actions that need to be processed by the messenger
     allowed_actions_map: HashMap<String, AllowedActionsMapItem>,
+    /// Any headers from decision to be used in on-commit actions
+    headers: HashMap<String, String>,
 }
 
 impl From<CandidateMessage> for MessengerCandidate {
@@ -131,6 +137,7 @@ impl From<CandidateMessage> for MessengerCandidate {
 
             state: SuffixItemState::AwaitingDecision,
             allowed_actions_map: HashMap::new(),
+            headers: HashMap::new(),
         }
     }
 }
@@ -170,6 +177,18 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
 
     fn get_action_by_key_mut(&mut self, action_key: &str) -> Option<&mut AllowedActionsMapItem> {
         self.allowed_actions_map.get_mut(action_key)
+    }
+
+    fn set_headers(&mut self, headers: HashMap<String, String>) {
+        self.headers.extend(headers);
+    }
+
+    fn get_headers(&self) -> &HashMap<String, String> {
+        &self.headers
+    }
+
+    fn get_headers_mut(&mut self) -> &mut HashMap<String, String> {
+        &mut self.headers
     }
 }
 
@@ -217,13 +236,14 @@ where
             .map(|x| ActionsMapWithVersion {
                 version: x.item_ver,
                 actions: x.item.get_commit_actions().clone(),
+                headers: x.item.get_headers().clone(),
             })
             .collect();
 
         items
     }
 
-    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D) {
+    fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D, headers: HashMap<String, String>) {
         let _ = self.update_decision_suffix_item(version, decision_version);
 
         if let Some(item_to_update) = self.get_mut(version) {
@@ -238,6 +258,7 @@ where
 
             item_to_update.item.set_decision(decision_message.get_decision().clone());
             item_to_update.item.set_safepoint(decision_message.get_safepoint());
+            item_to_update.item.set_headers(headers);
         }
     }
 

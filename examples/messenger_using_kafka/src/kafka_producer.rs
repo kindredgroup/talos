@@ -1,13 +1,9 @@
+use ahash::HashMap;
 use async_trait::async_trait;
 use log::info;
 use rdkafka::producer::ProducerContext;
 use talos_messenger_actions::kafka::{context::MessengerProducerDeliveryOpaque, models::KafkaAction, producer::KafkaProducer};
 use talos_messenger_core::core::{MessengerPublisher, PublishActionType};
-// use talos_messenger::{
-//     core::{MessengerPublisher, PublishActionType},
-//     kafka::producer::{KafkaProducer, MessengerProducerDeliveryOpaque},
-//     models::commit_actions::publish::KafkaAction,
-// };
 
 pub struct MessengerKafkaPublisher<C: ProducerContext + 'static> {
     pub publisher: KafkaProducer<C>,
@@ -24,7 +20,7 @@ where
         PublishActionType::Kafka
     }
 
-    async fn send(&self, version: u64, payload: Self::Payload, additional_data: Self::AdditionalData) -> () {
+    async fn send(&self, version: u64, payload: Self::Payload, headers: HashMap<String, String>, additional_data: Self::AdditionalData) -> () {
         info!("[MessengerKafkaPublisher] Publishing message with payload=\n{payload:#?}");
 
         let mut bytes: Vec<u8> = Vec::new();
@@ -44,7 +40,7 @@ where
                 payload.partition,
                 payload.key.as_deref(),
                 payload_str,
-                None,
+                headers,
                 Box::new(delivery_opaque),
             )
             .unwrap();

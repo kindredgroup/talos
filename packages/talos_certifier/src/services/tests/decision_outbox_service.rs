@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -14,6 +13,7 @@ use crate::{
     },
     SystemMessage,
 };
+use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use tokio::{
     sync::{broadcast, mpsc},
@@ -62,7 +62,7 @@ struct MockDecisionPublisher;
 
 #[async_trait]
 impl MessagePublisher for MockDecisionPublisher {
-    async fn publish_message(&self, _key: &str, _value: &str, _headers: Option<HashMap<String, String>>) -> Result<(), SystemServiceError> {
+    async fn publish_message(&self, _key: &str, _value: &str, _headers: HashMap<String, String>) -> Result<(), SystemServiceError> {
         Ok(())
     }
 }
@@ -111,18 +111,21 @@ async fn test_candidate_message_create_decision_message() {
     // sending a decision into decision outbox service
     tokio::spawn(async move {
         do_channel_tx_clone
-            .send(crate::core::DecisionOutboxChannelMessage::Decision(DecisionMessage {
-                xid: "test-xid-1".to_owned(),
-                agent: "test-agent-1".to_owned(),
-                cohort: "test-cohort-1".to_owned(),
-                decision: Decision::Committed,
-                suffix_start: 2,
-                version: 4,
-                duplicate_version: None,
-                safepoint: Some(3),
-                conflict_version: None,
-                metrics: TxProcessingTimeline::default(),
-            }))
+            .send(crate::core::DecisionOutboxChannelMessage {
+                message: DecisionMessage {
+                    xid: "test-xid-1".to_owned(),
+                    agent: "test-agent-1".to_owned(),
+                    cohort: "test-cohort-1".to_owned(),
+                    decision: Decision::Committed,
+                    suffix_start: 2,
+                    version: 4,
+                    duplicate_version: None,
+                    safepoint: Some(3),
+                    conflict_version: None,
+                    metrics: TxProcessingTimeline::default(),
+                },
+                headers: HashMap::new(),
+            })
             .await
             .unwrap();
     });
@@ -170,36 +173,42 @@ async fn test_save_and_publish_multiple_decisions() {
     // sending a decision into decision outbox service
     tokio::spawn(async move {
         do_channel_tx_clone
-            .send(crate::core::DecisionOutboxChannelMessage::Decision(DecisionMessage {
-                xid: "test-xid-1".to_owned(),
-                agent: "test-agent-1".to_owned(),
-                cohort: "test-cohort-1".to_owned(),
-                decision: Decision::Committed,
-                suffix_start: 2,
-                version: 4,
-                duplicate_version: None,
-                safepoint: Some(3),
-                conflict_version: None,
-                metrics: TxProcessingTimeline::default(),
-            }))
+            .send(crate::core::DecisionOutboxChannelMessage {
+                message: DecisionMessage {
+                    xid: "test-xid-1".to_owned(),
+                    agent: "test-agent-1".to_owned(),
+                    cohort: "test-cohort-1".to_owned(),
+                    decision: Decision::Committed,
+                    suffix_start: 2,
+                    version: 4,
+                    duplicate_version: None,
+                    safepoint: Some(3),
+                    conflict_version: None,
+                    metrics: TxProcessingTimeline::default(),
+                },
+                headers: HashMap::new(),
+            })
             .await
             .unwrap();
     });
 
     tokio::spawn(async move {
         do_channel_tx_clone_2
-            .send(crate::core::DecisionOutboxChannelMessage::Decision(DecisionMessage {
-                xid: "test-xid-2".to_owned(),
-                agent: "test-agent-1".to_owned(),
-                cohort: "test-cohort-1".to_owned(),
-                decision: Decision::Committed,
-                suffix_start: 2,
-                version: 4,
-                duplicate_version: None,
-                safepoint: Some(3),
-                conflict_version: None,
-                metrics: TxProcessingTimeline::default(),
-            }))
+            .send(crate::core::DecisionOutboxChannelMessage {
+                message: DecisionMessage {
+                    xid: "test-xid-2".to_owned(),
+                    agent: "test-agent-1".to_owned(),
+                    cohort: "test-cohort-1".to_owned(),
+                    decision: Decision::Committed,
+                    suffix_start: 2,
+                    version: 4,
+                    duplicate_version: None,
+                    safepoint: Some(3),
+                    conflict_version: None,
+                    metrics: TxProcessingTimeline::default(),
+                },
+                headers: HashMap::new(),
+            })
             .await
             .unwrap();
     });
@@ -284,18 +293,21 @@ async fn test_capture_child_thread_dberror() {
     // sending a decision into decision outbox service
     tokio::spawn(async move {
         do_channel_tx_clone
-            .send(crate::core::DecisionOutboxChannelMessage::Decision(DecisionMessage {
-                xid: "test-xid-1".to_owned(),
-                agent: "test-agent-1".to_owned(),
-                cohort: "test-cohort-1".to_owned(),
-                decision: Decision::Committed,
-                suffix_start: 2,
-                version: 4,
-                duplicate_version: None,
-                safepoint: Some(3),
-                conflict_version: None,
-                metrics: TxProcessingTimeline::default(),
-            }))
+            .send(crate::core::DecisionOutboxChannelMessage {
+                message: DecisionMessage {
+                    xid: "test-xid-1".to_owned(),
+                    agent: "test-agent-1".to_owned(),
+                    cohort: "test-cohort-1".to_owned(),
+                    decision: Decision::Committed,
+                    suffix_start: 2,
+                    version: 4,
+                    duplicate_version: None,
+                    safepoint: Some(3),
+                    conflict_version: None,
+                    metrics: TxProcessingTimeline::default(),
+                },
+                headers: HashMap::new(),
+            })
             .await
             .unwrap();
     });
@@ -313,7 +325,7 @@ struct MockDecisionPublisherWithError;
 
 #[async_trait]
 impl MessagePublisher for MockDecisionPublisherWithError {
-    async fn publish_message(&self, _key: &str, _value: &str, _headers: Option<HashMap<String, String>>) -> Result<(), SystemServiceError> {
+    async fn publish_message(&self, _key: &str, _value: &str, _headers: HashMap<String, String>) -> Result<(), SystemServiceError> {
         Err(SystemServiceError {
             kind: SystemServiceErrorKind::MessagePublishError,
             reason: "Failed to Publish".to_string(),
@@ -349,7 +361,7 @@ async fn test_capture_publish_error() {
         metrics: TxProcessingTimeline::default(),
     };
 
-    if let Err(publish_error) = DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message).await {
+    if let Err(publish_error) = DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message, HashMap::new()).await {
         assert!(publish_error.kind == SystemServiceErrorKind::MessagePublishError);
     }
 }

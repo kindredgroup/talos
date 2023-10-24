@@ -1,6 +1,7 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use crate::{
+    core::{CandidateChannelMessage, DecisionChannelMessage},
     errors::{SystemErrorType, SystemServiceErrorKind},
     model::{
         CandidateMessage, {Decision, DecisionMessage},
@@ -8,6 +9,7 @@ use crate::{
     services::CertifierServiceConfig,
     ChannelMessage, SystemMessage,
 };
+use ahash::{HashMap, HashMapExt};
 use talos_suffix::core::SuffixConfig;
 use tokio::sync::{broadcast, mpsc};
 
@@ -18,7 +20,16 @@ use crate::{
 
 async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>, candidate_message: CandidateMessage) {
     tokio::spawn(async move {
-        message_channel_tx.send(ChannelMessage::Candidate(candidate_message)).await.unwrap();
+        message_channel_tx
+            .send(ChannelMessage::Candidate(
+                CandidateChannelMessage {
+                    message: candidate_message,
+                    headers: HashMap::new(),
+                }
+                .into(),
+            ))
+            .await
+            .unwrap();
     });
 }
 
@@ -99,14 +110,14 @@ async fn test_certification_rule_2() {
     assert!(result.is_ok());
 
     // Rule 1
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
-        assert!(decision.conflict_version.is_none());
-        assert_eq!(decision.decision, Decision::Committed);
+    if let Some(decision) = do_channel_rx.recv().await {
+        assert!(decision.message.conflict_version.is_none());
+        assert_eq!(decision.message.decision, Decision::Committed);
     };
     // Rule 2
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
-        assert!(decision.conflict_version.is_none());
-        assert_eq!(decision.decision, Decision::Aborted);
+    if let Some(decision) = do_channel_rx.recv().await {
+        assert!(decision.message.conflict_version.is_none());
+        assert_eq!(decision.message.decision, Decision::Aborted);
     };
 }
 
@@ -204,9 +215,19 @@ async fn test_certification_process_decision() {
 
     assert!(result.is_ok());
 
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn(async move {
-            message_channel_tx.send(ChannelMessage::Decision(decision.version, decision)).await.unwrap();
+            message_channel_tx
+                .send(ChannelMessage::Decision(
+                    DecisionChannelMessage {
+                        decision_version: decision.message.version,
+                        message: decision.message,
+                        headers: HashMap::new(),
+                    }
+                    .into(),
+                ))
+                .await
+                .unwrap();
         });
     };
 
@@ -262,10 +283,20 @@ async fn test_certification_process_decision_incorrect_version() {
     assert!(result.is_ok());
 
     // pass incorrect decision (version incorrect), will not do anything as item is not found on suffix.
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn(async move {
             message_channel_tx
-                .send(ChannelMessage::Decision(12, DecisionMessage { version: 10, ..decision }))
+                .send(ChannelMessage::Decision(
+                    DecisionChannelMessage {
+                        decision_version: 12,
+                        message: DecisionMessage {
+                            version: 10,
+                            ..decision.message
+                        },
+                        headers: HashMap::new(),
+                    }
+                    .into(),
+                ))
                 .await
                 .unwrap();
         });
@@ -423,50 +454,71 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     let result = certifier_svc.run().await;
     assert!(result.is_ok());
 
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn({
             let message_channel_tx_clone = message_channel_tx.clone();
             async move {
-                message_channel_tx_clone
-                    .send(ChannelMessage::Decision(6, DecisionMessage { ..decision }))
-                    .await
-                    .unwrap();
+                let _ = message_channel_tx_clone
+                    .send(ChannelMessage::Decision(
+                        DecisionChannelMessage {
+                            decision_version: 6,
+                            message: decision.message,
+                            headers: HashMap::new(),
+                        }
+                        .into(),
+                    ))
+                    .await;
             }
         });
     };
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn({
             let message_channel_tx_clone = message_channel_tx.clone();
-
             async move {
-                message_channel_tx_clone
-                    .send(ChannelMessage::Decision(7, DecisionMessage { ..decision }))
-                    .await
-                    .unwrap();
+                let _ = message_channel_tx_clone
+                    .send(ChannelMessage::Decision(
+                        DecisionChannelMessage {
+                            decision_version: 7,
+                            message: decision.message,
+                            headers: HashMap::new(),
+                        }
+                        .into(),
+                    ))
+                    .await;
             }
         });
     };
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn({
             let message_channel_tx_clone = message_channel_tx.clone();
-
             async move {
-                message_channel_tx_clone
-                    .send(ChannelMessage::Decision(8, DecisionMessage { ..decision }))
-                    .await
-                    .unwrap();
+                let _ = message_channel_tx_clone
+                    .send(ChannelMessage::Decision(
+                        DecisionChannelMessage {
+                            decision_version: 8,
+                            message: decision.message,
+                            headers: HashMap::new(),
+                        }
+                        .into(),
+                    ))
+                    .await;
             }
         });
     };
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn({
             let message_channel_tx_clone = message_channel_tx.clone();
-
             async move {
-                message_channel_tx_clone
-                    .send(ChannelMessage::Decision(10, DecisionMessage { ..decision }))
-                    .await
-                    .unwrap();
+                let _ = message_channel_tx_clone
+                    .send(ChannelMessage::Decision(
+                        DecisionChannelMessage {
+                            decision_version: 10,
+                            message: decision.message,
+                            headers: HashMap::new(),
+                        }
+                        .into(),
+                    ))
+                    .await;
             }
         });
     };
@@ -563,26 +615,37 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
     let result = certifier_svc.run().await;
     assert!(result.is_ok());
 
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn({
             let message_channel_tx_clone = message_channel_tx.clone();
             async move {
-                message_channel_tx_clone
-                    .send(ChannelMessage::Decision(6, DecisionMessage { ..decision }))
-                    .await
-                    .unwrap();
+                let _ = message_channel_tx_clone
+                    .send(ChannelMessage::Decision(
+                        DecisionChannelMessage {
+                            decision_version: 6,
+                            message: decision.message,
+                            headers: HashMap::new(),
+                        }
+                        .into(),
+                    ))
+                    .await;
             }
         });
     };
-    if let Some(DecisionOutboxChannelMessage::Decision(decision)) = do_channel_rx.recv().await {
+    if let Some(decision) = do_channel_rx.recv().await {
         tokio::spawn({
             let message_channel_tx_clone = message_channel_tx.clone();
-
             async move {
-                message_channel_tx_clone
-                    .send(ChannelMessage::Decision(7, DecisionMessage { ..decision }))
-                    .await
-                    .unwrap();
+                let _ = message_channel_tx_clone
+                    .send(ChannelMessage::Decision(
+                        DecisionChannelMessage {
+                            decision_version: 7,
+                            message: decision.message,
+                            headers: HashMap::new(),
+                        }
+                        .into(),
+                    ))
+                    .await;
             }
         });
     };

@@ -1,3 +1,4 @@
+use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemService};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
@@ -30,7 +31,8 @@ impl SystemService for MockCertifierService {
         tokio::select! {
            channel_msg =  self.message_channel_rx.recv() =>  {
                 match channel_msg {
-                    Some(ChannelMessage::Candidate( message)) => {
+                    Some(ChannelMessage::Candidate(candidate)) => {
+                        let message = candidate.message;
                         let decision_message = DecisionMessage {
                             version: message.version,
                             decision: Decision::Committed,
@@ -43,8 +45,9 @@ impl SystemService for MockCertifierService {
                             duplicate_version: None,
                             metrics: TxProcessingTimeline::default(),
                         };
+                        let decision_outbox_channel_message = DecisionOutboxChannelMessage{ message: decision_message.clone(), headers:HashMap::new() };
                         self.decision_outbox_tx
-                            .send(DecisionOutboxChannelMessage::Decision(decision_message.clone()))
+                            .send(decision_outbox_channel_message)
                             .await
                             .map_err(|e| SystemServiceError {
                                 kind: SystemServiceErrorKind::CertifierError,
@@ -55,7 +58,7 @@ impl SystemService for MockCertifierService {
 
                     },
 
-                    Some(ChannelMessage::Decision(_version, _decision_message)) => {
+                    Some(ChannelMessage::Decision(_)) => {
                         // ignore decision
                     },
 

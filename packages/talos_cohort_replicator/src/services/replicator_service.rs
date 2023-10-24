@@ -45,13 +45,13 @@ where
                 // 2. Add/update to suffix.
                 match msg {
                     // 2.1 For CM - Install messages on the version
-                    ChannelMessage::Candidate(message) => {
-                        let version = message.version;
-                        replicator.process_consumer_message(version, message.into()).await;
+                    ChannelMessage::Candidate(candidate) => {
+                        let version = candidate.message.version;
+                        replicator.process_consumer_message(version, candidate.message.into()).await;
                     },
                     // 2.2 For DM - Update the decision with outcome + safepoint.
-                    ChannelMessage::Decision(decision_version, decision_message) => {
-                        replicator.process_decision_message(decision_version, decision_message).await;
+                    ChannelMessage::Decision(decision) => {
+                        replicator.process_decision_message(decision.decision_version, decision.message).await;
 
                         if total_items_send == 0 {
                             time_first_item_created_start_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();

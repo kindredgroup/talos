@@ -1,5 +1,6 @@
-use std::{collections::HashMap, str::FromStr};
+use std::str::FromStr;
 
+use ahash::{HashMap, HashMapExt};
 use rdkafka::{
     message::{BorrowedMessage, Header, Headers, OwnedHeaders},
     Message,
@@ -62,8 +63,7 @@ pub fn parse_message_variant(message_type: &String) -> Result<MessageVariant, Co
 #[cfg(test)]
 mod tests {
 
-    use std::collections::HashMap;
-
+    use ahash::{HashMap, HashMapExt};
     use rdkafka::message::Headers;
     use serde::Deserialize;
     use talos_certifier::{core::MessageVariant, errors::CommonError};

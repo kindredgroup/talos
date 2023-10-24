@@ -32,7 +32,7 @@ where
         loop {
             tokio::select! {
                 Some(actions) = self.rx_actions_channel.recv() => {
-                    let MessengerCommitActions {version, commit_actions } = actions;
+                    let MessengerCommitActions {version, commit_actions, headers } = actions;
 
                     if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()){
                         match  get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {
@@ -40,11 +40,13 @@ where
 
                                 let total_len = actions.len() as u32;
 
+                                let headers_cloned = headers.clone();
                                 for action in actions {
                                     let publisher = self.publisher.clone();
+                                    let headers = headers_cloned.clone();
                                     // Publish the message
                                     tokio::spawn(async move {
-                                        publisher.send(version, action, total_len ).await;
+                                        publisher.send(version, action, headers, total_len ).await;
                                     });
 
                                 }
