@@ -2,6 +2,11 @@
 name = "talos_rdkafka_utils"
 version = "0.1.0"
 edition = "2021"
+license = "Unlicense"
+homepage = "https://github.com/kindredgroup/talos"
+repository = "https://github.com/kindredgroup/talos"
+readme = "README.md"
+description = "RD Kafka utilities used in Talos"
 
 [lib]
 doctest = false

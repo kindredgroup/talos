@@ -2,7 +2,7 @@
   "name": "@kindredgroup/cohort_sdk_js",
   "version": "0.0.1",
   "author": "Kindredgroup",
-  "license": "UNLICENSED",
+  "license": "Unlicense",
   "main": "index.js",
   "types": "index.d.ts",
   "napi": {

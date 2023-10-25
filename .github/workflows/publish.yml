@@ -1,0 +1,70 @@
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Publishes tagged version to crates.io and to GitHub Packages NPM
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+name: Publish tagged crates and NPMs
+on:
+    push:
+        tags:
+            - 'v[0-9]+.[0-9]+.[0-9]'
+env:
+    REGISTRY: "https://npm.pkg.github.com"
+    SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
+    DIR_SDK_JS: packages/cohort_sdk_js
+    DIR_SDK_JS_CLIENT: cohort_sdk_client    
+jobs:
+    publish:
+        name: Publish crates
+        runs-on: macos-latest
+        steps:
+            - uses: actions/checkout@v3
+
+            - name: Setup node
+              uses: actions/setup-node@v3
+              with:
+                node-version: 16
+                check-latest: true
+                registry-url: "https://npm.pkg.github.com"
+
+            - name: "Extract tag name"
+              shell: bash
+              run: |-
+                echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+            - name: "Publish ${{ env.DIR_SDK_JS }} NPM"
+              shell: bash
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                currentDir=$(pwd)
+                cd $DIR_SDK_JS
+                pwd
+                ls -l
+                echo "Current version is"
+                npm version
+                npm publish --foreground-scripts
+                echo ""
+                
+            - name: "Publish ${{ env.DIR_SDK_JS_CLIENT }} NPM"
+              shell: bash
+              env:
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                currentDir=$(pwd)
+                cd $DIR_SDK_JS_CLIENT
+                pwd
+                ls -l
+                echo "Current version is"
+                echo "Updating $SDK_JS_PACKAGE_NAME to $VERSION_NAME"
+                rm package-lock.json || true
+                echo "D: npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts"
+                npm version
+                npm publish --foreground-scripts
+                echo ""
+                cd $currentDir
+
+            - name: Publish creates
+              shell: bash
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+              run: |-
+                echo "publishing ..."

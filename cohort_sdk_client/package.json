@@ -2,7 +2,7 @@
   "name": "@kindredgroup/cohort_sdk_client",
   "version": "0.0.1",
   "author": "Kindredgroup",
-  "license": "UNLICENSED",
+  "license": "Unlicense",
   "description": "",
   "type": "commonjs",
   "main": "dist/index.js",
