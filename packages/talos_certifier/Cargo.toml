@@ -36,8 +36,6 @@ thiserror = "1.0.31"
 
 # internal crates
 talos_suffix = { path = "../talos_suffix" }
-logger = { path = "../logger" }
-
 
 [dev-dependencies]
 tokio-test = "0.4"

@@ -378,7 +378,6 @@ dependencies = [
  "cargo-husky",
  "env_logger",
  "log",
- "logger",
  "refinery",
  "talos_certifier",
  "talos_certifier_adapters",
@@ -1312,18 +1311,6 @@ checksum = "b5e6163cb8c49088c2c36f57875e58ccd8c87c7427f7fbd50ea6710b2f3f2e8f"
 dependencies = [
  "serde",
  "value-bag",
-]
-
-[[package]]
-name = "logger"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "env_logger",
- "log",
- "serde",
- "serde_json",
- "thiserror",
 ]
 
 [[package]]
@@ -2524,7 +2511,6 @@ dependencies = [
  "env_logger",
  "futures-util",
  "log",
- "logger",
  "serde",
  "serde_json",
  "strum 0.24.1",
@@ -2545,7 +2531,6 @@ dependencies = [
  "env_logger",
  "futures-util",
  "log",
- "logger",
  "metrics",
  "mockall",
  "rdkafka",

@@ -1,5 +1,4 @@
-use log::{debug, trace};
-use logger::logs::SerdeLogging;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt::Debug;
@@ -74,7 +73,7 @@ impl Config {
             pg_database: var("PG_DATABASE"),
         };
 
-        trace!(config = config.as_json_str(); "Config loaded from environment variables" );
+        log::debug!("Config loaded from environment variables: {:?}", config);
 
         config
     }

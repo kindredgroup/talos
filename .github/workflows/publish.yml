@@ -67,4 +67,4 @@ jobs:
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
               run: |-
-                echo "publishing ..."
+                echo "Publishing ..."
