@@ -26,6 +26,9 @@ Cohort Initiator JS is TypeScript app. When launched it connects to Postgres dat
 ### Setup your machine
 
 #### Install development ecosystem for Rust
+
+<em>This step is curently required but in the future we might be able to optimise build process and remove it. In the readme of "packages/cohort_sdk_js", please read more why it is compiled locally on user machine.</em>
+
 Refer to https://www.rust-lang.org/tools/install
 
 Check:
@@ -38,6 +41,8 @@ rustup 1.26.0 (5af9b9484 2023-04-05)
 info: This is the version for the rustup toolchain manager, not the rustc compiler.
 info: The currently active `rustc` version is `rustc 1.72.0 (5680fa18f 2023-08-23)`
 ```
+
+<em>For reader convenience this step is also described in the `../cohort_sdk_client` readme. When making changes to install procedure, please update another location as well.</em>
 
 #### Start Postgres server
 
@@ -64,7 +69,7 @@ Please refer to Talos Certifier readme.
 
 #### Generate data file
 
-Generate data JSON file containing some number of random banking transactions.
+Generate data JSON file containing some number of bank accounts.
 
 ```
 cd $TALOS/
@@ -91,25 +96,24 @@ make withenv RECIPE=cohort_banking.migrate_db
 make withenv RECIPE=cohort_banking.preload_db args="--accounts $accounts_file"
 ```
 
-
 ### Building Cohort Replicator and Initiator apps
 
 These sample apps depend on `@kindredgroup/cohort_sdk_client` package. It is hosted at [GitHub Packages](https://npm.pkg.github.com) repository.
 
 #### Authenticate to repository GitHub Packages
-TODO: (explain where to obtain token)
 ```
-touch .npmrc-talos
-echo "@kindredgroup:registry=https://npm.pkg.github.com" >> .npmrc-talos
-NPM_CONFIG_USERCONFIG=.npmrc-talos
-npm login --registry https://npm.pkg.github.com
+touch $(pwd)/.npmrc-talos
+echo "@kindredgroup:registry=https://npm.pkg.github.com" >> $(pwd)/.npmrc-talos
+
+# Using this method the ".npmrc-talos" file will be updated with your token. Do not commit the file!
+NPM_CONFIG_USERCONFIG=$(pwd)/.npmrc-talos npm login --registry https://npm.pkg.github.com
 # password is your GitHub token
 # Obtain token at GitHub website Profile -> Settings -> Developer settings -> Personal access tokens -> Tokens (classic)
 ```
 
 #### For local development
 
-This section describes how to install cohort client SDK for local development of cohort.
+This section describes how to install cohort client SDK for local development of cohort (or for running examples locally).
 
 In the Talos project at GitHub, under ["Packages"](https://github.com/orgs/kindredgroup/packages?repo_name=talos) find `cohort_sdk_client` and the version number you need to install locally.
 
