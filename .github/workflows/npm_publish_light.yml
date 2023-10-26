@@ -4,15 +4,19 @@
 # could build it locally.
 # Performs a basic build test by installing "cohort_sdk_client" into
 # "cohort_banking_initiator_js", "cohort_banking_replicator_js" apps and then builds apps.
+# If tests building of initiator and replicator fails then SDK version is removed from NPM.
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
 name: Build and Publish Cohort SDK NPMs
 on:
-    #workflow_call:
-    push:
+    workflow_dispatch:
 env:
     SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
+    SDK_JS_PACKAGE_NAME_SHORT: "cohort_sdk_js"
     SDK_CLIENT_PACKAGE_NAME: "@kindredgroup/cohort_sdk_client"
+    SDK_CLIENT_PACKAGE_NAME_SHORT: "cohort_sdk_client"
+    REGISTRY: "https://npm.pkg.github.com"
+    API_URL: "https://api.github.com/orgs/kindredgroup/packages/npm"
+    API_VERSION: "2022-11-28"
 jobs:
     npm:
         strategy:
@@ -53,7 +57,7 @@ jobs:
                 pwd
                 ls -l
                 npm ci --foreground-scripts
-                ../../scripts/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_JS_PACKAGE_NAME }} "SDK_JS_PACKAGE_VERSION"
+                ../../scripts/cohort/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_JS_PACKAGE_NAME }} "SDK_JS_PACKAGE_VERSION"
                 echo ""
 
             - name: Build and Publish ${{ matrix.settings.dirSdkJs }}
@@ -83,7 +87,7 @@ jobs:
                 rm package-lock.json || true
                 echo "D: npm install $SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION --foreground-scripts"
                 npm install "$SDK_JS_PACKAGE_NAME@$SDK_JS_PACKAGE_VERSION" --foreground-scripts
-                ../scripts/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_CLIENT_PACKAGE_NAME }} "SDK_CLIENT_PACKAGE_VERSION"
+                ../scripts/cohort/github-actions-ci/set-npm-dev-version.sh ${{ env.SDK_CLIENT_PACKAGE_NAME }} "SDK_CLIENT_PACKAGE_VERSION"
                 echo ""
 
             - name: Build and Publish ${{ matrix.settings.dirSdkJsClient }} NPM
@@ -116,6 +120,23 @@ jobs:
                 npm install "$SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION" --foreground-scripts
                 npm run build --foreground-scripts
 
+            - name: Unublish SDK NPMs on failure
+              if: ${{ failure() }}
+              shell: bash
+              env:
+                  SDK_JS_PACKAGE_VERSION: ${{ steps.sdk-js-version.outputs.SDK_JS_PACKAGE_VERSION }}
+                  SDK_CLIENT_PACKAGE_VERSION: ${{ steps.sdk-client-version.outputs.SDK_CLIENT_PACKAGE_VERSION }}
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                currentDir=$(pwd)
+                cd ${{ matrix.settings.dirSdkJsClient }}
+                ../scripts/cohort/github-actions-ci/unpublish-sdk-version.sh "$SDK_CLIENT_PACKAGE_NAME_SHORT" "$SDK_CLIENT_PACKAGE_VERSION"
+                echo ""
+                cd $currentDir
+                
+                cd ${{ matrix.settings.dirSdkJs }}
+                ../../scripts/cohort/github-actions-ci/unpublish-sdk-version.sh "$SDK_JS_PACKAGE_NAME_SHORT" "$SDK_JS_PACKAGE_VERSION"
+
             - name: Build ${{ matrix.settings.dirCohortReplicator }}
               env:
                   SDK_CLIENT_PACKAGE_VERSION: ${{ steps.sdk-client-version.outputs.SDK_CLIENT_PACKAGE_VERSION }}
@@ -130,3 +151,20 @@ jobs:
                 echo "D: npm install $SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION --foreground-scripts"
                 npm install "$SDK_CLIENT_PACKAGE_NAME@$SDK_CLIENT_PACKAGE_VERSION" --foreground-scripts
                 npm run build --foreground-scripts
+
+            - name: Unublish SDK NPMs on failure
+              if: ${{ failure() }}
+              shell: bash
+              env:
+                  SDK_JS_PACKAGE_VERSION: ${{ steps.sdk-js-version.outputs.SDK_JS_PACKAGE_VERSION }}
+                  SDK_CLIENT_PACKAGE_VERSION: ${{ steps.sdk-client-version.outputs.SDK_CLIENT_PACKAGE_VERSION }}
+                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |-
+                currentDir=$(pwd)
+                cd ${{ matrix.settings.dirSdkJsClient }}
+                ../scripts/cohort/github-actions-ci/unpublish-sdk-version.sh "$SDK_CLIENT_PACKAGE_NAME_SHORT" "$SDK_CLIENT_PACKAGE_VERSION"
+                echo ""
+                cd $currentDir
+                
+                cd ${{ matrix.settings.dirSdkJs }}
+                ../../scripts/cohort/github-actions-ci/unpublish-sdk-version.sh "$SDK_JS_PACKAGE_NAME_SHORT" "$SDK_JS_PACKAGE_VERSION"
