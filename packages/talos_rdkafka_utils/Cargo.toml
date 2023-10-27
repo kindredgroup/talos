@@ -1,6 +1,6 @@
 [package]
 name = "talos_rdkafka_utils"
-version = "0.1.0"
+version = "0.2.0-dev"
 edition = "2021"
 license = "Unlicense"
 homepage = "https://github.com/kindredgroup/talos"
@@ -15,7 +15,7 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
-talos_common_utils = { path = "../talos_common_utils" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.0-dev" }
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
@@ -27,9 +27,6 @@ mockall = "0.11.0"
 thiserror = "1.0.31"
 
 rdkafka = { version = "0.34.0", features = ["sasl"]  }
-#rdkafka-sys = { version = "4.6.0" }
-#openssl-sys = { version = "0.9", features = ["vendored"] }
-#openssl = { version = "0.10", features = ["vendored", "v111"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
