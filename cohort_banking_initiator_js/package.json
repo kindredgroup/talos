@@ -1,7 +1,7 @@
 {
   "name": "cohort_banking_initiator_js",
   "author": "Kindredgroup",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "version": "0.0.1",
   "description": "Cohort Initiator example",
   "type": "commonjs",
