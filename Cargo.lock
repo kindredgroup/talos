@@ -19,7 +19,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "agent_client"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -181,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "banking_common"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "deadpool",
@@ -198,7 +198,7 @@ dependencies = [
 
 [[package]]
 name = "banking_replicator"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "banking_common",
@@ -373,7 +373,7 @@ dependencies = [
 
 [[package]]
 name = "certifier_kafka_pg"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "cargo-husky",
  "env_logger",
@@ -484,7 +484,7 @@ checksum = "2da6da31387c7e4ef160ffab6d5e7f00c42626fe39aea70a7b0f1773f7dd6c1b"
 
 [[package]]
 name = "cohort_banking"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_banking_with_sdk"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -548,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_replicator_kafka_pg"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "banking_common",
@@ -573,7 +573,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_sdk"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "env_logger",
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_sdk_js"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "chrono",
@@ -928,7 +928,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "examples_support"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -1339,7 +1339,7 @@ dependencies = [
 
 [[package]]
 name = "messenger_using_kafka"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "ahash 0.8.3",
  "async-trait",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "metrics"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "env_logger",
  "log",
@@ -2481,7 +2481,7 @@ dependencies = [
 
 [[package]]
 name = "talos_agent"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "env_logger",
@@ -2502,7 +2502,7 @@ dependencies = [
 
 [[package]]
 name = "talos_certifier"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "ahash 0.8.3",
  "async-trait",
@@ -2523,7 +2523,7 @@ dependencies = [
 
 [[package]]
 name = "talos_certifier_adapters"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "ahash 0.8.3",
  "async-trait",
@@ -2551,7 +2551,7 @@ dependencies = [
 
 [[package]]
 name = "talos_cohort_replicator"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "ahash 0.8.3",
  "async-trait",
@@ -2573,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "talos_common_utils"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "env_logger",
  "log",
@@ -2582,7 +2582,7 @@ dependencies = [
 
 [[package]]
 name = "talos_messenger_actions"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "ahash 0.8.3",
  "async-trait",
@@ -2609,7 +2609,7 @@ dependencies = [
 
 [[package]]
 name = "talos_messenger_core"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "ahash 0.8.3",
  "async-trait",
@@ -2635,7 +2635,7 @@ dependencies = [
 
 [[package]]
 name = "talos_rdkafka_utils"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
@@ -2652,7 +2652,7 @@ dependencies = [
 
 [[package]]
 name = "talos_suffix"
-version = "0.2.0-dev"
+version = "0.2.1-dev"
 dependencies = [
  "async-trait",
  "criterion 0.4.0",
