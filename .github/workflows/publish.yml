@@ -10,7 +10,7 @@ env:
     REGISTRY: "https://npm.pkg.github.com"
     SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
     DIR_SDK_JS: packages/cohort_sdk_js
-    DIR_SDK_JS_CLIENT: cohort_sdk_client    
+    DIR_SDK_JS_CLIENT: cohort_sdk_client
 jobs:
     publish:
         name: Publish crates
@@ -43,7 +43,7 @@ jobs:
                 npm version
                 npm publish --foreground-scripts
                 echo ""
-                
+
             - name: "Publish ${{ env.DIR_SDK_JS_CLIENT }} NPM"
               shell: bash
               env:
@@ -57,14 +57,20 @@ jobs:
                 echo "Updating $SDK_JS_PACKAGE_NAME to $VERSION_NAME"
                 rm package-lock.json || true
                 echo "D: npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts"
+                npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts
                 npm version
                 npm publish --foreground-scripts
                 echo ""
                 cd $currentDir
 
-            - name: Publish creates
+            - name: Publish crates
               shell: bash
               env:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+                  DR: "--dry-run"
               run: |-
-                echo "Publishing ..."
+                echo "Publishing talos_suffix";             cargo publish $DR -v -p talos_suffix
+                echo "Publishing talos_common_utils";       cargo publish $DR -v -p talos_common_utils
+                echo "Publishing talos_rdkafka_utils";      cargo publish $DR- v -p talos_rdkafka_utils
+                echo "Publishing talos_certifier_adapters"; cargo publish $DR -v -p talos_certifier_adapters
+                echo "Publishing talos_certifier";          cargo publish $DR -v -p talos_certifier
