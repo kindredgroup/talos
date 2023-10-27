@@ -1,7 +1,7 @@
 [package]
 # [package]
 name = "certifier_kafka_pg"
-version = "0.2.2-dev"
+version = "0.2.3-dev"
 edition = "2021"
 keywords = ["talos"]
 description = "Talos Certifier using Kafka and Pg adapters"
@@ -17,11 +17,11 @@ tokio = { workspace = true }
 refinery = { version = "0.8.7", features = ["tokio-postgres"] }
 
 # internal crates
-talos_certifier = { path = "../../packages/talos_certifier", version = "0.2.2-dev" }
-talos_suffix = { path = "../../packages/talos_suffix", version = "0.2.2-dev" }
-talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.2.2-dev" }
-talos_common_utils = { path = "../../packages/talos_common_utils", version = "0.2.2-dev" }
-talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.2.2-dev" }
+talos_certifier = { path = "../../packages/talos_certifier", version = "0.2.3-dev" }
+talos_suffix = { path = "../../packages/talos_suffix", version = "0.2.3-dev" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.2.3-dev" }
+talos_common_utils = { path = "../../packages/talos_common_utils", version = "0.2.3-dev" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.2.3-dev" }
 
 [dev-dependencies.cargo-husky]
 version = "1"
