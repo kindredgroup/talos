@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # - Invoked after this module is installed as dependency into node_modules/
 # - The content of node_modules/cohort_sdk_js/ will have everything under dist/

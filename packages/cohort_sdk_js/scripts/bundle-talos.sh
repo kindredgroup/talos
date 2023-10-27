@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # - Copies all talos sources into TARGET_DIR (default to dist/talos)
 # - Modifies Cargo.toml workspace file to include only packages/*.
