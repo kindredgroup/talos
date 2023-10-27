@@ -69,7 +69,7 @@ jobs:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
               run: |-
                 echo "Publishing talos_suffix";             cargo publish -v -p talos_suffix
+                echo "Publishing talos_certifier";          cargo publish -v -p talos_certifier
                 echo "Publishing talos_common_utils";       cargo publish -v -p talos_common_utils
                 echo "Publishing talos_rdkafka_utils";      cargo publish -v -p talos_rdkafka_utils
                 echo "Publishing talos_certifier_adapters"; cargo publish -v -p talos_certifier_adapters
-                echo "Publishing talos_certifier";          cargo publish -v -p talos_certifier
