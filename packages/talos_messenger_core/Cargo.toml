@@ -29,7 +29,7 @@ thiserror = { version = "1.0.31" }
 rdkafka = { version = "0.34.0", features = ["sasl"] }
 
 # Time
-time = { version = "0.3.17" }
+time = { version = "0.3.30" }
 
 #  indexmap
 indexmap = { version = "2.0.0", features = ["rayon"] }
