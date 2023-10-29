@@ -6,14 +6,14 @@
 # The following is collected from user:
 #  - new version
 #  - the next version
-# 
+#
 # The new tag will look like this: "v${newVersion}".
 #
 # Changes to Cargo.toml files will be comitted.
 #
 # Script will not proceed if project is not clean, not on "master" branch or
 # current master differs from remote master.
-# 
+#
 # Preprequisites:
 # Before running this script make sure "cargo-release" software in installed:
 # https://github.com/crate-ci/cargo-release
@@ -40,7 +40,7 @@ do
       ALLOW_BRANCH="yes"
       echo "Execution of this script on non-master branch is allowed"
     ;;
-  esac  
+  esac
 done
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -139,13 +139,8 @@ then
 fi
 
 echo """
-Bumping versions of the following crates:
-  - talos_common_utils        $NEW_VERSION
-  - talos_rdkafka_utils       $NEW_VERSION
-  - talos_suffix              $NEW_VERSION
-  - talos_certifier_adapters  $NEW_VERSION
-  - talos_certifier           $NEW_VERSION
-
+Bumping versions of all crates to $NEW_VERSION
+  
 Bumping versions of the following NPMs:
   - cohort_sdk_client         $NEW_VERSION
   - packages/cohort_sdk_js    $NEW_VERSION

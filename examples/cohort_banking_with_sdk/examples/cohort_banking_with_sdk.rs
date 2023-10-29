@@ -9,9 +9,6 @@ use cohort_sdk::model::{BackoffConfig, Config};
 use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 
-use metrics::opentel::aggregation_selector::CustomHistogramSelector;
-use metrics::opentel::printer::MetricsToStringPrinter;
-use metrics::opentel::scaling::ScalingConfig;
 use opentelemetry_api::global;
 use opentelemetry_api::metrics::MetricsError;
 use opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector;
@@ -20,6 +17,9 @@ use opentelemetry_sdk::runtime;
 use opentelemetry_stdout::MetricsExporterBuilder;
 use rand::Rng;
 use rust_decimal::prelude::FromPrimitive;
+use talos_metrics::opentel::aggregation_selector::CustomHistogramSelector;
+use talos_metrics::opentel::printer::MetricsToStringPrinter;
+use talos_metrics::opentel::scaling::ScalingConfig;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::{signal, task::JoinHandle, try_join};
 

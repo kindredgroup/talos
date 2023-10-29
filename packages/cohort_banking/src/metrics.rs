@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
-use metrics::model::MinMax;
+use talos_metrics::model::MinMax;
 
 #[derive(Debug, Clone)]
 pub struct Span {

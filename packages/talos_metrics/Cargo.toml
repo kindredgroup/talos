@@ -1,6 +1,6 @@
 [package]
-name = "metrics"
-version = "0.2.3-dev"
+name = "talos_metrics"
+version = "0.2.5-dev"
 edition = "2021"
 
 [dependencies]

@@ -48,11 +48,11 @@ thiserror = "1.0.31"
 mockall = "0.11.0"
 
 # internal crates
-metrics =             { path = "../metrics", version = "0.2.3-dev" }
-talos_certifier =     { path = "../talos_certifier", version = "0.2.3-dev" }
-talos_suffix =        { path = "../talos_suffix", version = "0.2.3-dev" }
-talos_common_utils =  { path = "../talos_common_utils", version = "0.2.3-dev" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.3-dev" }
+talos_metrics =       { path = "../talos_metrics", version = "0.2.5-dev" }
+talos_certifier =     { path = "../talos_certifier", version = "0.2.5-dev" }
+talos_suffix =        { path = "../talos_suffix", version = "0.2.5-dev" }
+talos_common_utils =  { path = "../talos_common_utils", version = "0.2.5-dev" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.5-dev" }
 
 
 [dev-dependencies]

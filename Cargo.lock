@@ -208,7 +208,6 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
- "metrics",
  "opentelemetry",
  "opentelemetry_api",
  "opentelemetry_sdk",
@@ -220,6 +219,7 @@ dependencies = [
  "talos_certifier",
  "talos_certifier_adapters",
  "talos_cohort_replicator",
+ "talos_metrics",
  "talos_rdkafka_utils",
  "tokio",
  "tokio-postgres",
@@ -493,7 +493,6 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
- "metrics",
  "opentelemetry",
  "opentelemetry_api",
  "opentelemetry_sdk",
@@ -507,6 +506,7 @@ dependencies = [
  "talos_certifier",
  "talos_cohort_replicator",
  "talos_common_utils",
+ "talos_metrics",
  "talos_suffix",
  "tokio",
  "tokio-postgres",
@@ -526,7 +526,6 @@ dependencies = [
  "env_logger",
  "examples_support",
  "log",
- "metrics",
  "opentelemetry",
  "opentelemetry-stdout",
  "opentelemetry_api",
@@ -539,6 +538,7 @@ dependencies = [
  "talos_agent",
  "talos_certifier",
  "talos_certifier_adapters",
+ "talos_metrics",
  "talos_rdkafka_utils",
  "time 0.3.30",
  "tokio",
@@ -579,7 +579,6 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
- "metrics",
  "opentelemetry",
  "opentelemetry_api",
  "opentelemetry_sdk",
@@ -591,6 +590,7 @@ dependencies = [
  "talos_agent",
  "talos_certifier",
  "talos_cohort_replicator",
+ "talos_metrics",
  "talos_rdkafka_utils",
  "tokio",
  "uuid",
@@ -938,10 +938,10 @@ dependencies = [
  "deadpool-postgres",
  "env_logger",
  "log",
- "metrics",
  "refinery",
  "rust_decimal",
  "strum 0.24.1",
+ "talos_metrics",
  "thiserror",
  "time 0.3.30",
  "tokio",
@@ -1362,6 +1362,7 @@ dependencies = [
 ]
 
 [[package]]
+<<<<<<< HEAD
 name = "metrics"
 version = "0.2.3-dev"
 dependencies = [
@@ -1378,6 +1379,8 @@ dependencies = [
 ]
 
 [[package]]
+=======
+>>>>>>> 6656da2 (fix: Rename 'packages/metrics' to 'packages/talos_metrics')
 name = "miniz_oxide"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2540,7 +2543,6 @@ dependencies = [
  "env_logger",
  "futures-util",
  "log",
- "metrics",
  "mockall",
  "rdkafka",
  "refinery",
@@ -2549,6 +2551,7 @@ dependencies = [
  "serial_test",
  "talos_certifier",
  "talos_common_utils",
+ "talos_metrics",
  "talos_rdkafka_utils",
  "talos_suffix",
  "thiserror",
@@ -2640,6 +2643,22 @@ dependencies = [
  "time 0.3.30",
  "tokio",
  "tokio-test",
+]
+
+[[package]]
+name = "talos_metrics"
+version = "0.2.5-dev"
+dependencies = [
+ "env_logger",
+ "log",
+ "once_cell",
+ "opentelemetry",
+ "opentelemetry-stdout",
+ "opentelemetry_api",
+ "opentelemetry_sdk",
+ "serde",
+ "serde_json",
+ "time 0.3.30",
 ]
 
 [[package]]
