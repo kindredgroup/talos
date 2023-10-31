@@ -1,8 +1,8 @@
 use std::{collections::HashMap, time::Duration};
 
-use metrics::model::MinMax;
 use talos_certifier::{model::metrics::TxProcessingTimeline, ports::MessageReciever, ChannelMessage};
 use talos_certifier_adapters::KafkaConsumer;
+use talos_metrics::model::MinMax;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::time::timeout;

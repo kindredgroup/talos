@@ -1,8 +1,12 @@
 [package]
 name = "talos_certifier"
-version = "0.0.1"
+version = "0.2.7-dev"
 edition = "2021"
 keywords = ["talos"]
+license = "MIT"
+homepage = "https://github.com/kindredgroup/talos"
+repository = "https://github.com/kindredgroup/talos"
+readme = "README.md"
 description = "Talos is based on the STRIDE algorithm for strict serializable certification of distributed transactions"
 
 [dependencies]
@@ -25,15 +29,13 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-time = { version = "0.3.17" }
+time = { version = "0.3.30", features = ["formatting"]}
 
 # Error
 thiserror = "1.0.31"
 
 # internal crates
-talos_suffix = { path = "../talos_suffix" }
-logger = { path = "../logger" }
-
+talos_suffix = { path = "../talos_suffix", version = "0.2.7-dev" }
 
 [dev-dependencies]
 tokio-test = "0.4"

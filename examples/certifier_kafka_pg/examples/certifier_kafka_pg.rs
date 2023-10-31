@@ -5,8 +5,6 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::core::SuffixConfig;
 use tokio::signal;
 
-use logger::logs;
-
 struct MockConfig {
     db_mock: bool,
     certifier_mock: bool,
@@ -14,7 +12,7 @@ struct MockConfig {
 
 #[tokio::main]
 async fn main() -> Result<(), impl std::error::Error> {
-    logs::init();
+    env_logger::builder().format_timestamp_millis().init();
 
     info!("Talos certifier starting...");
 

@@ -1,6 +1,6 @@
 [package]
 name = "talos_agent"
-version = "0.0.1"
+version = "0.2.7-dev"
 edition = "2021"
 
 [dependencies]
@@ -9,13 +9,7 @@ async-trait =   { workspace = true }
 env_logger =    { workspace = true }
 log =           { workspace = true }
 multimap =      { version = "0.9.0" }
-
-rdkafka = { version = "0.34.0", features = ["sasl"]  }
-#rdkafka-sys = { version = "4.6.0" }
-#rdkafka-sys = { version = "4.6.0", features = ["ssl-vendored", "gssapi-vendored"] }
-#openssl-sys = { version = "0.9", features = ["vendored"] }
-#openssl = { version = "0.10", features = ["vendored", "v111"] }
-
+rdkafka =       { version = "0.34.0", features = ["sasl"]  }
 serde =         { workspace = true }
 serde_json =    { workspace = true }
 strum =         { version = "0.25", features = ["derive"] }
@@ -24,7 +18,7 @@ time =          { version = "0.3.17" }
 tokio =         { workspace = true, features = ["full"] }
 uuid =          { version = "1.4.1", features = ["v4"] }
 
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.7-dev" }
 
 [dev-dependencies]
 mockall =       { version = "0.11.3" }

@@ -1,7 +1,12 @@
 [package]
 name = "talos_suffix"
-version = "0.1.0"
+version = "0.2.7-dev"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/kindredgroup/talos"
+repository = "https://github.com/kindredgroup/talos"
+readme = "README.md"
+description = "Suffix implementations for Talos Certifier and Replicator"
 
 [lib]
 doctest = false

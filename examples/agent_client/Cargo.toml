@@ -1,13 +1,13 @@
 [package]
 name = "agent_client"
-version = "0.0.1"
+version = "0.2.7-dev"
 edition = "2021"
 
 [dev-dependencies]
 
-talos_agent =         { path = "../../packages/talos_agent" }
-talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils" }
-examples_support =    { path = "../../packages/examples_support" }
+talos_agent =         { path = "../../packages/talos_agent", version = "0.2.7-dev" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.2.7-dev" }
+examples_support =    { path = "../../packages/examples_support", version = "0.2.7-dev" }
 
 async-channel = { version = "1.8.0" }
 async-trait =   { workspace = true }
@@ -16,9 +16,7 @@ log =           { workspace = true }
 rand =          { version = "0.8.5" }
 
 rdkafka = { version = "0.34.0", features = ["sasl"]  }
-#rdkafka-sys = { version = "4.6.0", features = ["ssl-vendored", "gssapi-vendored"] }
-#openssl-sys = { version = "0.9", features = ["vendored"] }
-#openssl = { version = "0.10", features = ["vendored", "v111"] }
+
 
 serde =         { workspace = true }
 serde_json =    { workspace = true }

@@ -2,7 +2,7 @@
   "name": "cohort_banking_replicator_js",
   "version": "0.0.1",
   "author": "Kindred",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "description": "Cohort Replicator example",
   "type": "commonjs",
   "main": "dist/main.js",
