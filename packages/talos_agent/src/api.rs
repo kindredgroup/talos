@@ -21,6 +21,7 @@ pub struct CandidateData {
     pub snapshot: u64,
     pub writeset: Vec<String>,
     pub statemap: Option<StateMap>,
+    pub on_commit: Option<Box<Value>>,
 }
 
 /// The data input from client to agent

@@ -457,6 +457,7 @@ impl Cohort {
                 writeset: request.candidate.writeset,
                 readvers,
                 snapshot,
+                on_commit: request.candidate.on_commit,
             },
             timeout: if request.timeout_ms > 0 {
                 Some(Duration::from_millis(request.timeout_ms))

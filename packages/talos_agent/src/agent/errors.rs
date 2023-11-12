@@ -100,6 +100,7 @@ mod tests {
                     snapshot: 0,
                     writeset: vec![String::from("1"), String::from("2"), String::from("3")],
                     statemap: None,
+                    on_commit: None,
                 },
                 timeout: Some(Duration::from_secs(1)),
             },

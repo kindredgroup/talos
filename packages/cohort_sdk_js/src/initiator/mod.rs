@@ -73,6 +73,7 @@ pub struct JsCertificationCandidate {
     pub writeset: Vec<String>,
     pub readvers: Vec<i64>,
     pub statemaps: Option<Vec<HashMap<String, Value>>>,
+    pub on_commit: Option<Value>,
 }
 
 impl From<JsCertificationCandidate> for CertificationCandidate {
@@ -82,6 +83,7 @@ impl From<JsCertificationCandidate> for CertificationCandidate {
             writeset: val.writeset,
             readvers: val.readvers.iter().map(|v| *v as u64).collect(),
             statemaps: val.statemaps,
+            on_commit: val.on_commit.map(Box::new),
         }
     }
 }

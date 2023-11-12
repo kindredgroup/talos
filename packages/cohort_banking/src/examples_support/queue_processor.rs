@@ -22,7 +22,6 @@ impl QueueProcessor {
         threads: u64,
         item_handler: Arc<H>,
     ) -> Vec<JoinHandle<()>> {
-        let item_handler = Arc::new(item_handler);
         let mut tasks = Vec::<JoinHandle<()>>::new();
 
         for thread_number in 1..=threads {

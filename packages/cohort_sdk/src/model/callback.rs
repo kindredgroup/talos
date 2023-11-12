@@ -22,6 +22,7 @@ pub struct CertificationCandidate {
     pub writeset: Vec<String>,
     pub readvers: Vec<u64>,
     pub statemaps: Option<Vec<HashMap<String, Value>>>,
+    pub on_commit: Option<Box<Value>>,
 }
 
 #[derive(Debug, Clone)]

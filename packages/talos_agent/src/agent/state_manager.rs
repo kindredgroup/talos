@@ -337,6 +337,7 @@ mod tests {
                     snapshot: 1_u64,
                     writeset: Vec::<String>::new(),
                     statemap: None,
+                    on_commit: None,
                 },
             },
             Arc::new(Box::new(tx_answer)),
@@ -668,6 +669,7 @@ mod tests {
                     snapshot: 0,
                     writeset: Vec::<String>::new(),
                     statemap: None,
+                    on_commit: None,
                 },
             },
         };

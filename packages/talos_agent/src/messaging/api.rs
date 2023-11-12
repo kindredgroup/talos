@@ -2,6 +2,7 @@ use crate::api::{CandidateData, StateMap, TalosType};
 use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use strum::{Display, EnumString};
 
 pub static HEADER_MESSAGE_TYPE: &str = "messageType";
@@ -27,6 +28,8 @@ pub struct CandidateMessage {
     pub writeset: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<StateMap>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_commit: Option<Box<Value>>,
     pub published_at: i128,
 }
 
@@ -41,6 +44,7 @@ impl CandidateMessage {
             snapshot: candidate.snapshot,
             writeset: candidate.writeset,
             statemap: candidate.statemap,
+            on_commit: candidate.on_commit,
             published_at,
         }
     }
@@ -139,6 +143,7 @@ mod tests {
                 snapshot: 1_u64,
                 writeset: vec!["1".to_string()],
                 statemap: None,
+                on_commit: None,
             },
             0,
         );
