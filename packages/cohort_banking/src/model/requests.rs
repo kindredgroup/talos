@@ -1,3 +1,4 @@
+use cohort_sdk::model::callback::CandidateOnCommitActions;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -7,7 +8,7 @@ pub struct CandidateData {
     pub writeset: Vec<String>,
     pub statemap: Option<Vec<HashMap<String, Value>>>,
     // The "snapshot" is intentionally missing here. We will compute it ourselves before feeding this data to Talos
-    pub on_commit: Option<Value>,
+    pub on_commit: Option<CandidateOnCommitActions>,
 }
 
 #[derive(Clone)]

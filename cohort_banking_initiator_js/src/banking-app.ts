@@ -148,7 +148,6 @@ export class BankingApp {
                     }
                 }
 
-                // TODO: GK - Add on commit action
             },
             snapshot: state.snapshotVersion,
             timeoutMs: 0,

@@ -7,7 +7,10 @@ use banking_common::{
 };
 use cohort_sdk::{
     cohort::Cohort,
-    model::{ClientErrorKind, Config},
+    model::{
+        callback::{CandidateOnCommitActions, CandidateOnCommitPublishActions, KafkaAction},
+        ClientErrorKind, Config,
+    },
 };
 
 use opentelemetry_api::{
@@ -72,20 +75,24 @@ impl Handler<TransferRequest> for BankingApp {
             TransferRequest::new(request.from.clone(), request.to.clone(), request.amount).json(),
         )])];
 
-        let on_commit_value = json!({
-            "publish": {
-                "kafka": [
-                    {
-                        "topic": "test.transfer.feedback",
-                        "value": {
-                            "from_account": request.from,
-                            "to_account": request.to,
-                            "amount": request.amount
-                        }
-                    },
-                ],
-            }
-        });
+        let on_commit_action = CandidateOnCommitActions {
+            publish: Some(CandidateOnCommitPublishActions {
+                kafka: vec![KafkaAction {
+                    headers: None,
+                    key: None,
+                    partition: None,
+                    topic: "test.transfer.feedback".to_string(),
+                    value: json!({
+                        "from_account": request.from,
+                        "to_account": request.to,
+                        "amount": request.amount
+                    }),
+                    cluster: Default::default(),
+                    key_encoding: Default::default(),
+                    value_encoding: Default::default(),
+                }],
+            }),
+        };
 
         let certification_request = CertificationRequest {
             timeout_ms: 0,
@@ -93,7 +100,7 @@ impl Handler<TransferRequest> for BankingApp {
                 readset: vec![request.from.clone(), request.to.clone()],
                 writeset: vec![request.from, request.to],
                 statemap: Some(statemap),
-                on_commit: Some(on_commit_value),
+                on_commit: Some(on_commit_action),
             },
         };
 
