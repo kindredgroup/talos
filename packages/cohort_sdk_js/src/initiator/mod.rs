@@ -70,7 +70,7 @@ impl From<JsInitiatorConfig> for Config {
 // #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 // #[serde(rename_all = "camelCase")]
 #[napi(object)]
-pub struct JSKafkaAction {
+pub struct JsKafkaAction {
     pub cluster: Option<String>,
     /// Topic to publish the payload
     pub topic: String,
@@ -90,14 +90,14 @@ pub struct JSKafkaAction {
 
 // #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[napi(object)]
-pub struct JSCandidateOnCommitPublishActions {
-    pub kafka: Vec<JSKafkaAction>,
+pub struct JsCandidateOnCommitPublishActions {
+    pub kafka: Vec<JsKafkaAction>,
 }
 
 // #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[napi(object)]
 pub struct JSCandidateOnCommitActions {
-    pub publish: Option<JSCandidateOnCommitPublishActions>,
+    pub publish: Option<JsCandidateOnCommitPublishActions>,
 }
 
 #[napi(object)]
@@ -109,8 +109,8 @@ pub struct JsCertificationCandidate {
     pub on_commit: Option<JSCandidateOnCommitActions>,
 }
 
-impl From<JSCandidateOnCommitPublishActions> for CandidateOnCommitPublishActions {
-    fn from(val: JSCandidateOnCommitPublishActions) -> Self {
+impl From<JsCandidateOnCommitPublishActions> for CandidateOnCommitPublishActions {
+    fn from(val: JsCandidateOnCommitPublishActions) -> Self {
         let kafka_actions = val
             .kafka
             .into_iter()

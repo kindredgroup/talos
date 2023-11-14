@@ -138,7 +138,7 @@ export interface JsCandidateOnCommitActions {
 Before SDK can issue a certification request to Talos Certifier it needs some details from you. You will have to query your local database to fetch the following:
 1. Identifiers and version numbers of all objects involved in your transaction. These are known as `readset`, `writeset` and `readvers`.
 2. The copy of your transaction as one serializable object. It makes sense to describe your transaction as JSON object and serialise it to string. This is known as `statemap`.
-3. Any additional message to be published for candidate requests with committed decision outcome, can added to `onCommit` field. Currently the SDK supports only publishing to **Kafka**.
+3. Any additional message to be published for candidate requests with committed decision outcome, can be added to `onCommit` field. Currently the SDK supports only publishing to **Kafka**.
 
 Above mentioned reads, writes and statemap fields together are known as certification candidate details. You may ask whether statemap is optional? Indeed, as you are passing the arrow function to `fnOooInstaller` callback you have the context of your request. From the perspective of Initiator app, the answer is "yes, it is optional". However, the statemap will also be received by your Replicator app. Replicator may be implemented as a separate process. Replicator will know what needs to be updated in the database by reading statemap.
 
