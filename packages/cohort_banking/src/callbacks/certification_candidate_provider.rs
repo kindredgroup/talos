@@ -155,6 +155,7 @@ impl CertificationCandidateProviderImpl {
             writeset: request.candidate.writeset,
             statemaps: request.candidate.statemap,
             readvers: state.items.into_iter().map(|x| x.version).collect(),
+            on_commit: request.candidate.on_commit,
         };
 
         Ok(CertificationCandidateCallbackResponse::Proceed(CertificationRequestPayload {

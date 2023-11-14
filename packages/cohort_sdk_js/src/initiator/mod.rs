@@ -3,8 +3,8 @@ use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
 use cohort_sdk::model::callback::{
-    CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload, OutOfOrderInstallOutcome, OutOfOrderInstallRequest,
-    OutOfOrderInstaller,
+    CandidateOnCommitActions, CandidateOnCommitPublishActions, CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload,
+    KafkaAction, OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller,
 };
 use cohort_sdk::model::{CertificationResponse, ClientError, Config, ResponseMetadata};
 use napi::bindgen_prelude::FromNapiValue;
@@ -67,12 +67,73 @@ impl From<JsInitiatorConfig> for Config {
     }
 }
 
+// #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+// #[serde(rename_all = "camelCase")]
+#[napi(object)]
+pub struct JsKafkaAction {
+    pub cluster: Option<String>,
+    /// Topic to publish the payload
+    pub topic: String,
+    /// Key encoding to be used. Defaults to `text/plain`.
+    pub key_encoding: Option<String>,
+    /// Key for the message to publish.
+    pub key: Option<String>,
+    /// Optional if the message should be published to a specific partition.
+    pub partition: Option<i32>,
+    /// Optional headers while publishing.
+    pub headers: Option<HashMap<String, String>>,
+    /// Key encoding to be used. Defaults to `application/json`.
+    pub value_encoding: Option<String>,
+    /// Payload to publish.
+    pub value: serde_json::Value,
+}
+
+// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[napi(object)]
+pub struct JsCandidateOnCommitPublishActions {
+    pub kafka: Vec<JsKafkaAction>,
+}
+
+// #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[napi(object)]
+pub struct JSCandidateOnCommitActions {
+    pub publish: Option<JsCandidateOnCommitPublishActions>,
+}
+
 #[napi(object)]
 pub struct JsCertificationCandidate {
     pub readset: Vec<String>,
     pub writeset: Vec<String>,
     pub readvers: Vec<i64>,
     pub statemaps: Option<Vec<HashMap<String, Value>>>,
+    pub on_commit: Option<JSCandidateOnCommitActions>,
+}
+
+impl From<JsCandidateOnCommitPublishActions> for CandidateOnCommitPublishActions {
+    fn from(val: JsCandidateOnCommitPublishActions) -> Self {
+        let kafka_actions = val
+            .kafka
+            .into_iter()
+            .map(|action| KafkaAction {
+                cluster: action.cluster.unwrap_or_default(),
+                headers: action.headers,
+                key: action.key,
+                key_encoding: action.key_encoding.unwrap_or_default(),
+                partition: action.partition,
+                topic: action.topic,
+                value: action.value,
+                value_encoding: action.value_encoding.unwrap_or_default(),
+            })
+            .collect();
+        CandidateOnCommitPublishActions { kafka: kafka_actions }
+    }
+}
+impl From<JSCandidateOnCommitActions> for CandidateOnCommitActions {
+    fn from(val: JSCandidateOnCommitActions) -> Self {
+        CandidateOnCommitActions {
+            publish: val.publish.map(|x| x.into()),
+        }
+    }
 }
 
 impl From<JsCertificationCandidate> for CertificationCandidate {
@@ -82,6 +143,7 @@ impl From<JsCertificationCandidate> for CertificationCandidate {
             writeset: val.writeset,
             readvers: val.readvers.iter().map(|v| *v as u64).collect(),
             statemaps: val.statemaps,
+            on_commit: val.on_commit.map(|x| x.into()),
         }
     }
 }

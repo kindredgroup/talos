@@ -297,6 +297,7 @@ impl Generator<CertificationRequest> for RequestGenerator {
             snapshot: 5,
             writeset: Vec::from(["3".to_string()]),
             statemap: None,
+            on_commit: None,
         };
 
         CertificationRequest {

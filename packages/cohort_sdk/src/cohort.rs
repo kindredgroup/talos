@@ -8,6 +8,7 @@ use opentelemetry_api::{
     global,
     metrics::{Counter, Histogram, Unit},
 };
+use serde_json::Value;
 use talos_agent::{
     agent::{
         core::{AgentServices, TalosAgentImpl},
@@ -448,6 +449,11 @@ impl Cohort {
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(request.snapshot, request.candidate.readvers);
 
         let xid = uuid::Uuid::new_v4().to_string();
+        let on_commit: Option<Box<Value>> = match request.candidate.on_commit {
+            Some(value) => serde_json::to_value(value).ok().map(|x| x.into()),
+            None => None,
+        };
+
         let agent_request = CertificationRequest {
             message_key: xid.clone(),
             candidate: CandidateData {
@@ -457,6 +463,7 @@ impl Cohort {
                 writeset: request.candidate.writeset,
                 readvers,
                 snapshot,
+                on_commit,
             },
             timeout: if request.timeout_ms > 0 {
                 Some(Duration::from_millis(request.timeout_ms))

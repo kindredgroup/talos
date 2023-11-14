@@ -332,6 +332,7 @@ mod tests_publisher {
             snapshot: 2_u64,
             writeset: vec!["1".to_string()],
             statemap: None,
+            on_commit: None,
             published_at: 0,
         })
         .unwrap();

@@ -105,6 +105,31 @@ export interface JsCertificationCandidate {
   writeset: Array<string>
   readvers: Array<number>
   statemaps?: Array<Record<string, any>>
+  onCommit?: JsCandidateOnCommitActions
+}
+
+export interface JsKafkaAction {
+  cluster?: string
+  /** Topic to publish the payload */
+  topic: string
+  /** Key encoding to be used. Defaults to `text/plain`. */
+  keyEncoding?: string
+  /** Key for the message to publish. */
+  key?: string
+  /** Optional if the message should be published to a specific partition. */
+  partition?: number
+  /** Optional headers while publishing. */
+  headers?: Record<string, string>
+  /** Key encoding to be used. Defaults to `application/json`. */
+  valueEncoding?: string
+  /** Payload to publish. */
+  value: any
+}
+export interface JsCandidateOnCommitPublishActions {
+  kafka: Array<JsKafkaAction>
+}
+export interface JsCandidateOnCommitActions {
+  publish?: JsCandidateOnCommitPublishActions
 }
 ```
 
@@ -113,10 +138,11 @@ export interface JsCertificationCandidate {
 Before SDK can issue a certification request to Talos Certifier it needs some details from you. You will have to query your local database to fetch the following:
 1. Identifiers and version numbers of all objects involved in your transaction. These are known as `readset`, `writeset` and `readvers`.
 2. The copy of your transaction as one serializable object. It makes sense to describe your transaction as JSON object and serialise it to string. This is known as `statemap`.
+3. Any additional message to be published for candidate requests with committed decision outcome, can be added to `onCommit` field. Currently the SDK supports only publishing to **Kafka**.
 
-Above mentioned reads, writes and statemap fields together are known as certification candidate details. You may ask whether statemap is optional? Indeed, as you are passing the arrow function to `fnOooInstaller` callback you have the context of your request. From the perspective of Initiator app, the answer is "yes, it is optional". However, the statemap will also be received by your Replicator app. Replicator may be implemented as a separate process. Replicator will know what needs to be updated in the database by reading statemap. 
+Above mentioned reads, writes and statemap fields together are known as certification candidate details. You may ask whether statemap is optional? Indeed, as you are passing the arrow function to `fnOooInstaller` callback you have the context of your request. From the perspective of Initiator app, the answer is "yes, it is optional". However, the statemap will also be received by your Replicator app. Replicator may be implemented as a separate process. Replicator will know what needs to be updated in the database by reading statemap.
 
-Read about `statemap` in the end of this document. See section "About Statemap".
+Read about `statemap` in the end of this document. See section [About Statemap](#about-statemap).
 
 ### About "JsCertificationRequestPayload"
 
@@ -134,7 +160,7 @@ Most likely you will want to retry your request. The SDK implements retry with i
 
 ## About "Out of Order Install Callback"
 
-If your business transaction requires a certification from Talos, it is expected that you will not do any changes to objects taking part in your transaction (you will not update database records) until the decision is received from Talos. Only after certification decision is received you will proceed with business transaction. Typically, this is going to be some database update, for example, you will update balances of relevant bank accounts, hence "transfer" money between them. This step is done inside "Out of Order Install Callback". SDK will invoke this callback only when Talos approved your transaction, in other words, when Talos checks that there are no conflicting requests to update your objects. 
+If your business transaction requires a certification from Talos, it is expected that you will not do any changes to objects taking part in your transaction (you will not update database records) until the decision is received from Talos. Only after certification decision is received you will proceed with business transaction. Typically, this is going to be some database update, for example, you will update balances of relevant bank accounts, hence "transfer" money between them. This step is done inside "Out of Order Install Callback". SDK will invoke this callback only when Talos approved your transaction, in other words, when Talos checks that there are no conflicting requests to update your objects.
 
 <em>What is the benefit of having out of order callback if its responsibility overlaps with "Statemap Installer Callback" found in Replicator?
 You may wish not to implement this callback and rely on Replicator to do all your DB changes. Just keep in mind that Replicator will do it "later". How much later will depends on the overall load on the replicator and other dependent transactions which are still in-flight. If you did not implement out of order callback then it is possible to finish the call to `let response = await initiator.certify(...)`, have "go ahead" decision from Talos in the response variable, but your DB will not see this change. If, at that point, you returned response to user via HTTP and user went to query DB via another endpoint, it could be that user will not see the change yet (Replicator may still be processing the backlog of other transactions). On the other hand, with out of order callback in place, once the call to `let response = await initiator.certify(...)` finished, your DB is already updated and you may rely on that change in your following logic.

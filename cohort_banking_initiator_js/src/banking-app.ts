@@ -21,7 +21,7 @@ export class BankingApp {
         private pond: Pond,
         private database: Pool,
         private queue: BroadcastChannel,
-        private onFinishListener: (appRef: BankingApp) => any) {}
+        private onFinishListener: (appRef: BankingApp) => any) { }
 
     async init() {
         this.initiator = await Initiator.init(sdkConfig)
@@ -133,6 +133,21 @@ export class BankingApp {
                 writeset: [tx.from, tx.to],
                 readvers: state.items.map(i => i.version),
                 statemaps: [{ "TRANSFER": tx }],
+                onCommit: {
+                    publish: {
+                        kafka: [
+                            {
+                                topic: "test.transfer.feedback.js",
+                                value: {
+                                    "from_account": tx.from,
+                                    "to_account": tx.to,
+                                    "amount": tx.amount
+                                }
+                            },
+                        ]
+                    }
+                }
+
             },
             snapshot: state.snapshotVersion,
             timeoutMs: 0,
@@ -143,14 +158,16 @@ export class BankingApp {
         let cnn: PoolClient
         try {
             cnn = await this.database.connect()
-            const result = await cnn.query({ name: "get-state", text:
-                `SELECT
+            const result = await cnn.query({
+                name: "get-state", text:
+                    `SELECT
                     ba."number" as "id", ba."version" as "version", cs."version" AS snapshot_version
                 FROM
                     bank_accounts ba, cohort_snapshot cs
                 WHERE
                     ba."number" = $1 OR ba."number" = $2`,
-                values: [tx.from, tx.to] }
+                values: [tx.from, tx.to]
+            }
             )
 
             if (result.rowCount != 2) {
@@ -163,7 +180,7 @@ export class BankingApp {
         } catch (e) {
             // This print here is important, without it the original reason is lost when using NAPI 2.10.
             logger.error("BankingApp.loadState(): %s", e)
-            throw new Error(`Unable to load state for tx: ${ JSON.stringify(tx) }. Reason: ${e.message}`, { cause: e })
+            throw new Error(`Unable to load state for tx: ${JSON.stringify(tx)}. Reason: ${e.message}`, { cause: e })
         } finally {
             cnn?.release()
         }
@@ -219,7 +236,7 @@ export class BankingApp {
         } catch (e) {
             // This print here is important, without it the original reason is lost when using NAPI 2.10.
             logger.error("BankingApp.installOutOfOrder(): %s", e)
-            throw new Error(`Unable to complete out of order installation of tx: ${ JSON.stringify(tx) }`, { cause: e })
+            throw new Error(`Unable to complete out of order installation of tx: ${JSON.stringify(tx)}`, { cause: e })
         } finally {
             cnn?.release()
         }

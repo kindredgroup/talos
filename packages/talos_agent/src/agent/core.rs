@@ -246,6 +246,7 @@ mod tests {
             snapshot: 1_u64,
             writeset: Vec::<String>::new(),
             statemap: None,
+            on_commit: None,
         }
     }
 

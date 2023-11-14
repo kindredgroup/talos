@@ -7,13 +7,17 @@ use banking_common::{
 };
 use cohort_sdk::{
     cohort::Cohort,
-    model::{ClientErrorKind, Config},
+    model::{
+        callback::{CandidateOnCommitActions, CandidateOnCommitPublishActions, KafkaAction},
+        ClientErrorKind, Config,
+    },
 };
 
 use opentelemetry_api::{
     global,
     metrics::{Counter, Unit},
 };
+use serde_json::json;
 use talos_agent::messaging::api::Decision;
 
 use crate::{
@@ -64,12 +68,31 @@ impl BankingApp {
 #[async_trait]
 impl Handler<TransferRequest> for BankingApp {
     async fn handle(&self, request: TransferRequest) -> Result<(), String> {
-        log::debug!("processig new banking transfer request: {:?}", request);
+        log::debug!("processing new banking transfer request: {:?}", request);
 
         let statemap = vec![HashMap::from([(
             BusinessActionType::TRANSFER.to_string(),
             TransferRequest::new(request.from.clone(), request.to.clone(), request.amount).json(),
         )])];
+
+        let on_commit_action = CandidateOnCommitActions {
+            publish: Some(CandidateOnCommitPublishActions {
+                kafka: vec![KafkaAction {
+                    headers: None,
+                    key: None,
+                    partition: None,
+                    topic: "test.transfer.feedback".to_string(),
+                    value: json!({
+                        "from_account": request.from,
+                        "to_account": request.to,
+                        "amount": request.amount
+                    }),
+                    cluster: Default::default(),
+                    key_encoding: Default::default(),
+                    value_encoding: Default::default(),
+                }],
+            }),
+        };
 
         let certification_request = CertificationRequest {
             timeout_ms: 0,
@@ -77,6 +100,7 @@ impl Handler<TransferRequest> for BankingApp {
                 readset: vec![request.from.clone(), request.to.clone()],
                 writeset: vec![request.from, request.to],
                 statemap: Some(statemap),
+                on_commit: Some(on_commit_action),
             },
         };
 
@@ -85,6 +109,7 @@ impl Handler<TransferRequest> for BankingApp {
             database: Arc::clone(&self.database),
             single_query_strategy,
         };
+
         let request_payload_callback = || state_provider.get_certification_candidate(certification_request.clone());
 
         let oo_inst = OutOfOrderInstallerImpl {
