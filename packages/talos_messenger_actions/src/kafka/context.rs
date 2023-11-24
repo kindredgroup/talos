@@ -15,7 +15,9 @@ pub struct MessengerProducerContext {
     pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
 }
 
-impl ClientContext for MessengerProducerContext {}
+impl ClientContext for MessengerProducerContext {
+    const ENABLE_REFRESH_OAUTH_TOKEN: bool = false;
+}
 impl ProducerContext for MessengerProducerContext {
     type DeliveryOpaque = Box<MessengerProducerDeliveryOpaque>;
 
