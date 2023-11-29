@@ -2,6 +2,10 @@
 name = "talos_messenger_core"
 version = "0.2.7-dev"
 edition = "2021"
+license = "MIT"
+homepage = "https://github.com/kindredgroup/talos"
+repository = "https://github.com/kindredgroup/talos"
+readme = "README.md"
 
 [lib]
 doctest = false
