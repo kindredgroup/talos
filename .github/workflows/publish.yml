@@ -108,3 +108,17 @@ jobs:
                   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
               run: |-
                 cargo publish -v -p talos_certifier_adapters
+          # Talos messenger core
+            - name: Publish talos_messenger_core@ ${{ env.VERSION_NAME }} crate
+              shell: bash
+              env:
+                CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+              run: |-
+                cargo publish -v -p talos_messenger_core
+          # Talos messenger actions
+            - name: Publish talos_messenger_actions@ ${{ env.VERSION_NAME }} crate
+              shell: bash
+              env:
+                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+              run: |-
+                cargo publish -v -p talos_messenger_actions

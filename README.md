@@ -1,3 +1,4 @@
+[![Crates.io version](https://img.shields.io/crates/v/talos_certifier)](https://crates.io/crates/talos_certifier)
 [![Build Status](https://img.shields.io/github/actions/workflow/status/kindredgroup/talos/master.yml)](https://github.com/kindredgroup/talos/actions/workflows/master.yml)
 [![codecov](https://img.shields.io/codecov/c/github/kindredgroup/talos/master?style=flat-square&logo=codecov)](https://app.codecov.io/gh/kindredgroup/talos)
 
