@@ -1,6 +1,6 @@
 {
   "name": "cohort_sdk_js-darwin-arm64",
-  "version": "0.2.10",
+  "version": "0.2.11-dev",
   "os": [
     "darwin"
   ],
