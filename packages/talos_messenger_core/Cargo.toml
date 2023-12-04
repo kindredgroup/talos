@@ -6,6 +6,8 @@ license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
 repository = "https://github.com/kindredgroup/talos"
 readme = "README.md"
+keywords = ["talos", "messenger"]
+description = "Messenger core for Talos"
 
 [lib]
 doctest = false
