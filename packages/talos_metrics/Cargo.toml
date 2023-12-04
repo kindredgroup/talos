@@ -1,6 +1,6 @@
 [package]
 name = "talos_metrics"
-version = "0.2.8-dev"
+version = "0.2.8"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
