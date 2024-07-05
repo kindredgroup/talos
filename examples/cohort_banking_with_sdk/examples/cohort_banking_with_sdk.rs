@@ -35,8 +35,8 @@ struct LaunchParams {
     metric_print_raw: bool,
 }
 
-/// Connects to database, to kafka certification topic as talso agent and as cohort replicator.
-/// Generates some number of banking transactions and passes then all to Talos for certification.
+/// Connects to database, to kafka certification topic as talos agent and as cohort replicator.
+/// Generates some number of banking transactions and passes them all to Talos for certification.
 /// Once all transactions have been processed, it prints some output metrics to console.
 /// Metric logging is set to WARN. If RUST_LOG is set to stricter than WARN then no metrics will be printed.
 /// Preprequisite:
@@ -110,14 +110,16 @@ async fn main() -> Result<(), String> {
         },
     };
 
-    let db_config = DatabaseConfig {
-        pool_size: 100,
-        user: "postgres".into(),
-        password: "admin".into(),
-        host: "127.0.0.1".into(),
-        port: "5432".into(),
-        database: "talos-sample-cohort-dev".into(),
-    };
+    let db_config = DatabaseConfig::from_env(Some("COHORT"))?;
+
+    // let db_config = DatabaseConfig {
+    //     pool_size: 100,
+    //     user: "postgres".into(),
+    //     password: "admin".into(),
+    //     host: "127.0.0.1".into(),
+    //     port: "5432".into(),
+    //     database: "talos-sample-cohort-dev".into(),
+    // };
 
     let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw, ScalingConfig { ratios: params.scaling_config });
     let (tx_metrics, rx_metrics) = tokio::sync::watch::channel("".to_string());

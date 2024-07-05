@@ -17,11 +17,11 @@ cp -r \
     ../talos_certifier_adapters \
     ../talos_cohort_replicator \
     ../talos_common_utils \
+    ../talos_metrics \
     ../talos_rdkafka_utils \
     ../talos_suffix \
     ../cohort_sdk \
     ../logger \
-    ../metrics \
     $TARGET_DIR/packages/
 
 cp -r \

@@ -165,14 +165,12 @@ cohort_banking.run_replicator_rust:
 ## cohort_banking.run_initiator_js: 🧪 Executes load test through Cohort Initiator implemented in JS
 cohort_banking.run_initiator_load_test_in_js:
 	$(call pp,running "Cohort Initiator" implemented in JS...)
-	cd ./cohort_banking_initiator_js
-	npm start -- $(args)
+	cd ./cohort_banking_initiator_js && npm start -- $(args)
 
 ## cohort_banking.run_replicator_js: 🧪 Runs Replicator JS app
 cohort_banking.run_replicator_js:
 	$(call pp,running "Cohort Replicator" implemented in JS...)
-	cd ./cohort_banking_replicator_js
-	npm start
+	cd ./cohort_banking_replicator_js && npm start
 
 ## dev.histogram_decision_timeline_from_kafka: 🧪 Reads all decisions from kafka and prints processing timeline as csv
 dev.histogram_decision_timeline_from_kafka:

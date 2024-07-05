@@ -1,5 +1,11 @@
 import { JsInitiatorConfig } from "@kindredgroup/cohort_sdk_client"
 
+const getParam = (param: string, defaultValue: string): string => {
+    const v = process.env[param]
+    if (v) return v
+    return defaultValue
+}
+
 const SDK_CONFIG: JsInitiatorConfig = {
     backoffOnConflict: {
         minMs: 2,
@@ -22,7 +28,7 @@ const SDK_CONFIG: JsInitiatorConfig = {
       timeoutMs: 60_000,
       kafka: {
         brokers: ["127.0.0.1:9092"],
-        topic: "dev.ksp.certification",
+        topic: getParam("KAFKA_TOPIC", "dev.ksp.certification"),
         clientId: "cohort-js",
         groupId: "cohort-js",
         producerSendTimeoutMs: 10,
@@ -31,8 +37,8 @@ const SDK_CONFIG: JsInitiatorConfig = {
         consumerConfigOverrides: {
             "enable.auto.commit": "false"
         },
-        username: "",
-        password: "",
+        username: getParam("KAFKA_USERNAME", ""),
+        password: getParam("KAFKA_PASSWORD", ""),
       },
 }
 
