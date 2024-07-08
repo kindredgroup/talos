@@ -1,6 +1,6 @@
 [package]
 name = "talos_suffix"
-version = "0.2.12"
+version = "0.2.13-dev"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
