@@ -8,7 +8,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
-            - uses: dtolnay/rust-toolchain@1.73.0
+            - uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: nightly-2023-10-03
             - run: scripts/ubuntu-setup.sh
