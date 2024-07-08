@@ -16,11 +16,11 @@ export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Co
 excludes="cohort_sdk_js"
 
 echo "Compiling $app_name"
-cargo +1.73.0 build
+cargo +nightly-2023-10-03 build
 
 echo "Testing $app_name"
 export LLVM_PROFILE_FILE="${app_name}-%p-%m.profraw"
-cargo +1.73.0 test --tests --workspace --exclude ${excludes} # don't run doctests
+cargo +nightly-2023-10-03 test --tests --workspace --exclude ${excludes} # don't run doctests
 
 rm ccov.zip 2> /dev/null || true
 zip -0 ccov.zip `find . \( -name "*.gc*" \) -print | grep -v ${excludes}`
@@ -38,7 +38,7 @@ grcov ccov.zip -s . --llvm  --ignore-not-existing --ignore "/*" --excl-start "\\
 rm ccov.zip
 
 # Re-run tests with JSON output
-cargo +1.73.0 test --tests --workspace --exclude ${excludes} -- -Z unstable-options --format json --report-time > coverage/test-report.json
+cargo +nightly-2023-10-03 test --tests --workspace --exclude ${excludes} -- -Z unstable-options --format json --report-time > coverage/test-report.json
 
 if [ "$1" == "--open" ]; then
   index="file://$(pwd)/${base_dir}/../coverage/index.html"
