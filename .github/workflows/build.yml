@@ -8,9 +8,9 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v3
-            - uses: dtolnay/rust-toolchain@stable
+            - uses: dtolnay/rust-toolchain@1.73.0
               with:
-                  toolchain: stable
+                  toolchain: 1.73.0
             - run: scripts/ubuntu-setup.sh
             - run: rustup component add rustfmt clippy
             - name: cargo build
