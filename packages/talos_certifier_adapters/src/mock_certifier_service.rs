@@ -5,12 +5,15 @@ use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
 use talos_certifier::model::metrics::TxProcessingTimeline;
 use talos_certifier::model::{Decision, DecisionMessage};
 use talos_certifier::ports::common::SharedPortTraits;
+use talos_certifier::services::MetricsServiceMessage;
 use talos_certifier::ChannelMessage;
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 pub struct MockCertifierService {
     pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
+    pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
 }
 
 #[async_trait]
@@ -33,7 +36,7 @@ impl SystemService for MockCertifierService {
                 match channel_msg {
                     Some(ChannelMessage::Candidate(candidate)) => {
                         let message = candidate.message;
-                        let decision_message = DecisionMessage {
+                        let mut decision_message = DecisionMessage {
                             version: message.version,
                             decision: Decision::Committed,
                             agent: message.agent,
@@ -45,6 +48,9 @@ impl SystemService for MockCertifierService {
                             duplicate_version: None,
                             metrics: TxProcessingTimeline::default(),
                         };
+                        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                        decision_message.metrics.decision_created_at = now;
+
                         let decision_outbox_channel_message = DecisionOutboxChannelMessage{ message: decision_message.clone(), headers:HashMap::new() };
                         self.decision_outbox_tx
                             .send(decision_outbox_channel_message)
@@ -55,6 +61,18 @@ impl SystemService for MockCertifierService {
                                 reason: e.to_string(),
                                 service: "Certifier Service".to_string(),
                             })?;
+
+                        let metrics_tx_cloned_2 = self.metrics_tx.clone();
+                        let received_at = message.received_at;
+                        let now_1 = now;
+                        tokio::spawn(async move {
+                            let _ = metrics_tx_cloned_2
+                                .send(MetricsServiceMessage::Record(
+                                    "channel_consumer_to_candidate_process_decision".to_string(),
+                                    (now_1 - received_at) as u64 / 1_000_000_u64,
+                                ))
+                                .await;
+                        });
 
                     },
 

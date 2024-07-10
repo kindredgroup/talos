@@ -85,8 +85,16 @@ impl DecisionMessage {
         } = candidate_message;
 
         let (decision, safepoint, conflict_version) = match outcome {
-            Outcome::Commited { discord: _, safepoint } => (Decision::Committed, Some(safepoint), None),
-            Outcome::Aborted { version, discord: _ } => (Decision::Aborted, None, version),
+            Outcome::Commited {
+                discord: _,
+                safepoint,
+                metrics: _,
+            } => (Decision::Committed, Some(safepoint), None),
+            Outcome::Aborted {
+                version,
+                discord: _,
+                metrics: _,
+            } => (Decision::Aborted, None, version),
         };
 
         Self {

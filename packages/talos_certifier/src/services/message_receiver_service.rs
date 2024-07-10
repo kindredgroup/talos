@@ -53,6 +53,15 @@ impl SystemService for MessageReceiverService {
             match res {
                 Ok(Some(msg))  => {
 
+
+                    // if self.message_channel_tx.capacity() + 100 >= self.message_channel_tx.max_capacity() {
+                    //     error!(
+                    //         "[message_channel] Almost near the max capacity. Capacity={} and max_capacity={} ",
+                    //         self.message_channel_tx.capacity(),
+                    //         self.message_channel_tx.max_capacity()
+                    //     )
+                    // }
+
                     if let Err(error) = self.message_channel_tx.send(msg.clone()).await {
                         return Err(Box::new(SystemServiceError{
                              kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),

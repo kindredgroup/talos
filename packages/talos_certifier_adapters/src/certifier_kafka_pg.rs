@@ -10,7 +10,7 @@ use talos_certifier::services::CertifierServiceConfig;
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
-    services::{CertifierService, DecisionOutboxService, MessageReceiverService},
+    services::{CertifierService, DecisionOutboxService, MessageReceiverService, MetricsService},
     talos_certifier_service::{TalosCertifierService, TalosCertifierServiceBuilder},
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
@@ -55,6 +55,7 @@ pub async fn certifier_with_kafka_pg(
     };
 
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);
+    let (metrics_tx, metrics_rx) = mpsc::channel(channel_buffer.message_receiver);
 
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
@@ -73,6 +74,7 @@ pub async fn certifier_with_kafka_pg(
         true => Box::new(MockCertifierService {
             decision_outbox_tx: outbound_tx.clone(),
             message_channel_rx: rx,
+            metrics_tx: metrics_tx.clone(),
         }),
         false => Box::new(CertifierService::new(
             rx,
@@ -82,6 +84,7 @@ pub async fn certifier_with_kafka_pg(
             Some(CertifierServiceConfig {
                 suffix_config: configuration.suffix_config.unwrap_or_default(),
             }),
+            metrics_tx.clone(),
         )),
     };
 
@@ -104,13 +107,17 @@ pub async fn certifier_with_kafka_pg(
         Arc::new(data_store),
         Arc::new(Box::new(kafka_producer)),
         system.clone(),
+        metrics_tx,
     );
     /* END - Decision Outbox service  */
+
+    let metrics_service = MetricsService::new(metrics_rx);
 
     let talos_certifier = TalosCertifierServiceBuilder::new(system)
         .add_certifier_service(certifier_service)
         .add_adapter_service(Box::new(message_receiver_service))
         .add_adapter_service(Box::new(decision_outbox_service))
+        .add_metric_service(Box::new(metrics_service))
         .build();
 
     Ok(talos_certifier)

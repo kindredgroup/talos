@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolError, Runtime};
+use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolConfig, PoolError, Runtime};
 use log::warn;
 use serde_json::{json, Value};
 use talos_certifier::{
@@ -34,6 +34,7 @@ impl Pg {
         config.manager = Some(ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
+        // config.pool = Some(PoolConfig::new(200));
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
 

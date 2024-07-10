@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, error};
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -88,7 +88,11 @@ impl MessageReciever for KafkaConsumer {
         let partition = message_received.partition();
 
         let offset_i64 = message_received.offset();
+
+        let timestamp = message_received.timestamp().to_millis();
+
         let offset = offset_i64 as u64;
+        // error!("Timestamp for message with offset {offset} is {timestamp:?}");
 
         let headers = get_message_headers(&message_received).ok_or_else(|| MessageReceiverError {
             kind: MessageReceiverErrorKind::HeaderNotFound,
@@ -125,7 +129,14 @@ impl MessageReciever for KafkaConsumer {
                     data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
                 })?;
                 msg.version = offset;
+
                 msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                // msg.received_at = if timestamp.is_some() {
+                //     let k = (timestamp.unwrap() * 1_000_000) as i128;
+                //     k
+                // } else {
+                //     OffsetDateTime::now_utc().unix_timestamp_nanos()
+                // };
                 ChannelMessage::Candidate(
                     CandidateChannelMessage {
                         message: msg,

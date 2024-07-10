@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
 };
 
-use crate::{core::ServiceResult, SystemMessage};
+use crate::{core::ServiceResult, services::MetricsService, SystemMessage};
 use futures_util::future::join_all;
 use log::{error, info};
 
@@ -13,6 +13,7 @@ pub struct TalosCertifierServiceBuilder {
     system: System,
     certifier_service: Option<Box<dyn SystemService + Send + Sync>>,
     services: Vec<Box<dyn SystemService + Send + Sync>>,
+    pub metrics_service: Option<Box<dyn SystemService + Send + Sync>>,
 }
 
 impl TalosCertifierServiceBuilder {
@@ -20,6 +21,7 @@ impl TalosCertifierServiceBuilder {
         Self {
             system,
             certifier_service: None,
+            metrics_service: None,
             services: vec![],
         }
     }
@@ -34,6 +36,11 @@ impl TalosCertifierServiceBuilder {
         self
     }
 
+    pub fn add_metric_service(mut self, metrics_service: Box<dyn SystemService + Send + Sync>) -> Self {
+        self.metrics_service = Some(metrics_service);
+        self
+    }
+
     pub fn add_certifier_service(mut self, certifier_service: Box<dyn SystemService + Send + Sync>) -> Self {
         self.certifier_service = Some(certifier_service);
         self
@@ -42,6 +49,10 @@ impl TalosCertifierServiceBuilder {
     pub fn build(self) -> TalosCertifierService {
         let mut services = self.services;
         services.push(self.certifier_service.expect("Certifier Service is mandatory"));
+
+        if let Some(metrics) = self.metrics_service {
+            services.push(metrics);
+        };
 
         TalosCertifierService {
             system: self.system,

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 
 use ahash::HashMap;
 use async_trait::async_trait;
@@ -16,12 +17,15 @@ use crate::{
     SystemMessage,
 };
 
+use super::MetricsServiceMessage;
+
 pub struct DecisionOutboxService {
     pub system: System,
     pub decision_outbox_channel_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub decision_outbox_channel_rx: mpsc::Receiver<DecisionOutboxChannelMessage>,
     pub decision_store: Arc<Box<dyn DecisionStore<Decision = DecisionMessage> + Sync + Send>>,
     pub decision_publisher: Arc<Box<dyn MessagePublisher + Sync + Send>>,
+    pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
 }
 
 impl DecisionOutboxService {
@@ -31,6 +35,7 @@ impl DecisionOutboxService {
         decision_store: Arc<Box<dyn DecisionStore<Decision = DecisionMessage> + Sync + Send>>,
         decision_publisher: Arc<Box<dyn MessagePublisher + Sync + Send>>,
         system: System,
+        metrics_tx: mpsc::Sender<MetricsServiceMessage>,
     ) -> Self {
         Self {
             system,
@@ -38,6 +43,7 @@ impl DecisionOutboxService {
             decision_publisher,
             decision_outbox_channel_tx,
             decision_outbox_channel_rx,
+            metrics_tx,
         }
     }
 
@@ -123,9 +129,33 @@ impl SystemService for DecisionOutboxService {
                 headers,
                 message: decision_message,
             } = decision_channel_message;
+
+            let metrics_tx_cloned_2 = self.metrics_tx.clone();
+            let received_at = decision_message.metrics.decision_created_at; // received_at;
+            let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
             tokio::spawn(async move {
+                let _ = metrics_tx_cloned_2
+                    .send(MetricsServiceMessage::Record(
+                        "channel_decision_created_to_recieved_at_outbox".to_string(),
+                        (now - received_at) as u64 / 1_000_000_u64,
+                    ))
+                    .await;
+            });
+
+            let metric_tx_cloned = self.metrics_tx.clone();
+
+            tokio::spawn(async move {
+                let start_db = Instant::now();
                 match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
                     Ok(decision) => {
+                        let _ = metric_tx_cloned
+                            .send(MetricsServiceMessage::Record(
+                                "save_decision_to_xdb".to_string(),
+                                start_db.elapsed().as_millis() as u64,
+                            ))
+                            .await;
+                        let start_publish = Instant::now();
+
                         if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision, headers).await {
                             error!(
                                 "Error publishing message for version={} with reason={:?}",
@@ -133,6 +163,13 @@ impl SystemService for DecisionOutboxService {
                                 publish_error.to_string()
                             );
                         }
+
+                        let _ = metric_tx_cloned
+                            .send(MetricsServiceMessage::Record(
+                                "publish_decision".to_string(),
+                                start_publish.elapsed().as_millis() as u64,
+                            ))
+                            .await;
                     }
                     Err(db_error) => {
                         system.system_notifier.send(SystemMessage::ShutdownWithError(db_error)).unwrap();
