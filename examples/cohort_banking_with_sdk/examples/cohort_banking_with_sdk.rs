@@ -72,6 +72,26 @@ async fn main() -> Result<(), String> {
     let generator = ControlledRateLoadGenerator::generate(params.stop_type, params.target_rate, generator_impl, Arc::new(tx_queue));
     let h_generator = tokio::spawn(generator);
 
+    let mut cfg_kafka = KafkaConfig::from_env(Some("COHORT"));
+    let producer_config_overrides = [
+        // The maximum time librdkafka may use to deliver a message (including retries)
+        ("message.timeout.ms".to_string(), "15000".to_string()),
+        ("queue.buffering.max.messages".to_string(), "1000000".to_string()),
+        ("topic.metadata.refresh.interval.ms".to_string(), "5".to_string()),
+        ("socket.keepalive.enable".to_string(), "true".to_string()),
+        ("acks".to_string(), "0".to_string()),
+    ];
+
+    let consumer_config_overrides = [
+        ("enable.auto.commit".to_string(), "false".to_string()),
+        ("auto.offset.reset".to_string(), "latest".to_string()),
+        ("fetch.wait.max.ms".to_string(), "600".to_string()),
+        ("socket.keepalive.enable".to_string(), "true".to_string()),
+        ("acks".to_string(), "0".to_string()),
+    ];
+
+    cfg_kafka.extend(Some(HashMap::from(producer_config_overrides)), Some(HashMap::from(consumer_config_overrides)));
+
     let sdk_config = Config {
         //
         // cohort configs
@@ -92,34 +112,10 @@ async fn main() -> Result<(), String> {
         // The size of internal buffer for candidates
         buffer_size: 10_000_000,
         timeout_ms: 600_000,
-
-        kafka: KafkaConfig {
-            brokers: vec!["127.0.0.1:9092".to_string()],
-            topic: "dev.ksp.certification".into(),
-            client_id: "cohort-banking".into(),
-            // Must be unique for each agent instance. Can be the same as AgentConfig.agent_id
-            group_id: "cohort-banking".into(),
-            username: "".into(),
-            password: "".into(),
-            // The maximum time librdkafka may use to deliver a message (including retries)
-            producer_config_overrides: HashMap::from([("message.timeout.ms".into(), "15000".into())]),
-            consumer_config_overrides: HashMap::from([("fetch.wait.max.ms".into(), "6000".into()), ("enable.auto.commit".into(), "false".into())]),
-            // consumer_config_overrides: HashMap::new(),
-            producer_send_timeout_ms: Some(10),
-            log_level: Some("info".into()),
-        },
+        kafka: cfg_kafka,
     };
 
     let db_config = DatabaseConfig::from_env(Some("COHORT"))?;
-
-    // let db_config = DatabaseConfig {
-    //     pool_size: 100,
-    //     user: "postgres".into(),
-    //     password: "admin".into(),
-    //     host: "127.0.0.1".into(),
-    //     port: "5432".into(),
-    //     database: "talos-sample-cohort-dev".into(),
-    // };
 
     let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw, ScalingConfig { ratios: params.scaling_config });
     let (tx_metrics, rx_metrics) = tokio::sync::watch::channel("".to_string());

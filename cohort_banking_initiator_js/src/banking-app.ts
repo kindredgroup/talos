@@ -99,7 +99,7 @@ export class BankingApp {
             async () => {
                 const s = Date.now()
                 const newRequest = await this.createNewRequest(tx) as any
-                logger.info("%s", JSON.stringify(newRequest, null, 2))
+                logger.debug("%s", JSON.stringify(newRequest, null, 2))
                 const n = Date.now()
                 stateEnd = n - span_s
                 stateDuration = n - s
