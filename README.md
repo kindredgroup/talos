@@ -8,16 +8,19 @@
 
 [comment]: <> (TOC_START)
 
--   [Overview](#overview)
--   [Getting Started](#getting-started)
-    -   [Requirements](#getting-started-requirements)
-    -   [Installation and setup.](#getting-started-installation-and-setup)
-    -   [Rust Scripts](#getting-started-rust-scripts)
-    -   [Committing Code](#getting-started-committing-code)
--   [IDE's](#ides)
-    -   [VSCODE Settings](#ides-vscode-settings)
--   [Usage](#usage)
--   [Release Notes](#release-notes)
+- [Talos](#talos)
+  - [Overview ](#overview-)
+  - [Getting Started ](#getting-started-)
+    - [Requirements ](#requirements-)
+    - [Installation and setup. ](#installation-and-setup-)
+    - [Rust Scripts ](#rust-scripts-)
+    - [Committing Code ](#committing-code-)
+  - [IDE's ](#ides-)
+    - [VSCODE Settings ](#vscode-settings-)
+  - [Usage ](#usage-)
+    - [Cohort Reference Implementation](#cohort-reference-implementation)
+  - [Release Process ](#release-process-)
+  - [Release Notes ](#release-notes-)
 
 [comment]: <> (TOC_END)
 
@@ -30,7 +33,7 @@ Talos is based on the STRIDE algorithm for strict serializable certification of 
 ### Requirements <a name="getting-started-requirements"></a>
 
 -   [docker (20.10.6)](https://docs.docker.com/get-docker/)
--   [cargo (1.68.0), rust (1.68.0)](https://www.rust-lang.org/tools/install) only required if wanting to run outside of docker
+-   [cargo (1.75.0), rust (1.75.0)](https://www.rust-lang.org/tools/install) only required if wanting to run outside of docker
 -   openssl for SASL supports
 
 ### Installation and setup. <a name="getting-started-installation-and-setup"></a>
@@ -97,5 +100,9 @@ Once you have checked, tested and linted your code you may create a commit.
 
 ### Cohort Reference Implementation
 ![Cohort architecture](docs/cohort-arch.png)
+
+## Release Process <a name="release"></a>
+
+The release process is explained in the separate document: [README-release.md](/README-release.md)
 
 ## Release Notes <a name="release-notes"></a>

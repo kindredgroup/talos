@@ -3,7 +3,7 @@
   "version": "0.2.14-dev",
   "author": "Kindredgroup",
   "license": "MIT",
-  "description": "",
+  "description": "The Cohort SDK library for Talos Certifier clients",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

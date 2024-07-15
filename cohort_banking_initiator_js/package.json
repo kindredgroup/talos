@@ -19,7 +19,7 @@
     "typescript": "^5.1.6"
   },
   "dependencies": {
-    "@kindredgroup/cohort_sdk_client": "0.2.12",
+    "@kindredgroup/cohort_sdk_client": "0.2.13",
     "pg": "^8.11.3",
     "winston": "^3.10.0"
   }
