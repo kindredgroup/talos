@@ -62,7 +62,12 @@ jobs:
                 rm package-lock.json || true
                 echo "D: npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts"
                 npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts
-                npm build
+                ls -lah node_modules
+                echo ""
+                echo "listing node_modules/@kindredgroup"
+                ls -lah node_modules/@kindredgroup || true
+                echo ""
+                npm run build
                 npm version
                 pwd
                 ls -l

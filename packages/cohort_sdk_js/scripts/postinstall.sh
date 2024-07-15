@@ -36,14 +36,14 @@ echo "D: lenMinusOne=$lenMinusOne, lenMinusTwo=$lenMinusTwo, lenMinusThree=$lenM
 lastPathToken="${pathTokens[lenMinusFour]}/${pathTokens[lenMinusThree]}/${pathTokens[lenMinusTwo]}"/"${pathTokens[lenMinusOne]}"
 echo "D: lastPathToken=$lastPathToken"
 
-if [ "$COHORT_SDK_CLIENT_DEV_MODE" == "true" ]; then
-    echo "Post install script of 'cohort_sdk_js' is running as transitional dependency. Enforced by COHORT_SDK_CLIENT_DEV_MODE=${COHORT_SDK_CLIENT_DEV_MODE}"
-else
-    if [ "$lastPathToken" == "cohort_sdk_client/node_modules/@kindredgroup/cohort_sdk_js" ]; then
-        echo "Post install script of 'cohort_sdk_js' is designed to be executed when module is installed as transitional dependency. Currently, 'npm install' is running as part of installing 'cohort_sdk_client'. Postinstall script is skipped."
-        exit 0
-    fi
-fi
+# if [ "$COHORT_SDK_CLIENT_DEV_MODE" == "true" ]; then
+#     echo "Post install script of 'cohort_sdk_js' is running as transitional dependency. Enforced by COHORT_SDK_CLIENT_DEV_MODE=${COHORT_SDK_CLIENT_DEV_MODE}"
+# else
+#     if [ "$lastPathToken" == "cohort_sdk_client/node_modules/@kindredgroup/cohort_sdk_js" ]; then
+#         echo "Post install script of 'cohort_sdk_js' is designed to be executed when module is installed as transitional dependency. Currently, 'npm install' is running as part of installing 'cohort_sdk_client'. Postinstall script is skipped."
+#         exit 0
+#     fi
+# fi
 
 echo "Post install. Current directory is: $CURRENT_DIR"
 echo "The content is: "

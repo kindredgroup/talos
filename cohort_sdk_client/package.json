@@ -16,7 +16,7 @@
     "build": "npx tsc -d"
   },
   "dependencies": {
-    "@kindredgroup/cohort_sdk_js": "0.2.12",
+    "@kindredgroup/cohort_sdk_js": "^0.2.13",
     "@types/pg": "^8.10.2",
     "ts-node": "^10.9.1",
     "winston": "^3.10.0"
