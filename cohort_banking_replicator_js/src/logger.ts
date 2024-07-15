@@ -7,9 +7,8 @@ const logger = createLogger({
         format.timestamp(),
         format.align(),
         format.splat(),
-        format.simple()
+        format.printf(({ timestamp, level, message }) => `${ timestamp } - ${ level }: ${ message }`)
     ),
-    // defaultMeta: { service: "cohort_banking_js" },
     transports: [
         new transports.Console()
     ],

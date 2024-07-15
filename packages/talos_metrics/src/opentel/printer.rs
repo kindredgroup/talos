@@ -92,6 +92,9 @@ impl MetricsToStringPrinter {
                         out.push_str(format!("\n{:>11} : {}", "Metric name", "throughput").as_str());
 
                         let dur_sec = metric.to_seconds(hist.max - hist.min).unwrap();
+
+                        // dividing by 2 because for each transaction we store two time values - scheduled time and processing end time, hence
+                        // the count will be twice big.
                         let value = (hist.count as f64 / 2_f64) / dur_sec;
                         out.push_str(format!("\n{:>11} : {:.2} TPS", "Value", value).as_str());
                         if !self.print_raw_histogram {
@@ -149,10 +152,8 @@ impl MetricsToStringPrinter {
                     if metric.is_time_unit() {
                         if let Some(duration_sec) = metric.to_seconds(hist.sum / self.parallel_threads as f64 / scale_factor as f64) {
                             out.push_str(format!("\n{:>10} : {:.2} sec (avg per thread)", "Duration", duration_sec).as_str());
-                            out.push_str(format!("\n{:>10} : {:.2} tps (avg per thread)", "Throughput", hist.count as f64 / duration_sec).as_str());
                         } else {
                             out.push_str(format!("\n{:>10} : ERROR. Unable to determine time unit from this: '{}')", "Duration", metric.unit).as_str());
-                            out.push_str("\nThroughput : N/A");
                         }
                     } else {
                         out.push_str(format!("\n{:>10} : {:.2} {}", "Sum", hist.sum, metric.unit).as_str());
