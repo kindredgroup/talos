@@ -11,6 +11,7 @@ use crate::{
     core::{ServiceResult, System, SystemService},
     errors::{SystemErrorType, SystemServiceError, SystemServiceErrorKind},
     ports::{errors::MessageReceiverErrorKind, MessageReciever},
+    services::MetricsServiceMessage,
     ChannelMessage,
 };
 
@@ -20,6 +21,7 @@ pub struct MessageReceiverService {
     pub commit_offset: Arc<AtomicI64>,
     pub system: System,
     pub commit_interval: Interval,
+    pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
 }
 
 impl MessageReceiverService {
@@ -28,6 +30,7 @@ impl MessageReceiverService {
         message_channel_tx: mpsc::Sender<ChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
+        metrics_tx: mpsc::Sender<MetricsServiceMessage>,
     ) -> Self {
         Self {
             receiver,
@@ -35,6 +38,7 @@ impl MessageReceiverService {
             system,
             commit_offset,
             commit_interval: tokio::time::interval(Duration::from_millis(10_000)),
+            metrics_tx,
         }
     }
 
@@ -70,6 +74,19 @@ impl SystemService for MessageReceiverService {
                              service: "Message Receiver Service".to_string()
                              }))
                     }
+
+                    let capacity_percentage = self.message_channel_tx.capacity() / self.message_channel_tx.max_capacity() * 100;
+
+                    let metrics_tx_cloned = self.metrics_tx.clone();
+
+                    tokio::spawn(async move {
+                        let _ = metrics_tx_cloned
+                            .send(MetricsServiceMessage::Record(
+                                "CHANNEL - M2C capacity (%)".to_string(),
+                                capacity_percentage as u64,
+                            ))
+                            .await;
+                    });
                 },
                 Ok(None) => {
                     info!("Consume message returned None");

@@ -1,16 +1,18 @@
+use std::collections::VecDeque;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
 use log::{debug, error, warn};
-use talos_suffix::core::SuffixConfig;
+// use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
+use crate::ports::MessageReciever;
 use crate::{
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
     errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
@@ -18,31 +20,30 @@ use crate::{
     Certifier, ChannelMessage,
 };
 
-use super::MetricsServiceMessage;
+use super::{CertifierServiceConfig, MetricsServiceMessage};
 
 /// Certifier service configuration
-#[derive(Debug, Clone, Default)]
-pub struct CertifierServiceConfig {
-    /// Suffix config
-    pub suffix_config: SuffixConfig,
-}
+// #[derive(Debug, Clone, Default)]
+// pub struct CertifierServiceConfig {
+//     /// Suffix config
+//     pub suffix_config: SuffixConfig,
+// }
 
-pub struct CertifierService {
+pub struct CertifierServiceV2 {
+    pub receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
     pub suffix: Suffix<CandidateMessage>,
     pub certifier: Certifier,
     pub system: System,
-    pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
-    pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
     pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
+    pub suffix_dq: VecDeque<Option<CandidateMessage>>,
 }
 
-impl CertifierService {
+impl CertifierServiceV2 {
     pub fn new(
-        message_channel_rx: mpsc::Receiver<ChannelMessage>,
+        receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
         decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
-        commit_offset: Arc<AtomicI64>,
         system: System,
         config: Option<CertifierServiceConfig>,
         metrics_tx: mpsc::Sender<MetricsServiceMessage>,
@@ -53,15 +54,18 @@ impl CertifierService {
 
         let suffix = Suffix::with_config(config.suffix_config.clone());
 
+        let mut suffix_dq = VecDeque::with_capacity(400_000);
+        suffix_dq.resize_with(400_000, || None);
+
         Self {
             suffix,
             certifier,
             system,
-            message_channel_rx,
+            receiver,
             decision_outbox_tx,
-            commit_offset,
             config,
             metrics_tx,
+            suffix_dq,
         }
     }
 
@@ -71,17 +75,8 @@ impl CertifierService {
     /// * Certify the message.
     /// * Create the DecisionMessage from the certification outcome.
     ///
-    pub(crate) fn process_candidate(&mut self, message: &CandidateMessage) -> Result<DecisionMessage, CertificationError> {
+    pub(crate) fn process_candidate(&mut self, message: &CandidateMessage) -> Result<(), CertificationError> {
         let start_candidate = Instant::now();
-
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - message.received_at) / 1_000) as u64;
-
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("CHANNEL - M2C (CM) (µs)".to_string(), channel_m2c_time))
-                .await;
-        });
 
         debug!("[Process Candidate message] Version {} ", message.version);
 
@@ -89,84 +84,92 @@ impl CertifierService {
         let start_suffix_insert = Instant::now();
         // Insert into Suffix
         if message.version > 0 {
-            self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
+            // self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
+            let index = message.version as usize;
+
+            if index > self.suffix_dq.len() {
+                error!("Suffix dq len BEFORE = {} and index is {index}", self.suffix_dq.len());
+                self.suffix_dq.resize_with((index - self.suffix_dq.len() + 1) * 5, || None);
+                error!("Suffix dq len AFTER = {}", self.suffix_dq.len());
+            }
+            self.suffix_dq[message.version as usize] = Some(message.clone());
         }
         let suffix_head = self.suffix.meta.head;
-        let start_suffix_insert = start_suffix_insert.elapsed().as_micros() as u64;
+        let start_suffix_insert = start_suffix_insert.elapsed().as_nanos() as u64;
 
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         tokio::spawn(async move {
             let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("SUFFIX_insert (µs)".to_string(), start_suffix_insert))
+                .send(MetricsServiceMessage::Record("SUFFIX_insert (ns)".to_string(), start_suffix_insert))
                 .await;
         });
 
-        // Get certifier outcome
-        let start_certification = Instant::now();
+        // // Get certifier outcome
+        // let start_certification = Instant::now();
 
-        let outcome = self
-            .certifier
-            .certify_transaction(suffix_head, message.convert_into_certifier_candidate(message.version));
+        // let outcome = self
+        //     .certifier
+        //     .certify_transaction(suffix_head, message.convert_into_certifier_candidate(message.version));
 
-        let start_certification = start_certification.elapsed().as_micros() as u64;
+        // let start_certification = start_certification.elapsed().as_nanos() as u64;
 
-        let outcome_metrics = outcome.get_metrics();
-        let outcome_metrics_certify = outcome_metrics.certify_time;
-        let outcome_metrics_safepoint_calc_time = outcome_metrics.safepoint_calc_time;
-        let outcome_metrics_update_hashmap_time = outcome_metrics.update_hashmap_time;
+        // let outcome_metrics = outcome.get_metrics();
+        // let outcome_metrics_certify = outcome_metrics.certify_time;
+        // let outcome_metrics_safepoint_calc_time = outcome_metrics.safepoint_calc_time;
+        // let outcome_metrics_update_hashmap_time = outcome_metrics.update_hashmap_time;
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "CERTIFICATION - CERTIFY (µs)".to_string(),
-                    outcome_metrics_certify / 1_000,
-                ))
-                .await;
-        });
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "CERTIFICATION - SAFEPOINT CALC (µs)".to_string(),
-                    outcome_metrics_safepoint_calc_time / 1_000,
-                ))
-                .await;
-        });
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "CERTIFICATION - UPDATE HASHMAPS (µs)".to_string(),
-                    outcome_metrics_update_hashmap_time / 1_000,
-                ))
-                .await;
-        });
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("CERTIFICATION (µs)".to_string(), start_certification))
-                .await;
-        });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "CERTIFICATION - CERTIFY (ns)".to_string(),
+        //             outcome_metrics_certify,
+        //         ))
+        //         .await;
+        // });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "CERTIFICATION - SAFEPOINT CALC (ns)".to_string(),
+        //             outcome_metrics_safepoint_calc_time,
+        //         ))
+        //         .await;
+        // });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "CERTIFICATION - UPDATE HASHMAPS (ns)".to_string(),
+        //             outcome_metrics_update_hashmap_time,
+        //         ))
+        //         .await;
+        // });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record("CERTIFICATION (ns)".to_string(), start_certification))
+        //         .await;
+        // });
 
         // Create the Decision Message
-        let mut dm = DecisionMessage::new(message, outcome, suffix_head);
-        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-        dm.metrics.candidate_published = message.published_at;
-        dm.metrics.candidate_received = message.received_at;
-        dm.metrics.candidate_processing_started = can_process_start;
-        dm.metrics.decision_created_at = now;
+        // let mut dm = DecisionMessage::new(message, outcome, suffix_head);
+        // let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        // dm.metrics.candidate_published = message.published_at;
+        // dm.metrics.candidate_received = message.received_at;
+        // dm.metrics.candidate_processing_started = can_process_start;
+        // dm.metrics.decision_created_at = now;
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        let pub_to_cons_diff_ms = ((dm.metrics.candidate_received - dm.metrics.candidate_published) / 1_000) as u64;
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "Msg_publish_to_certifier_consumer (µs)".to_string(),
-                    pub_to_cons_diff_ms,
-                ))
-                .await;
-        });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // let pub_to_cons_diff_ms = ((dm.metrics.candidate_received - dm.metrics.candidate_published) / 1_000_000) as u64;
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "Msg_publish_to_certifier_consumer (ms)".to_string(),
+        //             pub_to_cons_diff_ms,
+        //         ))
+        //         .await;
+        // });
 
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         let start_candidate = start_candidate.elapsed().as_micros() as u64;
@@ -175,36 +178,23 @@ impl CertifierService {
                 .send(MetricsServiceMessage::Record("process_candidate_fn (µs)".to_string(), start_candidate))
                 .await;
         });
+        // let metrics_tx_cloned_2 = self.metrics_tx.clone();
+        // let received_at = message.received_at;
+        // let now_1 = now;
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned_2
+        //         .send(MetricsServiceMessage::Record(
+        //             "channel_consumer_to_candidate_process_decision".to_string(),
+        //             (now_1 - received_at) as u64 / 1_000_000_u64,
+        //         ))
+        //         .await;
+        // });
 
-        // GK: Adding process decision into process candidate
-        // let _ = self.process_decision(999, &dm);
-
-        let metrics_tx_cloned_2 = self.metrics_tx.clone();
-        let received_at = message.received_at;
-        let now_1 = now;
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_2
-                .send(MetricsServiceMessage::Record(
-                    "CHANNEL - consumer_to_candidate_process_decision (µs)".to_string(),
-                    (now_1 - received_at) as u64 / 1_000_u64,
-                ))
-                .await;
-        });
-
-        Ok(dm)
+        Ok(())
     }
 
     pub(crate) fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
         let start_decision = Instant::now();
-
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - decision_message.metrics.decision_received_at) / 1_000) as u64;
-
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("CHANNEL - M2C (DM) (µs)".to_string(), channel_m2c_time))
-                .await;
-        });
 
         // update the decision in suffix
         debug!(
@@ -281,10 +271,10 @@ impl CertifierService {
                 //     self.suffix.get_meta().head, self.suffix.meta.prune_index, self.suffix.messages.len()
                 // )
                 let metrics_tx_cloned = self.metrics_tx.clone();
-                let start_pruning = start_pruning.elapsed().as_micros() as u64;
+                let start_pruning = start_pruning.elapsed().as_millis() as u64;
                 tokio::spawn(async move {
                     let _ = metrics_tx_cloned
-                        .send(MetricsServiceMessage::Record("DECISION - Prune Suffix (µs) ".to_string(), start_pruning))
+                        .send(MetricsServiceMessage::Record("decision_prune_suffix".to_string(), start_pruning))
                         .await;
                 });
             };
@@ -294,14 +284,16 @@ impl CertifierService {
             if all_decided {
                 debug!("Prior items decided if condition with dv={}", decision_message.version);
 
-                self.commit_offset.store(candidate_version as i64, std::sync::atomic::Ordering::Relaxed);
+                // self.commit_offset.store(candidate_version as i64, std::sync::atomic::Ordering::Relaxed);
+                self.receiver.update_offset_to_commit(candidate_version as i64).unwrap();
+                self.receiver.commit_async();
             }
 
             let metrics_tx_cloned = self.metrics_tx.clone();
             let start_decision = start_decision.elapsed().as_micros() as u64;
             tokio::spawn(async move {
                 let _ = metrics_tx_cloned
-                    .send(MetricsServiceMessage::Record("DECISION - process_decision_fn (µs)".to_string(), start_decision))
+                    .send(MetricsServiceMessage::Record("process_decision_fn (µs)".to_string(), start_decision))
                     .await;
             });
         }
@@ -316,32 +308,34 @@ impl CertifierService {
             Some(ChannelMessage::Candidate(candidate)) => {
                 let decision_message = self.process_candidate(&candidate.message)?;
 
-                let mut headers = candidate.headers.clone();
-                if let Ok(cert_time) = OffsetDateTime::now_utc().format(&Rfc3339) {
-                    headers.insert("certTime".to_owned(), cert_time);
-                }
+                // let mut headers = candidate.headers.clone();
+                // if let Ok(cert_time) = OffsetDateTime::now_utc().format(&Rfc3339) {
+                //     headers.insert("certTime".to_owned(), cert_time);
+                // }
 
-                let decision_outbox_channel_message = DecisionOutboxChannelMessage {
-                    message: decision_message.clone(),
-                    headers,
-                };
+                // let decision_outbox_channel_message = DecisionOutboxChannelMessage {
+                //     message: decision_message.clone(),
+                //     headers,
+                // };
 
-                Ok(self
-                    .decision_outbox_tx
-                    .send(decision_outbox_channel_message)
-                    .await
-                    .map_err(|e| SystemServiceError {
-                        kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                        data: Some(format!("{:?}", decision_message)),
-                        reason: e.to_string(),
-                        service: "Certifier Service".to_string(),
-                    })?)
+                // Ok(self
+                //     .decision_outbox_tx
+                //     .send(decision_outbox_channel_message)
+                //     .await
+                //     .map_err(|e| SystemServiceError {
+                //         kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
+                //         data: Some(format!("{:?}", decision_message)),
+                //         reason: e.to_string(),
+                //         service: "Certifier Service".to_string(),
+                //     })?)
+
+                Ok(())
             }
 
-            Some(ChannelMessage::Decision(decision)) => self.process_decision(decision.decision_version, &decision.message),
+            // Some(ChannelMessage::Decision(decision)) => self.process_decision(decision.decision_version, &decision.message),
 
-            None => Ok(()),
-            // _ => (),
+            // None => Ok(()),
+            _ => Ok(()),
         } {
             // Ignore errors not required to cause the app to shutdown.
             match &certification_error {
@@ -364,29 +358,33 @@ impl CertifierService {
                 .await;
         });
 
-        let metrics_tx_cloned = self.metrics_tx.clone();
-
-        let capacity_percentage = self.decision_outbox_tx.capacity() / self.decision_outbox_tx.max_capacity() * 100;
-
-        let metrics_tx_cloned = self.metrics_tx.clone();
-
-        tokio::spawn(async move {
-            let _ = metrics_tx_cloned
-                .send(MetricsServiceMessage::Record(
-                    "CHANNEL - C2DO capacity (%)".to_string(),
-                    capacity_percentage as u64,
-                ))
-                .await;
-        });
+        // let metrics_tx_cloned = self.metrics_tx.clone();
+        // tokio::spawn(async move {
+        //     let _ = metrics_tx_cloned
+        //         .send(MetricsServiceMessage::Record(
+        //             "M2C_Channel_current_capacity".to_string(),
+        //             metrics_tx_cloned.capacity() as u64,
+        //         ))
+        //         .await;
+        // });
 
         Ok(())
     }
 }
 
 #[async_trait]
-impl SystemService for CertifierService {
+impl SystemService for CertifierServiceV2 {
     async fn run(&mut self) -> ServiceResult {
-        let channel_msg = self.message_channel_rx.recv().await;
-        Ok(self.process_message(&channel_msg).await?)
+        // error!("Certifier service v2");
+        // loop {
+        let channel_msg = self.receiver.consume_message().await;
+
+        // error!("Channel message is {channel_msg:#?}");
+        if let Ok(msg) = channel_msg {
+            self.process_message(&msg).await?;
+        }
+        // }
+
+        Ok(())
     }
 }

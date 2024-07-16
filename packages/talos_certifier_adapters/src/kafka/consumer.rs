@@ -166,6 +166,9 @@ impl MessageReciever for KafkaConsumer {
                     })?;
                 }
 
+                // GK: Decision not passed to certifier as certifier service handles it internally
+                // return Ok(None);
+
                 ChannelMessage::Decision(
                     DecisionChannelMessage {
                         decision_version: offset,

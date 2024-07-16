@@ -17,6 +17,9 @@ impl DecisionStore for MockDataStore {
     async fn insert_decision(&self, _key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         Ok(decision)
     }
+    async fn insert_decision_multi(&self, decision: Vec<Self::Decision>) -> Result<Vec<Self::Decision>, DecisionStoreError> {
+        Ok(decision)
+    }
 }
 
 #[async_trait]

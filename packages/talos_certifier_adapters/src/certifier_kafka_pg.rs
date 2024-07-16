@@ -4,8 +4,9 @@ use crate::PgConfig;
 use std::sync::{atomic::AtomicI64, Arc};
 use talos_certifier::core::SystemService;
 use talos_certifier::model::DecisionMessage;
-use talos_certifier::ports::DecisionStore;
+use talos_certifier::ports::{DecisionStore, MessageReciever};
 
+use talos_certifier::services::certifier_service_v2::CertifierServiceV2;
 use talos_certifier::services::CertifierServiceConfig;
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
@@ -28,8 +29,8 @@ impl Default for TalosCertifierChannelBuffers {
     fn default() -> Self {
         Self {
             system_broadcast: 3_000,
-            message_receiver: 30_000,
-            decision_outbox: 30_000,
+            message_receiver: 10_000,
+            decision_outbox: 50_000,
         }
     }
 }
@@ -62,13 +63,13 @@ pub async fn certifier_with_kafka_pg(
 
     let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config);
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
-    let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
+    let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone(), metrics_tx.clone());
 
     message_receiver_service.subscribe().await?;
     /* END - Kafka consumer service  */
-
     let (outbound_tx, outbound_rx) = mpsc::channel::<DecisionOutboxChannelMessage>(channel_buffer.decision_outbox);
 
+    // kafka_consumer.subscribe().await?;
     /* START - Certifier service  */
     let certifier_service: Box<dyn SystemService + Send + Sync> = match configuration.certifier_mock {
         true => Box::new(MockCertifierService {
@@ -76,6 +77,15 @@ pub async fn certifier_with_kafka_pg(
             message_channel_rx: rx,
             metrics_tx: metrics_tx.clone(),
         }),
+        // false => Box::new(CertifierServiceV2::new(
+        //     Box::new(kafka_consumer),
+        //     outbound_tx.clone(),
+        //     system.clone(),
+        //     Some(CertifierServiceConfig {
+        //         suffix_config: configuration.suffix_config.unwrap_or_default(),
+        //     }),
+        //     metrics_tx.clone(),
+        // )),
         false => Box::new(CertifierService::new(
             rx,
             outbound_tx.clone(),

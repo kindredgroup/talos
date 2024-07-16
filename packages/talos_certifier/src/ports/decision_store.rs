@@ -11,4 +11,5 @@ pub trait DecisionStore: SharedPortTraits {
 
     async fn get_decision(&self, key: String) -> Result<Option<Self::Decision>, DecisionStoreError>;
     async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError>;
+    async fn insert_decision_multi(&self, decisions: Vec<Self::Decision>) -> Result<Vec<Self::Decision>, DecisionStoreError>;
 }

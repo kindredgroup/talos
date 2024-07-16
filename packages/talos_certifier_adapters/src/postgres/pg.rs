@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolConfig, PoolError, Runtime};
-use log::warn;
+use futures_util::{pin_mut, TryStreamExt};
+use itertools::Itertools;
+use log::{error, warn};
 use serde_json::{json, Value};
 use talos_certifier::{
     model::DecisionMessage,
@@ -12,7 +14,7 @@ use talos_certifier::{
         DecisionStore,
     },
 };
-use tokio_postgres::NoTls;
+use tokio_postgres::{types::ToSql, NoTls, Statement};
 
 use crate::{PgConfig, PgError};
 
@@ -34,7 +36,7 @@ impl Pg {
         config.manager = Some(ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
-        // config.pool = Some(PoolConfig::new(200));
+        config.pool = Some(PoolConfig::new(400));
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
 
@@ -111,17 +113,32 @@ impl DecisionStore for Pg {
 
         let key_uuid = get_uuid_key(&key)?;
 
+        // let stmt = client
+        //     .prepare_cached(
+        //         "WITH ins AS (
+        //             INSERT INTO xdb(xid, decision)
+        //             VALUES ($1, $2)
+        //             ON CONFLICT DO NOTHING
+        //             RETURNING xid, decision
+        //         )
+        //         SELECT * from ins
+        //         UNION
+        //         SELECT xid, decision from xdb where xid = $1",
+        //     )
+        //     .await
+        //     .map_err(|e| DecisionStoreError {
+        //         kind: DecisionStoreErrorKind::InsertDecision,
+        //         reason: e.to_string(),
+        //         data: Some(key.clone()),
+        //     })?;
         let stmt = client
             .prepare_cached(
-                "WITH ins AS (
+                "
                     INSERT INTO xdb(xid, decision)
                     VALUES ($1, $2)
                     ON CONFLICT DO NOTHING
                     RETURNING xid, decision
-                )
-                SELECT * from ins
-                UNION
-                SELECT xid, decision from xdb where xid = $1",
+                ",
             )
             .await
             .map_err(|e| DecisionStoreError {
@@ -136,11 +153,19 @@ impl DecisionStore for Pg {
             Ok(row) => {
                 let decision = match row.get::<&str, Option<Value>>("decision") {
                     Some(value) => Ok(parse_json_column(&key, value)?),
-                    _ => Err(DecisionStoreError {
-                        kind: DecisionStoreErrorKind::NoRowReturned,
-                        reason: "Insert did not return rows".to_owned(),
-                        data: Some(key.clone()),
-                    }),
+                    None => match self.get_decision(key.clone()).await? {
+                        Some(v) => Ok(v),
+                        None => Err(DecisionStoreError {
+                            kind: DecisionStoreErrorKind::NoRowReturned,
+                            reason: "Insert did not return rows".to_owned(),
+                            data: Some(key.clone()),
+                        }),
+                    },
+                    // _ => Err(DecisionStoreError {
+                    //     kind: DecisionStoreErrorKind::NoRowReturned,
+                    //     reason: "Insert did not return rows".to_owned(),
+                    //     data: Some(key.clone()),
+                    // }),
                 };
 
                 return decision;
@@ -150,6 +175,140 @@ impl DecisionStore for Pg {
                     kind: DecisionStoreErrorKind::InsertDecision,
                     reason: e.to_string(),
                     data: Some(key.clone()),
+                });
+            }
+        }
+
+        // Ok(())
+    }
+    async fn insert_decision_multi(&self, decisions: Vec<Self::Decision>) -> Result<Vec<Self::Decision>, DecisionStoreError> {
+        let client = self.get_client_with_retry().await.map_err(|e| DecisionStoreError {
+            kind: DecisionStoreErrorKind::ClientError,
+            reason: e.to_string(),
+            data: None,
+        })?;
+
+        // let decisions_1 = decisions.iter().map(|d| (d.xid.clone(), json!(d))).collect::<Vec<(String, Value)>>();
+        let decisions_1 = decisions
+            .iter()
+            .map(|d| format!("('{}','{}')", d.xid.clone(), json!(d)))
+            .collect::<Vec<String>>();
+
+        // let params: Vec<_> = decisions
+        //     .iter()
+        //     .flat_map(|row| {
+        //         let xid = &row.xid;
+        //         let d = &json!(row);
+        //         [xid as &(dyn ToSql + Sync), &d]
+        //     })
+        //     .collect();
+        let format_str = format!(
+            "INSERT INTO xdb(xid, decision) VALUES {} ON CONFLICT DO NOTHING RETURNING xid, decision",
+            // decisions_1.iter().format_with(", ", |(i, j), f| { f(&format_args!("(${i}, ${j})")) }),
+            decisions_1.join(", "),
+        );
+
+        // error!("formatted string is \n {:#?}", format_str);
+        // format
+
+        // let key_uuid = get_uuid_key(&key)?;
+
+        // let stmt = client
+        //     .prepare_cached(
+        //         "WITH ins AS (
+        //             INSERT INTO xdb(xid, decision)
+        //             VALUES ($1, $2)
+        //             ON CONFLICT DO NOTHING
+        //             RETURNING xid, decision
+        //         )
+        //         SELECT * from ins
+        //         UNION
+        //         SELECT xid, decision from xdb where xid = $1",
+        //     )
+        //     .await
+        //     .map_err(|e| DecisionStoreError {
+        //         kind: DecisionStoreErrorKind::InsertDecision,
+        //         reason: e.to_string(),
+        //         data: Some(key.clone()),
+        //     })?;
+        let stmt = client.prepare_cached(&format_str).await.map_err(|e| DecisionStoreError {
+            kind: DecisionStoreErrorKind::InsertDecision,
+            reason: e.to_string(),
+            // data: Some(key.clone()),
+            data: None,
+        })?;
+
+        // error!("Statement CREATED!!!");
+
+        // Execute insert returning the row. If duplicate is found, return the existing row in table.
+        let result = client.query(&stmt, &[]).await;
+        match result {
+            Ok(row) => {
+                // let decision = match row.get::<&str, Option<Value>>("decision") {
+                //     Some(value) => Ok(parse_json_column(&key, value)?),
+                //     None => match self.get_decision(key.clone()).await? {
+                //         Some(v) => Ok(v),
+                //         None => Err(DecisionStoreError {
+                //             kind: DecisionStoreErrorKind::NoRowReturned,
+                //             reason: "Insert did not return rows".to_owned(),
+                //             data: Some(key.clone()),
+                //         }),
+                //     },
+                //     // _ => Err(DecisionStoreError {
+                //     //     kind: DecisionStoreErrorKind::NoRowReturned,
+                //     //     reason: "Insert did not return rows".to_owned(),
+                //     //     data: Some(key.clone()),
+                //     // }),
+                // };
+                // pin_mut!(row);
+                // let decision = match row.try_next().await.unwrap().unwrap().get("decision") {
+                //     Some(value) => {
+                //         let parsed_value = parse_json_column("", value);
+                //         error!("Parsed value is \n {:#?}", parsed_value);
+                //         Ok(vec![parsed_value?])
+                //     }
+                //     // None => match self.get_decision(key.clone()).await? {
+                //     //     Some(v) => Ok(vec![v]),
+                //     //     None => Err(DecisionStoreError {
+                //     //         kind: DecisionStoreErrorKind::NoRowReturned,
+                //     //         reason: "Insert did not return rows".to_owned(),
+                //     //         // data: Some(key.clone()),
+                //     //         data: None,
+                //     //     }),
+                //     // },
+                //     _ => Err(DecisionStoreError {
+                //         kind: DecisionStoreErrorKind::NoRowReturned,
+                //         reason: "Insert did not return rows".to_owned(),
+                //         // data: Some(key.clone()),
+                //         data: None,
+                //     }),
+                // };
+
+                // return decision;
+
+                let mut decisions: Vec<DecisionMessage> = vec![];
+
+                for r in row {
+                    let d = r.get::<&str, Option<Value>>("decision");
+
+                    match d {
+                        Some(k) => {
+                            let dd1 = serde_json::from_value::<DecisionMessage>(k).unwrap();
+                            decisions.push(dd1)
+                        }
+                        None => todo!(),
+                    };
+                }
+
+                return Ok(decisions);
+            }
+            Err(e) => {
+                error!("Error inserting... {}", e);
+                return Err(DecisionStoreError {
+                    kind: DecisionStoreErrorKind::InsertDecision,
+                    reason: e.to_string(),
+                    // data: Some(key.clone()),
+                    data: None,
                 });
             }
         }

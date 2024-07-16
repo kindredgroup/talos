@@ -60,7 +60,7 @@ impl MetricsService {
 #[async_trait]
 impl SystemService for MetricsService {
     async fn run(&mut self) -> ServiceResult {
-        let mut interval = tokio::time::interval(Duration::from_millis(2 * 60 * 1000));
+        let mut interval = tokio::time::interval(Duration::from_millis(1 * 60 * 1000));
 
         loop {
             tokio::select! {

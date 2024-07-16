@@ -98,7 +98,7 @@ where
 
         if ver_diff.gt(&(self.messages.len())) {
             // let resize_len = if ver_diff < self.meta.min_size { self.meta.min_size + 1 } else { ver_diff };
-            self.messages.reserve(ver_diff + 1);
+            self.messages.resize_with((ver_diff + 1) * 2, || None);
         }
 
         Ok(())
@@ -248,19 +248,19 @@ where
             self.reserve_space_if_required(version)?;
             let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
 
-            if index > 0 {
-                let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
-                for _ in (last_item_index + 1)..index {
-                    self.messages.push_back(None);
-                }
-            }
+            // if index > 0 {
+            //     let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
+            //     for _ in (last_item_index + 1)..index {
+            //         self.messages.push_back(None);
+            //     }
+            // }
 
-            self.messages.push_back(Some(SuffixItem {
+            self.messages[index] = Some(SuffixItem {
                 item: message,
                 item_ver: version,
                 decision_ver: None,
                 is_decided: false,
-            }));
+            });
 
             self.meta.last_insert_vers = version;
         }
