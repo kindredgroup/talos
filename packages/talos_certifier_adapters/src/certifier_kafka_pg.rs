@@ -2,7 +2,7 @@ use crate as Adapters;
 use crate::mock_certifier_service::MockCertifierService;
 use crate::PgConfig;
 use std::sync::{atomic::AtomicI64, Arc};
-use talos_certifier::core::SystemService;
+use talos_certifier::core::{SystemService, SystemServiceSync};
 use talos_certifier::model::DecisionMessage;
 use talos_certifier::ports::{DecisionStore, MessageReciever};
 
@@ -16,6 +16,7 @@ use talos_certifier::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::core::SuffixConfig;
+use tokio::runtime::Handle;
 use tokio::sync::{broadcast, mpsc};
 
 /// Channel buffer values
@@ -29,8 +30,8 @@ impl Default for TalosCertifierChannelBuffers {
     fn default() -> Self {
         Self {
             system_broadcast: 3_000,
-            message_receiver: 10_000,
-            decision_outbox: 50_000,
+            message_receiver: 30_000,
+            decision_outbox: 30_000,
         }
     }
 }
@@ -71,32 +72,43 @@ pub async fn certifier_with_kafka_pg(
 
     // kafka_consumer.subscribe().await?;
     /* START - Certifier service  */
-    let certifier_service: Box<dyn SystemService + Send + Sync> = match configuration.certifier_mock {
-        true => Box::new(MockCertifierService {
-            decision_outbox_tx: outbound_tx.clone(),
-            message_channel_rx: rx,
-            metrics_tx: metrics_tx.clone(),
+    let certifier_service: Box<dyn SystemServiceSync + Send + Sync> = Box::new(CertifierService::new(
+        rx,
+        outbound_tx.clone(),
+        Arc::clone(&commit_offset),
+        system.clone(),
+        Some(CertifierServiceConfig {
+            suffix_config: configuration.suffix_config.unwrap_or_default(),
         }),
-        // false => Box::new(CertifierServiceV2::new(
-        //     Box::new(kafka_consumer),
-        //     outbound_tx.clone(),
-        //     system.clone(),
-        //     Some(CertifierServiceConfig {
-        //         suffix_config: configuration.suffix_config.unwrap_or_default(),
-        //     }),
-        //     metrics_tx.clone(),
-        // )),
-        false => Box::new(CertifierService::new(
-            rx,
-            outbound_tx.clone(),
-            Arc::clone(&commit_offset),
-            system.clone(),
-            Some(CertifierServiceConfig {
-                suffix_config: configuration.suffix_config.unwrap_or_default(),
-            }),
-            metrics_tx.clone(),
-        )),
-    };
+        metrics_tx.clone(),
+        Handle::current(),
+    ));
+    // let certifier_service: Box<dyn SystemService + Send + Sync> = match configuration.certifier_mock {
+    //     true => Box::new(MockCertifierService {
+    //         decision_outbox_tx: outbound_tx.clone(),
+    //         message_channel_rx: rx,
+    //         metrics_tx: metrics_tx.clone(),
+    //     }),
+    //     // false => Box::new(CertifierServiceV2::new(
+    //     //     Box::new(kafka_consumer),
+    //     //     outbound_tx.clone(),
+    //     //     system.clone(),
+    //     //     Some(CertifierServiceConfig {
+    //     //         suffix_config: configuration.suffix_config.unwrap_or_default(),
+    //     //     }),
+    //     //     metrics_tx.clone(),
+    //     // )),
+    //     false => Box::new(CertifierService::new(
+    //         rx,
+    //         outbound_tx.clone(),
+    //         Arc::clone(&commit_offset),
+    //         system.clone(),
+    //         Some(CertifierServiceConfig {
+    //             suffix_config: configuration.suffix_config.unwrap_or_default(),
+    //         }),
+    //         metrics_tx.clone(),
+    //     )),
+    // };
 
     /* END - Certifier service  */
 

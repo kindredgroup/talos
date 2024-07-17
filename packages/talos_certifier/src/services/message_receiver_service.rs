@@ -51,6 +51,7 @@ impl MessageReceiverService {
 #[async_trait]
 impl SystemService for MessageReceiverService {
     async fn run(&mut self) -> ServiceResult {
+        // error!("inside Message service");
         tokio::select! {
           // ** Consume Messages from Kafka
           res = self.receiver.consume_message() => {

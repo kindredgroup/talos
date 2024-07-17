@@ -23,6 +23,7 @@ env_logger = { workspace = true }
 # Async
 tokio = { workspace = true }
 futures-util = "0.3.26"
+futures = { version = "0.3.30", features = ["executor"] }
 async-trait = { workspace = true }
 
 # Json Serialize / Deserialize

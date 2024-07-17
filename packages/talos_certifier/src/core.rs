@@ -60,3 +60,7 @@ pub struct System {
 pub trait SystemService {
     async fn run(&mut self) -> ServiceResult;
 }
+#[async_trait]
+pub trait SystemServiceSync {
+    fn run(&mut self) -> ServiceResult;
+}

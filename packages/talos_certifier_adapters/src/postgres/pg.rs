@@ -36,7 +36,7 @@ impl Pg {
         config.manager = Some(ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
-        config.pool = Some(PoolConfig::new(400));
+        config.pool = Some(PoolConfig::new(200));
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
 
@@ -113,32 +113,17 @@ impl DecisionStore for Pg {
 
         let key_uuid = get_uuid_key(&key)?;
 
-        // let stmt = client
-        //     .prepare_cached(
-        //         "WITH ins AS (
-        //             INSERT INTO xdb(xid, decision)
-        //             VALUES ($1, $2)
-        //             ON CONFLICT DO NOTHING
-        //             RETURNING xid, decision
-        //         )
-        //         SELECT * from ins
-        //         UNION
-        //         SELECT xid, decision from xdb where xid = $1",
-        //     )
-        //     .await
-        //     .map_err(|e| DecisionStoreError {
-        //         kind: DecisionStoreErrorKind::InsertDecision,
-        //         reason: e.to_string(),
-        //         data: Some(key.clone()),
-        //     })?;
         let stmt = client
             .prepare_cached(
-                "
+                "WITH ins AS (
                     INSERT INTO xdb(xid, decision)
                     VALUES ($1, $2)
                     ON CONFLICT DO NOTHING
                     RETURNING xid, decision
-                ",
+                )
+                SELECT * from ins
+                UNION
+                SELECT xid, decision from xdb where xid = $1",
             )
             .await
             .map_err(|e| DecisionStoreError {
@@ -146,6 +131,21 @@ impl DecisionStore for Pg {
                 reason: e.to_string(),
                 data: Some(key.clone()),
             })?;
+        // let stmt = client
+        //     .prepare_cached(
+        //         "
+        //             INSERT INTO xdb(xid, decision)
+        //             VALUES ($1, $2)
+        //             ON CONFLICT DO NOTHING
+        //             RETURNING xid, decision
+        //         ",
+        //     )
+        //     .await
+        //     .map_err(|e| DecisionStoreError {
+        //         kind: DecisionStoreErrorKind::InsertDecision,
+        //         reason: e.to_string(),
+        //         data: Some(key.clone()),
+        //     })?;
 
         // Execute insert returning the row. If duplicate is found, return the existing row in table.
         let result = client.query_one(&stmt, &[&key_uuid, &json!(decision)]).await;
@@ -153,19 +153,19 @@ impl DecisionStore for Pg {
             Ok(row) => {
                 let decision = match row.get::<&str, Option<Value>>("decision") {
                     Some(value) => Ok(parse_json_column(&key, value)?),
-                    None => match self.get_decision(key.clone()).await? {
-                        Some(v) => Ok(v),
-                        None => Err(DecisionStoreError {
-                            kind: DecisionStoreErrorKind::NoRowReturned,
-                            reason: "Insert did not return rows".to_owned(),
-                            data: Some(key.clone()),
-                        }),
-                    },
-                    // _ => Err(DecisionStoreError {
-                    //     kind: DecisionStoreErrorKind::NoRowReturned,
-                    //     reason: "Insert did not return rows".to_owned(),
-                    //     data: Some(key.clone()),
-                    // }),
+                    // None => match self.get_decision(key.clone()).await? {
+                    //     Some(v) => Ok(v),
+                    //     None => Err(DecisionStoreError {
+                    //         kind: DecisionStoreErrorKind::NoRowReturned,
+                    //         reason: "Insert did not return rows".to_owned(),
+                    //         data: Some(key.clone()),
+                    //     }),
+                    // },
+                    _ => Err(DecisionStoreError {
+                        kind: DecisionStoreErrorKind::NoRowReturned,
+                        reason: "Insert did not return rows".to_owned(),
+                        data: Some(key.clone()),
+                    }),
                 };
 
                 return decision;

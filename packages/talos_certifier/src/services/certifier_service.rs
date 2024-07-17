@@ -3,14 +3,17 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use futures::executor::block_on;
 use log::{debug, error, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
+use crate::core::SystemServiceSync;
 use crate::{
     core::{DecisionOutboxChannelMessage, ServiceResult, System, SystemService},
     errors::{CertificationError, SystemErrorType, SystemServiceError, SystemServiceErrorKind},
@@ -36,6 +39,8 @@ pub struct CertifierService {
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
     pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
+    pub rt_handle: Handle,
+    // pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
 }
 
 impl CertifierService {
@@ -46,6 +51,7 @@ impl CertifierService {
         system: System,
         config: Option<CertifierServiceConfig>,
         metrics_tx: mpsc::Sender<MetricsServiceMessage>,
+        rt_handle: Handle,
     ) -> Self {
         let certifier = Certifier::new();
 
@@ -62,6 +68,7 @@ impl CertifierService {
             commit_offset,
             config,
             metrics_tx,
+            rt_handle,
         }
     }
 
@@ -77,7 +84,7 @@ impl CertifierService {
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - message.received_at) / 1_000) as u64;
 
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record("CHANNEL - M2C (CM) (µs)".to_string(), channel_m2c_time))
                 .await;
@@ -95,7 +102,7 @@ impl CertifierService {
         let start_suffix_insert = start_suffix_insert.elapsed().as_micros() as u64;
 
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record("SUFFIX_insert (µs)".to_string(), start_suffix_insert))
                 .await;
@@ -116,7 +123,7 @@ impl CertifierService {
         let outcome_metrics_update_hashmap_time = outcome_metrics.update_hashmap_time;
 
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record(
                     "CERTIFICATION - CERTIFY (µs)".to_string(),
@@ -125,7 +132,7 @@ impl CertifierService {
                 .await;
         });
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record(
                     "CERTIFICATION - SAFEPOINT CALC (µs)".to_string(),
@@ -134,7 +141,7 @@ impl CertifierService {
                 .await;
         });
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record(
                     "CERTIFICATION - UPDATE HASHMAPS (µs)".to_string(),
@@ -143,7 +150,7 @@ impl CertifierService {
                 .await;
         });
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record("CERTIFICATION (µs)".to_string(), start_certification))
                 .await;
@@ -159,7 +166,7 @@ impl CertifierService {
 
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         let pub_to_cons_diff_ms = ((dm.metrics.candidate_received - dm.metrics.candidate_published) / 1_000) as u64;
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record(
                     "Msg_publish_to_certifier_consumer (µs)".to_string(),
@@ -170,7 +177,7 @@ impl CertifierService {
 
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         let start_candidate = start_candidate.elapsed().as_micros() as u64;
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record("process_candidate_fn (µs)".to_string(), start_candidate))
                 .await;
@@ -182,7 +189,7 @@ impl CertifierService {
         let metrics_tx_cloned_2 = self.metrics_tx.clone();
         let received_at = message.received_at;
         let now_1 = now;
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_2
                 .send(MetricsServiceMessage::Record(
                     "CHANNEL - consumer_to_candidate_process_decision (µs)".to_string(),
@@ -200,7 +207,7 @@ impl CertifierService {
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - decision_message.metrics.decision_received_at) / 1_000) as u64;
 
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned_1
                 .send(MetricsServiceMessage::Record("CHANNEL - M2C (DM) (µs)".to_string(), channel_m2c_time))
                 .await;
@@ -282,7 +289,7 @@ impl CertifierService {
                 // )
                 let metrics_tx_cloned = self.metrics_tx.clone();
                 let start_pruning = start_pruning.elapsed().as_micros() as u64;
-                tokio::spawn(async move {
+                self.rt_handle.spawn(async move {
                     let _ = metrics_tx_cloned
                         .send(MetricsServiceMessage::Record("DECISION - Prune Suffix (µs) ".to_string(), start_pruning))
                         .await;
@@ -299,7 +306,7 @@ impl CertifierService {
 
             let metrics_tx_cloned = self.metrics_tx.clone();
             let start_decision = start_decision.elapsed().as_micros() as u64;
-            tokio::spawn(async move {
+            self.rt_handle.spawn(async move {
                 let _ = metrics_tx_cloned
                     .send(MetricsServiceMessage::Record("DECISION - process_decision_fn (µs)".to_string(), start_decision))
                     .await;
@@ -358,7 +365,7 @@ impl CertifierService {
 
         let metrics_tx_cloned = self.metrics_tx.clone();
         let start_process = start_process.elapsed().as_micros() as u64;
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned
                 .send(MetricsServiceMessage::Record("process_message_fn (µs)".to_string(), start_process))
                 .await;
@@ -370,7 +377,7 @@ impl CertifierService {
 
         let metrics_tx_cloned = self.metrics_tx.clone();
 
-        tokio::spawn(async move {
+        self.rt_handle.spawn(async move {
             let _ = metrics_tx_cloned
                 .send(MetricsServiceMessage::Record(
                     "CHANNEL - C2DO capacity (%)".to_string(),
@@ -384,9 +391,11 @@ impl CertifierService {
 }
 
 #[async_trait]
-impl SystemService for CertifierService {
-    async fn run(&mut self) -> ServiceResult {
-        let channel_msg = self.message_channel_rx.recv().await;
-        Ok(self.process_message(&channel_msg).await?)
+impl SystemServiceSync for CertifierService {
+    fn run(&mut self) -> ServiceResult {
+        block_on(async {
+            let channel_msg = self.message_channel_rx.recv().await;
+            Ok(self.process_message(&channel_msg).await?)
+        })
     }
 }
