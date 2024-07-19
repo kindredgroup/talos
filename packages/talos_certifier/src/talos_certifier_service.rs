@@ -86,7 +86,7 @@ impl TalosCertifierService {
         let mut certifier_service = self.certifier_service;
         let certifier_handle = thread::spawn(move || {
             while !shutdown_flag.load(Ordering::Relaxed) {
-                certifier_service.run();
+                let _ = certifier_service.run();
             }
             error!("I am out of the while loop for certifier_service");
         });

@@ -1,9 +1,7 @@
 use std::time::Duration;
 
 use async_trait::async_trait;
-use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolConfig, PoolError, Runtime};
-use futures_util::{pin_mut, TryStreamExt};
-use itertools::Itertools;
+use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolError, Runtime};
 use log::{error, warn};
 use serde_json::{json, Value};
 use talos_certifier::{
@@ -14,7 +12,7 @@ use talos_certifier::{
         DecisionStore,
     },
 };
-use tokio_postgres::{types::ToSql, NoTls, Statement};
+use tokio_postgres::NoTls;
 
 use crate::{PgConfig, PgError};
 
@@ -36,7 +34,7 @@ impl Pg {
         config.manager = Some(ManagerConfig {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
-        config.pool = Some(PoolConfig::new(200));
+        // config.pool = Some(PoolConfig::new(200));
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
 

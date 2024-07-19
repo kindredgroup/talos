@@ -1,11 +1,9 @@
 use std::sync::{atomic::AtomicI64, Arc};
 
 use crate::{
-    core::{CandidateChannelMessage, DecisionChannelMessage},
+    core::{CandidateChannelMessage, DecisionChannelMessage, SystemServiceSync},
     errors::{SystemErrorType, SystemServiceErrorKind},
-    model::{
-        CandidateMessage, {Decision, DecisionMessage},
-    },
+    model::{CandidateMessage, Decision, DecisionMessage},
     services::CertifierServiceConfig,
     ChannelMessage, SystemMessage,
 };
@@ -611,8 +609,8 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
     .await;
 
     // certifier service processing candidate messages
-    let _ = certifier_svc.run().await;
-    let result = certifier_svc.run().await;
+    let _ = certifier_svc.run();
+    let result = certifier_svc.run();
     assert!(result.is_ok());
 
     if let Some(decision) = do_channel_rx.recv().await {

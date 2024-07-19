@@ -60,8 +60,16 @@ impl Outcome {
     }
     pub fn get_metrics(&self) -> &OutcomeMetric {
         match self {
-            Outcome::Commited { discord, safepoint, metrics } => metrics,
-            Outcome::Aborted { version, discord, metrics } => metrics,
+            Outcome::Commited {
+                discord: _,
+                safepoint: _,
+                metrics,
+            } => metrics,
+            Outcome::Aborted {
+                version: _,
+                discord: _,
+                metrics,
+            } => metrics,
         }
     }
 }

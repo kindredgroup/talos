@@ -12,7 +12,6 @@ description = "Adapters used in Talos Certifier"
 
 [dependencies]
 
-itertools = "0.13.0"
 
 # Json Serialize / Deserialize
 serde = { workspace = true }
@@ -25,6 +24,8 @@ env_logger = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 futures-util = "0.3.21"
+futures = { version = "0.3.30", features = ["executor"] }
+
 # Kafka
 rdkafka = { version = "0.34.0", features = ["sasl"] }
 

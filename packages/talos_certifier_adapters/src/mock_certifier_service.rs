@@ -1,6 +1,7 @@
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
-use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemService};
+use futures::executor::block_on;
+use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemServiceSync};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
 use talos_certifier::model::metrics::TxProcessingTimeline;
 use talos_certifier::model::{Decision, DecisionMessage};
@@ -16,21 +17,8 @@ pub struct MockCertifierService {
     pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
 }
 
-#[async_trait]
-impl SharedPortTraits for MockCertifierService {
-    async fn is_healthy(&self) -> bool {
-        true
-    }
-
-    async fn shutdown(&self) -> bool {
-        true
-    }
-}
-
-#[async_trait]
-impl SystemService for MockCertifierService {
-    async fn run(&mut self) -> ServiceResult {
-        // while !self.is_shutdown() {
+impl MockCertifierService {
+    async fn process_message(&mut self) -> ServiceResult {
         tokio::select! {
            channel_msg =  self.message_channel_rx.recv() =>  {
                 match channel_msg {
@@ -84,7 +72,29 @@ impl SystemService for MockCertifierService {
                 }
             }
 
-        }
+        };
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl SharedPortTraits for MockCertifierService {
+    async fn is_healthy(&self) -> bool {
+        true
+    }
+
+    async fn shutdown(&self) -> bool {
+        true
+    }
+}
+
+#[async_trait]
+impl SystemServiceSync for MockCertifierService {
+    fn run(&mut self) -> ServiceResult {
+        // while !self.is_shutdown() {
+
+        let _ = block_on(self.process_message());
 
         Ok(())
     }

@@ -1,5 +1,4 @@
 mod certifier_service;
-pub mod certifier_service_v2;
 mod decision_outbox_service;
 mod healthcheck_service;
 mod message_receiver_service;

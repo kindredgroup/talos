@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::{debug, error};
+use log::debug;
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -88,8 +88,6 @@ impl MessageReciever for KafkaConsumer {
         let partition = message_received.partition();
 
         let offset_i64 = message_received.offset();
-
-        let timestamp = message_received.timestamp().to_millis();
 
         let offset = offset_i64 as u64;
         // error!("Timestamp for message with offset {offset} is {timestamp:?}");

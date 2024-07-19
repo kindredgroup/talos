@@ -239,44 +239,44 @@ impl CertifierService {
 
             // check if all prioir items are decided.
 
-            let start_prior_items_decided = Instant::now();
+            // let start_prior_items_decided = Instant::now();
             let all_decided = self.suffix.are_prior_items_decided(candidate_version);
-            let end_prior_items_decided = start_prior_items_decided.elapsed().as_millis();
+            // let end_prior_items_decided = start_prior_items_decided.elapsed().as_millis();
 
-            let start_update_prune_index = Instant::now();
+            // let start_update_prune_index = Instant::now();
             if all_decided {
                 self.suffix.update_prune_index(candidate_version_index);
             }
-            let end_update_prune_index = start_update_prune_index.elapsed().as_millis();
+            // let end_update_prune_index = start_update_prune_index.elapsed().as_millis();
 
             // prune suffix if required?
-            let start_get_safe_prune_index = Instant::now();
+            // let start_get_safe_prune_index = Instant::now();
 
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
                 let start_pruning = Instant::now();
 
-                let end_get_safe_prune_index = start_get_safe_prune_index.elapsed().as_millis();
+                // let end_get_safe_prune_index = start_get_safe_prune_index.elapsed().as_millis();
 
-                let suffix_head_before_prune = self.suffix.meta.head;
-                let suffix_prune_index_before_prune = self.suffix.meta.prune_index;
-                let suffix_length_before_prune = self.suffix.messages.len();
+                // let suffix_head_before_prune = self.suffix.meta.head;
+                // let suffix_prune_index_before_prune = self.suffix.meta.prune_index;
+                // let suffix_length_before_prune = self.suffix.messages.len();
 
-                let start_prune_till_index = Instant::now();
+                // let start_prune_till_index = Instant::now();
                 let pruned_suffix_items = self.suffix.prune_till_index(prune_index).unwrap();
-                let end_prune_till_index = start_prune_till_index.elapsed().as_millis();
+                // let end_prune_till_index = start_prune_till_index.elapsed().as_millis();
 
-                let start_generate_certifier_sets_from_suffix = Instant::now();
+                // let start_generate_certifier_sets_from_suffix = Instant::now();
                 let pruned_items = get_nonempty_suffix_items(pruned_suffix_items.iter());
                 let (readset, writeset) = generate_certifier_sets_from_suffix(pruned_items);
-                let end_generate_certifier_sets_from_suffix = start_generate_certifier_sets_from_suffix.elapsed().as_millis();
+                // let end_generate_certifier_sets_from_suffix = start_generate_certifier_sets_from_suffix.elapsed().as_millis();
 
-                let start_prune_certifier_readset = Instant::now();
+                // let start_prune_certifier_readset = Instant::now();
                 Certifier::prune_set(&mut self.certifier.reads, &readset);
-                let end_prune_certifier_readset = start_prune_certifier_readset.elapsed().as_millis();
+                // let end_prune_certifier_readset = start_prune_certifier_readset.elapsed().as_millis();
 
-                let start_prune_certifier_writeset = Instant::now();
+                // let start_prune_certifier_writeset = Instant::now();
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
-                let end_prune_certifier_writeset = start_prune_certifier_writeset.elapsed().as_millis();
+                // let end_prune_certifier_writeset = start_prune_certifier_writeset.elapsed().as_millis();
 
                 // error!(
                 //     "[PROCESS DECISION] Times... \n| Candidate version={} \n| Decision version={decision_version}
@@ -371,7 +371,7 @@ impl CertifierService {
                 .await;
         });
 
-        let metrics_tx_cloned = self.metrics_tx.clone();
+        // let metrics_tx_cloned = self.metrics_tx.clone();
 
         let capacity_percentage = self.decision_outbox_tx.capacity() / self.decision_outbox_tx.max_capacity() * 100;
 
