@@ -102,9 +102,37 @@ impl TalosCertifierService {
                 thread::spawn(move || {
                     rt_handle.block_on(async move {
                         while !shutdown_flag.load(Ordering::Relaxed) {
-                            // error!("Running service");
-                            service.run().await.unwrap();
+                            //     async move {
+                            let mut result: ServiceResult = Ok(());
+                            tokio::select! {
+                                svc_result = service.run() => {
+                                    if let Err(service_error) = svc_result {
+                                        error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
+                                        shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
+                                    };
+                                },
+                                msg = shutdown_receiver.recv() => {
+                                    let message = msg.unwrap();
+
+                                    match message {
+                                        SystemMessage::Shutdown => {
+                                            info!("Shutdown received");
+                                            let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                                        },
+                                        SystemMessage::ShutdownWithError(service_error) => {
+                                            info!("Shutdown received due to error");
+                                            let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                                             result = Err(service_error);
+                                        },
+
+                                        _ => ()
+                                    }
+
+                                }
+                            }
+                            // break result;
                         }
+
                         error!("I am outside the while,,,...");
                     });
                     error!("I moved BACK from tokio to thread");
