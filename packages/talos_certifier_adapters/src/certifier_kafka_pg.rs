@@ -97,7 +97,7 @@ pub async fn certifier_with_kafka_pg(
                 suffix_config: configuration.suffix_config.unwrap_or_default(),
             }),
             metrics_tx.clone(),
-            Handle::current(),
+            // Handle::current(),
         )),
     };
 

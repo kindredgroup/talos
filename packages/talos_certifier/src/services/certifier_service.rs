@@ -8,7 +8,7 @@ use log::{debug, error, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::format_description::well_known::Rfc3339;
-use time::OffsetDateTime;
+use time::{error, OffsetDateTime};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 
@@ -39,7 +39,7 @@ pub struct CertifierService {
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
     pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
-    pub rt_handle: Handle,
+    // pub rt_handle: Handle,
     // pub metrics_tx: mpsc::Sender<MetricsServiceMessage>,
 }
 
@@ -51,7 +51,7 @@ impl CertifierService {
         system: System,
         config: Option<CertifierServiceConfig>,
         metrics_tx: mpsc::Sender<MetricsServiceMessage>,
-        rt_handle: Handle,
+        // rt_handle: Handle,
     ) -> Self {
         let certifier = Certifier::new();
 
@@ -68,7 +68,7 @@ impl CertifierService {
             commit_offset,
             config,
             metrics_tx,
-            rt_handle,
+            // rt_handle,
         }
     }
 
@@ -84,11 +84,11 @@ impl CertifierService {
         let metrics_tx_cloned_1 = self.metrics_tx.clone();
         let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - message.received_at) / 1_000) as u64;
 
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("CHANNEL - M2C (CM) (µs)".to_string(), channel_m2c_time))
-                .await;
-        });
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record("CHANNEL - M2C (CM) (µs)".to_string(), channel_m2c_time))
+        //         .await;
+        // });
 
         debug!("[Process Candidate message] Version {} ", message.version);
 
@@ -101,12 +101,12 @@ impl CertifierService {
         let suffix_head = self.suffix.meta.head;
         let start_suffix_insert = start_suffix_insert.elapsed().as_micros() as u64;
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("SUFFIX_insert (µs)".to_string(), start_suffix_insert))
-                .await;
-        });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record("SUFFIX_insert (µs)".to_string(), start_suffix_insert))
+        //         .await;
+        // });
 
         // Get certifier outcome
         let start_certification = Instant::now();
@@ -115,46 +115,46 @@ impl CertifierService {
             .certifier
             .certify_transaction(suffix_head, message.convert_into_certifier_candidate(message.version));
 
-        let start_certification = start_certification.elapsed().as_micros() as u64;
+        // let start_certification = start_certification.elapsed().as_micros() as u64;
 
-        let outcome_metrics = outcome.get_metrics();
-        let outcome_metrics_certify = outcome_metrics.certify_time;
-        let outcome_metrics_safepoint_calc_time = outcome_metrics.safepoint_calc_time;
-        let outcome_metrics_update_hashmap_time = outcome_metrics.update_hashmap_time;
+        // let outcome_metrics = outcome.get_metrics();
+        // let outcome_metrics_certify = outcome_metrics.certify_time;
+        // let outcome_metrics_safepoint_calc_time = outcome_metrics.safepoint_calc_time;
+        // let outcome_metrics_update_hashmap_time = outcome_metrics.update_hashmap_time;
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "CERTIFICATION - CERTIFY (µs)".to_string(),
-                    outcome_metrics_certify / 1_000,
-                ))
-                .await;
-        });
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "CERTIFICATION - SAFEPOINT CALC (µs)".to_string(),
-                    outcome_metrics_safepoint_calc_time / 1_000,
-                ))
-                .await;
-        });
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "CERTIFICATION - UPDATE HASHMAPS (µs)".to_string(),
-                    outcome_metrics_update_hashmap_time / 1_000,
-                ))
-                .await;
-        });
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("CERTIFICATION (µs)".to_string(), start_certification))
-                .await;
-        });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "CERTIFICATION - CERTIFY (µs)".to_string(),
+        //             outcome_metrics_certify / 1_000,
+        //         ))
+        //         .await;
+        // });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "CERTIFICATION - SAFEPOINT CALC (µs)".to_string(),
+        //             outcome_metrics_safepoint_calc_time / 1_000,
+        //         ))
+        //         .await;
+        // });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "CERTIFICATION - UPDATE HASHMAPS (µs)".to_string(),
+        //             outcome_metrics_update_hashmap_time / 1_000,
+        //         ))
+        //         .await;
+        // });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record("CERTIFICATION (µs)".to_string(), start_certification))
+        //         .await;
+        // });
 
         // Create the Decision Message
         let mut dm = DecisionMessage::new(message, outcome, suffix_head);
@@ -164,54 +164,54 @@ impl CertifierService {
         dm.metrics.candidate_processing_started = can_process_start;
         dm.metrics.decision_created_at = now;
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        let pub_to_cons_diff_ms = ((dm.metrics.candidate_received - dm.metrics.candidate_published) / 1_000) as u64;
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record(
-                    "Msg_publish_to_certifier_consumer (µs)".to_string(),
-                    pub_to_cons_diff_ms,
-                ))
-                .await;
-        });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // let pub_to_cons_diff_ms = ((dm.metrics.candidate_received - dm.metrics.candidate_published) / 1_000) as u64;
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record(
+        //             "Msg_publish_to_certifier_consumer (µs)".to_string(),
+        //             pub_to_cons_diff_ms,
+        //         ))
+        //         .await;
+        // });
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        let start_candidate = start_candidate.elapsed().as_micros() as u64;
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("process_candidate_fn (µs)".to_string(), start_candidate))
-                .await;
-        });
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // let start_candidate = start_candidate.elapsed().as_micros() as u64;
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record("process_candidate_fn (µs)".to_string(), start_candidate))
+        //         .await;
+        // });
 
         // GK: Adding process decision into process candidate
         // let _ = self.process_decision(999, &dm);
 
-        let metrics_tx_cloned_2 = self.metrics_tx.clone();
-        let received_at = message.received_at;
-        let now_1 = now;
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_2
-                .send(MetricsServiceMessage::Record(
-                    "CHANNEL - consumer_to_candidate_process_decision (µs)".to_string(),
-                    (now_1 - received_at) as u64 / 1_000_u64,
-                ))
-                .await;
-        });
+        // let metrics_tx_cloned_2 = self.metrics_tx.clone();
+        // let received_at = message.received_at;
+        // let now_1 = now;
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_2
+        //         .send(MetricsServiceMessage::Record(
+        //             "CHANNEL - consumer_to_candidate_process_decision (µs)".to_string(),
+        //             (now_1 - received_at) as u64 / 1_000_u64,
+        //         ))
+        //         .await;
+        // });
 
         Ok(dm)
     }
 
     pub(crate) fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
-        let start_decision = Instant::now();
+        // let start_decision = Instant::now();
 
-        let metrics_tx_cloned_1 = self.metrics_tx.clone();
-        let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - decision_message.metrics.decision_received_at) / 1_000) as u64;
+        // let metrics_tx_cloned_1 = self.metrics_tx.clone();
+        // let channel_m2c_time = ((OffsetDateTime::now_utc().unix_timestamp_nanos() - decision_message.metrics.decision_received_at) / 1_000) as u64;
 
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned_1
-                .send(MetricsServiceMessage::Record("CHANNEL - M2C (DM) (µs)".to_string(), channel_m2c_time))
-                .await;
-        });
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned_1
+        //         .send(MetricsServiceMessage::Record("CHANNEL - M2C (DM) (µs)".to_string(), channel_m2c_time))
+        //         .await;
+        // });
 
         // update the decision in suffix
         debug!(
@@ -253,7 +253,7 @@ impl CertifierService {
             // let start_get_safe_prune_index = Instant::now();
 
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
-                let start_pruning = Instant::now();
+                // let start_pruning = Instant::now();
 
                 // let end_get_safe_prune_index = start_get_safe_prune_index.elapsed().as_millis();
 
@@ -287,13 +287,13 @@ impl CertifierService {
                 //     decision_message.version,
                 //     self.suffix.get_meta().head, self.suffix.meta.prune_index, self.suffix.messages.len()
                 // )
-                let metrics_tx_cloned = self.metrics_tx.clone();
-                let start_pruning = start_pruning.elapsed().as_micros() as u64;
-                self.rt_handle.spawn(async move {
-                    let _ = metrics_tx_cloned
-                        .send(MetricsServiceMessage::Record("DECISION - Prune Suffix (µs) ".to_string(), start_pruning))
-                        .await;
-                });
+                // let metrics_tx_cloned = self.metrics_tx.clone();
+                // let start_pruning = start_pruning.elapsed().as_micros() as u64;
+                // self.rt_handle.spawn(async move {
+                //     let _ = metrics_tx_cloned
+                //         .send(MetricsServiceMessage::Record("DECISION - Prune Suffix (µs) ".to_string(), start_pruning))
+                //         .await;
+                // });
             };
             // remove sets from certifier if pruning?
 
@@ -304,13 +304,13 @@ impl CertifierService {
                 self.commit_offset.store(candidate_version as i64, std::sync::atomic::Ordering::Relaxed);
             }
 
-            let metrics_tx_cloned = self.metrics_tx.clone();
-            let start_decision = start_decision.elapsed().as_micros() as u64;
-            self.rt_handle.spawn(async move {
-                let _ = metrics_tx_cloned
-                    .send(MetricsServiceMessage::Record("DECISION - process_decision_fn (µs)".to_string(), start_decision))
-                    .await;
-            });
+            // let metrics_tx_cloned = self.metrics_tx.clone();
+            // let start_decision = start_decision.elapsed().as_micros() as u64;
+            // self.rt_handle.spawn(async move {
+            //     let _ = metrics_tx_cloned
+            //         .send(MetricsServiceMessage::Record("DECISION - process_decision_fn (µs)".to_string(), start_decision))
+            //         .await;
+            // });
         }
 
         Ok(())
@@ -352,9 +352,9 @@ impl CertifierService {
         } {
             // Ignore errors not required to cause the app to shutdown.
             match &certification_error {
-                CertificationError::SuffixError(..) => {
-                    warn!("{:?} ", certification_error.to_string());
-                }
+                // CertificationError::SuffixError(..) => {
+                //     warn!("{:?} ", certification_error.to_string());
+                // }
                 _ => {
                     // *** Shutdown the current service and return the error
                     error!("{:?} ", certification_error.to_string());
@@ -363,28 +363,28 @@ impl CertifierService {
             }
         };
 
-        let metrics_tx_cloned = self.metrics_tx.clone();
-        let start_process = start_process.elapsed().as_micros() as u64;
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned
-                .send(MetricsServiceMessage::Record("process_message_fn (µs)".to_string(), start_process))
-                .await;
-        });
+        // let metrics_tx_cloned = self.metrics_tx.clone();
+        // let start_process = start_process.elapsed().as_micros() as u64;
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned
+        //         .send(MetricsServiceMessage::Record("process_message_fn (µs)".to_string(), start_process))
+        //         .await;
+        // });
 
         // let metrics_tx_cloned = self.metrics_tx.clone();
 
-        let capacity_percentage = self.decision_outbox_tx.capacity() / self.decision_outbox_tx.max_capacity() * 100;
+        // let capacity_percentage = self.decision_outbox_tx.capacity() / self.decision_outbox_tx.max_capacity() * 100;
 
-        let metrics_tx_cloned = self.metrics_tx.clone();
+        // let metrics_tx_cloned = self.metrics_tx.clone();
 
-        self.rt_handle.spawn(async move {
-            let _ = metrics_tx_cloned
-                .send(MetricsServiceMessage::Record(
-                    "CHANNEL - C2DO capacity (%)".to_string(),
-                    capacity_percentage as u64,
-                ))
-                .await;
-        });
+        // self.rt_handle.spawn(async move {
+        //     let _ = metrics_tx_cloned
+        //         .send(MetricsServiceMessage::Record(
+        //             "CHANNEL - C2DO capacity (%)".to_string(),
+        //             capacity_percentage as u64,
+        //         ))
+        //         .await;
+        // });
 
         Ok(())
     }
