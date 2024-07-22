@@ -13,13 +13,13 @@ use crate::{
 };
 use futures_util::future::join_all;
 use log::{error, info};
-use tokio::runtime::Handle;
+use tokio::runtime::{Builder, Handle};
 
 use crate::core::{System, SystemService};
 
 pub struct TalosCertifierServiceBuilder {
     system: System,
-    certifier_service: Option<Box<dyn SystemServiceSync + Send + Sync>>,
+    certifier_service: Option<Box<dyn SystemService + Send + Sync>>,
     services: Vec<Box<dyn SystemService + Send + Sync>>,
     pub metrics_service: Option<Box<dyn SystemService + Send + Sync>>,
 }
@@ -49,7 +49,7 @@ impl TalosCertifierServiceBuilder {
         self
     }
 
-    pub fn add_certifier_service(mut self, certifier_service: Box<dyn SystemServiceSync + Send + Sync>) -> Self {
+    pub fn add_certifier_service(mut self, certifier_service: Box<dyn SystemService + Send + Sync>) -> Self {
         self.certifier_service = Some(certifier_service);
         self
     }
@@ -76,7 +76,7 @@ impl TalosCertifierServiceBuilder {
 pub struct TalosCertifierService {
     pub system: System,
     pub services: Vec<Box<dyn SystemService + Send + Sync>>,
-    pub certifier_service: Box<dyn SystemServiceSync + Send + Sync>,
+    pub certifier_service: Box<dyn SystemService + Send + Sync>,
     pub shutdown_flag: Arc<AtomicBool>,
 }
 
@@ -86,10 +86,20 @@ impl TalosCertifierService {
         let mut certifier_service = self.certifier_service;
         // let certifier_handle =
         thread::spawn(move || {
-            while !shutdown_flag.load(Ordering::Relaxed) {
-                let _ = certifier_service.run();
-            }
-            error!("I am out of the while loop for certifier_service");
+            let rt = Builder::new_multi_thread()
+                .worker_threads(4)
+                .thread_name("my-custom-name")
+                .thread_stack_size(3 * 1024 * 1024)
+                .build()
+                .unwrap();
+
+            rt.block_on(async move {
+                // error!("Before the loop in certifier service v2....");
+                while !shutdown_flag.load(Ordering::Relaxed) {
+                    let _ = certifier_service.run().await;
+                }
+                // error!("After the loop in certifier service v2....");
+            });
         });
 
         // let mut service_handle: Vec<JoinHandle<()>> = self
