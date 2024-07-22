@@ -84,108 +84,120 @@ impl TalosCertifierService {
     pub async fn run(self) -> ServiceResult {
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
         let mut certifier_service = self.certifier_service;
-        let certifier_handle = thread::spawn(move || {
+        // let certifier_handle =
+        thread::spawn(move || {
             while !shutdown_flag.load(Ordering::Relaxed) {
                 let _ = certifier_service.run();
             }
             error!("I am out of the while loop for certifier_service");
         });
 
-        let mut service_handle = self
-            .services
-            .into_iter()
-            .map(|mut service| {
-                let rt_handle = Handle::current();
+        // let mut service_handle: Vec<JoinHandle<()>> = self
+        //     .services
+        //     .into_iter()
+        //     .map(|mut service| {
+        //         tokio::spawn({
+        //             let shutdown_notifier_cloned = self.system.system_notifier.clone();
+        //             let mut shutdown_receiver = shutdown_notifier_cloned.subscribe();
+        //             let shutdown_flag = Arc::clone(&self.shutdown_flag);
+
+        //             async move {
+        //                 let mut result: ServiceResult = Ok(());
+        //                 while !shutdown_flag.load(Ordering::Relaxed) {
+        //                     tokio::select! {
+        //                         svc_result = service.run() => {
+        //                             if let Err(service_error) = svc_result {
+        //                                 error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
+        //                                 shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
+        //                             };
+        //                         },
+        //                         msg = shutdown_receiver.recv() => {
+        //                             let message = msg.unwrap();
+
+        //                             match message {
+        //                                 SystemMessage::Shutdown => {
+        //                                     info!("Shutdown received");
+        //                                     let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+        //                                 },
+        //                                 SystemMessage::ShutdownWithError(service_error) => {
+        //                                     info!("Shutdown received due to error");
+        //                                     let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+        //                                      result = Err(service_error);
+        //                                 },
+
+        //                                 _ => ()
+        //                             }
+
+        //                         }
+        //                     }
+        //                 }
+        //                 result
+        //             }
+        //         })
+        //     })
+        //     .collect::<Vec<JoinHandle<()>>>();
+
+        // // service_handle.push(certifier_handle);
+
+        // for t in service_handle {
+        //     t.join().expect("Thread panicked!!");
+        // }
+        // // let k = join_all(service_handle).await;
+
+        // // for res in k {
+        // //     res.unwrap()?
+        // // }
+
+        // Ok(())
+
+        // let service_with_tokio = thread::spawn(move ||)
+
+        let service_handle = self.services.into_iter().map(|mut service| {
+            tokio::spawn({
                 let shutdown_notifier_cloned = self.system.system_notifier.clone();
                 let mut shutdown_receiver = shutdown_notifier_cloned.subscribe();
                 let shutdown_flag = Arc::clone(&self.shutdown_flag);
-                thread::spawn(move || {
-                    rt_handle.block_on(async move {
-                        while !shutdown_flag.load(Ordering::Relaxed) {
-                            //     async move {
-                            let mut result: ServiceResult = Ok(());
-                            tokio::select! {
-                                svc_result = service.run() => {
-                                    if let Err(service_error) = svc_result {
-                                        error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
-                                        shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
-                                    };
-                                },
-                                msg = shutdown_receiver.recv() => {
-                                    let message = msg.unwrap();
 
-                                    match message {
-                                        SystemMessage::Shutdown => {
-                                            info!("Shutdown received");
-                                            let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
-                                        },
-                                        SystemMessage::ShutdownWithError(service_error) => {
-                                            info!("Shutdown received due to error");
-                                            let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
-                                             result = Err(service_error);
-                                        },
+                async move {
+                    let mut result: ServiceResult = Ok(());
+                    while !shutdown_flag.load(Ordering::Relaxed) {
+                        tokio::select! {
+                            svc_result = service.run() => {
+                                if let Err(service_error) = svc_result {
+                                    error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
+                                    shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
+                                };
+                            },
+                            msg = shutdown_receiver.recv() => {
+                                let message = msg.unwrap();
 
-                                        _ => ()
-                                    }
+                                match message {
+                                    SystemMessage::Shutdown => {
+                                        info!("Shutdown received");
+                                        let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                                    },
+                                    SystemMessage::ShutdownWithError(service_error) => {
+                                        info!("Shutdown received due to error");
+                                        let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
+                                         result = Err(service_error);
+                                    },
 
+                                    _ => ()
                                 }
+
                             }
-                            // break result;
                         }
-
-                        error!("I am outside the while,,,...");
-                    });
-                    error!("I moved BACK from tokio to thread");
-                    // handle.await.expect("Tokio task panicked!!!");
-                    // let handle = rt_handle.spawn({
-                    //     async move {
-                    //         let mut result: ServiceResult = Ok(());
-                    //             tokio::select! {
-                    //                 svc_result = service.run() => {
-                    //                     if let Err(service_error) = svc_result {
-                    //                         error!("Error found in service=({}) !!!! {:?}", service_error.service, service_error);
-                    //                         shutdown_notifier_cloned.send(SystemMessage::Shutdown).unwrap();
-                    //                     };
-                    //                 },
-                    //                 msg = shutdown_receiver.recv() => {
-                    //                     let message = msg.unwrap();
-
-                    //                     match message {
-                    //                         SystemMessage::Shutdown => {
-                    //                             info!("Shutdown received");
-                    //                             let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
-                    //                         },
-                    //                         SystemMessage::ShutdownWithError(service_error) => {
-                    //                             info!("Shutdown received due to error");
-                    //                             let _ = &shutdown_flag.swap(true, Ordering::Relaxed);
-                    //                              result = Err(service_error);
-                    //                         },
-
-                    //                         _ => ()
-                    //                     }
-
-                    //                 }
-                    //             }
-                    //         }
-                    //         result
-                    //     }
-                    // });
-
-                    // handle.await;
-                })
+                    }
+                    result
+                }
             })
-            .collect::<Vec<JoinHandle<()>>>();
+        });
 
-        service_handle.push(certifier_handle);
+        let k = join_all(service_handle).await;
 
-        for t in service_handle {
-            t.join().expect("Thread panicked!!");
+        for res in k {
+            res.unwrap()?
         }
-        // let k = join_all(service_handle).await;
-
-        // for res in k {
-        //     res.unwrap()?
-        // }
 
         Ok(())
     }
