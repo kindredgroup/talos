@@ -6,6 +6,7 @@ use talos_certifier::core::{SystemService, SystemServiceSync};
 use talos_certifier::model::DecisionMessage;
 use talos_certifier::ports::DecisionStore;
 
+use talos_certifier::services::suffix_service::{SuffixService, SuffixServiceConfig};
 use talos_certifier::services::CertifierServiceConfig;
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
@@ -56,7 +57,7 @@ pub async fn certifier_with_kafka_pg(
     };
 
     let (candidate_tx, candidate_rx) = mpsc::channel(channel_buffer.message_receiver);
-    let (decision_tx, decision_rx) = mpsc::channel(channel_buffer.message_receiver);
+    let (certifier_tx, certifier_rx) = mpsc::channel(channel_buffer.message_receiver);
     let (metrics_tx, metrics_rx) = mpsc::channel(channel_buffer.message_receiver);
 
     /* START - Kafka consumer service  */
@@ -67,7 +68,6 @@ pub async fn certifier_with_kafka_pg(
     let message_receiver_service = MessageReceiverService::new(
         Box::new(kafka_consumer),
         candidate_tx,
-        decision_tx,
         Arc::clone(&commit_offset),
         system.clone(),
         metrics_tx.clone(),
@@ -79,14 +79,23 @@ pub async fn certifier_with_kafka_pg(
 
     // kafka_consumer.subscribe().await?;
     /* START - Certifier service  */
-    let certifier_service = Box::new(CertifierService::new(
+    let suffix_service = Box::new(SuffixService::new(
         candidate_rx,
-        decision_rx,
-        outbound_tx.clone(),
+        certifier_tx,
         Arc::clone(&commit_offset),
         system.clone(),
-        Some(CertifierServiceConfig {
+        Some(SuffixServiceConfig {
             suffix_config: configuration.suffix_config.unwrap_or_default(),
+        }),
+        metrics_tx.clone(),
+        // Handle::current(),
+    ));
+    let certifier_service = Box::new(CertifierService::new(
+        certifier_rx,
+        outbound_tx.clone(),
+        system.clone(),
+        Some(CertifierServiceConfig {
+            // suffix_config: configuration.suffix_config.unwrap_or_default(),
         }),
         metrics_tx.clone(),
         // Handle::current(),
@@ -137,6 +146,7 @@ pub async fn certifier_with_kafka_pg(
 
     let talos_certifier = TalosCertifierServiceBuilder::new(system)
         .add_certifier_service(certifier_service)
+        .add_suffix_service(suffix_service)
         .add_adapter_service(Box::new(message_receiver_service))
         .add_adapter_service(Box::new(decision_outbox_service))
         .add_metric_service(Box::new(metrics_service))

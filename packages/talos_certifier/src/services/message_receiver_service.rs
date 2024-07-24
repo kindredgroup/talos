@@ -17,8 +17,7 @@ use crate::{
 
 pub struct MessageReceiverService {
     pub receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
-    pub candidate_message_channel_tx: mpsc::Sender<ChannelMessage>,
-    pub decision_message_channel_tx: mpsc::Sender<ChannelMessage>,
+    pub message_channel_tx: mpsc::Sender<ChannelMessage>,
     pub commit_offset: Arc<AtomicI64>,
     pub system: System,
     pub commit_interval: Interval,
@@ -29,15 +28,13 @@ impl MessageReceiverService {
     pub fn new(
         receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
         message_channel_tx: mpsc::Sender<ChannelMessage>,
-        decision_message_channel_tx: mpsc::Sender<ChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
         metrics_tx: mpsc::Sender<MetricsServiceMessage>,
     ) -> Self {
         Self {
             receiver,
-            candidate_message_channel_tx: message_channel_tx,
-            decision_message_channel_tx,
+            message_channel_tx,
             system,
             commit_offset,
             commit_interval: tokio::time::interval(Duration::from_millis(10_000)),
@@ -60,58 +57,15 @@ impl SystemService for MessageReceiverService {
           res = self.receiver.consume_message() => {
             match res {
                 Ok(Some(msg))  => {
-                    let msg_cloned = msg.clone();
-                    match msg {
-                        ChannelMessage::Candidate(cm) => {
-                            if let Err(error) = self.candidate_message_channel_tx.send(msg_cloned.clone()).await {
-                                return Err(Box::new(SystemServiceError{
-                                     kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                                     reason: error.to_string(),
-                                     data: Some(format!("{:?}", msg_cloned)),
-                                     service: "Message Receiver Service".to_string()
-                                     }))
-                            }
-                        },
-                        ChannelMessage::Decision(dm) => {
-                            if let Err(error) = self.decision_message_channel_tx.send(msg_cloned.clone()).await {
-                                return Err(Box::new(SystemServiceError{
-                                     kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                                     reason: error.to_string(),
-                                     data: Some(format!("{:?}", msg_cloned)),
-                                     service: "Message Receiver Service".to_string()
-                                     }))
-                            }
-                        },
-                    };
-                    // if self.message_channel_tx.capacity() + 100 >= self.message_channel_tx.max_capacity() {
-                    //     error!(
-                    //         "[message_channel] Almost near the max capacity. Capacity={} and max_capacity={} ",
-                    //         self.message_channel_tx.capacity(),
-                    //         self.message_channel_tx.max_capacity()
-                    //     )
-                    // }
+                    if let Err(error) = self.message_channel_tx.send(msg.clone()).await {
+                        return Err(Box::new(SystemServiceError{
+                             kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
+                             reason: error.to_string(),
+                             data: Some(format!("{:?}", msg)),
+                             service: "Message Receiver Service".to_string()
+                             }))
+                    }
 
-                    // if let Err(error) = self.candidate_message_channel_tx.send(msg.clone()).await {
-                    //     return Err(Box::new(SystemServiceError{
-                    //          kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),
-                    //          reason: error.to_string(),
-                    //          data: Some(format!("{:?}", msg)),
-                    //          service: "Message Receiver Service".to_string()
-                    //          }))
-                    // }
-
-                    // let capacity_percentage = self.candidate_message_channel_tx.capacity() / self.candidate_message_channel_tx.max_capacity() * 100;
-
-                    // let metrics_tx_cloned = self.metrics_tx.clone();
-
-                    // tokio::spawn(async move {
-                    //     let _ = metrics_tx_cloned
-                    //         .send(MetricsServiceMessage::Record(
-                    //             "CHANNEL - M2C capacity (%)".to_string(),
-                    //             capacity_percentage as u64,
-                    //         ))
-                    //         .await;
-                    // });
                 },
                 Ok(None) => {
                     info!("Consume message returned None");

@@ -27,6 +27,12 @@ pub enum ChannelMessage {
     Decision(Box<DecisionChannelMessage>),
 }
 
+#[derive(Debug, Clone)]
+pub enum CertifierChannelMessage {
+    Certify(u64, Box<CandidateChannelMessage>),
+    Cleanup((Box<ahash::AHashMap<String, u64>>, Box<ahash::AHashMap<String, u64>>)),
+}
+
 #[derive(Debug, Display, Eq, PartialEq, EnumString)]
 pub enum MessageVariant {
     Candidate,

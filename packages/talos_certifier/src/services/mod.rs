@@ -3,6 +3,7 @@ mod decision_outbox_service;
 mod healthcheck_service;
 mod message_receiver_service;
 mod metrics_service;
+pub mod suffix_service;
 
 pub use certifier_service::{CertifierService, CertifierServiceConfig};
 pub use decision_outbox_service::DecisionOutboxService;

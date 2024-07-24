@@ -17,6 +17,7 @@ use crate::core::{System, SystemService};
 pub struct TalosCertifierServiceBuilder {
     system: System,
     certifier_service: Option<Box<dyn SystemService + Send + Sync>>,
+    suffix_service: Option<Box<dyn SystemService + Send + Sync>>,
     services: Vec<Box<dyn SystemService + Send + Sync>>,
     pub metrics_service: Option<Box<dyn SystemService + Send + Sync>>,
 }
@@ -26,6 +27,7 @@ impl TalosCertifierServiceBuilder {
         Self {
             system,
             certifier_service: None,
+            suffix_service: None,
             metrics_service: None,
             services: vec![],
         }
@@ -50,6 +52,10 @@ impl TalosCertifierServiceBuilder {
         self.certifier_service = Some(certifier_service);
         self
     }
+    pub fn add_suffix_service(mut self, suffix_service: Box<dyn SystemService + Send + Sync>) -> Self {
+        self.suffix_service = Some(suffix_service);
+        self
+    }
 
     pub fn build(self) -> TalosCertifierService {
         let mut services = self.services;
@@ -60,11 +66,13 @@ impl TalosCertifierServiceBuilder {
         };
 
         let certifier_service = self.certifier_service.expect("Certifier Service is mandatory");
+        let suffix_service = self.suffix_service.expect("suffix Service is mandatory");
 
         TalosCertifierService {
             system: self.system,
             services,
             certifier_service,
+            suffix_service,
             shutdown_flag: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -74,6 +82,7 @@ pub struct TalosCertifierService {
     pub system: System,
     pub services: Vec<Box<dyn SystemService + Send + Sync>>,
     pub certifier_service: Box<dyn SystemService + Send + Sync>,
+    pub suffix_service: Box<dyn SystemService + Send + Sync>,
     pub shutdown_flag: Arc<AtomicBool>,
 }
 
@@ -82,9 +91,25 @@ impl TalosCertifierService {
         let mut interval = tokio::time::interval(Duration::from_secs(1 * 60));
 
         let shutdown_flag = Arc::clone(&self.shutdown_flag);
-        let mut certifier_service = self.certifier_service;
+        let mut suffix_service = self.suffix_service;
 
-        // let certifier_handle =
+        // Suffix Service
+        thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+
+            rt.block_on(async {
+                while !shutdown_flag.load(Ordering::Relaxed) {
+                    if let Err(error) = suffix_service.run().await {
+                        error!("Certifier Service has error... \n {error:?}");
+                    };
+                }
+                error!("I am out of the while loop for suffix_service");
+            })
+        });
+
+        let shutdown_flag = Arc::clone(&self.shutdown_flag);
+        let mut certifier_service = self.certifier_service;
+        // Certifier Service
         thread::spawn(move || {
             let rt = Runtime::new().unwrap();
 
