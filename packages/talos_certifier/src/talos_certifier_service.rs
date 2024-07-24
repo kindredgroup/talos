@@ -90,7 +90,9 @@ impl TalosCertifierService {
 
             rt.block_on(async {
                 while !shutdown_flag.load(Ordering::Relaxed) {
-                    let _ = certifier_service.run().await;
+                    if let Err(error) = certifier_service.run().await {
+                        error!("Certifier Service has error... \n {error:?}");
+                    };
                 }
                 error!("I am out of the while loop for certifier_service");
             })
