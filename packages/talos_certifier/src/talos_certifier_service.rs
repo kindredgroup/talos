@@ -6,20 +6,16 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use crate::{
-    core::{ServiceResult, SystemServiceSync},
-    services::MetricsService,
-    SystemMessage,
-};
+use crate::{core::ServiceResult, services::MetricsService, SystemMessage};
 use futures_util::future::join_all;
 use log::{error, info};
-use tokio::runtime::Handle;
+use tokio::runtime::{Handle, Runtime};
 
 use crate::core::{System, SystemService};
 
 pub struct TalosCertifierServiceBuilder {
     system: System,
-    certifier_service: Option<Box<dyn SystemServiceSync + Send + Sync>>,
+    certifier_service: Option<Box<dyn SystemService + Send + Sync>>,
     services: Vec<Box<dyn SystemService + Send + Sync>>,
     pub metrics_service: Option<Box<dyn SystemService + Send + Sync>>,
 }
@@ -49,7 +45,7 @@ impl TalosCertifierServiceBuilder {
         self
     }
 
-    pub fn add_certifier_service(mut self, certifier_service: Box<dyn SystemServiceSync + Send + Sync>) -> Self {
+    pub fn add_certifier_service(mut self, certifier_service: Box<dyn SystemService + Send + Sync>) -> Self {
         self.certifier_service = Some(certifier_service);
         self
     }
@@ -76,7 +72,7 @@ impl TalosCertifierServiceBuilder {
 pub struct TalosCertifierService {
     pub system: System,
     pub services: Vec<Box<dyn SystemService + Send + Sync>>,
-    pub certifier_service: Box<dyn SystemServiceSync + Send + Sync>,
+    pub certifier_service: Box<dyn SystemService + Send + Sync>,
     pub shutdown_flag: Arc<AtomicBool>,
 }
 
@@ -86,10 +82,14 @@ impl TalosCertifierService {
         let mut certifier_service = self.certifier_service;
         // let certifier_handle =
         thread::spawn(move || {
-            while !shutdown_flag.load(Ordering::Relaxed) {
-                let _ = certifier_service.run();
-            }
-            error!("I am out of the while loop for certifier_service");
+            let rt = Runtime::new().unwrap();
+
+            rt.block_on(async {
+                while !shutdown_flag.load(Ordering::Relaxed) {
+                    let _ = certifier_service.run().await;
+                }
+                error!("I am out of the while loop for certifier_service");
+            })
         });
 
         // let mut service_handle: Vec<JoinHandle<()>> = self

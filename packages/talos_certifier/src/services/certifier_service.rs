@@ -34,7 +34,8 @@ pub struct CertifierService {
     pub suffix: Suffix<CandidateMessage>,
     pub certifier: Certifier,
     pub system: System,
-    pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
+    pub candidate_message_channel_rx: mpsc::Receiver<ChannelMessage>,
+    pub decision_message_channel_rx: mpsc::Receiver<ChannelMessage>,
     pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
@@ -45,7 +46,8 @@ pub struct CertifierService {
 
 impl CertifierService {
     pub fn new(
-        message_channel_rx: mpsc::Receiver<ChannelMessage>,
+        candidate_message_channel_rx: mpsc::Receiver<ChannelMessage>,
+        decision_message_channel_rx: mpsc::Receiver<ChannelMessage>,
         decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
@@ -63,7 +65,8 @@ impl CertifierService {
             suffix,
             certifier,
             system,
-            message_channel_rx,
+            candidate_message_channel_rx,
+            decision_message_channel_rx,
             decision_outbox_tx,
             commit_offset,
             config,
@@ -391,11 +394,22 @@ impl CertifierService {
 }
 
 #[async_trait]
-impl SystemServiceSync for CertifierService {
-    fn run(&mut self) -> ServiceResult {
-        block_on(async {
-            let channel_msg = self.message_channel_rx.recv().await;
-            Ok(self.process_message(&channel_msg).await?)
-        })
+impl SystemService for CertifierService {
+    async fn run(&mut self) -> ServiceResult {
+        // let channel_msg = self.candidate_message_channel_rx.recv().await;
+        // Ok(self.process_message(&channel_msg).await?)
+
+        tokio::select! {
+            biased;
+            channel_msg = self.candidate_message_channel_rx.recv() => {
+                // error!("<Candidate_Message> Processing");
+                Ok(self.process_message(&channel_msg).await?)
+            }
+            decision_channel_msg = self.decision_message_channel_rx.recv() => {
+                // error!("<Decision_Message> Processing");
+                Ok(self.process_message(&decision_channel_msg).await?)
+            }
+
+        }
     }
 }
