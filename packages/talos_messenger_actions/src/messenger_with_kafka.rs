@@ -51,13 +51,19 @@ where
             total_publish_count: additional_data,
         };
 
+        let mut headers_to_publish = headers;
+
+        if let Some(payload_header) = payload.headers {
+            headers_to_publish.extend(payload_header);
+        }
+
         self.publisher
             .publish_to_topic(
                 &payload.topic,
                 payload.partition,
                 payload.key.as_deref(),
                 payload_str,
-                headers,
+                headers_to_publish,
                 Box::new(delivery_opaque),
             )
             .unwrap();
