@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_util::future::join_all;
 use log::{error, info};
 use tokio::sync::mpsc;
 
@@ -41,15 +42,15 @@ where
                                 let total_len = actions.len() as u32;
 
                                 let headers_cloned = headers.clone();
-                                for action in actions {
+
+                                let publish_vec = actions.into_iter().map(|action| {
                                     let publisher = self.publisher.clone();
                                     let headers = headers_cloned.clone();
-                                    // Publish the message
-                                    tokio::spawn(async move {
+                                    async move {
                                         publisher.send(version, action, headers, total_len ).await;
-                                    });
-
-                                }
+                                    }
+                                });
+                                join_all(publish_vec).await;
                             },
                             Err(err) => {
                                 error!("Failed to deserialise for version={version} key={} for data={:?} with error={:?}",&self.publisher.get_publish_type(), err.data, err.reason )
