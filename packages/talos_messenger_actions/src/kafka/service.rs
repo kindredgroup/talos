@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures_util::future::join_all;
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::sync::mpsc;
 
 use talos_messenger_core::{
@@ -32,31 +32,43 @@ where
         info!("Running Kafka Publisher service!!");
         loop {
             tokio::select! {
-                Some(actions) = self.rx_actions_channel.recv() => {
-                    let MessengerCommitActions {version, commit_actions, headers } = actions;
+                actions_result = self.rx_actions_channel.recv() => {
 
-                    if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()){
-                        match  get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {
-                            Ok(actions) => {
+                    match actions_result {
+                        Some(actions) => {
 
-                                let total_len = actions.len() as u32;
+                            let MessengerCommitActions {version, commit_actions, headers } = actions;
 
-                                let headers_cloned = headers.clone();
+                            if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()){
+                                match  get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {
+                                    Ok(actions) => {
 
-                                let publish_vec = actions.into_iter().map(|action| {
-                                    let publisher = self.publisher.clone();
-                                    let headers = headers_cloned.clone();
-                                    async move {
-                                        publisher.send(version, action, headers, total_len ).await;
-                                    }
-                                });
-                                join_all(publish_vec).await;
-                            },
-                            Err(err) => {
-                                error!("Failed to deserialise for version={version} key={} for data={:?} with error={:?}",&self.publisher.get_publish_type(), err.data, err.reason )
-                            },
+                                        let total_len = actions.len() as u32;
+
+                                        let headers_cloned = headers.clone();
+
+                                        let publish_vec = actions.into_iter().map(|action| {
+                                            let publisher = self.publisher.clone();
+                                            let headers = headers_cloned.clone();
+                                            async move {
+                                                publisher.send(version, action, headers, total_len ).await;
+                                            }
+                                        });
+                                        join_all(publish_vec).await;
+                                    },
+                                    Err(err) => {
+                                        error!("Failed to deserialise for version={version} key={} for data={:?} with error={:?}",&self.publisher.get_publish_type(), err.data, err.reason )
+                                    },
+                                }
+                            }
+                        },
+                        None=> {
+                            debug!("No actions to process..")
                         }
+
                     }
+
+
                 }
             }
         }
