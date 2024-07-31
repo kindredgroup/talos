@@ -75,11 +75,11 @@ where
                     // Call prune method on suffix.
                     let _ = self.suffix.prune_till_index(index_to_prune);
 
-                    let commit_offset = version + 1;
-                    debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                    let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
+                    // let commit_offset = version + 1;
+                    // debug!("[Commit] Updating tpl to version .. {commit_offset}");
+                    // let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
 
-                    self.message_receiver.commit_async();
+                    // self.message_receiver.commit_async();
                 }
             }
             _ => {}
@@ -145,14 +145,14 @@ where
         loop {
             tokio::select! {
                 // 1. Consume message.
-                Ok(Some(msg)) = self.message_receiver.consume_message() => {
+                // Ok(Some(msg)) = self.message_receiver.consume_message() => {
+                reciever_result = self.message_receiver.consume_message() => {
 
-                    // 2. Add/update to suffix.
-                    match msg {
+                    match reciever_result {
                         // 2.1 For CM - Install messages on the version
-                        ChannelMessage::Candidate(candidate) => {
-
+                        Ok(Some(ChannelMessage::Candidate(candidate))) => {
                             let version = candidate.message.version;
+                            info!("Candidate version received is {version}");
                             if version > 0 {
                                 // insert item to suffix
                                 let _ = self.suffix.insert(version, candidate.message.into());
@@ -176,10 +176,9 @@ where
                             } else {
                                 warn!("Version 0 will not be inserted into suffix.")
                             }
-
                         },
                         // 2.2 For DM - Update the decision with outcome + safepoint.
-                        ChannelMessage::Decision(decision) => {
+                        Ok(Some(ChannelMessage::Decision(decision))) => {
                             let version = decision.message.get_candidate_version();
                             info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
@@ -190,21 +189,35 @@ where
                             self.process_next_actions().await?;
 
                         },
+                        Ok(None) => {
+                            info!("No message to process..");
+                        },
+                        Err(error) => {
+                            // Catch the error propogated, and if it has a version, mark the item as completed.
+                            if let Some(version) = error.version {
+                                if let Some(item_to_update) = self.suffix.get_mut(version){
+                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
+                                }
+                            }
+                            error!("error consuming message....{:?}", error);
+                        },
                     }
-
                 }
                 // Receive feedback from publisher.
-                Some(feedback) = self.rx_feedback_channel.recv() => {
-                    match feedback {
-                        MessengerChannelFeedback::Error(version, key, message_error) => {
+                feedback_result = self.rx_feedback_channel.recv() => {
+                    match feedback_result {
+                        Some(MessengerChannelFeedback::Error(version, key, message_error)) => {
                             error!("Failed to process version={version} with error={message_error:?}");
                             self.handle_action_failed(version, &key);
 
                         },
-                        MessengerChannelFeedback::Success(version, key) => {
+                        Some(MessengerChannelFeedback::Success(version, key)) => {
                             info!("Successfully processed version={version} with action_key={key}");
                             self.handle_action_success(version, &key);
                         },
+                        None => {
+                            debug!("No feedback message to process..");
+                        }
                     }
                     // Process the next items with commit actions
                     self.process_next_actions().await?
