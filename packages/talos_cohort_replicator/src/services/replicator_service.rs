@@ -83,7 +83,7 @@ where
                 let tps_install = total_items_installed as f32 / duration_installed_sec;
                 // let tps_install_feedback =
 
-                error!("
+                debug!("
                 Replicator Stats:
                       send for install      : tps={tps_send:.3}    | count={total_items_send}
                       installed             : tps={tps_install:.3}    | count={total_items_installed}
