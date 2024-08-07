@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use log::{error, info};
+use log::{debug, error, info};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
@@ -133,7 +133,7 @@ where
 
                     let awaiting_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
                     let inflight_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
-                    error!("
+                    debug!("
                     Statemap Installer Queue Stats:
                         tps             : {tps:.3}
                         counts          :
@@ -153,7 +153,7 @@ where
                         let criteria_seriazable_check = &result.filter_steps_insights[2];
 
                         if let Some(first_item_to_fail_safepoint_check) = criteria_snapshot_check.filter_reject_items.first() {
-                            error!("\n\n
+                            debug!("\n\n
                 +----------+-----------------------------------+----------------------------+
                 | Total    | Items in queue                    | {}
                 +----------+-----------------------------------+----------------------------+

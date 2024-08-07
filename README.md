@@ -19,7 +19,7 @@
     - [VSCODE Settings ](#vscode-settings-)
   - [Usage ](#usage-)
     - [Cohort Reference Implementation](#cohort-reference-implementation)
-  - [Release Process ](#release-process-)
+  - [Release Process ](#release-process)
   - [Release Notes ](#release-notes-)
 
 [comment]: <> (TOC_END)
@@ -103,6 +103,6 @@ Once you have checked, tested and linted your code you may create a commit.
 
 ## Release Process <a name="release"></a>
 
-The release process is explained in the separate document: [README-release.md](/README-release.md)
+The release process is explained in detail [here](docs/release-process.md)
 
 ## Release Notes <a name="release-notes"></a>
