@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use log::{error, info};
+use log::{debug, error, info};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 

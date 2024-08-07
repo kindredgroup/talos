@@ -8,7 +8,7 @@ use crate::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, error, info};
+use log::{debug, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
