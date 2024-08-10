@@ -12,7 +12,7 @@ pub struct CandidateData {
 }
 
 #[derive(Clone)]
-pub struct CertificationRequest {
+pub struct CertificationRequestContainer {
     pub candidate: CandidateData,
     pub timeout_ms: u64,
 }

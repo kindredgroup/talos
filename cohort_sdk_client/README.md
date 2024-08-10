@@ -91,10 +91,10 @@ async (): Promise<JsCertificationCandidateCallbackResponse>
 ```TypeScript
 export interface JsCertificationCandidateCallbackResponse {
   cancellationReason?: string
-  newRequest?: JsCertificationRequestPayload
+  newRequest?: JsCertificationRequest
 }
 
-export interface JsCertificationRequestPayload {
+export interface JsCertificationRequest {
   candidate: JsCertificationCandidate
   snapshot: number
   timeoutMs: number
@@ -144,11 +144,11 @@ Above mentioned reads, writes and statemap fields together are known as certific
 
 Read about `statemap` in the end of this document. See section [About Statemap](#about-statemap).
 
-### About "JsCertificationRequestPayload"
+### About "JsCertificationRequest"
 
-Talos is making a certification decision purely based on two major pieces of data. 1) the decisions it made to previous requests issued by you or by other cohorts 2) the state of objects in your database. In order to have a full picture, Talos Certifier needs to know not only _the state of your objects taking part in the current transaction_ but also the _global state of your cohort_. The global state is known as the snapshot version. You need to pass your objects (candidate) and your current global state (snapshot). Check this structure `JsCertificationRequestPayload`.
+Talos is making a certification decision purely based on two major pieces of data. 1) the decisions it made to previous requests issued by you or by other cohorts 2) the state of objects in your database. In order to have a full picture, Talos Certifier needs to know not only _the state of your objects taking part in the current transaction_ but also the _global state of your cohort_. The global state is known as the snapshot version. You need to pass your objects (candidate) and your current global state (snapshot). Check this structure `JsCertificationRequest`.
 
-The response to your certification request will be asynchronously received by SDK. However, the async aspect of it is hidden from you for simplicity of usage. Your call to `await .certify(...)` will block until request is available or until it times out. Use the optional config `JsCertificationRequestPayload.timeoutMs` attribute to specify how long you are willing to wait for that specific response. If not provided, then SDK will use value from `JsInitiatorConfig.timeoutMs`.
+The response to your certification request will be asynchronously received by SDK. However, the async aspect of it is hidden from you for simplicity of usage. Your call to `await .certify(...)` will block until request is available or until it times out. Use the optional config `JsCertificationRequest.timeoutMs` attribute to specify how long you are willing to wait for that specific response. If not provided, then SDK will use value from `JsInitiatorConfig.timeoutMs`.
 
 ### About "JsCertificationCandidateCallbackResponse"
 

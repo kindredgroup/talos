@@ -7,7 +7,7 @@ import { logger } from "./logger"
 
 import { CapturedItemState, CapturedState, TransferRequest, TransferRequestMessage } from "./model"
 import { SDK_CONFIG as sdkConfig } from "./cfg/config-cohort-sdk"
-import { Initiator, JsCertificationRequestPayload, JsOutOfOrderInstallOutcome, OutOfOrderRequest, TalosSdkError } from "@kindredgroup/cohort_sdk_client"
+import { Initiator, JsCertificationRequest, JsOutOfOrderInstallOutcome, OutOfOrderRequest, TalosSdkError } from "@kindredgroup/cohort_sdk_client"
 
 export class BankingApp {
     private startedAtMs: number = 0
@@ -124,7 +124,7 @@ export class BankingApp {
         return this.handledCount / ((nowMs - this.startedAtMs) / 1_000.0)
     }
 
-    private async createNewRequest(tx: TransferRequest): Promise<JsCertificationRequestPayload> {
+    private async createNewRequest(tx: TransferRequest): Promise<JsCertificationRequest> {
         const state = await this.loadState(tx)
 
         return {

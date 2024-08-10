@@ -23,7 +23,7 @@ use talos_agent::messaging::api::Decision;
 use crate::{
     callbacks::{certification_candidate_provider::CertificationCandidateProviderImpl, oo_installer::OutOfOrderInstallerImpl},
     examples_support::queue_processor::Handler,
-    model::requests::{CandidateData, CertificationRequest},
+    model::requests::{CandidateData, CertificationRequestContainer},
 };
 
 pub struct BankingApp {
@@ -94,7 +94,7 @@ impl Handler<TransferRequest> for BankingApp {
             }),
         };
 
-        let certification_request = CertificationRequest {
+        let certification_request = CertificationRequestContainer {
             timeout_ms: 0,
             candidate: CandidateData {
                 readset: vec![request.from.clone(), request.to.clone()],
