@@ -152,7 +152,7 @@ where
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
                             let version = candidate.message.version;
-                            info!("Candidate version received is {version}");
+                            debug!("Candidate version received is {version}");
                             if version > 0 {
                                 // insert item to suffix
                                 let _ = self.suffix.insert(version, candidate.message.into());
