@@ -1,10 +1,12 @@
 import { Initiator } from "./initiator"
 import { Replicator } from "./replicator"
 import {
-    JsCertificationRequestPayload,
+    JsCertificationCandidateCallbackResponse,
+    JsCertificationRequest,
     JsCertificationResponse,
     JsDecision,
     JsInitiatorConfig,
+    JsKafkaAction,
     JsKafkaConfig,
     JsReplicatorConfig,
     JsResponseMetadata,
@@ -25,8 +27,10 @@ export {
     Initiator,
     JsDecision,
     JsInitiatorConfig,
+    JsCertificationCandidateCallbackResponse,
     JsCertificationResponse,
-    JsCertificationRequestPayload,
+    JsCertificationRequest,
+    JsKafkaAction,
     JsKafkaConfig,
     JsReplicatorConfig,
     JsResponseMetadata,
@@ -36,4 +40,12 @@ export {
     Replicator,
     SdkErrorKind,
     TalosSdkError,
+}
+
+export class CapturedItemState{
+  constructor(readonly id: string, readonly version: number){}
+}
+
+export class CapturedState{
+  constructor(readonly snapshotVersion: number, readonly items: CapturedItemState[]){}
 }

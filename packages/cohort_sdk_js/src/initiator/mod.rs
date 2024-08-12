@@ -3,7 +3,7 @@ use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
 use cohort_sdk::model::callback::{
-    CandidateOnCommitActions, CandidateOnCommitPublishActions, CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload,
+    CandidateOnCommitActions, CandidateOnCommitPublishActions, CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequest,
     KafkaAction, OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller,
 };
 use cohort_sdk::model::{CertificationResponse, ClientError, Config, ResponseMetadata};
@@ -96,7 +96,7 @@ pub struct JsCandidateOnCommitPublishActions {
 
 // #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[napi(object)]
-pub struct JSCandidateOnCommitActions {
+pub struct JsCandidateOnCommitActions {
     pub publish: Option<JsCandidateOnCommitPublishActions>,
 }
 
@@ -106,7 +106,7 @@ pub struct JsCertificationCandidate {
     pub writeset: Vec<String>,
     pub readvers: Vec<i64>,
     pub statemaps: Option<Vec<HashMap<String, Value>>>,
-    pub on_commit: Option<JSCandidateOnCommitActions>,
+    pub on_commit: Option<JsCandidateOnCommitActions>,
 }
 
 impl From<JsCandidateOnCommitPublishActions> for CandidateOnCommitPublishActions {
@@ -128,8 +128,8 @@ impl From<JsCandidateOnCommitPublishActions> for CandidateOnCommitPublishActions
         CandidateOnCommitPublishActions { kafka: kafka_actions }
     }
 }
-impl From<JSCandidateOnCommitActions> for CandidateOnCommitActions {
-    fn from(val: JSCandidateOnCommitActions) -> Self {
+impl From<JsCandidateOnCommitActions> for CandidateOnCommitActions {
+    fn from(val: JsCandidateOnCommitActions) -> Self {
         CandidateOnCommitActions {
             publish: val.publish.map(|x| x.into()),
         }
@@ -149,15 +149,15 @@ impl From<JsCertificationCandidate> for CertificationCandidate {
 }
 
 #[napi(object)]
-pub struct JsCertificationRequestPayload {
+pub struct JsCertificationRequest {
     pub candidate: JsCertificationCandidate,
     pub snapshot: i64,
     pub timeout_ms: u32,
 }
 
-impl From<JsCertificationRequestPayload> for CertificationRequestPayload {
-    fn from(val: JsCertificationRequestPayload) -> Self {
-        CertificationRequestPayload {
+impl From<JsCertificationRequest> for CertificationRequest {
+    fn from(val: JsCertificationRequest) -> Self {
+        CertificationRequest {
             candidate: val.candidate.into(),
             snapshot: val.snapshot as u64,
             timeout_ms: val.timeout_ms as u64,
@@ -168,7 +168,7 @@ impl From<JsCertificationRequestPayload> for CertificationRequestPayload {
 #[napi(object)]
 pub struct JsCertificationCandidateCallbackResponse {
     pub cancellation_reason: Option<String>,
-    pub new_request: Option<JsCertificationRequestPayload>,
+    pub new_request: Option<JsCertificationRequest>,
 }
 
 #[napi(string_enum)]

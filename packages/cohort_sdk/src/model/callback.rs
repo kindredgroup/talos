@@ -7,11 +7,11 @@ use serde_json::Value;
 #[derive(Debug, PartialEq)]
 pub enum CertificationCandidateCallbackResponse {
     Cancelled(String),
-    Proceed(CertificationRequestPayload),
+    Proceed(CertificationRequest),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CertificationRequestPayload {
+pub struct CertificationRequest {
     pub candidate: CertificationCandidate,
     pub snapshot: u64,
     pub timeout_ms: u64,

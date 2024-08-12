@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use banking_common::state::postgres::database::{Database, DatabaseError};
-use cohort_sdk::model::callback::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequestPayload};
+use cohort_sdk::model::callback::{CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequest};
 use rust_decimal::Decimal;
 use tokio_postgres::Row;
 
-use crate::model::{bank_account::BankAccount, requests::CertificationRequest};
+use crate::model::{bank_account::BankAccount, requests::CertificationRequestContainer};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub struct CapturedState {
@@ -132,7 +132,7 @@ impl CertificationCandidateProviderImpl {
         })
     }
 
-    pub async fn get_certification_candidate(&self, request: CertificationRequest) -> Result<CertificationCandidateCallbackResponse, String> {
+    pub async fn get_certification_candidate(&self, request: CertificationRequestContainer) -> Result<CertificationCandidateCallbackResponse, String> {
         // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         // This example doesn't handle `Cancelled` scenario.
         // If user cancellation is needed, add additional logic in this fn to return `Cancelled` instead of `Proceed` in the result.
@@ -158,7 +158,7 @@ impl CertificationCandidateProviderImpl {
             on_commit: request.candidate.on_commit,
         };
 
-        Ok(CertificationCandidateCallbackResponse::Proceed(CertificationRequestPayload {
+        Ok(CertificationCandidateCallbackResponse::Proceed(CertificationRequest {
             candidate,
             snapshot: state.snapshot_version,
             timeout_ms: request.timeout_ms,
