@@ -7,6 +7,7 @@ use talos_certifier::model::{Decision, DecisionMessage};
 use talos_certifier::ports::common::SharedPortTraits;
 use talos_certifier::ChannelMessage;
 use tokio::sync::mpsc;
+use tracing::{info_span, Span};
 
 pub struct MockCertifierService {
     pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
@@ -45,7 +46,8 @@ impl SystemService for MockCertifierService {
                             duplicate_version: None,
                             metrics: TxProcessingTimeline::default(),
                         };
-                        let decision_outbox_channel_message = DecisionOutboxChannelMessage{ message: decision_message.clone(), headers:HashMap::new() };
+                        let span = info_span!("Mock");
+                        let decision_outbox_channel_message = DecisionOutboxChannelMessage{ message: decision_message.clone(), headers:HashMap::new(), span };
                         self.decision_outbox_tx
                             .send(decision_outbox_channel_message)
                             .await

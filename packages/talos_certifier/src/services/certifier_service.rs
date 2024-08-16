@@ -2,12 +2,13 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tracing::{info_span, Instrument};
 
 use crate::certifier::utils::generate_certifier_sets_from_suffix;
 use crate::{
@@ -23,6 +24,8 @@ pub struct CertifierServiceConfig {
     /// Suffix config
     pub suffix_config: SuffixConfig,
 }
+
+#[derive(Debug)]
 
 pub struct CertifierService {
     pub suffix: Suffix<CandidateMessage>,
@@ -65,8 +68,9 @@ impl CertifierService {
     /// * Certify the message.
     /// * Create the DecisionMessage from the certification outcome.
     ///
+    #[tracing::instrument(skip_all, fields(candidate_version = message.version, xid = message.xid))]
     pub(crate) fn process_candidate(&mut self, message: &CandidateMessage) -> Result<DecisionMessage, CertificationError> {
-        debug!("[Process Candidate message] Version {} ", message.version);
+        info!("[Process Candidate message] Version {} ", message.version);
 
         let can_process_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
         // Insert into Suffix
@@ -74,6 +78,7 @@ impl CertifierService {
             self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
         }
         let suffix_head = self.suffix.meta.head;
+        info!("Suffix head {}", suffix_head);
 
         // Get certifier outcome
         let outcome = self
@@ -90,9 +95,10 @@ impl CertifierService {
         Ok(dm)
     }
 
+    #[tracing::instrument(skip(self, decision_message), fields(candidate_version = decision_message.version, xid = decision_message.xid))]
     pub(crate) fn process_decision(&mut self, decision_version: u64, decision_message: &DecisionMessage) -> Result<(), CertificationError> {
         // update the decision in suffix
-        debug!(
+        info!(
             "[Process Decision message] Version {} and Decision Message {:?} ",
             decision_version, decision_message
         );
@@ -146,24 +152,36 @@ impl CertifierService {
         Ok(())
     }
 
+    // #[tracing::instrument(skip_all)]
     pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage>) -> ServiceResult {
         if let Err(certification_error) = match channel_message {
             Some(ChannelMessage::Candidate(candidate)) => {
+                let span = info_span!(parent: candidate.span.clone(), "Certify candidate");
+                let _guard = span.enter();
+
                 let decision_message = self.process_candidate(&candidate.message)?;
 
                 let mut headers = candidate.headers.clone();
                 if let Ok(cert_time) = OffsetDateTime::now_utc().format(&Rfc3339) {
                     headers.insert("certTime".to_owned(), cert_time);
                 }
+                drop(_guard);
 
                 let decision_outbox_channel_message = DecisionOutboxChannelMessage {
                     message: decision_message.clone(),
                     headers,
+                    span: candidate.span.clone(),
                 };
+
+                // let current_span = tracing::Span::current();
+                // info!("Current span Id is {:?}", current_span.id());
+
+                let new_span = info_span!(parent: candidate.span.clone(), "Send to decision Outbox service");
 
                 Ok(self
                     .decision_outbox_tx
                     .send(decision_outbox_channel_message)
+                    .instrument(new_span)
                     .await
                     .map_err(|e| SystemServiceError {
                         kind: SystemServiceErrorKind::SystemError(SystemErrorType::Channel),

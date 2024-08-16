@@ -15,6 +15,18 @@ log = { version = "0.4", features = [
 ] }
 env_logger = "0.10"
 
+# Tracing
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.18", features = ["json", "env-filter"] }
+tracing-opentelemetry = "0.25"
+
+# Opentelemetry
+opentelemetry_sdk = { version = "0.24", features = ["rt-tokio", "trace"] }
+opentelemetry = "0.24"
+opentelemetry-stdout = "0.5"
+opentelemetry-otlp = "0.17"
+opentelemetry-semantic-conventions = "0.16.0"
+
 # Json Serialize / Deserialize
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

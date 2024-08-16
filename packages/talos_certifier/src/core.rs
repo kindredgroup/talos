@@ -2,6 +2,7 @@ use ahash::HashMap;
 use async_trait::async_trait;
 use strum::{Display, EnumString};
 use tokio::sync::broadcast;
+use tracing::Span;
 
 use crate::{
     errors::SystemServiceError,
@@ -12,6 +13,7 @@ use crate::{
 pub struct CandidateChannelMessage {
     pub message: CandidateMessage,
     pub headers: HashMap<String, String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -48,6 +50,7 @@ pub type ServiceResult<T = ()> = Result<T, Box<SystemServiceError>>;
 pub struct DecisionOutboxChannelMessage {
     pub message: DecisionMessage,
     pub headers: HashMap<String, String>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

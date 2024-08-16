@@ -22,6 +22,8 @@ pub enum Outcome {
 
 pub type CertifierReadset = AHashMap<String, u64>;
 pub type CertifierWriteset = AHashMap<String, u64>;
+
+#[derive(Debug)]
 pub struct Certifier {
     pub reads: CertifierReadset,
     pub writes: CertifierWriteset,

@@ -1,7 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, info};
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -20,6 +20,7 @@ use talos_certifier::{
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
+use tracing::info_span;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
@@ -126,10 +127,16 @@ impl MessageReciever for KafkaConsumer {
                 })?;
                 msg.version = offset;
                 msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+                let span = info_span!("Candidate Message", xid = msg.xid);
+
+                info!("Candidate message to certify - {msg:?}");
+
                 ChannelMessage::Candidate(
                     CandidateChannelMessage {
                         message: msg,
                         headers: headers.clone(),
+                        span,
                     }
                     .into(),
                 )

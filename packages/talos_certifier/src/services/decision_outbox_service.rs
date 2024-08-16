@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::{debug, error};
+use log::{debug, error, info};
 
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tracing::{info_span, span, Instrument};
 
 use crate::core::ServiceResult;
 use crate::{
@@ -41,6 +42,7 @@ impl DecisionOutboxService {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn save_decision_to_xdb(
         datastore: &Arc<Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync>>,
         decision_message: &DecisionMessage,
@@ -69,9 +71,11 @@ impl DecisionOutboxService {
 
         decision.metrics.db_save_started = started_at;
         decision.metrics.db_save_ended = finished_at;
+        info!("Saving to db");
         Ok(decision)
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn publish_decision(
         publisher: &Arc<Box<dyn MessagePublisher + Send + Sync>>,
         decision_message: &DecisionMessage,
@@ -96,7 +100,7 @@ impl DecisionOutboxService {
         }
         decision_publish_header.insert("certAgent".to_string(), decision_message.agent.to_owned());
 
-        debug!("Publishing message {}", decision_message.version);
+        info!("Publishing message {}", decision_message.version);
         publisher
             .publish_message(xid.as_str(), &decision_str, decision_publish_header.clone())
             .await
@@ -113,6 +117,7 @@ impl DecisionOutboxService {
 
 #[async_trait]
 impl SystemService for DecisionOutboxService {
+    // #[tracing::instrument(skip_all)]
     async fn run(&mut self) -> ServiceResult {
         let datastore = Arc::clone(&self.decision_store);
         let publisher = Arc::clone(&self.decision_publisher);
@@ -122,11 +127,19 @@ impl SystemService for DecisionOutboxService {
             let DecisionOutboxChannelMessage {
                 headers,
                 message: decision_message,
+                span,
             } = decision_channel_message;
+
+            info!("Received message in Decision Outbox service");
+            let span = info_span!(parent: span.clone(), "Decision Outbox Service", xid = decision_message.xid);
+            // let span_cloned = span.clone();
             tokio::spawn(async move {
-                match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
+                match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message)
+                    .instrument(span.clone())
+                    .await
+                {
                     Ok(decision) => {
-                        if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision, headers).await {
+                        if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision, headers).instrument(span).await {
                             error!(
                                 "Error publishing message for version={} with reason={:?}",
                                 decision.version,
@@ -139,6 +152,7 @@ impl SystemService for DecisionOutboxService {
                     }
                 };
             });
+            // .instrument(span_cloned);
         };
 
         Ok(())
