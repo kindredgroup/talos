@@ -78,4 +78,12 @@ cp ./cohort_sdk_js* "$CURRENT_DIR/"
 cd $CURRENT_DIR
 
 echo "Finishied preparing node module 'cohort_sdk_js'. The content is"
+
+echo "Cleaning up"
+
+rm -rf $CURRENT_DIR/dist
+
+echo "Current directory is"
+pwd
+
 ls -lah
