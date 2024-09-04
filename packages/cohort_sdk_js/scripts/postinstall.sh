@@ -75,15 +75,24 @@ cp ./index.js ./index.d.ts ./package.json "$CURRENT_DIR/"
 
 cp ./cohort_sdk_js* "$CURRENT_DIR/"
 
-cd $CURRENT_DIR
+echo ""
+echo "Changing to ${CURRENT_DIR}"
+cd "${CURRENT_DIR}"
 
-echo "Finishied preparing node module 'cohort_sdk_js'. The content is"
-
-echo "Cleaning up"
-
-rm -rf $CURRENT_DIR/dist
-
+echo ""
 echo "Current directory is"
 pwd
-
 ls -lah
+
+echo ""
+echo "Cleaning up after build..."
+
+rm -rf "${CURRENT_DIR}/dist"
+
+echo ""
+echo "The content now"
+pwd
+ls -lah
+
+echo ""
+echo "Finishied preparing node module 'cohort_sdk_js'"
