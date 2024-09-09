@@ -5,4 +5,4 @@ pub mod delivery_order;
 pub mod metrics;
 
 pub use candidate_message::{CandidateMessage, CandidateReadWriteSet};
-pub use decision_message::{Decision, DecisionMessage, DecisionMessageTrait};
+pub use decision_message::{Decision, DecisionMessage, DecisionMessageTrait, DEFAULT_DECISION_MESSAGE_VERSION};

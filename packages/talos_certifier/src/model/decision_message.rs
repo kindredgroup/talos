@@ -7,6 +7,8 @@ use crate::certifier::Outcome;
 
 use super::{candidate_message::CandidateMessage, metrics::TxProcessingTimeline};
 
+pub const DEFAULT_DECISION_MESSAGE_VERSION: u64 = 1_u64;
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub enum Decision {
     #[serde(rename = "committed")]

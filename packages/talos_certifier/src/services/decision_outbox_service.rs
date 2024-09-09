@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 
 use crate::core::ServiceResult;
 use crate::model::decision_headers::{DecisionCertHeaders, DecisionHeaderBuilder, DecisionMetaHeaders};
+use crate::model::DEFAULT_DECISION_MESSAGE_VERSION;
 use crate::{
     core::{DecisionOutboxChannelMessage, System, SystemService},
     errors::{SystemServiceError, SystemServiceErrorKind},
@@ -114,7 +115,7 @@ impl SystemService for DecisionOutboxService {
             } = decision_channel_message;
             tokio::spawn({
                 let decision_headers = DecisionHeaderBuilder::with_additional_headers(headers.into()).add_meta_headers(DecisionMetaHeaders::new(
-                    1_u64, // major version of decision message
+                    DEFAULT_DECISION_MESSAGE_VERSION, // major version of decision message
                     self.system.name.clone(),
                     None,
                 ));
