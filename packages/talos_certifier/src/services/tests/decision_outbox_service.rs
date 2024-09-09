@@ -95,6 +95,7 @@ async fn test_candidate_message_create_decision_message() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     //clones
@@ -116,6 +117,7 @@ async fn test_candidate_message_create_decision_message() {
                     xid: "test-xid-1".to_owned(),
                     agent: "test-agent-1".to_owned(),
                     cohort: "test-cohort-1".to_owned(),
+                    time: Some("2021-08-02T11:21:34.523Z".to_owned()),
                     decision: Decision::Committed,
                     suffix_start: 2,
                     version: 4,
@@ -156,6 +158,7 @@ async fn test_save_and_publish_multiple_decisions() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     //clones
@@ -178,6 +181,7 @@ async fn test_save_and_publish_multiple_decisions() {
                     xid: "test-xid-1".to_owned(),
                     agent: "test-agent-1".to_owned(),
                     cohort: "test-cohort-1".to_owned(),
+                    time: Some("2021-08-02T11:21:34.523Z".to_owned()),
                     decision: Decision::Committed,
                     suffix_start: 2,
                     version: 4,
@@ -199,6 +203,7 @@ async fn test_save_and_publish_multiple_decisions() {
                     xid: "test-xid-2".to_owned(),
                     agent: "test-agent-1".to_owned(),
                     cohort: "test-cohort-1".to_owned(),
+                    time: Some("2021-08-02T11:21:34.523Z".to_owned()),
                     decision: Decision::Committed,
                     suffix_start: 2,
                     version: 4,
@@ -277,6 +282,7 @@ async fn test_capture_child_thread_dberror() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     //clones
@@ -298,6 +304,7 @@ async fn test_capture_child_thread_dberror() {
                     xid: "test-xid-1".to_owned(),
                     agent: "test-agent-1".to_owned(),
                     cohort: "test-cohort-1".to_owned(),
+                    time: Some("2021-08-02T11:21:34.523Z".to_owned()),
                     decision: Decision::Committed,
                     suffix_start: 2,
                     version: 4,
@@ -352,6 +359,7 @@ async fn test_capture_publish_error() {
         xid: "test-xid-1".to_owned(),
         agent: "test-agent-1".to_owned(),
         cohort: "test-cohort-1".to_owned(),
+        time: Some("2021-08-02T11:21:34.523Z".to_owned()),
         decision: Decision::Committed,
         suffix_start: 2,
         version: 4,
@@ -412,6 +420,7 @@ async fn test_duplicate_version_found_in_db() {
         xid: "test-xid-1".to_owned(),
         agent: "test-agent-1".to_owned(),
         cohort: "test-cohort-1".to_owned(),
+        time: Some("2021-08-02T11:21:34.523Z".to_owned()),
         decision: Decision::Committed,
         suffix_start: 2,
         version: 4,
@@ -429,6 +438,7 @@ async fn test_duplicate_version_found_in_db() {
         xid: "test-xid-1".to_owned(),
         agent: "test-agent-2".to_owned(),
         cohort: "test-cohort-1".to_owned(),
+        time: Some("2021-08-02T11:21:34.523Z".to_owned()),
         decision: Decision::Committed,
         suffix_start: 5,
         version: 8,

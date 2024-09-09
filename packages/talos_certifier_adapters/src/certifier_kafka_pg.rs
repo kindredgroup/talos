@@ -40,6 +40,9 @@ pub struct Configuration {
     pub kafka_config: KafkaConfig,
     pub certifier_mock: bool,
     pub db_mock: bool,
+    /// If not set, defaults to `talos_certifier`.
+    /// Setting this can be useful to distinguish unique deployed version of talos certifier for easier debugging.
+    pub app_name: Option<String>,
 }
 
 /// Talos certifier instantiated with Kafka as Abcast and Postgres as XDB.
@@ -52,6 +55,7 @@ pub async fn certifier_with_kafka_pg(
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: configuration.app_name.unwrap_or("talos_certifier".to_string()),
     };
 
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);

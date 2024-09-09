@@ -1,5 +1,7 @@
 // use super::CandidateMessage;
 use serde::{Deserialize, Serialize};
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 
 use crate::certifier::Outcome;
 
@@ -23,6 +25,10 @@ pub struct DecisionMessage {
     pub cohort: String,
     pub decision: Decision,
     pub suffix_start: u64,
+
+    /// timestamp when certification/decision was made.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time: Option<String>,
 
     /// the version for which the decision was made.
     pub version: u64,
@@ -89,10 +95,13 @@ impl DecisionMessage {
             Outcome::Aborted { version, discord: _ } => (Decision::Aborted, None, version),
         };
 
+        let time = OffsetDateTime::now_utc().format(&Rfc3339).ok();
+
         Self {
             xid: xid.clone(),
             agent: agent.clone(),
             cohort: cohort.clone(),
+            time,
             decision,
             suffix_start,
             version: *version,

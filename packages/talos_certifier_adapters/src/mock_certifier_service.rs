@@ -38,6 +38,7 @@ impl SystemService for MockCertifierService {
                             decision: Decision::Committed,
                             agent: message.agent,
                             cohort: message.cohort,
+                            time: Some("2021-08-02T11:21:34.523Z".to_owned()),
                             xid: message.xid,
                             suffix_start: 0,
                             safepoint: Some(0),

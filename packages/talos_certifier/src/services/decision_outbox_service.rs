@@ -8,8 +8,9 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
 use crate::core::ServiceResult;
+use crate::model::decision_headers::{DecisionCertHeaders, DecisionHeaderBuilder, DecisionMetaHeaders};
 use crate::{
-    core::{DecisionOutboxChannelMessage, MessageVariant, System, SystemService},
+    core::{DecisionOutboxChannelMessage, System, SystemService},
     errors::{SystemServiceError, SystemServiceErrorKind},
     model::DecisionMessage,
     ports::{DecisionStore, MessagePublisher},
@@ -87,27 +88,15 @@ impl DecisionOutboxService {
             })
         })?;
 
-        let mut decision_publish_header = headers;
-        decision_publish_header.insert("messageType".to_string(), MessageVariant::Decision.to_string());
-        decision_publish_header.insert("certXid".to_string(), decision_message.xid.to_owned());
-
-        if let Some(safepoint) = decision_message.safepoint {
-            decision_publish_header.insert("certSafepoint".to_string(), safepoint.to_string());
-        }
-        decision_publish_header.insert("certAgent".to_string(), decision_message.agent.to_owned());
-
         debug!("Publishing message {}", decision_message.version);
-        publisher
-            .publish_message(xid.as_str(), &decision_str, decision_publish_header.clone())
-            .await
-            .map_err(|publish_error| {
-                Box::new(SystemServiceError {
-                    kind: SystemServiceErrorKind::MessagePublishError,
-                    reason: publish_error.reason,
-                    data: publish_error.data, //Some(format!("{:?}", decision_message)),
-                    service: "Decision Outbox Service".to_string(),
-                })
+        publisher.publish_message(xid.as_str(), &decision_str, headers).await.map_err(|publish_error| {
+            Box::new(SystemServiceError {
+                kind: SystemServiceErrorKind::MessagePublishError,
+                reason: publish_error.reason,
+                data: publish_error.data, //Some(format!("{:?}", decision_message)),
+                service: "Decision Outbox Service".to_string(),
             })
+        })
     }
 }
 
@@ -123,21 +112,35 @@ impl SystemService for DecisionOutboxService {
                 headers,
                 message: decision_message,
             } = decision_channel_message;
-            tokio::spawn(async move {
-                match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
-                    Ok(decision) => {
-                        if let Err(publish_error) = DecisionOutboxService::publish_decision(&publisher, &decision, headers).await {
-                            error!(
-                                "Error publishing message for version={} with reason={:?}",
-                                decision.version,
-                                publish_error.to_string()
-                            );
+            tokio::spawn({
+                let decision_headers = DecisionHeaderBuilder::with_additional_headers(headers.into()).add_meta_headers(DecisionMetaHeaders::new(
+                    1_u64, // major version of decision message
+                    self.system.name.clone(),
+                    None,
+                ));
+
+                async move {
+                    match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
+                        Ok(decision) => {
+                            if let Err(publish_error) = DecisionOutboxService::publish_decision(
+                                &publisher,
+                                &decision,
+                                decision_headers.add_cert_headers(DecisionCertHeaders::new(&decision)).build().into(),
+                            )
+                            .await
+                            {
+                                error!(
+                                    "Error publishing message for version={} with reason={:?}",
+                                    decision.version,
+                                    publish_error.to_string()
+                                );
+                            }
                         }
-                    }
-                    Err(db_error) => {
-                        system.system_notifier.send(SystemMessage::ShutdownWithError(db_error)).unwrap();
-                    }
-                };
+                        Err(db_error) => {
+                            system.system_notifier.send(SystemMessage::ShutdownWithError(db_error)).unwrap();
+                        }
+                    };
+                }
             });
         };
 
