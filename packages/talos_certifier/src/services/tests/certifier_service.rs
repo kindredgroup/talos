@@ -59,6 +59,7 @@ async fn test_certification_rule_2() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
@@ -133,6 +134,7 @@ async fn test_error_in_processing_candidate_message_certifying() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
@@ -182,6 +184,7 @@ async fn test_certification_process_decision() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let commit_state: Arc<AtomicI64> = Arc::new(0.into());
@@ -250,6 +253,7 @@ async fn test_certification_process_decision_incorrect_version() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let mut certifier_svc = CertifierService::new(message_channel_rx, do_channel_tx, Arc::new(0.into()), system, None);
@@ -317,6 +321,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let mut certifier_svc = CertifierService::new(
@@ -550,6 +555,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let mut certifier_svc = CertifierService::new(

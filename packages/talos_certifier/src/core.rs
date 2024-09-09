@@ -54,6 +54,8 @@ pub struct DecisionOutboxChannelMessage {
 pub struct System {
     pub system_notifier: broadcast::Sender<SystemMessage>,
     pub is_shutdown: bool,
+    /// Unique identifier of the system - container or pod name/id
+    pub name: String,
 }
 
 #[async_trait]

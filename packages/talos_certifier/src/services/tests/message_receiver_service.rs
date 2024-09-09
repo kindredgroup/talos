@@ -83,6 +83,7 @@ async fn test_consume_message() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
 
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
@@ -141,6 +142,7 @@ async fn test_consume_message_error() {
     let system = System {
         system_notifier,
         is_shutdown: false,
+        name: "test-system".to_string(),
     };
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 

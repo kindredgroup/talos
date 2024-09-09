@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use log::{debug, error, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
-use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 
@@ -151,14 +150,9 @@ impl CertifierService {
             Some(ChannelMessage::Candidate(candidate)) => {
                 let decision_message = self.process_candidate(&candidate.message)?;
 
-                let mut headers = candidate.headers.clone();
-                if let Ok(cert_time) = OffsetDateTime::now_utc().format(&Rfc3339) {
-                    headers.insert("certTime".to_owned(), cert_time);
-                }
-
                 let decision_outbox_channel_message = DecisionOutboxChannelMessage {
                     message: decision_message.clone(),
-                    headers,
+                    headers: candidate.headers.clone(),
                 };
 
                 Ok(self

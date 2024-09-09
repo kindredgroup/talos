@@ -33,6 +33,7 @@ async fn main() -> Result<(), impl std::error::Error> {
         pg_config: Some(pg_config),
         kafka_config,
         db_mock: mock_config.db_mock,
+        app_name: None,
     };
 
     let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default(), configuration).await?;
