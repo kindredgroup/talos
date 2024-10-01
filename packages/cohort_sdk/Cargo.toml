@@ -1,6 +1,6 @@
 [package]
 name = "cohort_sdk"
-version = "0.2.20-dev"
+version = "0.2.20"
 edition = "2021"
 
 [dependencies]
@@ -19,11 +19,11 @@ rdkafka = { version = "0.34.0", features = ["sasl"]  }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { version = "0.25", features = ["derive"] }
-talos_metrics =             { path = "../talos_metrics", version = "0.2.20-dev" }
-talos_agent =               { path = "../talos_agent", version = "0.2.20-dev" }
-talos_certifier =           { path = "../talos_certifier", version = "0.2.20-dev" }
-talos_cohort_replicator =   { path = "../talos_cohort_replicator", version = "0.2.20-dev" }
-talos_rdkafka_utils =       { path = "../talos_rdkafka_utils", version = "0.2.20-dev" }
+talos_metrics =             { path = "../talos_metrics", version = "0.2.20" }
+talos_agent =               { path = "../talos_agent", version = "0.2.20" }
+talos_certifier =           { path = "../talos_certifier", version = "0.2.20" }
+talos_cohort_replicator =   { path = "../talos_cohort_replicator", version = "0.2.20" }
+talos_rdkafka_utils =       { path = "../talos_rdkafka_utils", version = "0.2.20" }
 uuid =                      { version = "1.4.1", features = ["v4"] }
 
 tokio = { workspace = true, features = ["full"] }

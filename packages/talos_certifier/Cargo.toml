@@ -1,6 +1,6 @@
 [package]
 name = "talos_certifier"
-version = "0.2.20-dev"
+version = "0.2.20"
 edition = "2021"
 keywords = ["talos"]
 license = "MIT"
@@ -35,7 +35,7 @@ time = { version = "0.3.30", features = ["formatting"]}
 thiserror = "1.0.31"
 
 # internal crates
-talos_suffix = { path = "../talos_suffix", version = "0.2.20-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.20" }
 
 [dev-dependencies]
 tokio-test = "0.4"
