@@ -7,6 +7,7 @@ use rdkafka::{
     error::KafkaError,
     types::RDKafkaErrorCode,
 };
+use talos_common_utils::env_var_with_defaults;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use thiserror::Error as ThisError;
 
@@ -40,7 +41,7 @@ pub async fn create_topic() -> Result<KafkaDeployStatus, KafkaDeployError> {
         println!("Topic does not exist, creating...");
         let topic = NewTopic {
             name: &kafka_certification_topic,
-            num_partitions: 1,
+            num_partitions: env_var_with_defaults!("KAFKA_CREATE_TOPIC_PARTITIONS", i32, 1),
             replication: TopicReplication::Fixed(1),
             config: vec![("message.timestamp.type", "LogAppendTime")],
         };
