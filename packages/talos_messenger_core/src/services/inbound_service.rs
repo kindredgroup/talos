@@ -4,12 +4,15 @@ use log::{debug, error, info, warn};
 
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{Suffix, SuffixTrait};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use crate::{
     core::{MessengerChannelFeedback, MessengerCommitActions, MessengerSystemService},
     errors::{MessengerServiceError, MessengerServiceResult},
-    suffix::{MessengerCandidate, MessengerSuffixItemTrait, MessengerSuffixTrait, SuffixItemCompleteStateReason, SuffixItemState},
+    suffix::{
+        MessengerCandidate, MessengerStateTransitionTimestamps, MessengerSuffixItemTrait, MessengerSuffixTrait, SuffixItemCompleteStateReason, SuffixItemState,
+    },
     utlis::get_allowed_commit_actions,
 };
 
@@ -36,13 +39,17 @@ where
         for item in items_to_process {
             let ver = item.version;
 
+            let mut headers = item.headers;
+            let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+            headers.insert(MessengerStateTransitionTimestamps::StartOnCommitActions.to_string(), timestamp);
+
             let payload_to_send = MessengerCommitActions {
                 version: ver,
                 commit_actions: item.actions.iter().fold(HashMap::new(), |mut acc, (key, value)| {
                     acc.insert(key.to_string(), value.get_payload().clone());
                     acc
                 }),
-                headers: item.headers,
+                headers,
             };
             // send for publishing
             self.tx_actions_channel.send(payload_to_send).await.map_err(|e| MessengerServiceError {

@@ -3,8 +3,10 @@ use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
+use strum::{Display, EnumString};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_state(&mut self, state: SuffixItemState);
@@ -14,6 +16,7 @@ pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_headers(&mut self, headers: HashMap<String, String>);
 
     fn get_state(&self) -> &SuffixItemState;
+    fn get_state_transition_timestamps(&self) -> &HashMap<MessengerStateTransitionTimestamps, TimeStamp>;
     fn get_commit_actions(&self) -> &HashMap<String, AllowedActionsMapItem>;
     fn get_action_by_key_mut(&mut self, action_key: &str) -> Option<&mut AllowedActionsMapItem>;
     fn get_safepoint(&self) -> &Option<u64>;
@@ -57,6 +60,40 @@ pub enum SuffixItemState {
     Processing,
     PartiallyComplete,
     Complete(SuffixItemCompleteStateReason),
+}
+
+type TimeStamp = String;
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, EnumString, Display, Hash)]
+pub enum MessengerStateTransitionTimestamps {
+    /// Set when SuffixItemState::AwaitingDecision
+    #[strum(serialize = "messengerCandidateReceivedTimestamp")]
+    CandidateReceived,
+    /// Set when SuffixItemState::ReadyToProcess
+    #[strum(serialize = "messengerDecisionReceivedTimestamp")]
+    DecisionReceived,
+    /// Set when SuffixItemState::Processing
+    #[strum(serialize = "messengerStartOnCommitActionsTimestamp")]
+    StartOnCommitActions,
+    // /// Not required for timings
+    #[strum(disabled)]
+    InProgressOnCommitActions,
+    /// Set when SuffixItemState::Complete
+    /// Irrespective of the reason for completion, we just capture the timing based on the final state.
+    #[strum(serialize = "messengerEndOnCommitActionsTimestamp")]
+    EndOnCommitActions,
+}
+
+impl From<SuffixItemState> for MessengerStateTransitionTimestamps {
+    fn from(value: SuffixItemState) -> Self {
+        match value {
+            SuffixItemState::AwaitingDecision => MessengerStateTransitionTimestamps::CandidateReceived,
+            SuffixItemState::ReadyToProcess => MessengerStateTransitionTimestamps::DecisionReceived,
+            SuffixItemState::Processing => MessengerStateTransitionTimestamps::StartOnCommitActions,
+            SuffixItemState::PartiallyComplete => MessengerStateTransitionTimestamps::InProgressOnCommitActions,
+            SuffixItemState::Complete(_) => MessengerStateTransitionTimestamps::EndOnCommitActions,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
@@ -122,6 +159,8 @@ pub struct MessengerCandidate {
     decision: Option<Decision>,
     /// Suffix item state.
     state: SuffixItemState,
+    /// Suffix state transition timestamps.
+    state_transition_ts: HashMap<MessengerStateTransitionTimestamps, TimeStamp>,
     /// Filtered actions that need to be processed by the messenger
     allowed_actions_map: HashMap<String, AllowedActionsMapItem>,
     /// Any headers from decision to be used in on-commit actions
@@ -130,12 +169,17 @@ pub struct MessengerCandidate {
 
 impl From<CandidateMessage> for MessengerCandidate {
     fn from(candidate: CandidateMessage) -> Self {
+        let state = SuffixItemState::AwaitingDecision;
+        let mut state_transition_ts: HashMap<MessengerStateTransitionTimestamps, TimeStamp> = HashMap::new();
+        let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+        state_transition_ts.insert(state.clone().into(), timestamp);
+
         MessengerCandidate {
             candidate,
             safepoint: None,
             decision: None,
-
-            state: SuffixItemState::AwaitingDecision,
+            state,
+            state_transition_ts,
             allowed_actions_map: HashMap::new(),
             headers: HashMap::new(),
         }
@@ -152,7 +196,10 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     }
 
     fn set_state(&mut self, state: SuffixItemState) {
-        self.state = state;
+        self.state = state.clone();
+
+        let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+        self.state_transition_ts.insert(state.into(), timestamp);
     }
 
     fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>) {
@@ -161,6 +208,9 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
 
     fn get_state(&self) -> &SuffixItemState {
         &self.state
+    }
+    fn get_state_transition_timestamps(&self) -> &HashMap<MessengerStateTransitionTimestamps, TimeStamp> {
+        &self.state_transition_ts
     }
 
     fn get_safepoint(&self) -> &Option<u64> {
@@ -233,10 +283,24 @@ where
                     _ => true,
                 }
             })
-            .map(|x| ActionsMapWithVersion {
-                version: x.item_ver,
-                actions: x.item.get_commit_actions().clone(),
-                headers: x.item.get_headers().clone(),
+            .map(|x| {
+                let mut headers = x.item.get_headers().clone();
+                // Add the state timestamps
+                let state_timestamps = x
+                    .item
+                    .get_state_transition_timestamps()
+                    .clone()
+                    .iter()
+                    .map(|(state, ts)| (state.to_string(), ts.clone()))
+                    .collect::<HashMap<String, String>>();
+
+                headers.extend(state_timestamps);
+
+                ActionsMapWithVersion {
+                    version: x.item_ver,
+                    actions: x.item.get_commit_actions().clone(),
+                    headers,
+                }
             })
             .collect();
 

@@ -3,11 +3,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures_util::future::join_all;
 use log::{debug, error, info};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use talos_messenger_core::{
     core::{MessengerChannelFeedback, MessengerCommitActions, MessengerPublisher, MessengerSystemService},
     errors::MessengerServiceResult,
+    suffix::MessengerStateTransitionTimestamps,
     utlis::get_actions_deserialised,
 };
 
@@ -49,7 +51,10 @@ where
 
                                         let publish_vec = actions.into_iter().map(|action| {
                                             let publisher = self.publisher.clone();
-                                            let headers = headers_cloned.clone();
+                                            let mut headers = headers_cloned.clone();
+                                            let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+
+                                            headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
                                             async move {
                                                 publisher.send(version, action, headers, total_len ).await;
                                             }
