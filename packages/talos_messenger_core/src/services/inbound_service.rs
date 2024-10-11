@@ -157,8 +157,12 @@ where
 
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger service");
+        let mut candidate_message_count = 0;
+        let mut decision_message_count = 0;
+        let mut on_commit_actions_feedback_count = 0;
         loop {
             tokio::select! {
+                biased;
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
@@ -166,6 +170,7 @@ where
                     match reciever_result {
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
+                            candidate_message_count= candidate_message_count+1;
                             let version = candidate.message.version;
                             debug!("Candidate version received is {version}");
                             if version > 0 {
@@ -194,6 +199,7 @@ where
                         },
                         // 2.2 For DM - Update the decision with outcome + safepoint.
                         Ok(Some(ChannelMessage::Decision(decision))) => {
+                            decision_message_count = decision_message_count + 1;
                             let version = decision.message.get_candidate_version();
                             info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
@@ -220,6 +226,8 @@ where
                 }
                 // Receive feedback from publisher.
                 feedback_result = self.rx_feedback_channel.recv() => {
+                    on_commit_actions_feedback_count = on_commit_actions_feedback_count + 1;
+                    // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
                     match feedback_result {
                         Some(MessengerChannelFeedback::Error(version, key, message_error)) => {
                             error!("Failed to process version={version} with error={message_error:?}");
