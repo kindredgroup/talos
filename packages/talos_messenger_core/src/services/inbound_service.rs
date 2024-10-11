@@ -193,6 +193,9 @@ where
                                     }
                                 };
 
+                                self.process_next_actions().await?;
+
+
                             } else {
                                 warn!("Version 0 will not be inserted into suffix.")
                             }
@@ -212,6 +215,7 @@ where
                         },
                         Ok(None) => {
                             info!("No message to process..");
+                            self.process_next_actions().await?;
                         },
                         Err(error) => {
                             // Catch the error propogated, and if it has a version, mark the item as completed.
