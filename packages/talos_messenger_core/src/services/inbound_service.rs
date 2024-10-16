@@ -196,7 +196,7 @@ where
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
-                    info!("[TOKIO::SELECT KAFKA CANDIDATE/DECISION ARM] - Receiving message from kafka");
+                    // info!("[TOKIO::SELECT KAFKA CANDIDATE/DECISION ARM] - Receiving message from kafka");
                     match reciever_result {
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
