@@ -365,7 +365,7 @@ where
         let index = self.index_from_head(safe_prune_version)?;
 
         self.update_prune_index(index.into());
-        debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
+        debug!("[Update prune index] Prune version updated to index={index} (version={safe_prune_version}), version used for check={version}");
 
         Some(index)
     }

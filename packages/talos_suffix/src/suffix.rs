@@ -189,13 +189,17 @@ where
     pub fn update_decision_suffix_item(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         // When Certifier is catching up with messages ignore the messages which are prior to the head
         if version < self.meta.head {
-            error!("Returned due to version < self.meta.head for version={version} and decision version={decision_ver}");
+            error!(
+                "Returned due to version < self.meta.head for version={version}, suffix_head={} and decision version={decision_ver}",
+                self.meta.head
+            );
             return Ok(());
         }
 
         let Some(sfx_item) = self.get(version)? else {
             error!(
-                "Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}",
+                "Returned due item not found in suffix for version={version}, suffix_head={} with index={:?}  and decision version={decision_ver}",
+                self.meta.head,
                 self.index_from_head(version)
             );
             // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
