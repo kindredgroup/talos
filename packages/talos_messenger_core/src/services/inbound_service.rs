@@ -22,7 +22,7 @@ where
 {
     pub message_receiver: M,
     pub tx_actions_channel: mpsc::Sender<MessengerCommitActions>,
-    pub rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
+    pub rx_feedback_channel: mpsc::Receiver<Vec<MessengerChannelFeedback>>,
     pub suffix: Suffix<MessengerCandidate>,
     pub allowed_actions: HashMap<String, Vec<String>>,
 }
@@ -139,6 +139,27 @@ where
             _ => (),
         };
     }
+
+    /// Handle each feedback received.
+    pub fn handle_feedback(&mut self, feedback: MessengerChannelFeedback) {
+        match feedback {
+            MessengerChannelFeedback::Error(version, key, message_error) => {
+                error!("Failed to process version={version} with error={message_error:?}");
+                self.handle_action_failed(version, &key);
+            }
+            MessengerChannelFeedback::Success(version, key) => {
+                info!("Successfully processed version={version} with action_key={key}");
+                self.handle_action_success(version, &key);
+            }
+        }
+    }
+
+    /// Handle batch of feedbacks received.
+    pub fn handle_batch_feedbacks(&mut self, feedback_batch: Vec<MessengerChannelFeedback>) {
+        for feedback in feedback_batch {
+            self.handle_feedback(feedback);
+        }
+    }
 }
 
 #[async_trait]
@@ -162,7 +183,7 @@ where
         let mut on_commit_actions_feedback_count = 0;
         loop {
             tokio::select! {
-                biased;
+                // biased;
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
@@ -170,7 +191,7 @@ where
                     match reciever_result {
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
-                            candidate_message_count= candidate_message_count+1;
+                            candidate_message_count += 1;
                             let version = candidate.message.version;
                             debug!("Candidate version received is {version}");
                             if version > 0 {
@@ -202,7 +223,7 @@ where
                         },
                         // 2.2 For DM - Update the decision with outcome + safepoint.
                         Ok(Some(ChannelMessage::Decision(decision))) => {
-                            decision_message_count = decision_message_count + 1;
+                            decision_message_count += 1;
                             let version = decision.message.get_candidate_version();
                             info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
@@ -230,17 +251,12 @@ where
                 }
                 // Receive feedback from publisher.
                 feedback_result = self.rx_feedback_channel.recv() => {
-                    on_commit_actions_feedback_count = on_commit_actions_feedback_count + 1;
+                    on_commit_actions_feedback_count += 1;
                     // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
                     match feedback_result {
-                        Some(MessengerChannelFeedback::Error(version, key, message_error)) => {
-                            error!("Failed to process version={version} with error={message_error:?}");
-                            self.handle_action_failed(version, &key);
+                        Some(feedbacks) => {
+                            self.handle_batch_feedbacks(feedbacks);
 
-                        },
-                        Some(MessengerChannelFeedback::Success(version, key)) => {
-                            info!("Successfully processed version={version} with action_key={key}");
-                            self.handle_action_success(version, &key);
                         },
                         None => {
                             debug!("No feedback message to process..");
