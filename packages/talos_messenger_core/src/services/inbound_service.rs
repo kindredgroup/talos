@@ -4,7 +4,7 @@ use log::{debug, error, info, warn};
 
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{Suffix, SuffixTrait};
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::{format_description::well_known::Rfc3339, Instant, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use crate::{
@@ -196,7 +196,7 @@ where
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
-
+                    info!("[TOKIO::SELECT KAFKA CANDIDATE/DECISION ARM] - Receiving message from kafka");
                     match reciever_result {
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
@@ -260,11 +260,16 @@ where
                 }
                 // Receive feedback from publisher.
                 feedback_result = self.rx_feedback_channel.recv() => {
+
+                    let start_ms = Instant::now();
                     // on_commit_actions_feedback_count += 1;
                     // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
                     match feedback_result {
                         Some(feedbacks) => {
+                            let total_batch = feedbacks.len();
                             self.handle_batch_feedbacks(feedbacks);
+                            let elapsed_batch_feedback = start_ms.elapsed();
+                            info!("[TOKIO::SELECT BATCH FEEDBACK ARM] - Processed {total_batch} feedbacks in {}", elapsed_batch_feedback.as_seconds_f64() * 1_000_f64);
 
                         },
                         None => {
@@ -272,7 +277,9 @@ where
                         }
                     }
                     // Process the next items with commit actions
-                    self.process_next_actions().await?
+                    self.process_next_actions().await?;
+                    // info!("Exiting feedback batch tokio::select arm in {}ms", start_ms.elapsed().as_seconds_f64() * 1_000_f64);
+
 
                 }
             }
