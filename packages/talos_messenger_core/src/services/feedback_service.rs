@@ -29,7 +29,7 @@ impl MessengerSystemService for MessengerFeedbackService {
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger Feedback service");
         let mut message_feedbacks: Vec<MessengerChannelFeedback> = vec![];
-        let mut interval = tokio::time::interval(Duration::from_millis(300));
+        let mut interval = tokio::time::interval(Duration::from_millis(150));
 
         loop {
             tokio::select! {
