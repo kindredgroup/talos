@@ -192,7 +192,7 @@ where
         // let mut on_commit_actions_feedback_count = 0;
         loop {
             tokio::select! {
-                // biased;
+                biased;
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
