@@ -26,8 +26,8 @@ async fn main() {
 
     let suffix_config = SuffixConfig {
         capacity: 400_000,
-        prune_start_threshold: Some(2_000),
-        min_size_after_prune: None,
+        prune_start_threshold: Some(3_000),
+        min_size_after_prune: Some(2_000),
     };
 
     let actions_from_env = env_var!("TALOS_MESSENGER_ACTIONS_WHITELIST");

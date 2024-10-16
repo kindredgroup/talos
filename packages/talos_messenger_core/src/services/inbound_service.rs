@@ -94,7 +94,16 @@ where
                 // Check prune eligibility by looking at the prune meta info.
                 if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
                     // Call prune method on suffix.
+                    let prev_suffix_length = self.suffix.suffix_length();
+
                     let _ = self.suffix.prune_till_index(index_to_prune);
+
+                    let new_suffix_length = self.suffix.suffix_length();
+                    let new_suffix_meta = self.suffix.get_meta();
+                    info!(
+                        "After pruning - before prune suffix lenght={prev_suffix_length}, new suffix length={new_suffix_length}, new prune_index={:?}, new head={}",
+                        new_suffix_meta.prune_index, new_suffix_meta.head
+                    );
                 }
             }
             _ => {}
@@ -148,7 +157,7 @@ where
                 self.handle_action_failed(version, &key);
             }
             MessengerChannelFeedback::Success(version, key) => {
-                info!("Successfully processed version={version} with action_key={key}");
+                debug!("Successfully processed version={version} with action_key={key}");
                 self.handle_action_success(version, &key);
             }
         }
@@ -178,9 +187,9 @@ where
 
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger service");
-        let mut candidate_message_count = 0;
-        let mut decision_message_count = 0;
-        let mut on_commit_actions_feedback_count = 0;
+        // let mut candidate_message_count = 0;
+        // let mut decision_message_count = 0;
+        // let mut on_commit_actions_feedback_count = 0;
         loop {
             tokio::select! {
                 // biased;
@@ -191,7 +200,7 @@ where
                     match reciever_result {
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
-                            candidate_message_count += 1;
+                            // candidate_message_count += 1;
                             let version = candidate.message.version;
                             debug!("Candidate version received is {version}");
                             if version > 0 {
@@ -223,9 +232,9 @@ where
                         },
                         // 2.2 For DM - Update the decision with outcome + safepoint.
                         Ok(Some(ChannelMessage::Decision(decision))) => {
-                            decision_message_count += 1;
+                            // decision_message_count += 1;
                             let version = decision.message.get_candidate_version();
-                            info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
+                            debug!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
                             // TODO: GK - no hardcoded filters on headers
                             let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
@@ -251,7 +260,7 @@ where
                 }
                 // Receive feedback from publisher.
                 feedback_result = self.rx_feedback_channel.recv() => {
-                    on_commit_actions_feedback_count += 1;
+                    // on_commit_actions_feedback_count += 1;
                     // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
                     match feedback_result {
                         Some(feedbacks) => {
