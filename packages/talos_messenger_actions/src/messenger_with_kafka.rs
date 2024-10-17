@@ -1,3 +1,5 @@
+use std::sync::{atomic::AtomicI64, Arc};
+
 use ahash::HashMap;
 use async_trait::async_trait;
 use log::debug;
@@ -7,7 +9,10 @@ use talos_certifier_adapters::KafkaConsumer;
 use talos_messenger_core::{
     core::{MessengerPublisher, PublishActionType},
     errors::MessengerServiceResult,
-    services::{MessengerFeedbackService, MessengerInboundService},
+    services::{
+        certifier_messages_service::MessengerFeedbackLoopService, message_receiver_service::MessengerInboundReceiverService, MessengerFeedbackService,
+        MessengerInboundService,
+    },
     suffix::MessengerCandidate,
     talos_messenger_service::TalosMessengerService,
 };
@@ -107,28 +112,51 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
     } = config.channel_buffers.unwrap_or_default();
 
     let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(feedback_channel as usize);
-    let (tx_feedback_batch_channel, rx_feedback_batch_channel) = mpsc::channel(feedback_channel as usize);
+    // let (tx_feedback_batch_channel, rx_feedback_batch_channel) = mpsc::channel(feedback_channel as usize);
     let (tx_actions_channel, rx_actions_channel) = mpsc::channel(actions_channel as usize);
+    let (tx_actions_channel_passahead, rx_actions_channel_passahead) = mpsc::channel(actions_channel as usize);
     let tx_feedback_channel_clone = tx_feedback_channel.clone();
 
-    // START - Inbound service
+    let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(config.suffix_config.unwrap_or_default());
+    // // START - Inbound service
 
-    let inbound_service = MessengerInboundService {
+    // let inbound_service = MessengerInboundService {
+    //     message_receiver: kafka_consumer,
+    //     tx_actions_channel,
+    //     rx_feedback_channel: rx_feedback_batch_channel,
+    //     suffix,
+    //     allowed_actions: config.allowed_actions,
+    // };
+    // // END - Inbound service
+
+    // // START - Feedback service
+    // let feedback_service = MessengerFeedbackService {
+    //     rx_feedback_channel,
+    //     tx_feedback_batch_channel,
+    // };
+    // // END - Feedback service
+
+    // START - MessengerInboundReceiverService
+
+    let inbound_service: MessengerInboundReceiverService<KafkaConsumer> = MessengerInboundReceiverService {
         message_receiver: kafka_consumer,
         tx_actions_channel,
-        rx_feedback_channel: rx_feedback_batch_channel,
         suffix,
         allowed_actions: config.allowed_actions,
+        commit_offset: commit_offset.clone(),
     };
-    // END - Inbound service
+    // END - MessengerInboundReceiverService
 
-    // START - Feedback service
-    let feedback_service = MessengerFeedbackService {
+    // START - MessengerInboundReceiverService
+
+    let feedback_service = MessengerFeedbackLoopService {
+        rx_actions_channel,
+        tx_actions_channel_passahead,
         rx_feedback_channel,
-        tx_feedback_batch_channel,
+        commit_offset,
     };
-    // END - Feedback service
+    // END - MessengerInboundReceiverService
 
     // START - Publish service
     let custom_context = MessengerProducerContext {
@@ -139,7 +167,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
 
     let publish_service = KafkaActionService {
         publisher: messenger_kafka_publisher.into(),
-        rx_actions_channel,
+        rx_actions_channel: rx_actions_channel_passahead,
         tx_feedback_channel,
     };
 

@@ -47,19 +47,32 @@ where
 
                                         let total_len = actions.len() as u32;
 
-                                        let headers_cloned = headers.clone();
 
-                                        let publish_vec = actions.into_iter().map(|action| {
+                                        tokio::spawn({
                                             let publisher = self.publisher.clone();
-                                            let mut headers = headers_cloned.clone();
-                                            let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
-
-                                            headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
+                                            let headers_cloned = headers.clone();
                                             async move {
-                                                publisher.send(version, action, headers, total_len ).await;
+                                                for action in actions {
+                                                    let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+                                                    let mut headers = headers_cloned.clone();
+                                                    headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
+
+                                                    publisher.send(version, action, headers, total_len).await;
+                                                }
+
                                             }
                                         });
-                                        join_all(publish_vec).await;
+                                        // let publish_vec = actions.into_iter().map(|action| {
+                                        //     let publisher = self.publisher.clone();
+                                        //     let mut headers = headers_cloned.clone();
+                                        //     let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+
+                                        //     headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
+                                        //     async move {
+                                        //         publisher.send(version, action, headers, total_len ).await;
+                                        //     }
+                                        // });
+                                        // join_all(publish_vec).await;
                                     },
                                     Err(err) => {
                                         error!("Failed to deserialise for version={version} key={} for data={:?} with error={:?}",&self.publisher.get_publish_type(), err.data, err.reason )

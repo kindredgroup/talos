@@ -25,12 +25,16 @@ impl ProducerContext for MessengerProducerContext {
         let result = delivery_result.as_ref();
 
         let version = delivery_opaque.version;
+        let total_count = delivery_opaque.total_publish_count;
 
         match result {
             Ok(msg) => {
                 info!("Message {:?} {:?}", msg.key(), msg.offset());
                 // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
-                if let Err(error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(version, "kafka".to_string()))) {
+                if let Err(error) = block_on(
+                    self.tx_feedback_channel
+                        .send(MessengerChannelFeedback::Success(version, "kafka".to_string(), total_count)),
+                ) {
                     error!("[Messenger Producer Context] Error sending feedback for version={version} with error={error:?}");
                 };
             }
@@ -50,6 +54,7 @@ impl ProducerContext for MessengerProducerContext {
                     version,
                     "kafka".to_string(),
                     Box::new(messenger_error),
+                    total_count,
                 ))) {
                     error!("[Messenger Producer Context] Error sending error feedback for version={version} with \npublish_error={publish_error:?} \nchannel send_error={send_error:?}");
                 };

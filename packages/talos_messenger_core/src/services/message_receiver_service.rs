@@ -1,14 +1,22 @@
+use std::{
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{Suffix, SuffixTrait};
-use time::{format_description::well_known::Rfc3339, Instant, OffsetDateTime};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use crate::{
-    core::{MessengerChannelFeedback, MessengerCommitActions, MessengerSystemService},
+    core::{MessengerCommitActions, MessengerSystemService},
     errors::{MessengerServiceError, MessengerServiceResult},
     suffix::{
         MessengerCandidate, MessengerStateTransitionTimestamps, MessengerSuffixItemTrait, MessengerSuffixTrait, SuffixItemCompleteStateReason, SuffixItemState,
@@ -16,18 +24,18 @@ use crate::{
     utlis::get_allowed_commit_actions,
 };
 
-pub struct MessengerInboundService<M>
+pub struct MessengerInboundReceiverService<M>
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
 {
     pub message_receiver: M,
     pub tx_actions_channel: mpsc::Sender<MessengerCommitActions>,
-    pub rx_feedback_channel: mpsc::Receiver<Vec<MessengerChannelFeedback>>,
     pub suffix: Suffix<MessengerCandidate>,
     pub allowed_actions: HashMap<String, Vec<String>>,
+    pub commit_offset: Arc<AtomicI64>,
 }
 
-impl<M> MessengerInboundService<M>
+impl<M> MessengerInboundReceiverService<M>
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
 {
@@ -67,114 +75,10 @@ where
 
         Ok(())
     }
-
-    /// Checks if all actions are completed and updates the state of the item to `Processed`.
-    /// Also, checks if the suffix can be pruned and the message_receiver can be committed.
-    pub(crate) fn check_and_update_all_actions_complete(&mut self, version: u64, reason: SuffixItemCompleteStateReason) {
-        match self.suffix.are_all_actions_complete_for_version(version) {
-            Ok(is_completed) if is_completed => {
-                self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
-
-                //  Update the prune index in suffix if applicable.
-                let prune_index = self.suffix.update_prune_index_from_version(version);
-
-                // If there is a prune_index, it is safe to assume, all messages prioir to this are decided + on_commit actions are actioned.
-                // Therefore, it is safe to commit till that offset/version.
-                if let Some(index) = prune_index {
-                    let prune_item_option = self.suffix.messages.get(index);
-
-                    if let Some(Some(prune_item)) = prune_item_option {
-                        let commit_offset = prune_item.item_ver + 1;
-                        debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                        let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
-
-                        self.message_receiver.commit_async();
-                    }
-                }
-
-                debug!("[Actions] All actions for version {version} completed!");
-                // Check prune eligibility by looking at the prune meta info.
-                if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
-                    // Call prune method on suffix.
-                    let prev_suffix_length = self.suffix.suffix_length();
-
-                    let _ = self.suffix.prune_till_index(index_to_prune);
-
-                    let new_suffix_length = self.suffix.suffix_length();
-                    let new_suffix_meta = self.suffix.get_meta();
-                    info!(
-                        "After pruning - before prune suffix lenght={prev_suffix_length}, new suffix length={new_suffix_length}, new prune_index={:?}, new head={}",
-                        new_suffix_meta.prune_index, new_suffix_meta.head
-                    );
-                }
-            }
-            _ => {}
-        }
-    }
-    ///
-    /// Handles the failed to process feedback received from other services
-    ///
-    pub(crate) fn handle_action_failed(&mut self, version: u64, action_key: &str) {
-        let item_state = self.suffix.get_item_state(version);
-        match item_state {
-            Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
-                self.suffix.set_item_state(version, SuffixItemState::PartiallyComplete);
-
-                self.suffix.increment_item_action_count(version, action_key);
-                self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::ErrorProcessing);
-                debug!(
-                    "[Action] State version={version} changed from {item_state:?} => {:?}",
-                    self.suffix.get_item_state(version)
-                );
-            }
-            _ => (),
-        };
-    }
-    ///
-    /// Handles the feedback received from other services when they have successfully processed the action.
-    /// Will update the individual action for the count and completed flag and also update state of the suffix item.
-    ///
-    pub(crate) fn handle_action_success(&mut self, version: u64, action_key: &str) {
-        let item_state = self.suffix.get_item_state(version);
-        match item_state {
-            Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
-                self.suffix.set_item_state(version, SuffixItemState::PartiallyComplete);
-
-                self.suffix.increment_item_action_count(version, action_key);
-                self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::Processed);
-                debug!(
-                    "[Action] State version={version} changed from {item_state:?} => {:?}",
-                    self.suffix.get_item_state(version)
-                );
-            }
-            _ => (),
-        };
-    }
-
-    /// Handle each feedback received.
-    pub fn handle_feedback(&mut self, feedback: MessengerChannelFeedback) {
-        match feedback {
-            MessengerChannelFeedback::Error(version, key, message_error, _) => {
-                error!("Failed to process version={version} with error={message_error:?}");
-                self.handle_action_failed(version, &key);
-            }
-            MessengerChannelFeedback::Success(version, key, _) => {
-                debug!("Successfully processed version={version} with action_key={key}");
-                self.handle_action_success(version, &key);
-            }
-        }
-    }
-
-    /// Handle batch of feedbacks received.
-    pub fn handle_batch_feedbacks(&mut self, feedback_batch: Vec<MessengerChannelFeedback>) {
-        for feedback in feedback_batch {
-            self.handle_feedback(feedback);
-        }
-    }
 }
 
 #[async_trait]
-impl<M> MessengerSystemService for MessengerInboundService<M>
+impl<M> MessengerSystemService for MessengerInboundReceiverService<M>
 where
     M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
 {
@@ -189,12 +93,16 @@ where
 
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger service");
+
+        // TODO: GK - Duration should be configurable
+        let mut interval = tokio::time::interval(Duration::from_millis(20));
+
         // let mut candidate_message_count = 0;
         // let mut decision_message_count = 0;
         // let mut on_commit_actions_feedback_count = 0;
         loop {
             tokio::select! {
-                biased;
+                // biased;
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
@@ -260,30 +168,66 @@ where
                         },
                     }
                 }
-                // Receive feedback from publisher.
-                feedback_result = self.rx_feedback_channel.recv() => {
+                // Commit offset and prune suffix]
+                _ = interval.tick() => {
 
-                    let start_ms = Instant::now();
-                    // on_commit_actions_feedback_count += 1;
-                    // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
-                    match feedback_result {
-                        Some(feedbacks) => {
-                            let total_batch = feedbacks.len();
-                            self.handle_batch_feedbacks(feedbacks);
-                            let elapsed_batch_feedback = start_ms.elapsed();
-                            info!("[TOKIO::SELECT BATCH FEEDBACK ARM] - Processed {total_batch} feedbacks in {}", elapsed_batch_feedback.as_seconds_f64() * 1_000_f64);
+                    let new_commit_offset = self.commit_offset.load(Ordering::Relaxed);
+                    if new_commit_offset > 0 {
+                        let version = new_commit_offset as u64;
+                        // Issue commit
+                        // TODO: GK - use proper error handling instead of unwrap here.
+                        self.message_receiver.update_offset_to_commit(new_commit_offset).unwrap();
+                        self.message_receiver.commit_async();
 
-                        },
-                        None => {
-                            debug!("No feedback message to process..");
+                        // Prune suffix
+                        //  - Update the prune index if greater than current prune index
+                        let index = self.suffix.index_from_head(version);
+                        // TODO: GK - Is it okay to update the prune index blindly without any further checks?
+                        self.suffix.update_prune_index(index);
+                        // Check prune eligibility by looking at the prune meta info.
+                        if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
+                            // Call prune method on suffix.
+                            let prev_suffix_length = self.suffix.suffix_length();
+
+                            let _ = self.suffix.prune_till_index(index_to_prune);
+
+                            let new_suffix_length = self.suffix.suffix_length();
+                            let new_suffix_meta = self.suffix.get_meta();
+                            // warn!(
+                            //     "After pruning - before prune suffix lenght={prev_suffix_length}, new suffix length={new_suffix_length}, new prune_index={:?}, new head={}",
+                            //     new_suffix_meta.prune_index, new_suffix_meta.head
+                            // );
                         }
                     }
-                    // Process the next items with commit actions
+
+                    // Process the next set of actions
                     self.process_next_actions().await?;
-                    // info!("Exiting feedback batch tokio::select arm in {}ms", start_ms.elapsed().as_seconds_f64() * 1_000_f64);
-
-
                 }
+
+                // Receive feedback from publisher.
+                // feedback_result = self.rx_feedback_channel.recv() => {
+
+                //     let start_ms = Instant::now();
+                //     // on_commit_actions_feedback_count += 1;
+                //     // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
+                //     match feedback_result {
+                //         Some(feedbacks) => {
+                //             let total_batch = feedbacks.len();
+                //             self.handle_batch_feedbacks(feedbacks);
+                //             let elapsed_batch_feedback = start_ms.elapsed();
+                //             info!("[TOKIO::SELECT BATCH FEEDBACK ARM] - Processed {total_batch} feedbacks in {}", elapsed_batch_feedback.as_seconds_f64() * 1_000_f64);
+
+                //         },
+                //         None => {
+                //             debug!("No feedback message to process..");
+                //         }
+                //     }
+                //     // Process the next items with commit actions
+                //     self.process_next_actions().await?;
+                //     // info!("Exiting feedback batch tokio::select arm in {}ms", start_ms.elapsed().as_seconds_f64() * 1_000_f64);
+
+
+                // }
             }
         }
     }

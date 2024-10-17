@@ -41,7 +41,9 @@ pub struct MessengerCommitActions {
     pub headers: HashMap<String, String>,
 }
 
+pub type TotalActionsForVersion = u32;
+
 pub enum MessengerChannelFeedback {
-    Error(u64, String, Box<MessengerActionError>),
-    Success(u64, String),
+    Error(u64, String, Box<MessengerActionError>, TotalActionsForVersion),
+    Success(u64, String, TotalActionsForVersion),
 }
