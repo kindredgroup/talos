@@ -163,6 +163,28 @@ where
         loop {
             tokio::select! {
                 biased;
+                // Receive feedback from publisher.
+                feedback_result = self.rx_feedback_channel.recv() => {
+                    on_commit_actions_feedback_count = on_commit_actions_feedback_count + 1;
+                    // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
+                    match feedback_result {
+                        Some(MessengerChannelFeedback::Error(version, key, message_error)) => {
+                            error!("Failed to process version={version} with error={message_error:?}");
+                            self.handle_action_failed(version, &key);
+
+                        },
+                        Some(MessengerChannelFeedback::Success(version, key)) => {
+                            info!("Successfully processed version={version} with action_key={key}");
+                            self.handle_action_success(version, &key);
+                        },
+                        None => {
+                            debug!("No feedback message to process..");
+                        }
+                    }
+                    // Process the next items with commit actions
+                    self.process_next_actions().await?
+
+                }
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
@@ -228,28 +250,7 @@ where
                         },
                     }
                 }
-                // Receive feedback from publisher.
-                feedback_result = self.rx_feedback_channel.recv() => {
-                    on_commit_actions_feedback_count = on_commit_actions_feedback_count + 1;
-                    // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
-                    match feedback_result {
-                        Some(MessengerChannelFeedback::Error(version, key, message_error)) => {
-                            error!("Failed to process version={version} with error={message_error:?}");
-                            self.handle_action_failed(version, &key);
 
-                        },
-                        Some(MessengerChannelFeedback::Success(version, key)) => {
-                            info!("Successfully processed version={version} with action_key={key}");
-                            self.handle_action_success(version, &key);
-                        },
-                        None => {
-                            debug!("No feedback message to process..");
-                        }
-                    }
-                    // Process the next items with commit actions
-                    self.process_next_actions().await?
-
-                }
             }
         }
     }
