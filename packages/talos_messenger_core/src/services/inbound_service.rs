@@ -27,6 +27,7 @@ where
     pub rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
     pub suffix: Suffix<MessengerCandidate>,
     pub allowed_actions: HashMap<String, Vec<String>>,
+    pub all_completed_versions: Vec<u64>,
 }
 
 impl<M> MessengerInboundService<M>
@@ -68,6 +69,31 @@ where
         Ok(())
     }
 
+    pub(crate) fn update_prune_index_and_commit_offset(&mut self, version: u64) {
+        //  Update the prune index in suffix if applicable.
+        let prune_index = self.suffix.update_prune_index_from_version(version);
+
+        // If there is a prune_index, it is safe to assume, all messages prioir to this are decided + on_commit actions are actioned.
+        // Therefore, it is safe to commit till that offset/version.
+        if let Some(index) = prune_index {
+            let prune_item_option = self.suffix.messages.get(index);
+
+            if let Some(Some(prune_item)) = prune_item_option {
+                let commit_offset = prune_item.item_ver + 1;
+                debug!("[Commit] Updating tpl to version .. {commit_offset}");
+                let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
+
+                self.message_receiver.commit_async();
+            }
+        }
+
+        // Check prune eligibility by looking at the prune meta info.
+        if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
+            // Call prune method on suffix.
+            let _ = self.suffix.prune_till_index(index_to_prune);
+        }
+    }
+
     /// Checks if all actions are completed and updates the state of the item to `Processed`.
     /// Also, checks if the suffix can be pruned and the message_receiver can be committed.
     pub(crate) fn check_and_update_all_actions_complete(&mut self, version: u64, reason: SuffixItemCompleteStateReason) {
@@ -75,29 +101,9 @@ where
             Ok(is_completed) if is_completed => {
                 self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
 
-                //  Update the prune index in suffix if applicable.
-                let prune_index = self.suffix.update_prune_index_from_version(version);
-
-                // If there is a prune_index, it is safe to assume, all messages prioir to this are decided + on_commit actions are actioned.
-                // Therefore, it is safe to commit till that offset/version.
-                if let Some(index) = prune_index {
-                    let prune_item_option = self.suffix.messages.get(index);
-
-                    if let Some(Some(prune_item)) = prune_item_option {
-                        let commit_offset = prune_item.item_ver + 1;
-                        debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                        let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
-
-                        self.message_receiver.commit_async();
-                    }
-                }
+                self.all_completed_versions.push(version);
 
                 debug!("[Actions] All actions for version {version} completed!");
-                // Check prune eligibility by looking at the prune meta info.
-                if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
-                    // Call prune method on suffix.
-                    let _ = self.suffix.prune_till_index(index_to_prune);
-                }
             }
             _ => {}
         }
@@ -266,16 +272,34 @@ where
                 }
             }
             loop_count += 1;
-            // log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
-            // log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
 
-            // log::warn!(
-            //     "\nTotal loops iterations={loop_count} and duration={}ms
-            //      \nTotal computed count={} and duration={}ms",
-            //     loop_start_ms.elapsed().as_millis(),
-            //     candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
-            //     kafka_consumer_arm_time_ms + feedback_arm_time_ms
-            // );
+            // Update the prune index and commit
+            if self.all_completed_versions.len() > 3_000 {
+                self.all_completed_versions.sort();
+                if let Some(last_vers) = self.all_completed_versions.iter().last() {
+                    let start_ms = Instant::now();
+                    let version = last_vers.clone();
+                    self.update_prune_index_and_commit_offset(version.clone());
+                    log::warn!(
+                        "Called fn update_prune_index_and_commit_offset using last version completed = {} | vector length = {} | duration of fn ={}ms ",
+                        version,
+                        self.all_completed_versions.len(),
+                        start_ms.elapsed().as_millis()
+                    );
+                    self.all_completed_versions.clear();
+
+                    log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
+                    log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+
+                    log::warn!(
+                        "\nTotal loops iterations={loop_count} and duration={}ms
+                         \nTotal computed count={} and duration={}ms",
+                        loop_start_ms.elapsed().as_millis(),
+                        candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
+                        kafka_consumer_arm_time_ms + feedback_arm_time_ms
+                    );
+                }
+            };
         } //loop
 
         // loop {

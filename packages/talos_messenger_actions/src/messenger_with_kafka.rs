@@ -119,6 +119,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
         rx_feedback_channel,
         suffix,
         allowed_actions: config.allowed_actions,
+        all_completed_versions: Vec::with_capacity(5_000),
     };
     // END - Inbound service
 
