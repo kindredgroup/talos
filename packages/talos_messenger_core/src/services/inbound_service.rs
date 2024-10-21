@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
@@ -160,12 +162,18 @@ where
         let mut candidate_message_count = 0;
         let mut decision_message_count = 0;
         let mut on_commit_actions_feedback_count = 0;
+        let mut loop_count = 0;
+        let mut feedback_arm_time_ms = 0;
+        let mut kafka_consumer_arm_time_ms = 0;
+
+        let loop_start_ms = Instant::now();
         loop {
             tokio::select! {
                 biased;
                 // Receive feedback from publisher.
                 Some(feedback_result) = self.rx_feedback_channel.recv() => {
-                    on_commit_actions_feedback_count = on_commit_actions_feedback_count + 1;
+                    on_commit_actions_feedback_count += 1;
+                    let start_ms = Instant::now();
                     // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
                     match feedback_result {
                         MessengerChannelFeedback::Error(version, key, message_error) => {
@@ -182,17 +190,19 @@ where
                         // }
                     }
                     // Process the next items with commit actions
-                    self.process_next_actions().await?
+                    self.process_next_actions().await?;
+                    feedback_arm_time_ms += start_ms.elapsed().as_millis();
 
                 }
                 // 1. Consume message.
                 // Ok(Some(msg)) = self.message_receiver.consume_message() => {
                 reciever_result = self.message_receiver.consume_message() => {
+                    let start_ms = Instant::now();
 
                     match reciever_result {
                         // 2.1 For CM - Install messages on the version
                         Ok(Some(ChannelMessage::Candidate(candidate))) => {
-                            candidate_message_count= candidate_message_count+1;
+                            candidate_message_count += 1;
                             let version = candidate.message.version;
                             debug!("Candidate version received is {version}");
                             if version > 0 {
@@ -224,7 +234,7 @@ where
                         },
                         // 2.2 For DM - Update the decision with outcome + safepoint.
                         Ok(Some(ChannelMessage::Decision(decision))) => {
-                            decision_message_count = decision_message_count + 1;
+                            decision_message_count += 1;
                             let version = decision.message.get_candidate_version();
                             info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
 
@@ -249,12 +259,26 @@ where
                             error!("error consuming message....{:?}", error);
                         },
                     }
+
+                    kafka_consumer_arm_time_ms += start_ms.elapsed().as_millis();
+
                 }
                 else => {
                     warn!("Unhandled arm....");
                 }
 
             }
+            loop_count += 1;
+            log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
+            log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+
+            log::warn!(
+                "\nTotal loops iterations={loop_count} and duration={}ms
+                 \nTotal computed count={} and duration={}ms",
+                loop_start_ms.elapsed().as_millis(),
+                candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
+                kafka_consumer_arm_time_ms + feedback_arm_time_ms
+            );
         }
     }
 }
