@@ -7,7 +7,7 @@ use log::{debug, error, info, warn};
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
     core::{MessengerChannelFeedback, MessengerCommitActions, MessengerSystemService},
@@ -167,11 +167,10 @@ where
         let mut kafka_consumer_arm_time_ms = 0;
 
         let loop_start_ms = Instant::now();
+
         loop {
-            tokio::select! {
-                biased;
-                // Receive feedback from publisher.
-                Some(feedback_result) = self.rx_feedback_channel.recv() => {
+            match self.rx_feedback_channel.try_recv() {
+                Ok(feedback_result) => {
                     on_commit_actions_feedback_count += 1;
                     let start_ms = Instant::now();
                     // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
@@ -179,24 +178,22 @@ where
                         MessengerChannelFeedback::Error(version, key, message_error) => {
                             error!("Failed to process version={version} with error={message_error:?}");
                             self.handle_action_failed(version, &key);
-
-                        },
+                        }
                         MessengerChannelFeedback::Success(version, key) => {
                             info!("Successfully processed version={version} with action_key={key}");
                             self.handle_action_success(version, &key);
-                        },
-                        // None => {
-                        //     debug!("No feedback message to process..");
-                        // }
+                        } // None => {
+                          //     debug!("No feedback message to process..");
+                          // }
                     }
                     // Process the next items with commit actions
                     self.process_next_actions().await?;
                     feedback_arm_time_ms += start_ms.elapsed().as_millis();
-
                 }
-                // 1. Consume message.
-                // Ok(Some(msg)) = self.message_receiver.consume_message() => {
-                reciever_result = self.message_receiver.consume_message() => {
+                Err(TryRecvError::Empty) => {
+                    // When empty receive messages from Kafka consumer.
+                    let reciever_result = self.message_receiver.consume_message().await;
+
                     let start_ms = Instant::now();
 
                     match reciever_result {
@@ -209,29 +206,30 @@ where
                                 // insert item to suffix
                                 let _ = self.suffix.insert(version, candidate.message.into());
 
-                                if let Some(item_to_update) = self.suffix.get_mut(version){
+                                if let Some(item_to_update) = self.suffix.get_mut(version) {
                                     if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
                                         let filter_actions = get_allowed_commit_actions(commit_actions, &self.allowed_actions);
                                         if filter_actions.is_empty() {
                                             // There are on_commit actions, but not the ones required by messenger
-                                            item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
+                                            item_to_update
+                                                .item
+                                                .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
                                         } else {
                                             item_to_update.item.set_commit_action(filter_actions);
                                         }
                                     } else {
                                         //  No on_commit actions
-                                        item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
-
+                                        item_to_update
+                                            .item
+                                            .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
                                     }
                                 };
 
                                 self.process_next_actions().await?;
-
-
                             } else {
                                 warn!("Version 0 will not be inserted into suffix.")
                             }
-                        },
+                        }
                         // 2.2 For DM - Update the decision with outcome + safepoint.
                         Ok(Some(ChannelMessage::Decision(decision))) => {
                             decision_message_count += 1;
@@ -243,30 +241,29 @@ where
                             self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
 
                             self.process_next_actions().await?;
-
-                        },
+                        }
                         Ok(None) => {
                             info!("No message to process..");
                             self.process_next_actions().await?;
-                        },
+                        }
                         Err(error) => {
                             // Catch the error propogated, and if it has a version, mark the item as completed.
                             if let Some(version) = error.version {
-                                if let Some(item_to_update) = self.suffix.get_mut(version){
-                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
+                                if let Some(item_to_update) = self.suffix.get_mut(version) {
+                                    item_to_update
+                                        .item
+                                        .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
                                 }
                             }
                             error!("error consuming message....{:?}", error);
-                        },
+                        }
                     }
 
                     kafka_consumer_arm_time_ms += start_ms.elapsed().as_millis();
-
                 }
-                else => {
-                    warn!("Unhandled arm....");
+                Err(TryRecvError::Disconnected) => {
+                    warn!("Feedback channel disconnected..!");
                 }
-
             }
             loop_count += 1;
             log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
@@ -279,6 +276,119 @@ where
                 candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
                 kafka_consumer_arm_time_ms + feedback_arm_time_ms
             );
-        }
+        } //loop
+
+        // loop {
+        //     tokio::select! {
+        //         biased;
+        //         // Receive feedback from publisher.
+        //         Some(feedback_result) = self.rx_feedback_channel.recv() => {
+        //             on_commit_actions_feedback_count += 1;
+        //             let start_ms = Instant::now();
+        //             // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
+        //             match feedback_result {
+        //                 MessengerChannelFeedback::Error(version, key, message_error) => {
+        //                     error!("Failed to process version={version} with error={message_error:?}");
+        //                     self.handle_action_failed(version, &key);
+
+        //                 },
+        //                 MessengerChannelFeedback::Success(version, key) => {
+        //                     info!("Successfully processed version={version} with action_key={key}");
+        //                     self.handle_action_success(version, &key);
+        //                 },
+        //                 // None => {
+        //                 //     debug!("No feedback message to process..");
+        //                 // }
+        //             }
+        //             // Process the next items with commit actions
+        //             self.process_next_actions().await?;
+        //             feedback_arm_time_ms += start_ms.elapsed().as_millis();
+
+        //         }
+        //         // 1. Consume message.
+        //         // Ok(Some(msg)) = self.message_receiver.consume_message() => {
+        //         reciever_result = self.message_receiver.consume_message() => {
+        //             let start_ms = Instant::now();
+
+        //             match reciever_result {
+        //                 // 2.1 For CM - Install messages on the version
+        //                 Ok(Some(ChannelMessage::Candidate(candidate))) => {
+        //                     candidate_message_count += 1;
+        //                     let version = candidate.message.version;
+        //                     debug!("Candidate version received is {version}");
+        //                     if version > 0 {
+        //                         // insert item to suffix
+        //                         let _ = self.suffix.insert(version, candidate.message.into());
+
+        //                         if let Some(item_to_update) = self.suffix.get_mut(version){
+        //                             if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
+        //                                 let filter_actions = get_allowed_commit_actions(commit_actions, &self.allowed_actions);
+        //                                 if filter_actions.is_empty() {
+        //                                     // There are on_commit actions, but not the ones required by messenger
+        //                                     item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
+        //                                 } else {
+        //                                     item_to_update.item.set_commit_action(filter_actions);
+        //                                 }
+        //                             } else {
+        //                                 //  No on_commit actions
+        //                                 item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
+
+        //                             }
+        //                         };
+
+        //                         self.process_next_actions().await?;
+
+        //                     } else {
+        //                         warn!("Version 0 will not be inserted into suffix.")
+        //                     }
+        //                 },
+        //                 // 2.2 For DM - Update the decision with outcome + safepoint.
+        //                 Ok(Some(ChannelMessage::Decision(decision))) => {
+        //                     decision_message_count += 1;
+        //                     let version = decision.message.get_candidate_version();
+        //                     info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
+
+        //                     // TODO: GK - no hardcoded filters on headers
+        //                     let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
+        //                     self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
+
+        //                     self.process_next_actions().await?;
+
+        //                 },
+        //                 Ok(None) => {
+        //                     info!("No message to process..");
+        //                     self.process_next_actions().await?;
+        //                 },
+        //                 Err(error) => {
+        //                     // Catch the error propogated, and if it has a version, mark the item as completed.
+        //                     if let Some(version) = error.version {
+        //                         if let Some(item_to_update) = self.suffix.get_mut(version){
+        //                             item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
+        //                         }
+        //                     }
+        //                     error!("error consuming message....{:?}", error);
+        //                 },
+        //             }
+
+        //             kafka_consumer_arm_time_ms += start_ms.elapsed().as_millis();
+
+        //         }
+        //         else => {
+        //             warn!("Unhandled arm....");
+        //         }
+
+        //     }
+        //     loop_count += 1;
+        //     log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
+        //     log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+
+        //     log::warn!(
+        //         "\nTotal loops iterations={loop_count} and duration={}ms
+        //          \nTotal computed count={} and duration={}ms",
+        //         loop_start_ms.elapsed().as_millis(),
+        //         candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
+        //         kafka_consumer_arm_time_ms + feedback_arm_time_ms
+        //     );
+        // }
     }
 }
