@@ -266,16 +266,16 @@ where
                 }
             }
             loop_count += 1;
-            log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
-            log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+            // log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
+            // log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
 
-            log::warn!(
-                "\nTotal loops iterations={loop_count} and duration={}ms
-                 \nTotal computed count={} and duration={}ms",
-                loop_start_ms.elapsed().as_millis(),
-                candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
-                kafka_consumer_arm_time_ms + feedback_arm_time_ms
-            );
+            // log::warn!(
+            //     "\nTotal loops iterations={loop_count} and duration={}ms
+            //      \nTotal computed count={} and duration={}ms",
+            //     loop_start_ms.elapsed().as_millis(),
+            //     candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
+            //     kafka_consumer_arm_time_ms + feedback_arm_time_ms
+            // );
         } //loop
 
         // loop {
