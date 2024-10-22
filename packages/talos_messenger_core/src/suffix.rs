@@ -2,7 +2,10 @@ use ahash::{HashMap, HashMapExt};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    //  time::Instant
+};
 use strum::{Display, EnumString};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
@@ -261,9 +264,15 @@ where
     }
 
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
-        let items = self
+        // let start_ms = Instant::now();
+        let current_prune_index = self.get_meta().prune_index;
+
+        let start_index = current_prune_index.unwrap_or(0);
+
+        let items: Vec<ActionsMapWithVersion> = self
             .messages
-            .iter()
+            .range(start_index..)
+            // .iter()
             // Remove `None` items
             .flatten()
             // Filter only the items awaiting to be processed.
@@ -304,6 +313,14 @@ where
             })
             .collect();
 
+        // if start_index > 0 {
+        //     warn!(
+        //         "[get_suffix_items_to_process] - Suffix length = {} | Items length = {} | start_index={start_index} | time_taken={}ns ",
+        //         self.messages.len(),
+        //         items.len(),
+        //         start_ms.elapsed().as_nanos()
+        //     );
+        // }
         items
     }
 
@@ -339,6 +356,7 @@ where
     }
 
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize> {
+        // let start_ms = Instant::now();
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
@@ -352,13 +370,13 @@ where
             "[Update prune index] Calculating prune index in suffix slice between index {start_index} <-> {end_index}. Current prune index version {current_prune_index:?}.",
         );
 
-        // 1. Get the last contiguous item that is completed.
+        // Trying using rev + find
         let safe_prune_version = self
             .messages
             .range(start_index..=end_index)
             .flatten()
-            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
-            .last()?
+            .rev()
+            .find(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))?
             .item_ver;
 
         // 2. Update the prune index.
@@ -366,6 +384,12 @@ where
 
         self.update_prune_index(index.into());
         debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
+
+        // warn!(
+        //     "Suffix length = {} | old_prune_index={start_index} | new_prune_index={index} | time_taken={}ns",
+        //     self.messages.len(),
+        //     start_ms.elapsed().as_nanos()
+        // );
 
         Some(index)
     }

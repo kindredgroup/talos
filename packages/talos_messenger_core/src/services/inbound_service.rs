@@ -101,14 +101,15 @@ where
                 metric.count += items_len as u64;
                 metric.time_ns += start_ms.elapsed().as_nanos();
             };
+            // warn!("Processing {items_len} in {}ns", start_ms.elapsed().as_nanos());
         }
 
         Ok(())
     }
 
-    pub(crate) fn update_prune_index_and_commit_offset(&mut self, version: u64) {
+    pub(crate) fn update_prune_index_and_commit_offset(&mut self) {
         //  Update the prune index in suffix if applicable.
-        let prune_index = self.suffix.update_prune_index_from_version(version);
+        let prune_index = self.suffix.get_meta().prune_index;
 
         // If there is a prune_index, it is safe to assume, all messages prioir to this are decided + on_commit actions are actioned.
         // Therefore, it is safe to commit till that offset/version.
@@ -139,6 +140,8 @@ where
                 self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
 
                 self.all_completed_versions.push(version);
+
+                let _ = self.suffix.update_prune_index_from_version(version);
 
                 debug!("[Actions] All actions for version {version} completed!");
             }
@@ -202,6 +205,7 @@ where
 
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger service");
+
         let mut candidate_message_count = 0;
         let mut decision_message_count = 0;
         let mut on_commit_actions_feedback_count = 0;
@@ -397,7 +401,7 @@ where
                                     }
                                 };
 
-                                self.process_next_actions().await?;
+
 
                             } else {
                                 warn!("Version 0 will not be inserted into suffix.")
@@ -415,10 +419,10 @@ where
 
                             self.process_next_actions().await?;
 
+
                         },
                         Ok(None) => {
                             info!("No message to process..");
-                            self.process_next_actions().await?;
                         },
                         Err(error) => {
                             // Catch the error propogated, and if it has a version, mark the item as completed.
@@ -440,13 +444,19 @@ where
 
             }
             loop_count += 1;
+            // Check for process count to pick the next set of actions to process
+            // if process_after_count > 500 {
+            //     process_after_count = 0;
+            //     self.process_next_actions().await?;
+            // }
+
             // Update the prune index and commit
             if self.all_completed_versions.len() > 5_000 {
                 self.all_completed_versions.sort();
                 if let Some(last_vers) = self.all_completed_versions.iter().last() {
                     let start_ms = Instant::now();
                     let version = last_vers.clone();
-                    self.update_prune_index_and_commit_offset(version.clone());
+                    self.update_prune_index_and_commit_offset();
                     log::warn!(
                         "Called fn update_prune_index_and_commit_offset using last version completed = {} | vector length = {} | duration of fn ={}ms ",
                         version,
@@ -461,7 +471,7 @@ where
                     log::warn!("process_next_action_fn metrics.... {:?}", self.micro_metrics.get("process_next_action_fn"));
                     log::warn!(
                         "tx_action_channel... currently no. of records = {} | Total capacity={}",
-                        self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity(),
+                        self.tx_actions_channel.capacity(),
                         self.tx_actions_channel.max_capacity()
                     );
 
