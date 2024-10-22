@@ -113,14 +113,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
     // START - Inbound service
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(config.suffix_config.unwrap_or_default());
 
-    let inbound_service = MessengerInboundService {
-        message_receiver: kafka_consumer,
-        tx_actions_channel,
-        rx_feedback_channel,
-        suffix,
-        allowed_actions: config.allowed_actions,
-        all_completed_versions: Vec::with_capacity(5_000),
-    };
+    let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, config.allowed_actions);
     // END - Inbound service
 
     // START - Publish service
