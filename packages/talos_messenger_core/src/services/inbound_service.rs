@@ -451,7 +451,7 @@ where
             // }
 
             // Update the prune index and commit
-            if self.all_completed_versions.len() > 5_000 {
+            if self.all_completed_versions.len() > 10_000 {
                 self.all_completed_versions.sort();
                 if let Some(last_vers) = self.all_completed_versions.iter().last() {
                     let start_ms = Instant::now();
