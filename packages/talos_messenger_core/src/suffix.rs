@@ -2,10 +2,7 @@ use ahash::{HashMap, HashMapExt};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    fmt::Debug,
-    //  time::Instant
-};
+use std::{fmt::Debug, time::Instant};
 use strum::{Display, EnumString};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
@@ -264,7 +261,7 @@ where
     }
 
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
-        // let start_ms = Instant::now();
+        let start_ms = Instant::now();
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
@@ -314,12 +311,12 @@ where
             .collect();
 
         // if start_index > 0 {
-        //     warn!(
-        //         "[get_suffix_items_to_process] - Suffix length = {} | Items length = {} | start_index={start_index} | time_taken={}ns ",
-        //         self.messages.len(),
-        //         items.len(),
-        //         start_ms.elapsed().as_nanos()
-        //     );
+        // warn!(
+        //     "[get_suffix_items_to_process] - Suffix length = {} | Items length = {} | start_index={start_index} | time_taken={}ns ",
+        //     self.messages.len(),
+        //     items.len(),
+        //     start_ms.elapsed().as_nanos()
+        // );
         // }
         items
     }

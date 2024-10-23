@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
@@ -139,7 +139,7 @@ where
             Ok(is_completed) if is_completed => {
                 self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
 
-                self.all_completed_versions.push(version);
+                // self.all_completed_versions.push(version);
 
                 let _ = self.suffix.update_prune_index_from_version(version);
 
@@ -210,6 +210,10 @@ where
         let mut decision_message_count = 0;
         let mut on_commit_actions_feedback_count = 0;
         let mut loop_count = 0;
+
+        let mut process_arm_count = 0;
+        let mut process_arm_time_ms = 0;
+
         let mut feedback_arm_time_ms = 0;
         let mut kafka_consumer_arm_time_ms = 0;
 
@@ -343,9 +347,19 @@ where
         //     };
         // } //loop
 
+        let mut interval = tokio::time::interval(Duration::from_millis(10));
         loop {
             tokio::select! {
+
                 // biased;
+                // process records in interval
+                _ = interval.tick() => {
+                    let start_ms = Instant::now();
+                    process_arm_count+=1;
+                    self.process_next_actions().await?;
+                    process_arm_time_ms += start_ms.elapsed().as_millis();
+                }
+
                 // Receive feedback from publisher.
                 Some(feedback_result) = self.rx_feedback_channel.recv() => {
                     on_commit_actions_feedback_count += 1;
@@ -366,7 +380,7 @@ where
                         // }
                     }
                     // Process the next items with commit actions
-                    self.process_next_actions().await?;
+                    // self.process_next_actions().await?;
                     feedback_arm_time_ms += start_ms.elapsed().as_millis();
 
                 }
@@ -417,7 +431,7 @@ where
                             let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
                             self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
 
-                            self.process_next_actions().await?;
+                            // self.process_next_actions().await?;
 
 
                         },
@@ -455,36 +469,34 @@ where
             let prune_start_threshold = self.suffix.get_meta().prune_start_threshold;
             if prune_index.gt(&prune_start_threshold) {
                 // self.all_completed_versions.sort();
-                if let Some(last_vers) = self.all_completed_versions.iter().last() {
-                    let start_ms = Instant::now();
-                    let version = last_vers.clone();
-                    self.commit_offset_and_prune_suffix();
-                    log::warn!(
-                        "Called fn update_prune_index_and_commit_offset using last version completed = {} | vector length = {} | duration of fn ={}ms ",
-                        version,
-                        self.all_completed_versions.len(),
-                        start_ms.elapsed().as_millis()
-                    );
-                    self.all_completed_versions.clear();
+                // if let Some(last_vers) = self.all_completed_versions.iter().last() {
+                let start_ms = Instant::now();
+                // let version = last_vers.clone();
 
-                    log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
-                    log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+                self.commit_offset_and_prune_suffix();
 
-                    log::warn!("process_next_action_fn metrics.... {:?}", self.micro_metrics.get("process_next_action_fn"));
-                    log::warn!(
-                        "tx_action_channel... currently no. of records = {} | Total capacity={}",
-                        self.tx_actions_channel.capacity(),
-                        self.tx_actions_channel.max_capacity()
-                    );
+                log::warn!("Completed fn update_prune_index_and_commit_offset in {}ms ", start_ms.elapsed().as_millis());
+                // self.all_completed_versions.clear();
 
-                    log::warn!(
-                        "\nTotal loops iterations={loop_count} and duration={}ms
+                log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
+                log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+                log::warn!("Process on interval Arm \n time={process_arm_time_ms}ms |  count={process_arm_count} ");
+
+                log::warn!("process_next_action_fn metrics.... {:?}", self.micro_metrics.get("process_next_action_fn"));
+                log::warn!(
+                    "tx_action_channel... currently no. of records = {} | Total capacity={}",
+                    self.tx_actions_channel.capacity(),
+                    self.tx_actions_channel.max_capacity()
+                );
+
+                log::warn!(
+                    "\nTotal loops iterations={loop_count} and duration={}ms
                          \nTotal computed count={} and duration={}ms",
-                        loop_start_ms.elapsed().as_millis(),
-                        candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
-                        kafka_consumer_arm_time_ms + feedback_arm_time_ms
-                    );
-                }
+                    loop_start_ms.elapsed().as_millis(),
+                    candidate_message_count + decision_message_count + on_commit_actions_feedback_count + process_arm_count,
+                    kafka_consumer_arm_time_ms + feedback_arm_time_ms + process_arm_time_ms
+                );
+                // }
             };
         }
     }
