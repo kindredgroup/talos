@@ -347,7 +347,7 @@ where
         //     };
         // } //loop
 
-        let mut interval = tokio::time::interval(Duration::from_millis(10));
+        let mut interval = tokio::time::interval(Duration::from_millis(5));
         loop {
             tokio::select! {
 

@@ -310,14 +310,14 @@ where
             })
             .collect();
 
-        // if start_index > 0 {
-        // warn!(
-        //     "[get_suffix_items_to_process] - Suffix length = {} | Items length = {} | start_index={start_index} | time_taken={}ns ",
-        //     self.messages.len(),
-        //     items.len(),
-        //     start_ms.elapsed().as_nanos()
-        // );
-        // }
+        if items.len() > 0 {
+            warn!(
+                "[get_suffix_items_to_process] - Suffix length = {} | Items length = {} | start_index={start_index} | time_taken={}ns ",
+                self.messages.len(),
+                items.len(),
+                start_ms.elapsed().as_nanos()
+            );
+        }
         items
     }
 
