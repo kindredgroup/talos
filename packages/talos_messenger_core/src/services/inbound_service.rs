@@ -107,7 +107,7 @@ where
         Ok(())
     }
 
-    pub(crate) fn update_prune_index_and_commit_offset(&mut self) {
+    pub(crate) fn commit_offset_and_prune_suffix(&mut self) {
         //  Update the prune index in suffix if applicable.
         let prune_index = self.suffix.get_meta().prune_index;
 
@@ -456,7 +456,7 @@ where
                 if let Some(last_vers) = self.all_completed_versions.iter().last() {
                     let start_ms = Instant::now();
                     let version = last_vers.clone();
-                    self.update_prune_index_and_commit_offset();
+                    self.commit_offset_and_prune_suffix();
                     log::warn!(
                         "Called fn update_prune_index_and_commit_offset using last version completed = {} | vector length = {} | duration of fn ={}ms ",
                         version,
