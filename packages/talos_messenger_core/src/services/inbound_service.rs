@@ -451,8 +451,10 @@ where
             // }
 
             // Update the prune index and commit
-            if self.all_completed_versions.len() > 10_000 {
-                self.all_completed_versions.sort();
+            let prune_index = self.suffix.get_meta().prune_index;
+            let prune_start_threshold = self.suffix.get_meta().prune_start_threshold;
+            if prune_index.gt(&prune_start_threshold) {
+                // self.all_completed_versions.sort();
                 if let Some(last_vers) = self.all_completed_versions.iter().last() {
                     let start_ms = Instant::now();
                     let version = last_vers.clone();
