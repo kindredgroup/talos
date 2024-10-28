@@ -127,6 +127,7 @@ where
 
         // Check prune eligibility by looking at the prune meta info.
         if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
+            // error!("Pruning till index {index_to_prune}");
             // Call prune method on suffix.
             let _ = self.suffix.prune_till_index(index_to_prune);
         }
@@ -219,146 +220,46 @@ where
 
         let loop_start_ms = Instant::now();
 
-        // loop {
-        //     match self.rx_feedback_channel.try_recv() {
-        //         Ok(feedback_result) => {
-        //             on_commit_actions_feedback_count += 1;
-        //             let start_ms = Instant::now();
-        //             // log::warn!("Counts.... candidate_message_count={candidate_message_count} | decision_message_count={decision_message_count} | on_commit_actions_feedback_count={on_commit_actions_feedback_count}");
-        //             match feedback_result {
-        //                 MessengerChannelFeedback::Error(version, key, message_error) => {
-        //                     error!("Failed to process version={version} with error={message_error:?}");
-        //                     self.handle_action_failed(version, &key);
-        //                 }
-        //                 MessengerChannelFeedback::Success(version, key) => {
-        //                     info!("Successfully processed version={version} with action_key={key}");
-        //                     self.handle_action_success(version, &key);
-        //                 } // None => {
-        //                   //     debug!("No feedback message to process..");
-        //                   // }
-        //             }
-        //             // Process the next items with commit actions
-        //             self.process_next_actions().await?;
-        //             feedback_arm_time_ms += start_ms.elapsed().as_millis();
-        //         }
-        //         Err(TryRecvError::Empty) => {
-        //             // When empty receive messages from Kafka consumer.
-        //             let reciever_result = self.message_receiver.consume_message().await;
+        let mut interval = tokio::time::interval(Duration::from_millis(40 * 1000));
 
-        //             let start_ms = Instant::now();
-
-        //             match reciever_result {
-        //                 // 2.1 For CM - Install messages on the version
-        //                 Ok(Some(ChannelMessage::Candidate(candidate))) => {
-        //                     candidate_message_count += 1;
-        //                     let version = candidate.message.version;
-        //                     debug!("Candidate version received is {version}");
-        //                     if version > 0 {
-        //                         // insert item to suffix
-        //                         let _ = self.suffix.insert(version, candidate.message.into());
-
-        //                         if let Some(item_to_update) = self.suffix.get_mut(version) {
-        //                             if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
-        //                                 let filter_actions = get_allowed_commit_actions(commit_actions, &self.allowed_actions);
-        //                                 if filter_actions.is_empty() {
-        //                                     // There are on_commit actions, but not the ones required by messenger
-        //                                     item_to_update
-        //                                         .item
-        //                                         .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
-        //                                 } else {
-        //                                     item_to_update.item.set_commit_action(filter_actions);
-        //                                 }
-        //                             } else {
-        //                                 //  No on_commit actions
-        //                                 item_to_update
-        //                                     .item
-        //                                     .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
-        //                             }
-        //                         };
-
-        //                         self.process_next_actions().await?;
-        //                     } else {
-        //                         warn!("Version 0 will not be inserted into suffix.")
-        //                     }
-        //                 }
-        //                 // 2.2 For DM - Update the decision with outcome + safepoint.
-        //                 Ok(Some(ChannelMessage::Decision(decision))) => {
-        //                     decision_message_count += 1;
-        //                     let version = decision.message.get_candidate_version();
-        //                     info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
-
-        //                     // TODO: GK - no hardcoded filters on headers
-        //                     let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
-        //                     self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
-
-        //                     self.process_next_actions().await?;
-        //                 }
-        //                 Ok(None) => {
-        //                     info!("No message to process..");
-        //                     self.process_next_actions().await?;
-        //                 }
-        //                 Err(error) => {
-        //                     // Catch the error propogated, and if it has a version, mark the item as completed.
-        //                     if let Some(version) = error.version {
-        //                         if let Some(item_to_update) = self.suffix.get_mut(version) {
-        //                             item_to_update
-        //                                 .item
-        //                                 .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
-        //                         }
-        //                     }
-        //                     error!("error consuming message....{:?}", error);
-        //                 }
-        //             }
-
-        //             kafka_consumer_arm_time_ms += start_ms.elapsed().as_millis();
-        //         }
-        //         Err(TryRecvError::Disconnected) => {
-        //             warn!("Feedback channel disconnected..!");
-        //         }
-        //     }
-        //     loop_count += 1;
-
-        //     // Update the prune index and commit
-        //     if self.all_completed_versions.len() > 3_000 {
-        //         self.all_completed_versions.sort();
-        //         if let Some(last_vers) = self.all_completed_versions.iter().last() {
-        //             let start_ms = Instant::now();
-        //             let version = last_vers.clone();
-        //             self.update_prune_index_and_commit_offset(version.clone());
-        //             log::warn!(
-        //                 "Called fn update_prune_index_and_commit_offset using last version completed = {} | vector length = {} | duration of fn ={}ms ",
-        //                 version,
-        //                 self.all_completed_versions.len(),
-        //                 start_ms.elapsed().as_millis()
-        //             );
-        //             self.all_completed_versions.clear();
-
-        //             log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
-        //             log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
-
-        //             log::warn!(
-        //                 "\nTotal loops iterations={loop_count} and duration={}ms
-        //                  \nTotal computed count={} and duration={}ms",
-        //                 loop_start_ms.elapsed().as_millis(),
-        //                 candidate_message_count + decision_message_count + on_commit_actions_feedback_count,
-        //                 kafka_consumer_arm_time_ms + feedback_arm_time_ms
-        //             );
-        //         }
-        //     };
-        // } //loop
-
-        let mut interval = tokio::time::interval(Duration::from_millis(5));
         loop {
             tokio::select! {
 
                 // biased;
                 // process records in interval
-                _ = interval.tick() => {
-                    let start_ms = Instant::now();
-                    process_arm_count+=1;
-                    self.process_next_actions().await?;
-                    process_arm_time_ms += start_ms.elapsed().as_millis();
-                }
+                // _ = interval.tick() => {
+                //     // let start_ms = Instant::now();
+                //     // process_arm_count+=1;
+                //     // self.process_next_actions().await?;
+                //     // process_arm_time_ms += start_ms.elapsed().as_millis();
+
+                //     let items_from_start_index: Vec<_> = self
+                //     .suffix
+                //     .messages
+                //     .range(..)
+                //     .flatten()
+                //     .map(|x| (x.item_ver, x.decision_ver, x.item.get_state()))
+                //     .collect();
+
+                //     log::warn!(
+                //         "[SUFFIX related info...] - Items in the suffix till end - first item={:?} | last item={:?} | length={}",
+                //         items_from_start_index.iter().nth(0),
+                //         items_from_start_index.iter().last(),
+                //         items_from_start_index.len()
+                //     );
+
+                //     // let non_complete_items_from_suffix : Vec<_>= self
+                //     // .suffix
+                //     // .messages
+                //     // .iter()
+                //     // .flatten()
+                //     // .filter(|x| matches!(x.item.get_state(), SuffixItemState::Processing | SuffixItemState::AwaitingDecision | SuffixItemState::ReadyToProcess))
+                //     // .collect();
+                //     // log::warn!(
+                //     //     "[All items in suffix] - Items in the suffix \n {:?}",non_complete_items_from_suffix
+                //     // );
+
+                // }
 
                 // Receive feedback from publisher.
                 Some(feedback_result) = self.rx_feedback_channel.recv() => {
@@ -425,13 +326,13 @@ where
                         Ok(Some(ChannelMessage::Decision(decision))) => {
                             decision_message_count += 1;
                             let version = decision.message.get_candidate_version();
-                            info!("[Decision Message] Version received = {} and {}", decision.decision_version, version);
+                            debug!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
 
                             // TODO: GK - no hardcoded filters on headers
                             let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
                             self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
 
-                            // self.process_next_actions().await?;
+                            self.process_next_actions().await?;
 
 
                         },
@@ -475,27 +376,27 @@ where
 
                 self.commit_offset_and_prune_suffix();
 
-                log::warn!("Completed fn update_prune_index_and_commit_offset in {}ms ", start_ms.elapsed().as_millis());
-                // self.all_completed_versions.clear();
+                // log::warn!("Completed fn update_prune_index_and_commit_offset in {}ms ", start_ms.elapsed().as_millis());
+                // // self.all_completed_versions.clear();
 
-                log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
-                log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
-                log::warn!("Process on interval Arm \n time={process_arm_time_ms}ms |  count={process_arm_count} ");
+                // log::warn!("Kafka Consumer Arm \n time={kafka_consumer_arm_time_ms}ms |  candidate_count={candidate_message_count} | decision_count={decision_message_count} ");
+                // log::warn!("Feedback Arm \n time={feedback_arm_time_ms}ms |  count={on_commit_actions_feedback_count} ");
+                // log::warn!("Process on interval Arm \n time={process_arm_time_ms}ms |  count={process_arm_count} ");
 
-                log::warn!("process_next_action_fn metrics.... {:?}", self.micro_metrics.get("process_next_action_fn"));
-                log::warn!(
-                    "tx_action_channel... currently no. of records = {} | Total capacity={}",
-                    self.tx_actions_channel.capacity(),
-                    self.tx_actions_channel.max_capacity()
-                );
+                // log::warn!("process_next_action_fn metrics.... {:?}", self.micro_metrics.get("process_next_action_fn"));
+                // log::warn!(
+                //     "tx_action_channel... currently no. of records = {} | Total capacity={}",
+                //     self.tx_actions_channel.capacity(),
+                //     self.tx_actions_channel.max_capacity()
+                // );
 
-                log::warn!(
-                    "\nTotal loops iterations={loop_count} and duration={}ms
-                         \nTotal computed count={} and duration={}ms",
-                    loop_start_ms.elapsed().as_millis(),
-                    candidate_message_count + decision_message_count + on_commit_actions_feedback_count + process_arm_count,
-                    kafka_consumer_arm_time_ms + feedback_arm_time_ms + process_arm_time_ms
-                );
+                // log::warn!(
+                //     "\nTotal loops iterations={loop_count} and duration={}ms
+                //          \nTotal computed count={} and duration={}ms",
+                //     loop_start_ms.elapsed().as_millis(),
+                //     candidate_message_count + decision_message_count + on_commit_actions_feedback_count + process_arm_count,
+                //     kafka_consumer_arm_time_ms + feedback_arm_time_ms + process_arm_time_ms
+                // );
                 // }
             };
         }
