@@ -2,7 +2,7 @@ use ahash::{HashMap, HashMapExt};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt::Debug, time::Instant};
+use std::fmt::Debug;
 use strum::{Display, EnumString};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
@@ -261,28 +261,17 @@ where
     }
 
     fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
-        let start_ms = Instant::now();
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
 
-        // let mut items_picked = vec![];
-        // let items_from_start_index: Vec<_> = self
-        //     .messages
-        //     .range(start_index..)
-        //     .flatten()
-        //     .map(|x| (x.item_ver, x.decision_ver, x.item.get_state()))
-        //     .collect();
-
         let items: Vec<ActionsMapWithVersion> = self
             .messages
             .range(start_index..)
-            // .iter()
             // Remove `None` items
             .flatten()
             // Filter only the items awaiting to be processed.
             .filter(|&x| x.item.get_state().eq(&SuffixItemState::ReadyToProcess))
-            // .inspect(|x| items_picked.push((x.item_ver, x.decision_ver.unwrap())))
             // Take while contiguous ones, whose safepoint is already processed.
             .filter(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
@@ -293,7 +282,6 @@ where
                     // If we find the suffix item from the safepoint, we need to ensure that it already in `Complete` or `Processing` state
                     Ok(Some(safepoint_item)) => {
                         matches!(safepoint_item.item.get_state(), SuffixItemState::Processing | SuffixItemState::Complete(..))
-                        // || matches!(safepoint_item.item.get_state(), SuffixItemState::Complete(..))
                     }
                     // If we couldn't find the item in suffix, it could be because it was pruned and it is safe to assume that we can consider it.
                     _ => true,
@@ -320,18 +308,6 @@ where
             })
             .collect();
 
-        // if items.len() > 1 {
-        //     warn!(
-        //         "[get_suffix_items_to_process] - Suffix length = {} | Items length = {} | start_index={start_index} | time_taken={}ns ",
-        //         self.messages.len(),
-        //         items.len(),
-        //         start_ms.elapsed().as_nanos()
-        //     );
-        // warn!(
-        //         "[get_suffix_items_to_process] - \n Items ready to process {:?} \n Items in the suffix from {start_index} till end - first item={:?} | last item={:?} | length={}",
-        //         items_picked, items_from_start_index.iter().nth(0), items_from_start_index.iter().last(), items_from_start_index.len()
-        //     );
-        // }
         items
     }
 
@@ -367,7 +343,6 @@ where
     }
 
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize> {
-        // let start_ms = Instant::now();
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
@@ -388,8 +363,6 @@ where
             .flatten()
             .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
             .last()?
-            // .rev()
-            // .find(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))?
             .item_ver;
 
         // 2. Update the prune index.
@@ -397,16 +370,6 @@ where
 
         self.update_prune_index(index.into());
         debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
-
-        let old_prune_version = self.messages[start_index].clone().unwrap().item_ver;
-        let new_prune_version = self.messages[index].clone().unwrap().item_ver;
-
-        // warn!("Prune index moved from version/offset {old_prune_version} -> {new_prune_version}");
-        // warn!(
-        //     "Suffix length = {} | old_prune_index={start_index} | new_prune_index={index} | time_taken={}ns",
-        //     self.messages.len(),
-        //     start_ms.elapsed().as_nanos()
-        // );
 
         Some(index)
     }
