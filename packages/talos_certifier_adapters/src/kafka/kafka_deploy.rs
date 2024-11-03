@@ -40,6 +40,7 @@ pub struct CreateTopicConfigs {
 
 pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopicConfigs) -> Result<KafkaDeployStatus, KafkaDeployError> {
     println!("kafka configs received from env... {kafka_config:#?}");
+    println!("topic configs received from env... {topic_configs:#?}");
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create()?;
 
     let timeout = Duration::from_secs(5);
