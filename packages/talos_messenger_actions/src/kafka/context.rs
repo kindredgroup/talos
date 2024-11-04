@@ -1,7 +1,8 @@
 use futures_executor::block_on;
-use log::{error, info};
-use rdkafka::{producer::ProducerContext, ClientContext, Message};
+use log::{error, info, warn};
+use rdkafka::{message::Headers, producer::ProducerContext, ClientContext, Message};
 use talos_messenger_core::{core::MessengerChannelFeedback, errors::MessengerActionError};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
@@ -29,6 +30,20 @@ impl ProducerContext for MessengerProducerContext {
         match result {
             Ok(msg) => {
                 info!("Message {:?} {:?}", msg.key(), msg.offset());
+                if let Some(headers) = msg.headers() {
+                    if let Some(h1) = headers.iter().find(|x| x.key.eq("messengerEndOnCommitActionsTimestamp")) {
+                        let t1 = String::from_utf8_lossy(h1.value.unwrap()).to_string();
+                        let ts1 = OffsetDateTime::parse(&t1, &Rfc3339).unwrap();
+                        let ts2 = OffsetDateTime::now_utc();
+                        let diff_time = ts2 - ts1;
+                        warn!(
+                            "Time taken between publish version={:?} from start to end is {:?}ms",
+                            msg.offset(),
+                            diff_time.as_seconds_f64() * 1_000_f64
+                        );
+                    };
+                };
+
                 // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
                 if let Err(error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(version, "kafka".to_string()))) {
                     error!("[Messenger Producer Context] Error sending feedback for version={version} with error={error:?}");
