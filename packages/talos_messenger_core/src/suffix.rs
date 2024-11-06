@@ -288,18 +288,19 @@ where
                     _ => true,
                 }
             })
+            // add timings related headers.
             .map(|x| {
                 let mut headers = x.item.get_headers().clone();
                 // Add the state timestamps
-                let state_timestamps = x
+                let state_timestamps_headers = x
                     .item
                     .get_state_transition_timestamps()
-                    .clone()
+                    // .clone()
                     .iter()
                     .map(|(state, ts)| (state.to_string(), ts.clone()))
                     .collect::<HashMap<String, String>>();
 
-                headers.extend(state_timestamps);
+                headers.extend(state_timestamps_headers);
 
                 ActionsMapWithVersion {
                     version: x.item_ver,
@@ -370,7 +371,8 @@ where
             .messages
             .range(start_index..=end_index)
             .flatten()
-            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
+            // .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
+            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Processing | SuffixItemState::Complete(..)))
             .last()?
             .item_ver;
 
