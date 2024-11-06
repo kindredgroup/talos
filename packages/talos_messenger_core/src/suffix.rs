@@ -2,7 +2,7 @@ use ahash::{HashMap, HashMapExt};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Instant};
 use strum::{Display, EnumString};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
@@ -265,6 +265,7 @@ where
 
         let start_index = current_prune_index.unwrap_or(0);
 
+        let start_ms = Instant::now();
         let items: Vec<ActionsMapWithVersion> = self
             .messages
             .range(start_index..)
@@ -273,7 +274,7 @@ where
             // Filter only the items awaiting to be processed.
             .filter(|&x| x.item.get_state().eq(&SuffixItemState::ReadyToProcess))
             // Take while contiguous ones, whose safepoint is already processed.
-            .filter(|&x| {
+            .take_while(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
                     return false;
                 };
@@ -307,6 +308,14 @@ where
                 }
             })
             .collect();
+
+        warn!(
+            "Total items in suffix ={} | Current_prune_index = {} | total items to process ={} | time taken to build the list ={}ms",
+            self.suffix_length(),
+            start_index,
+            items.len(),
+            start_ms.elapsed().as_millis()
+        );
 
         items
     }
