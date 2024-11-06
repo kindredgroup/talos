@@ -1,6 +1,6 @@
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, warn};
 use rdkafka::producer::ProducerContext;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
@@ -13,6 +13,7 @@ use talos_messenger_core::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use crate::kafka::{
@@ -51,6 +52,8 @@ where
             total_publish_count: additional_data,
         };
 
+        let h1 = headers.get("decisionCreatedTimestamp").map(|x| x.clone());
+
         let mut headers_to_publish = headers;
 
         if let Some(payload_header) = payload.headers {
@@ -67,6 +70,16 @@ where
                 Box::new(delivery_opaque),
             )
             .unwrap();
+
+        if let Some(t1) = h1 {
+            let ts1 = OffsetDateTime::parse(&t1, &Rfc3339).unwrap();
+            let ts2 = OffsetDateTime::now_utc();
+            let diff_time = ts2 - ts1;
+            warn!(
+                "Time taken from decision created to on_commit action publish = {:?}ms",
+                diff_time.as_seconds_f64() / 1_000_f64
+            );
+        }
     }
 }
 
