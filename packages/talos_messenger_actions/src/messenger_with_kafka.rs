@@ -71,16 +71,16 @@ where
             )
             .unwrap();
 
-        if let Some(t1) = h1 {
-            let ts1 = OffsetDateTime::parse(&t1, &Rfc3339).unwrap();
-            let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
-            let ts2 = OffsetDateTime::now_utc();
-            let diff_time = ts2 - ts1;
-            warn!(
-                "Time taken from decision created to on_commit action publish = {:?}ms | decision_create_ts = {t1} | on_commit_publish_ts = {timestamp}",
-                diff_time.as_seconds_f64() / 1_000_f64
-            );
-        }
+        // if let Some(t1) = h1 {
+        //     let ts1 = OffsetDateTime::parse(&t1, &Rfc3339).unwrap();
+        //     let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+        //     let ts2 = OffsetDateTime::now_utc();
+        //     let diff_time = ts2 - ts1;
+        //     warn!(
+        //         "Time taken from decision created to on_commit action publish = {:?}ms | decision_create_ts = {t1} | on_commit_publish_ts = {timestamp}",
+        //         diff_time.as_seconds_f64() / 1_000_f64
+        //     );
+        // }
     }
 }
 

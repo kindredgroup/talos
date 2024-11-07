@@ -265,7 +265,7 @@ where
 
         let start_index = current_prune_index.unwrap_or(0);
 
-        let start_ms = Instant::now();
+        // let start_ms = Instant::now();
         let items: Vec<ActionsMapWithVersion> = self
             .messages
             .range(start_index..)
@@ -310,13 +310,13 @@ where
             })
             .collect();
 
-        warn!(
-            "Total items in suffix ={} | Current_prune_index = {} | total items to process ={} | time taken to build the list ={}ms",
-            self.suffix_length(),
-            start_index,
-            items.len(),
-            start_ms.elapsed().as_millis()
-        );
+        // warn!(
+        //     "Total items in suffix ={} | Current_prune_index = {} | total items to process ={} | time taken to build the list ={}ms",
+        //     self.suffix_length(),
+        //     start_index,
+        //     items.len(),
+        //     start_ms.elapsed().as_millis()
+        // );
 
         items
     }
