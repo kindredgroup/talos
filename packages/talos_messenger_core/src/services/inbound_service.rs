@@ -50,7 +50,7 @@ where
     ///
     async fn process_next_actions(&mut self) -> MessengerServiceResult {
         let items_to_process = self.suffix.get_suffix_items_to_process();
-        let mut last_ver = None;
+        // let mut last_ver = None;
         for item in items_to_process {
             let ver = item.version;
 
@@ -77,12 +77,12 @@ where
 
             // Mark item as in process
             self.suffix.set_item_state(ver, SuffixItemState::Processing);
-            last_ver = Some(ver);
+            // last_ver = Some(ver);
         }
 
-        if let Some(ver) = last_ver {
-            let _ = self.suffix.update_prune_index_from_version(ver);
-        };
+        // if let Some(ver) = last_ver {
+        //     let _ = self.suffix.update_prune_index_from_version(ver);
+        // };
 
         Ok(())
     }
@@ -122,7 +122,7 @@ where
 
                 // self.all_completed_versions.push(version);
 
-                // let _ = self.suffix.update_prune_index_from_version(version);
+                let _ = self.suffix.update_prune_index_from_version(version);
 
                 debug!("[Actions] All actions for version {version} completed!");
             }

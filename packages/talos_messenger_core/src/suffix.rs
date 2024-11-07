@@ -371,8 +371,8 @@ where
             .messages
             .range(start_index..=end_index)
             .flatten()
-            // .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
-            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Processing | SuffixItemState::Complete(..)))
+            .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
+            // .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Processing | SuffixItemState::Complete(..)))
             .last()?
             .item_ver;
 
