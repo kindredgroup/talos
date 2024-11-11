@@ -83,19 +83,26 @@ where
 
     pub(crate) fn commit_offset_and_prune_suffix(&mut self) {
         //  Update the prune index in suffix if applicable.
-        let prune_index = self.suffix.get_meta().prune_index;
+        let SuffixMeta {
+            prune_index,
+            prune_start_threshold,
+            ..
+        } = self.suffix.get_meta();
+        // let prune_index = self.suffix.get_meta().prune_index;
 
         // If there is a prune_index, it is safe to assume, all messages prioir to this are decided + on_commit actions are actioned.
         // Therefore, it is safe to commit till that offset/version.
-        if let Some(index) = prune_index {
-            let prune_item_option = self.suffix.messages.get(index);
+        if prune_index.gt(prune_start_threshold) {
+            if let Some(index) = prune_index {
+                let prune_item_option = self.suffix.messages.get(*index);
 
-            if let Some(Some(prune_item)) = prune_item_option {
-                let commit_offset = prune_item.item_ver + 1;
-                debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
+                if let Some(Some(prune_item)) = prune_item_option {
+                    let commit_offset = prune_item.item_ver + 1;
+                    debug!("[Commit] Updating tpl to version .. {commit_offset}");
+                    let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
 
-                self.message_receiver.commit_async();
+                    let _ = self.message_receiver.commit();
+                }
             }
         }
 
