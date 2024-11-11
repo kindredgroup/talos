@@ -209,7 +209,7 @@ where
 
                         },
                         MessengerChannelFeedback::Success(version, key) => {
-                            info!("Successfully processed version={version} with action_key={key}");
+                            debug!("Successfully processed version={version} with action_key={key}");
                             self.handle_action_success(version, &key);
                         },
                     }
@@ -268,7 +268,7 @@ where
 
                         },
                         Ok(None) => {
-                            info!("No message to process..");
+                            debug!("No message to process..");
                         },
                         Err(error) => {
                             // Catch the error propogated, and if it has a version, mark the item as completed.

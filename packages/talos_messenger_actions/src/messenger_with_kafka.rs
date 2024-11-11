@@ -94,8 +94,8 @@ pub struct Configuration {
     /// Channel buffer size for the internal channels between threads
     pub channel_buffers: Option<ChannelBuffers>,
     /// Commit size to decide how often the certifier topic can be committed by the consumer.
-    /// The more ofter the commit is done has inverse impact on the latency.
-    /// Defaults to 1_000.
+    /// The more often the commit is done has inverse impact on the latency.
+    /// Defaults to 5_000.
     pub commit_size: Option<u32>,
 }
 
