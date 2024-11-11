@@ -109,7 +109,7 @@ where
                 debug!("[Commit] Updating tpl to version .. {commit_offset}");
                 let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
 
-                let _ = self.message_receiver.commit();
+                let _ = self.message_receiver.commit_async();
             }
         }
     }
