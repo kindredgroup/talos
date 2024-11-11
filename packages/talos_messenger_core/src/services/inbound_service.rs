@@ -20,7 +20,7 @@ use crate::{
 pub struct MessengerInboundServiceConfig {
     /// commit size decides when the offsets can be committed.
     /// When the number of feedbacks is greater than the commit_size, a commit is issued.
-    /// Default value is 1_000. Updating this value can impact the latency.
+    /// Default value is 5_000. Updating this value can impact the latency/throughput due to the frequency at which the commits will be issued.
     commit_size: u32,
     /// The allowed on_commit actions
     allowed_actions: HashMap<String, Vec<String>>,
@@ -30,7 +30,7 @@ impl MessengerInboundServiceConfig {
     pub fn new(allowed_actions: HashMap<String, Vec<String>>, commit_size: Option<u32>) -> Self {
         Self {
             allowed_actions,
-            commit_size: commit_size.unwrap_or(1_000),
+            commit_size: commit_size.unwrap_or(5_000),
         }
     }
 }
