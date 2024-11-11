@@ -38,6 +38,7 @@ async fn main() {
         kafka_config,
         allowed_actions,
         channel_buffers: None,
+        commit_size: None,
     };
 
     messenger_with_kafka(config).await.unwrap();
