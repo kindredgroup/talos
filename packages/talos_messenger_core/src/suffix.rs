@@ -2,7 +2,7 @@ use ahash::{HashMap, HashMapExt};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{fmt::Debug, time::Instant};
+use std::fmt::Debug;
 use strum::{Display, EnumString};
 use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
@@ -64,6 +64,8 @@ pub enum SuffixItemState {
 
 type TimeStamp = String;
 
+/// Internal timings from messenger for a candidate received.
+/// These timings help in debugging the time taken between various state changes.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, EnumString, Display, Hash)]
 pub enum MessengerStateTransitionTimestamps {
     /// Set when SuffixItemState::AwaitingDecision
@@ -268,13 +270,15 @@ where
         // let start_ms = Instant::now();
         let items: Vec<ActionsMapWithVersion> = self
             .messages
+            // we know from start_index = prune_index, everything prioir to this is already completed.
+            // This helps in taking a smaller slice out of the suffix to iterate over.
             .range(start_index..)
             // Remove `None` items
             .flatten()
             // Filter only the items awaiting to be processed.
             .filter(|&x| x.item.get_state().eq(&SuffixItemState::ReadyToProcess))
             // Take while contiguous ones, whose safepoint is already processed.
-            .take_while(|&x| {
+            .filter(|&x| {
                 let Some(safepoint) = x.item.get_safepoint() else {
                     return false;
                 };
@@ -309,14 +313,6 @@ where
                 }
             })
             .collect();
-
-        // warn!(
-        //     "Total items in suffix ={} | Current_prune_index = {} | total items to process ={} | time taken to build the list ={}ms",
-        //     self.suffix_length(),
-        //     start_index,
-        //     items.len(),
-        //     start_ms.elapsed().as_millis()
-        // );
 
         items
     }
@@ -366,13 +362,11 @@ where
             "[Update prune index] Calculating prune index in suffix slice between index {start_index} <-> {end_index}. Current prune index version {current_prune_index:?}.",
         );
 
-        // Trying using rev + find
         let safe_prune_version = self
             .messages
             .range(start_index..=end_index)
             .flatten()
             .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Complete(..)))
-            // .take_while(|item| matches!(item.item.get_state(), SuffixItemState::Processing | SuffixItemState::Complete(..)))
             .last()?
             .item_ver;
 

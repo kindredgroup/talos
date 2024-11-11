@@ -16,15 +16,14 @@ async fn main() -> Result<(), KafkaDeployError> {
     // eg: KAFKA_CREATE_TOPIC_CONFIGS="retention.ms=3600000,"
     let config_option = env_var_with_defaults!("KAFKA_CREATE_TOPIC_CONFIGS", Option::<String>);
 
-    let mut config: HashMap<String, String> = HashMap::new();
+    let mut config: HashMap<&str, &str> = HashMap::new();
 
-    if let Some(config_string) = config_option {
-        config_string.trim().split(',').for_each(|c| {
-            if let Some((k, v)) = c.trim().split_once('=') {
-                config.insert(k.to_owned(), v.to_owned());
-            }
-        });
-    };
+    let config_string = config_option.unwrap_or("".to_owned());
+    config_string.trim().split(',').for_each(|c| {
+        if let Some((k, v)) = c.trim().split_once('=') {
+            config.insert(k, v);
+        }
+    });
 
     let topic_config = CreateTopicConfigs {
         topic: kafka_config.topic.clone(),

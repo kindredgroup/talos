@@ -25,13 +25,13 @@ pub enum KafkaDeployError {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTopicConfigs {
+pub struct CreateTopicConfigs<'a> {
     /// topic to create.
     pub topic: String,
     /// Topic specific configs.
     ///
     /// see: https://docs.confluent.io/platform/current/installation/configuration/topic-configs.html
-    pub config: HashMap<String, String>,
+    pub config: HashMap<&'a str, &'a str>,
     /// Replication count for partitions in topic. Defaults to 3.
     pub replication_factor: Option<i32>,
     /// Number of paritions for the topic. Defaults to 1.
@@ -41,9 +41,9 @@ pub struct CreateTopicConfigs {
 const DEFAULT_REPLICATION_FACTOR: i32 = 3;
 const DEFAULT_NUM_PARTITIONS: i32 = 3;
 
-pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopicConfigs) -> Result<KafkaDeployStatus, KafkaDeployError> {
-    println!("kafka configs received from env... {kafka_config:#?}");
-    println!("topic configs received from env... {topic_configs:#?}");
+pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopicConfigs<'_>) -> Result<KafkaDeployStatus, KafkaDeployError> {
+    println!("kafka brokers = {:?} and usename = {}", kafka_config.brokers, kafka_config.username);
+    println!("topic configs received from env = {topic_configs:#?}");
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create()?;
 
     let timeout = Duration::from_secs(5);
@@ -56,8 +56,7 @@ pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopic
     } else {
         println!("Topic does not exist, creating...");
 
-        let mut config: Vec<(&str, &str)> = topic_configs.config.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-        config.push(("message.timestamp.type", "LogAppendTime"));
+        let config: Vec<(&str, &str)> = topic_configs.config.into_iter().collect();
 
         let topic = NewTopic {
             name: &topic_configs.topic,
