@@ -197,17 +197,17 @@ where
                     }
 
                      // Update the prune index and commit
-                    let SuffixMeta {
-                        prune_index,
-                        prune_start_threshold,
-                        ..
-                    } = self.suffix.get_meta();
+                    // let SuffixMeta {
+                    //     prune_index,
+                    //     prune_start_threshold,
+                    //     ..
+                    // } = self.suffix.get_meta();
 
-                    // NOTE: Pruning and committing offset adds to latency if done more frequently.
-                    // The more frequent this method is called has direct impact on the latency.
-                    if prune_index.gt(prune_start_threshold) {
-                        self.commit_offset_and_prune_suffix();
-                    };
+                    // // NOTE: Pruning and committing offset adds to latency if done more frequently.
+                    // // The more frequent this method is called has direct impact on the latency.
+                    // if prune_index.gt(prune_start_threshold) {
+                    self.commit_offset_and_prune_suffix();
+                    // };
 
                 }
                 // 1. Consume message.
