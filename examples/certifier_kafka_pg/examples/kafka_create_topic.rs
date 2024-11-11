@@ -10,7 +10,7 @@ async fn main() -> Result<(), KafkaDeployError> {
 
     let kafka_config = KafkaConfig::from_env(None);
 
-    let replication_count = env_var_with_defaults!("KAFKA_CREATE_TOPIC_REPLICATION_COUNT", Option::<i32>, 3);
+    let replication_factor = env_var_with_defaults!("KAFKA_CREATE_TOPIC_REPLICATION_COUNT", Option::<i32>, 3);
     let num_partitions = env_var_with_defaults!("KAFKA_CREATE_TOPIC_PARTITIONS", Option::<i32>, 1);
 
     // eg: KAFKA_CREATE_TOPIC_CONFIGS="retention.ms=3600000,"
@@ -29,7 +29,7 @@ async fn main() -> Result<(), KafkaDeployError> {
     let topic_config = CreateTopicConfigs {
         topic: kafka_config.topic.clone(),
         config,
-        replication_count,
+        replication_factor,
         num_partitions,
     };
 

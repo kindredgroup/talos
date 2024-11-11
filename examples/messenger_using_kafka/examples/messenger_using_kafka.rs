@@ -26,7 +26,7 @@ async fn main() {
 
     let suffix_config = SuffixConfig {
         capacity: 400_000,
-        prune_start_threshold: Some(1_000),
+        prune_start_threshold: Some(2_000),
         min_size_after_prune: None,
     };
 

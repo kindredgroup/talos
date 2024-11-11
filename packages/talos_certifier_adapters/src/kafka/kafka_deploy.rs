@@ -33,10 +33,13 @@ pub struct CreateTopicConfigs {
     /// see: https://docs.confluent.io/platform/current/installation/configuration/topic-configs.html
     pub config: HashMap<String, String>,
     /// Replication count for partitions in topic. Defaults to 3.
-    pub replication_count: Option<i32>,
+    pub replication_factor: Option<i32>,
     /// Number of paritions for the topic. Defaults to 1.
     pub num_partitions: Option<i32>,
 }
+
+const DEFAULT_REPLICATION_FACTOR: i32 = 3;
+const DEFAULT_NUM_PARTITIONS: i32 = 3;
 
 pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopicConfigs) -> Result<KafkaDeployStatus, KafkaDeployError> {
     println!("kafka configs received from env... {kafka_config:#?}");
@@ -58,8 +61,8 @@ pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopic
 
         let topic = NewTopic {
             name: &topic_configs.topic,
-            num_partitions: topic_configs.num_partitions.unwrap_or(1),
-            replication: TopicReplication::Fixed(topic_configs.replication_count.unwrap_or(3)),
+            num_partitions: topic_configs.num_partitions.unwrap_or(DEFAULT_NUM_PARTITIONS),
+            replication: TopicReplication::Fixed(topic_configs.replication_factor.unwrap_or(DEFAULT_REPLICATION_FACTOR)),
             config,
         };
 
