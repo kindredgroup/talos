@@ -1,10 +1,38 @@
-use talos_certifier_adapters::kafka::kafka_deploy::{create_topic, KafkaDeployError, KafkaDeployStatus};
+use std::collections::HashMap;
+
+use talos_certifier_adapters::kafka::kafka_deploy::{create_topic, CreateTopicConfigs, KafkaDeployError, KafkaDeployStatus};
+use talos_common_utils::env_var_with_defaults;
+use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 #[tokio::main]
 async fn main() -> Result<(), KafkaDeployError> {
-    println!("deploying kafka...");
+    println!("Creating kafka topic...");
 
-    let status = create_topic().await?;
+    let kafka_config = KafkaConfig::from_env(None);
+
+    let replication_factor = env_var_with_defaults!("KAFKA_CREATE_TOPIC_REPLICATION_COUNT", Option::<i32>, 3);
+    let num_partitions = env_var_with_defaults!("KAFKA_CREATE_TOPIC_PARTITIONS", Option::<i32>, 1);
+
+    // eg: KAFKA_CREATE_TOPIC_CONFIGS="retention.ms=3600000,"
+    let config_option = env_var_with_defaults!("KAFKA_CREATE_TOPIC_CONFIGS", Option::<String>);
+
+    let mut config: HashMap<&str, &str> = HashMap::new();
+
+    let config_string = config_option.unwrap_or("".to_owned());
+    config_string.trim().split(',').for_each(|c| {
+        if let Some((k, v)) = c.trim().split_once('=') {
+            config.insert(k, v);
+        }
+    });
+
+    let topic_config = CreateTopicConfigs {
+        topic: kafka_config.topic.clone(),
+        config,
+        replication_factor,
+        num_partitions,
+    };
+
+    let status = create_topic(&kafka_config, topic_config).await?;
 
     match status {
         KafkaDeployStatus::TopicExists => {

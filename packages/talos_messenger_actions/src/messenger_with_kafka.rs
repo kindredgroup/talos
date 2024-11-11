@@ -7,7 +7,7 @@ use talos_certifier_adapters::KafkaConsumer;
 use talos_messenger_core::{
     core::{MessengerPublisher, PublishActionType},
     errors::MessengerServiceResult,
-    services::MessengerInboundService,
+    services::{MessengerInboundService, MessengerInboundServiceConfig},
     suffix::MessengerCandidate,
     talos_messenger_service::TalosMessengerService,
 };
@@ -93,6 +93,10 @@ pub struct Configuration {
     pub allowed_actions: HashMap<String, Vec<String>>,
     /// Channel buffer size for the internal channels between threads
     pub channel_buffers: Option<ChannelBuffers>,
+    /// Commit size to decide how often the certifier topic can be committed by the consumer.
+    /// The more often the commit is done has inverse impact on the latency.
+    /// Defaults to 5_000.
+    pub commit_size: Option<u32>,
 }
 
 pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResult {
@@ -112,14 +116,8 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
 
     // START - Inbound service
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(config.suffix_config.unwrap_or_default());
-
-    let inbound_service = MessengerInboundService {
-        message_receiver: kafka_consumer,
-        tx_actions_channel,
-        rx_feedback_channel,
-        suffix,
-        allowed_actions: config.allowed_actions,
-    };
+    let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size);
+    let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, inbound_service_config);
     // END - Inbound service
 
     // START - Publish service

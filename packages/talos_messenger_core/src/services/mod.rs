@@ -1,3 +1,3 @@
 mod inbound_service;
 
-pub use inbound_service::MessengerInboundService;
+pub use inbound_service::{MessengerInboundService, MessengerInboundServiceConfig};
