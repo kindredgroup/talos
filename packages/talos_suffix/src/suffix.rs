@@ -149,6 +149,14 @@ where
             return None;
         };
 
+        // If prune_index is less than prune_threshold, it is not ready
+        if let Some(prune_index) = self.meta.prune_index {
+            if prune_index.lt(&prune_threshold) {
+                debug!("[SUFFIX PRUNE CHECK] Prune index {prune_index} is less than prune_threshold {prune_threshold}. Not ready to prune yet.");
+                return None;
+            }
+        }
+
         // If not reached the max threshold
         if self.suffix_length() < prune_threshold {
             debug!(
