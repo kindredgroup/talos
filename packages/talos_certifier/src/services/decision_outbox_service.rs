@@ -108,11 +108,16 @@ impl SystemService for DecisionOutboxService {
         let publisher = Arc::clone(&self.decision_publisher);
         let system = self.system.clone();
 
+        let max_capacity = self.decision_outbox_channel_tx.max_capacity();
+        let current_capacity = self.decision_outbox_channel_tx.capacity();
         if let Some(decision_channel_message) = self.decision_outbox_channel_rx.recv().await {
             let DecisionOutboxChannelMessage {
                 headers,
                 message: decision_message,
             } = decision_channel_message;
+            if max_capacity - current_capacity < 100 {
+                log::warn!("Current capacity almost reaching MAX CAPACITY for decision outbox channel = {current_capacity}/{max_capacity}");
+            }
             tokio::spawn({
                 let decision_headers = DecisionHeaderBuilder::with_additional_headers(headers.into()).add_meta_headers(DecisionMetaHeaders::new(
                     DEFAULT_DECISION_MESSAGE_VERSION, // major version of decision message

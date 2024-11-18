@@ -32,8 +32,8 @@ pub struct CertifierService {
     pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
-    pub total_prune: (u32, u128),
-    pub total_decisions: (u32, u128, Instant),
+    // pub total_prune: (u32, u128),
+    // pub total_decisions: (u32, u128, Instant),
 }
 
 impl CertifierService {
@@ -58,8 +58,8 @@ impl CertifierService {
             decision_outbox_tx,
             commit_offset,
             config,
-            total_decisions: (0, 0, Instant::now()),
-            total_prune: (0, 0),
+            // total_decisions: (0, 0, Instant::now()),
+            // total_prune: (0, 0),
         }
     }
 
@@ -101,7 +101,7 @@ impl CertifierService {
             decision_version, decision_message
         );
 
-        let start_decision_timing = Instant::now();
+        // let start_decision_timing = Instant::now();
 
         // Reserve space if version is beyond the suffix capacity
         //
@@ -131,7 +131,7 @@ impl CertifierService {
 
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
-                let start_ms = Instant::now();
+                // let start_ms = Instant::now();
 
                 let pruned_suffix_items = self.suffix.prune_till_index(prune_index).unwrap();
 
@@ -141,19 +141,19 @@ impl CertifierService {
                 Certifier::prune_set(&mut self.certifier.reads, &readset);
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
 
-                let end_ns = start_ms.elapsed().as_nanos();
+                // let end_ns = start_ms.elapsed().as_nanos();
 
-                self.total_prune.0 += 1;
-                self.total_prune.1 = end_ns;
+                // self.total_prune.0 += 1;
+                // self.total_prune.1 = end_ns;
 
-                log::warn!(
-                    "--- Pruning suffix with prune_index={prune_index} | threshold={:?} | elapsed_ns={:?}ns \n
-                     +++ Total time taken to prune {} times = {}ns",
-                    self.suffix.get_meta().prune_start_threshold,
-                    end_ns,
-                    self.total_prune.0,
-                    self.total_prune.1
-                );
+                // log::warn!(
+                //     "--- Pruning suffix with prune_index={prune_index} | threshold={:?} | elapsed_ns={:?}ns \n
+                //      +++ Total time taken to prune {} times = {}ns",
+                //     self.suffix.get_meta().prune_start_threshold,
+                //     end_ns,
+                //     self.total_prune.0,
+                //     self.total_prune.1
+                // );
             }
             // remove sets from certifier if pruning?
 
@@ -165,17 +165,17 @@ impl CertifierService {
             }
         }
 
-        self.total_decisions.0 += 1;
-        self.total_decisions.1 += start_decision_timing.elapsed().as_millis();
+        // self.total_decisions.0 += 1;
+        // self.total_decisions.1 += start_decision_timing.elapsed().as_millis();
 
-        let time_diff = start_decision_timing.duration_since(self.total_decisions.2.clone());
-        log::warn!(
-            "### Total time taken for {} decisions = {} ms, duration since last = {}",
-            self.total_decisions.0,
-            self.total_decisions.1,
-            time_diff.as_millis()
-        );
-        self.total_decisions.2 = start_decision_timing;
+        // let time_diff = start_decision_timing.duration_since(self.total_decisions.2.clone());
+        // log::warn!(
+        //     "### Total time taken for {} decisions = {} ms, duration since last = {}ms",
+        //     self.total_decisions.0,
+        //     self.total_decisions.1,
+        //     time_diff.as_millis()
+        // );
+        // self.total_decisions.2 = start_decision_timing;
 
         Ok(())
     }
