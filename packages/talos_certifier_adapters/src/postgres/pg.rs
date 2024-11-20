@@ -35,12 +35,14 @@ impl Pg {
             recycling_method: deadpool_postgres::RecyclingMethod::Fast,
         });
 
-        let pool_config = PoolConfig {
-            max_size: pg_config.pool_size.unwrap_or_default() as usize,
-            ..PoolConfig::default()
-        };
+        if let Some(pool_max_size) = pg_config.pool_size {
+            let pool_config = PoolConfig {
+                max_size: pool_max_size as usize,
+                ..PoolConfig::default()
+            };
 
-        config.pool = Some(pool_config);
+            config.pool = Some(pool_config);
+        }
 
         let pool = config.create_pool(Some(Runtime::Tokio1), NoTls).map_err(PgError::CreatePool)?;
 
