@@ -1,5 +1,6 @@
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use log::{debug, error, warn};
@@ -128,8 +129,12 @@ impl CertifierService {
                 self.suffix.update_prune_index(candidate_version_index);
             }
 
+            let old_prune_index = self.suffix.get_meta().prune_index;
+            let old_suffix_len = self.suffix.suffix_length();
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
+                let start_ms = Instant::now();
+
                 let pruned_suffix_items = self.suffix.prune_till_index(prune_index).unwrap();
 
                 let pruned_items = get_nonempty_suffix_items(pruned_suffix_items.iter());
@@ -137,6 +142,14 @@ impl CertifierService {
 
                 Certifier::prune_set(&mut self.certifier.reads, &readset);
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
+
+                let new_suffix_length = self.suffix.suffix_length();
+                warn!(
+                    "++ Pruned the suffix in {:?}ms.. \n
+                | old_suffix_length = {old_suffix_len:?} | old prune_index = {old_prune_index:?} \n
+                | new_suffix_length = {new_suffix_length:?} | safe prune_index = {prune_index:?} ",
+                    start_ms.elapsed().as_millis()
+                );
             }
             // remove sets from certifier if pruning?
 
