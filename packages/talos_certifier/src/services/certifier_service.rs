@@ -132,6 +132,14 @@ impl CertifierService {
             let old_prune_index = self.suffix.get_meta().prune_index;
             let old_suffix_len = self.suffix.suffix_length();
             let old_head = self.suffix.get_meta().head;
+
+            let mut old_prune_index_vers = None;
+            if old_prune_index.is_some() {
+                if let Some(item) = self.suffix.messages[old_prune_index.unwrap()].clone() {
+                    old_prune_index_vers = Some(item.item_ver);
+                }
+            };
+
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
                 let start_ms = Instant::now();
@@ -145,12 +153,30 @@ impl CertifierService {
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
 
                 let new_suffix_length = self.suffix.suffix_length();
-                debug!(
+
+                // prune_index returned from `get_safe_prune_index` can be a lower index due to suffix.meta.min_size_after_prune value.
+                // Although we prune only till this new/lower prune_index, we know everything till the previous prune_index was already decided
+                // and is therefore safe to update the prune_index version deriving from the corresponding version
+                if let Some(old_vers) = old_prune_index_vers {
+                    let new_prune_index = self.suffix.index_from_head(old_vers);
+                    warn!("| old_prune_vers as index in new = {:?}", new_prune_index);
+                    self.suffix.update_prune_index(new_prune_index);
+                }
+
+                let mut new_prune_index_vers = None;
+                if let Some(new_prune_index) = self.suffix.meta.prune_index {
+                    if let Some(item) = self.suffix.messages[new_prune_index].clone() {
+                        new_prune_index_vers = Some(item.item_ver)
+                    }
+                };
+
+                warn!(
                     "++ Pruned the suffix in {:?}ms.. \n
-                | old_suffix_length = {old_suffix_len:?} | old prune_index = {old_prune_index:?} | old head = {old_head:?}\n
-                | new_suffix_length = {new_suffix_length:?} | safe prune_index = {prune_index:?} | current head = {} ",
+                    | old_suffix_length = {old_suffix_len:?} | old prune_index = {old_prune_index:?} | old prune_index_vers = {old_prune_index_vers:?} | old head = {old_head:?}\n
+                    | new_suffix_length = {new_suffix_length:?} | safe prune_index = {prune_index:?} | new prune_index_vers = {:?} | current head = {}",
                     start_ms.elapsed().as_millis(),
-                    self.suffix.get_meta().head
+                    new_prune_index_vers,
+                    self.suffix.get_meta().head,
                 );
             }
             // remove sets from certifier if pruning?
