@@ -1,6 +1,6 @@
 // Suffix
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use log::{debug, error, info, warn};
 
@@ -172,22 +172,20 @@ where
             return None;
         }
 
-        let mut prune_index = self.meta.prune_index;
+        let prune_index = self.meta.prune_index;
 
         // If the `min_size_after_prune=None`, then we prune and the current prune index.
         let Some(suffix_min_size) = self.meta.min_size_after_prune else {
             return prune_index;
         };
 
-        let min_threshold_index = self.messages.len() - suffix_min_size - 1;
+        let min_threshold_index = self.messages.len() - prune_index.unwrap();
 
-        if min_threshold_index <= prune_index.unwrap() {
-            if self.messages[min_threshold_index].is_some() {
-                prune_index = Some(min_threshold_index);
-            } else {
-                let next_prune_index = self.find_prune_till_index(min_threshold_index);
-                prune_index = Some(next_prune_index);
-            }
+        // If the length of the suffix is greater than or equal to the min_size_after_prune value,
+        // then the prune_index is safe, and pruning can happen.
+        // The prune_start_threshold check is already done in earlier step, therefore it is safe to
+        // assume, if we reach till here, then the prune_index >= prune_start_threshold.
+        if min_threshold_index.ge(&suffix_min_size) {
             return prune_index;
         }
 
@@ -303,22 +301,30 @@ where
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
         info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        let start_ms = Instant::now();
         // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
         // let k = self.retrieve_all_some_vec_items();
         // info!("Items before pruning are \n{k:?}");
 
-        let drained_entries = self.messages.drain(..index).collect();
+        let drained_entries = self.messages.drain(..=index).collect();
+        let drain_end_ms = start_ms.elapsed().as_micros();
 
         self.update_prune_index(None);
 
+        let start_ms_2 = Instant::now();
         if let Some(Some(s_item)) = self.messages.iter().find(|m| m.is_some()) {
             self.update_head(s_item.item_ver);
         } else {
             self.update_head(0)
         }
 
-        // info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        info!(
+            "Prune took {} microseconds and update head took {} microseconds",
+            drain_end_ms,
+            start_ms_2.elapsed().as_micros()
+        );
         // let k = self.retrieve_all_some_vec_items();
         // info!("Items after pruning are \n{k:?}");
         // }
