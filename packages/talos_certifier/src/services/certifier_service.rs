@@ -131,6 +131,7 @@ impl CertifierService {
 
             let old_prune_index = self.suffix.get_meta().prune_index;
             let old_suffix_len = self.suffix.suffix_length();
+            let old_head = self.suffix.get_meta().head;
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
                 let start_ms = Instant::now();
@@ -144,11 +145,12 @@ impl CertifierService {
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
 
                 let new_suffix_length = self.suffix.suffix_length();
-                warn!(
+                debug!(
                     "++ Pruned the suffix in {:?}ms.. \n
-                | old_suffix_length = {old_suffix_len:?} | old prune_index = {old_prune_index:?} \n
-                | new_suffix_length = {new_suffix_length:?} | safe prune_index = {prune_index:?} ",
-                    start_ms.elapsed().as_millis()
+                | old_suffix_length = {old_suffix_len:?} | old prune_index = {old_prune_index:?} | old head = {old_head:?}\n
+                | new_suffix_length = {new_suffix_length:?} | safe prune_index = {prune_index:?} | current head = {} ",
+                    start_ms.elapsed().as_millis(),
+                    self.suffix.get_meta().head
                 );
             }
             // remove sets from certifier if pruning?
