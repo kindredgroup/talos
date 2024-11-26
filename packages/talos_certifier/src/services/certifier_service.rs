@@ -134,41 +134,13 @@ impl CertifierService {
 
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
-                let start_suffix_ms = Instant::now();
                 let pruned_suffix_items = self.suffix.prune_till_index(prune_index).unwrap();
-                let end_suffix_ms = start_suffix_ms.elapsed().as_micros();
-
                 let pruned_items = get_nonempty_suffix_items(pruned_suffix_items.iter());
 
-                let pruned_items: Vec<_> = pruned_items.collect();
-                let prune_items_size = pruned_items.len();
+                let (readset, writeset) = generate_certifier_sets_from_suffix(pruned_items);
 
-                let start_suffix_ms = Instant::now();
-
-                let (readset, writeset) = generate_certifier_sets_from_suffix(pruned_items.into_iter());
-                let end_generate_sets_ms = start_suffix_ms.elapsed().as_micros();
-
-                let start_suffix_ms = Instant::now();
-                let readset_size_before = self.certifier.reads.len();
                 Certifier::prune_set(&mut self.certifier.reads, &readset);
-                let readset_size_after = self.certifier.reads.len();
-
-                let end_readset_prune_ms = start_suffix_ms.elapsed().as_micros();
-
-                let start_suffix_ms = Instant::now();
-                let writeset_size_before = self.certifier.writes.len();
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
-                let writeset_size_after = self.certifier.writes.len();
-                let end_writeset_prune_ms = start_suffix_ms.elapsed().as_micros();
-
-                warn!("++ Prune suffix = {end_suffix_ms}µs | prune size = {prune_items_size}");
-                warn!(
-                    "~~ Generate set = {end_generate_sets_ms}µs | readset size = {} | writeset size = {}",
-                    readset.len(),
-                    writeset.len()
-                );
-                warn!("-- prune readset = {end_readset_prune_ms}µs | before prune size = {readset_size_before} | after prune size = {readset_size_after}");
-                warn!("-- prune writeset = {end_writeset_prune_ms}µs | before prune size = {writeset_size_before} | after prune size = {writeset_size_after}");
 
                 // prune_index returned from `get_safe_prune_index` can be a lower index due to suffix.meta.min_size_after_prune value.
                 // Although we prune only till this new/lower prune_index, we know everything till the previous prune_index was already decided
