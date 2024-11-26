@@ -1,6 +1,6 @@
 [package]
 name = "cohort_banking"
-version = "0.2.22"
+version = "0.2.23-dev"
 edition = "2021"
 
 [dependencies]
@@ -23,11 +23,11 @@ strum =             { version = "0.25", features = ["derive"] }
 tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
 uuid =              { version = "1.4.1", features = ["v4"] }
 
-cohort_sdk =                 { path = "../cohort_sdk", version = "0.2.22" }
-banking_common =             { path = "../banking_common", version = "0.2.22" }
-talos_agent =                { path = "../talos_agent", version = "0.2.22" }
-talos_metrics =              { path = "../talos_metrics", version = "0.2.22" }
-talos_certifier =            { path = "../talos_certifier", version = "0.2.22" }
-talos_cohort_replicator =    { path = "../talos_cohort_replicator", version = "0.2.22" }
-talos_common_utils =         { path = "../talos_common_utils", version = "0.2.22" }
-talos_suffix =               { path = "../talos_suffix", version = "0.2.22" }
+cohort_sdk =                 { path = "../cohort_sdk", version = "0.2.23-dev" }
+banking_common =             { path = "../banking_common", version = "0.2.23-dev" }
+talos_agent =                { path = "../talos_agent", version = "0.2.23-dev" }
+talos_metrics =              { path = "../talos_metrics", version = "0.2.23-dev" }
+talos_certifier =            { path = "../talos_certifier", version = "0.2.23-dev" }
+talos_cohort_replicator =    { path = "../talos_cohort_replicator", version = "0.2.23-dev" }
+talos_common_utils =         { path = "../talos_common_utils", version = "0.2.23-dev" }
+talos_suffix =               { path = "../talos_suffix", version = "0.2.23-dev" }
