@@ -160,9 +160,17 @@ impl Certifier {
     ///
     /// Removes if key is found and the version < version in the certifier.
     pub fn prune_set(self_items: &mut AHashMap<String, u64>, remove_items: &AHashMap<String, u64>) {
-        self_items.retain(|k, v| match remove_items.get(k) {
-            Some(read_value) => read_value > v,
-            None => true,
+        // self_items.retain(|k, v| match remove_items.get(k) {
+        //     Some(read_value) => read_value > v,
+        //     None => true,
+        // });
+
+        remove_items.iter().for_each(|(k, v)| {
+            if let Some(item) = self_items.get(k) {
+                if item > v {
+                    self_items.remove(k);
+                }
+            };
         });
     }
 }
