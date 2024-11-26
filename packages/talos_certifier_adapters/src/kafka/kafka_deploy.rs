@@ -42,7 +42,7 @@ const DEFAULT_REPLICATION_FACTOR: i32 = 3;
 const DEFAULT_NUM_PARTITIONS: i32 = 3;
 
 pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopicConfigs<'_>) -> Result<KafkaDeployStatus, KafkaDeployError> {
-    println!("kafka brokers = {:?} and usename = {}", kafka_config.brokers, kafka_config.username);
+    println!("kafka brokers = {:?} and username = {}", kafka_config.brokers, kafka_config.username);
     println!("topic configs received from env = {topic_configs:#?}");
     let consumer: StreamConsumer = kafka_config.build_consumer_config().create()?;
 
@@ -70,6 +70,9 @@ pub async fn create_topic(kafka_config: &KafkaConfig, topic_configs: CreateTopic
         let admin: AdminClient<DefaultClientContext> = kafka_config.build_consumer_config().create()?;
 
         let results = admin.create_topics(&[topic], &opts).await?;
+        if let Err((_, RDKafkaErrorCode::TopicAlreadyExists)) = results[0] {
+            return Ok(KafkaDeployStatus::TopicExists);
+        }
 
         results[0].as_ref().map_err(|e| KafkaDeployError::TopicCreation(topic_configs.topic, e.1))?;
 
