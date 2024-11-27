@@ -1,4 +1,4 @@
-use log::warn;
+use log::debug;
 use talos_common_utils::{env_var, env_var_with_defaults};
 
 #[derive(Debug, Clone)]
@@ -14,7 +14,7 @@ pub struct PgConfig {
 impl PgConfig {
     pub fn from_env() -> PgConfig {
         let pool_size = env_var_with_defaults!("PG_POOL_SIZE", Option::<u32>);
-        warn!("Pool size used... {pool_size:?}");
+        debug!("Pool size used... {pool_size:?}");
         PgConfig {
             user: env_var!("PG_USER"),
             password: env_var!("PG_PASSWORD"),

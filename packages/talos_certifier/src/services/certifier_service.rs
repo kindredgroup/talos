@@ -122,11 +122,9 @@ impl CertifierService {
                 self.suffix.update_prune_index(candidate_version_index);
             }
 
-            let prune_index_before_pruning = self.suffix.get_meta().prune_index;
-
             let mut prune_candidate_version = None;
-            if prune_index_before_pruning.is_some() {
-                if let Some(item) = self.suffix.messages[prune_index_before_pruning.unwrap()].clone() {
+            if let Some(prune_index_before_pruning) = self.suffix.get_meta().prune_index {
+                if let Some(Some(item)) = self.suffix.messages.get(prune_index_before_pruning) {
                     prune_candidate_version = Some(item.item_ver);
                 }
             };
