@@ -1,6 +1,6 @@
 {
   "name": "@kindredgroup/cohort_sdk_client",
-  "version": "0.2.23-dev",
+  "version": "0.2.23",
   "author": "Kindredgroup",
   "license": "MIT",
   "description": "The Cohort SDK library for Talos Certifier clients",
