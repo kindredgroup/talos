@@ -1,13 +1,13 @@
 [package]
 name = "agent_client"
-version = "0.2.23"
+version = "0.2.24-dev"
 edition = "2021"
 
 [dev-dependencies]
 
-talos_agent =         { path = "../../packages/talos_agent", version = "0.2.23" }
-talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.2.23" }
-examples_support =    { path = "../../packages/examples_support", version = "0.2.23" }
+talos_agent =         { path = "../../packages/talos_agent", version = "0.2.24-dev" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.2.24-dev" }
+examples_support =    { path = "../../packages/examples_support", version = "0.2.24-dev" }
 
 async-channel = { version = "1.8.0" }
 async-trait =   { workspace = true }
