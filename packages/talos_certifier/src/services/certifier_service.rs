@@ -122,15 +122,33 @@ impl CertifierService {
                 self.suffix.update_prune_index(candidate_version_index);
             }
 
+            let mut prune_candidate_version = None;
+            if let Some(prune_index_before_pruning) = self.suffix.get_meta().prune_index {
+                if let Some(Some(item)) = self.suffix.messages.get(prune_index_before_pruning) {
+                    prune_candidate_version = Some(item.item_ver);
+                }
+            };
+
             // prune suffix if required?
             if let Some(prune_index) = self.suffix.get_safe_prune_index() {
                 let pruned_suffix_items = self.suffix.prune_till_index(prune_index).unwrap();
-
                 let pruned_items = get_nonempty_suffix_items(pruned_suffix_items.iter());
+
                 let (readset, writeset) = generate_certifier_sets_from_suffix(pruned_items);
 
                 Certifier::prune_set(&mut self.certifier.reads, &readset);
                 Certifier::prune_set(&mut self.certifier.writes, &writeset);
+
+                // prune_index returned from `get_safe_prune_index` can be a lower index due to suffix.meta.min_size_after_prune value.
+                // Although we prune only till this new/lower prune_index, we know everything till the previous prune_index was already decided
+                // and is therefore safe to update the prune_index version deriving from the corresponding version.
+                //
+                // This a tiny optimisation which helps in places where a slice is build using the prune_index as the
+                // start or end of the slice boundary.
+                if let Some(prune_vers) = prune_candidate_version {
+                    let new_prune_index = self.suffix.index_from_head(prune_vers);
+                    self.suffix.update_prune_index(new_prune_index);
+                }
             }
             // remove sets from certifier if pruning?
 

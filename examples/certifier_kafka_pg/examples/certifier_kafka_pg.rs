@@ -24,7 +24,7 @@ async fn main() -> Result<(), impl std::error::Error> {
     let suffix_config = Some(SuffixConfig {
         capacity: 400_000,
         prune_start_threshold: Some(300_000),
-        min_size_after_prune: Some(250_000),
+        min_size_after_prune: Some(150_000),
     });
 
     let configuration = Configuration {

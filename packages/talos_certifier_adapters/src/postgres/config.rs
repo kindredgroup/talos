@@ -1,4 +1,5 @@
-use talos_common_utils::env_var;
+use log::debug;
+use talos_common_utils::{env_var, env_var_with_defaults};
 
 #[derive(Debug, Clone)]
 pub struct PgConfig {
@@ -7,16 +8,20 @@ pub struct PgConfig {
     pub host: String,
     pub port: String,
     pub database: String,
+    pub pool_size: Option<u32>,
 }
 
 impl PgConfig {
     pub fn from_env() -> PgConfig {
+        let pool_size = env_var_with_defaults!("PG_POOL_SIZE", Option::<u32>);
+        debug!("Pool size used... {pool_size:?}");
         PgConfig {
             user: env_var!("PG_USER"),
             password: env_var!("PG_PASSWORD"),
             host: env_var!("PG_HOST"),
             port: env_var!("PG_PORT"),
             database: env_var!("PG_DATABASE"),
+            pool_size,
         }
     }
     pub fn get_base_connection_string(&self) -> String {

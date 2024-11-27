@@ -138,6 +138,7 @@ impl SystemService for DecisionOutboxService {
                             }
                         }
                         Err(db_error) => {
+                            error!("Error saving decision to XDB with reason={:?}", db_error.to_string());
                             system.system_notifier.send(SystemMessage::ShutdownWithError(db_error)).unwrap();
                         }
                     };

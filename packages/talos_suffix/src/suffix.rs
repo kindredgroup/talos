@@ -1,6 +1,6 @@
 // Suffix
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use log::{debug, error, info, warn};
 
@@ -149,6 +149,14 @@ where
             return None;
         };
 
+        // If prune_index is less than prune_threshold, it is not ready
+        if let Some(prune_index) = self.meta.prune_index {
+            if prune_index.lt(&prune_threshold) {
+                debug!("[SUFFIX PRUNE CHECK] Prune index {prune_index} is less than prune_threshold {prune_threshold}. Not ready to prune yet.");
+                return None;
+            }
+        }
+
         // If not reached the max threshold
         if self.suffix_length() < prune_threshold {
             debug!(
@@ -295,22 +303,30 @@ where
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
         info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        let start_ms = Instant::now();
         // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
         // let k = self.retrieve_all_some_vec_items();
         // info!("Items before pruning are \n{k:?}");
 
         let drained_entries = self.messages.drain(..index).collect();
+        let drain_end_ms = start_ms.elapsed().as_micros();
 
         self.update_prune_index(None);
 
+        let start_ms_2 = Instant::now();
         if let Some(Some(s_item)) = self.messages.iter().find(|m| m.is_some()) {
             self.update_head(s_item.item_ver);
         } else {
             self.update_head(0)
         }
 
-        // info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        info!(
+            "Prune took {} microseconds and update head took {} microseconds",
+            drain_end_ms,
+            start_ms_2.elapsed().as_micros()
+        );
         // let k = self.retrieve_all_some_vec_items();
         // info!("Items after pruning are \n{k:?}");
         // }
