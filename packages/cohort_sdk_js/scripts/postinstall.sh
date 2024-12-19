@@ -55,7 +55,8 @@ if [ "$SKIP_NAPI_RS_STEP" == "true" ]; then
 else
     echo "Executing 'npx napi build --platform --release' in 'dist/talos/packages/cohort_sdk_js'"
     cd dist/talos/packages/cohort_sdk_js
-    npx napi build --platform --release
+    cargo update napi-build@2.1.4 --precise 2.1.3
+    npx napi build --platform --release 
 fi
 
 returnStatus=$(($?+0))
