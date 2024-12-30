@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use strum::{Display, EnumIter, EnumString};
+use talos_certifier::ports::errors::MessagePublishError;
 
 use crate::errors::{MessengerActionError, MessengerServiceResult};
 
@@ -23,7 +24,13 @@ pub trait MessengerPublisher {
     type Payload;
     type AdditionalData;
     fn get_publish_type(&self) -> PublishActionType;
-    async fn send(&self, version: u64, payload: Self::Payload, headers: HashMap<String, String>, additional_data: Self::AdditionalData) -> ();
+    async fn send(
+        &self,
+        version: u64,
+        payload: Self::Payload,
+        headers: HashMap<String, String>,
+        additional_data: Self::AdditionalData,
+    ) -> Result<(), MessagePublishError>;
 }
 
 /// Trait to be implemented by all services.

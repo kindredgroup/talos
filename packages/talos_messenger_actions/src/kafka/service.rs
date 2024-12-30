@@ -56,7 +56,9 @@ where
 
                                             headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
                                             async move {
-                                                publisher.send(version, action, headers, total_len ).await;
+                                                if let Err(publish_error) = publisher.send(version, action, headers, total_len ).await {
+                                                    error!("Failed to publish message for version={version} with error {publish_error}")
+                                                }
                                             }
                                         });
                                         join_all(publish_vec).await;
