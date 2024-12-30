@@ -2,11 +2,11 @@ use ahash::HashMap;
 use async_trait::async_trait;
 use log::debug;
 use rdkafka::producer::ProducerContext;
-use talos_certifier::ports::MessageReciever;
+use talos_certifier::ports::{errors::MessagePublishError, MessageReciever};
 use talos_certifier_adapters::KafkaConsumer;
 use talos_messenger_core::{
     core::{MessengerPublisher, PublishActionType},
-    errors::MessengerServiceResult,
+    errors::{MessengerServiceError, MessengerServiceErrorKind, MessengerServiceResult},
     services::{MessengerInboundService, MessengerInboundServiceConfig},
     suffix::MessengerCandidate,
     talos_messenger_service::TalosMessengerService,
@@ -37,13 +37,26 @@ where
         PublishActionType::Kafka
     }
 
-    async fn send(&self, version: u64, payload: Self::Payload, headers: HashMap<String, String>, additional_data: Self::AdditionalData) -> () {
+    async fn send(
+        &self,
+        version: u64,
+        payload: Self::Payload,
+        headers: HashMap<String, String>,
+        additional_data: Self::AdditionalData,
+    ) -> Result<(), MessagePublishError> {
         debug!("[MessengerKafkaPublisher] Publishing message with payload=\n{payload:#?}");
 
         let mut bytes: Vec<u8> = Vec::new();
-        serde_json::to_writer(&mut bytes, &payload.value).unwrap();
+        serde_json::to_writer(&mut bytes, &payload.value).map_err(|e| MessagePublishError {
+            reason: format!("failed to serialize payload for version={version} with error {e}").to_string(),
+            data: Some(payload.value.to_string()),
+        })?;
 
-        let payload_str = std::str::from_utf8(&bytes).unwrap();
+        let payload_str = std::str::from_utf8(&bytes).map_err(|e| MessagePublishError {
+            reason: format!("failed to parse payload for version={version} with error {e}").to_string(),
+            data: Some(payload.value.to_string()),
+        })?;
+
         debug!("[MessengerKafkaPublisher] base_record=\n{payload_str:#?}");
 
         let delivery_opaque = MessengerProducerDeliveryOpaque {
@@ -57,16 +70,14 @@ where
             headers_to_publish.extend(payload_header);
         }
 
-        self.publisher
-            .publish_to_topic(
-                &payload.topic,
-                payload.partition,
-                payload.key.as_deref(),
-                payload_str,
-                headers_to_publish,
-                Box::new(delivery_opaque),
-            )
-            .unwrap();
+        self.publisher.publish_to_topic(
+            &payload.topic,
+            payload.partition,
+            payload.key.as_deref(),
+            payload_str,
+            headers_to_publish,
+            Box::new(delivery_opaque),
+        )
     }
 }
 
@@ -103,7 +114,12 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
     let kafka_consumer = KafkaConsumer::new(&config.kafka_config);
 
     // Subscribe to topic.
-    kafka_consumer.subscribe().await.unwrap();
+    kafka_consumer.subscribe().await.map_err(|e| MessengerServiceError {
+        kind: MessengerServiceErrorKind::Messaging,
+        reason: e.reason,
+        data: e.data,
+        service: e.service,
+    })?;
 
     let ChannelBuffers {
         actions_channel,
