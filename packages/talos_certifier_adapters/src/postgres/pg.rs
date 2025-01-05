@@ -113,7 +113,7 @@ impl DecisionStore for Pg {
     async fn insert_decision(&self, key: String, decision: Self::Decision) -> Result<Self::Decision, DecisionStoreError> {
         let client = self.get_client_with_retry().await.map_err(|e| DecisionStoreError {
             kind: DecisionStoreErrorKind::ClientError,
-            reason: e.to_string(),
+            reason: format!("Failed to get client with error {}", e.to_string()),
             data: None,
         })?;
 
@@ -134,7 +134,7 @@ impl DecisionStore for Pg {
             .await
             .map_err(|e| DecisionStoreError {
                 kind: DecisionStoreErrorKind::InsertDecision,
-                reason: e.to_string(),
+                reason: format!("Failed to prepare the insert statement to XDB {}", e.to_string()),
                 data: Some(key.clone()),
             })?;
 
@@ -156,7 +156,7 @@ impl DecisionStore for Pg {
             Err(e) => {
                 return Err(DecisionStoreError {
                     kind: DecisionStoreErrorKind::InsertDecision,
-                    reason: e.to_string(),
+                    reason: format!("Failed to insert decision into XDB with error {}", e.to_string()),
                     data: Some(key.clone()),
                 });
             }

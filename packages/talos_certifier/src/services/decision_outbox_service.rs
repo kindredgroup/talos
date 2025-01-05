@@ -55,7 +55,7 @@ impl DecisionOutboxService {
             .await
             .map_err(|insert_error| SystemServiceError {
                 kind: SystemServiceErrorKind::DBError,
-                reason: insert_error.reason,
+                reason: format!("Datastore error kind = {:?} and reason = {}", insert_error.kind, insert_error.reason),
                 data: insert_error.data,
                 service: "Decision Outbox Service".to_string(),
             })?;
