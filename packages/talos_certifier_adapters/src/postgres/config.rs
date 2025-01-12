@@ -9,12 +9,14 @@ pub struct PgConfig {
     pub port: String,
     pub database: String,
     pub pool_size: Option<u32>,
+    pub max_retries: Option<u32>,
 }
 
 impl PgConfig {
     pub fn from_env() -> PgConfig {
         let pool_size = env_var_with_defaults!("PG_POOL_SIZE", Option::<u32>);
         debug!("Pool size used... {pool_size:?}");
+        let max_retries = env_var_with_defaults!("PG_MAX_RETRIES", Option::<u32>);
         PgConfig {
             user: env_var!("PG_USER"),
             password: env_var!("PG_PASSWORD"),
@@ -22,6 +24,7 @@ impl PgConfig {
             port: env_var!("PG_PORT"),
             database: env_var!("PG_DATABASE"),
             pool_size,
+            max_retries,
         }
     }
     pub fn get_base_connection_string(&self) -> String {

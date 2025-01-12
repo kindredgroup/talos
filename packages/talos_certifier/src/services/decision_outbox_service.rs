@@ -55,7 +55,7 @@ impl DecisionOutboxService {
             .await
             .map_err(|insert_error| SystemServiceError {
                 kind: SystemServiceErrorKind::DBError,
-                reason: insert_error.reason,
+                reason: format!("Datastore error kind = {:?} and reason = {}", insert_error.kind, insert_error.reason),
                 data: insert_error.data,
                 service: "Decision Outbox Service".to_string(),
             })?;
@@ -114,11 +114,12 @@ impl SystemService for DecisionOutboxService {
                 message: decision_message,
             } = decision_channel_message;
             tokio::spawn({
-                let decision_headers = DecisionHeaderBuilder::with_additional_headers(headers.into()).add_meta_headers(DecisionMetaHeaders::new(
-                    DEFAULT_DECISION_MESSAGE_VERSION, // major version of decision message
-                    self.system.name.clone(),
-                    None,
-                ));
+                let decision_headers: DecisionHeaderBuilder<crate::model::decision_headers::MetaHeaders, crate::model::decision_headers::NoCertHeaders> =
+                    DecisionHeaderBuilder::with_additional_headers(headers.into()).add_meta_headers(DecisionMetaHeaders::new(
+                        DEFAULT_DECISION_MESSAGE_VERSION, // major version of decision message
+                        self.system.name.clone(),
+                        None,
+                    ));
 
                 async move {
                     match DecisionOutboxService::save_decision_to_xdb(&datastore, &decision_message).await {
