@@ -15,6 +15,8 @@ pub struct CertificationRequest {
     pub candidate: CertificationCandidate,
     pub snapshot: u64,
     pub timeout_ms: u64,
+    /** Additional headers to include with certification message */
+    pub headers: Option<HashMap<String, String>>,
 }
 
 fn default_text_plain_encoding() -> String {

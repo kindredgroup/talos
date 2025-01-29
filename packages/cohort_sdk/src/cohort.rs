@@ -62,7 +62,7 @@ impl Cohort {
         config: Config,
         // Param1: The list of statemap items.
         // Param2: Version to install.
-        // Returns error descrition. If string is empty it means there was no error installing
+        // Returns error description. If string is empty it means there was no error installing
     ) -> Result<Self, ClientError> {
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.kafka.clone();
@@ -444,7 +444,12 @@ impl Cohort {
             Ok(CertificationCandidateCallbackResponse::Proceed(request)) => request,
         };
 
-        log::debug!("loaded state: {}, {:?}", request.snapshot, request.candidate);
+        log::debug!(
+            "loaded state: snapshot: {}, candidate: {:?}, headers: {:?}",
+            request.snapshot,
+            request.candidate,
+            request.headers
+        );
 
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(request.snapshot, request.candidate.readvers);
 
@@ -470,6 +475,7 @@ impl Cohort {
             } else {
                 None
             },
+            headers: request.headers,
         };
 
         match self.talos_agent.certify(agent_request).await {

@@ -30,6 +30,7 @@ pub struct CertificationRequest {
     pub message_key: String,
     pub candidate: CandidateData,
     pub timeout: Option<Duration>,
+    pub headers: Option<HashMap<String, String>>,
 }
 
 /// The data output from agent to client

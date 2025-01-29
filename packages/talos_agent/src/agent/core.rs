@@ -255,6 +255,7 @@ mod tests {
             message_key: "k1".to_string(),
             candidate: sample_candidate,
             timeout: Some(Duration::from_secs(1)),
+            headers: None,
         }
     }
 

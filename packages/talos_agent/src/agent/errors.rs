@@ -103,6 +103,7 @@ mod tests {
                     on_commit: None,
                 },
                 timeout: Some(Duration::from_secs(1)),
+                headers: None,
             },
             Arc::new(Box::new(MockNoopSender::new())),
         ));

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::api::{CandidateData, StateMap, TalosType};
 use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
@@ -108,7 +110,7 @@ pub struct PublishResponse {
 /// The publishing contract
 #[async_trait]
 pub trait Publisher {
-    async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, MessagingError>;
+    async fn send_message(&self, key: String, message: CandidateMessage, headers: Option<HashMap<String, String>>) -> Result<PublishResponse, MessagingError>;
 }
 
 pub type PublisherType = dyn Publisher + Sync + Send;

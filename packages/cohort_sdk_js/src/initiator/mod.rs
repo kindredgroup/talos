@@ -7,9 +7,7 @@ use cohort_sdk::model::callback::{
     KafkaAction, OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller,
 };
 use cohort_sdk::model::{CertificationResponse, ClientError, Config, ResponseMetadata};
-use napi::bindgen_prelude::FromNapiValue;
 use napi::bindgen_prelude::Promise;
-use napi::bindgen_prelude::ToNapiValue;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 use serde_json::Value;
@@ -153,6 +151,7 @@ pub struct JsCertificationRequest {
     pub candidate: JsCertificationCandidate,
     pub snapshot: i64,
     pub timeout_ms: u32,
+    pub headers: Option<HashMap<String, String>>,
 }
 
 impl From<JsCertificationRequest> for CertificationRequest {
@@ -161,6 +160,7 @@ impl From<JsCertificationRequest> for CertificationRequest {
             candidate: val.candidate.into(),
             snapshot: val.snapshot as u64,
             timeout_ms: val.timeout_ms as u64,
+            headers: val.headers,
         }
     }
 }
@@ -252,6 +252,7 @@ impl InternalInitiator {
         let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         let make_new_request = || new_request_provider.make_new_request();
+
         let response = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error)?;
         Ok(response.into())
     }

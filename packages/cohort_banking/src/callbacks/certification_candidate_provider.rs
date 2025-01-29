@@ -162,6 +162,7 @@ impl CertificationCandidateProviderImpl {
             candidate,
             snapshot: state.snapshot_version,
             timeout_ms: request.timeout_ms,
+            headers: None,
         }))
     }
 }

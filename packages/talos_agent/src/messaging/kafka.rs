@@ -52,7 +52,7 @@ impl KafkaPublisher {
         })
     }
 
-    pub fn make_record<'a>(agent: String, topic: &'a str, key: &'a str, message: &'a str) -> FutureRecord<'a, str, str> {
+    pub fn make_record<'a>(agent: String, topic: &'a str, key: &'a str, message: &'a str, extra_headers: Option<OwnedHeaders>) -> FutureRecord<'a, str, str> {
         let type_value = TalosMessageType::Candidate.to_string();
         let h_type = Header {
             key: HEADER_MESSAGE_TYPE,
@@ -63,23 +63,48 @@ impl KafkaPublisher {
             value: Some(&agent),
         };
 
-        FutureRecord::to(topic)
-            .key(key)
-            .payload(message)
-            .headers(OwnedHeaders::new().insert(h_type).insert(h_agent_id))
+        let mut headers = OwnedHeaders::new().insert(h_type).insert(h_agent_id);
+        if let Some(ehs) = extra_headers {
+            for eh in ehs.iter() {
+                headers = headers.insert(eh);
+            }
+        }
+
+        FutureRecord::to(topic).key(key).payload(message).headers(headers)
     }
 }
 
 #[async_trait]
 impl Publisher for KafkaPublisher {
-    async fn send_message(&self, key: String, mut message: CandidateMessage) -> Result<PublishResponse, MessagingError> {
+    async fn send_message(
+        &self,
+        key: String,
+        mut message: CandidateMessage,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<PublishResponse, MessagingError> {
         debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
+        debug!(
+            "KafkaPublisher.send_message(): async publishing message with headers {:?} with key: {}",
+            headers, key
+        );
 
         let topic = self.config.topic.clone();
+
+        let extra_headers = headers.map(|hset| {
+            let mut oh = OwnedHeaders::new();
+            for (k, v) in hset.into_iter() {
+                oh = oh.insert(Header {
+                    key: k.as_str(),
+                    value: Some(v.as_str()),
+                });
+            }
+            oh
+        });
+
         message.published_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let payload = serde_json::to_string(&message).unwrap();
 
-        let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.topic, key.as_str(), payload.as_str());
+        let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.topic, key.as_str(), payload.as_str(), extra_headers);
 
         let timeout = Timeout::After(Duration::from_millis(self.config.producer_send_timeout_ms.unwrap_or(10) as u64));
         return match self.producer.send(data, timeout).await {
@@ -337,7 +362,7 @@ mod tests_publisher {
         })
         .unwrap();
 
-        let record = KafkaPublisher::make_record("agent".to_string(), "topic", "key", message.as_str());
+        let record = KafkaPublisher::make_record("agent".to_string(), "topic", "key", message.as_str(), None);
         assert_eq!(record.topic, "topic");
     }
 }

@@ -1,6 +1,4 @@
 use cohort_sdk::model::ClientErrorKind;
-use napi::bindgen_prelude::FromNapiValue;
-use napi::bindgen_prelude::ToNapiValue;
 use napi_derive::napi;
 use serde::Serialize;
 use serde_json::Value;
