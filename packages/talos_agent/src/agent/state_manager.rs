@@ -120,7 +120,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 if let Some(mc) = metrics.as_ref() {
                     mc.new_event(EventName::CandidatePublishStarted, xid.clone()).await.unwrap();
                 }
-                let _ = publisher_ref.send_message(key, msg).await;
+                let _ = publisher_ref.send_message(key, msg, request_msg.request.headers).await;
                 if let Some(mc) = metrics.as_ref() {
                     mc.new_event(EventName::CandidatePublished, xid.clone()).await.unwrap();
                 }
@@ -284,6 +284,7 @@ mod tests {
     use crate::messaging::errors::MessagingError;
     use async_trait::async_trait;
     use mockall::{mock, Sequence};
+    use std::collections::HashMap;
     use std::time::Duration;
     use tokio::sync::mpsc::error::SendError;
 
@@ -292,7 +293,7 @@ mod tests {
 
         #[async_trait]
         impl Publisher for NoopPublisher {
-            async fn send_message(&self, key: String, message: CandidateMessage) -> Result<PublishResponse, MessagingError>;
+            async fn send_message(&self, key: String, message: CandidateMessage, headers: Option<HashMap<String,String>>) -> Result<PublishResponse, MessagingError>;
         }
     }
 
@@ -339,6 +340,7 @@ mod tests {
                     statemap: None,
                     on_commit: None,
                 },
+                headers: None,
             },
             Arc::new(Box::new(tx_answer)),
         )
@@ -347,7 +349,7 @@ mod tests {
     fn ensure_publisher_is_invoked(cfg_copy: AgentConfig, publisher: &mut MockNoopPublisher) {
         publisher
             .expect_send_message()
-            .withf(move |param_key, param_msg| {
+            .withf(move |param_key, param_msg, _param_headers| {
                 param_key == "some key"
                     && param_msg.xid == *"xid1"
                     && param_msg.agent == cfg_copy.agent
@@ -358,7 +360,7 @@ mod tests {
                     && param_msg.writeset == Vec::<String>::new()
             })
             .once()
-            .returning(move |_, _| Ok(PublishResponse { partition: 0, offset: 100 }));
+            .returning(move |_, _, _| Ok(PublishResponse { partition: 0, offset: 100 }));
     }
 
     fn new_client(tx: MockNoopSender) -> WaitingClient {
@@ -671,6 +673,7 @@ mod tests {
                     statemap: None,
                     on_commit: None,
                 },
+                headers: None,
             },
         };
 

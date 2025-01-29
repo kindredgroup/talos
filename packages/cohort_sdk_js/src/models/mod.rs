@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use talos_agent::messaging::api::Decision;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
-use napi::bindgen_prelude::FromNapiValue;
-use napi::bindgen_prelude::ToNapiValue;
 use napi_derive::napi;
 
 #[napi(object)]

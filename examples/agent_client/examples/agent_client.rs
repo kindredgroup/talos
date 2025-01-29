@@ -304,6 +304,7 @@ impl Generator<CertificationRequest> for RequestGenerator {
             message_key: "12345".to_string(),
             candidate: tx_data,
             timeout: None, // this will use the default global value as defined in AgentConfig
+            headers: None,
         }
     }
 }
