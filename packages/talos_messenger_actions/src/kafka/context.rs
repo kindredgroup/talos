@@ -1,6 +1,6 @@
 use futures_executor::block_on;
-use log::{error, info};
-use rdkafka::{producer::ProducerContext, ClientContext, Message};
+use log::error;
+use rdkafka::{producer::ProducerContext, ClientContext};
 use talos_messenger_core::{core::MessengerChannelFeedback, errors::MessengerActionError};
 use tokio::sync::mpsc;
 
@@ -27,9 +27,7 @@ impl ProducerContext for MessengerProducerContext {
         let version = delivery_opaque.version;
 
         match result {
-            Ok(msg) => {
-                info!("Message {:?} {:?}", msg.key(), msg.offset());
-
+            Ok(_msg) => {
                 // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
                 if let Err(error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(version, "kafka".to_string()))) {
                     error!("[Messenger Producer Context] Error sending feedback for version={version} with error={error:?}");

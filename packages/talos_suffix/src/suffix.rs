@@ -2,7 +2,7 @@
 
 use std::{collections::VecDeque, time::Instant};
 
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 
 use crate::{
     core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
@@ -197,14 +197,18 @@ where
     pub fn update_decision_suffix_item(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()> {
         // When Certifier is catching up with messages ignore the messages which are prior to the head
         if version < self.meta.head {
-            error!("Returned due to version < self.meta.head for version={version} and decision version={decision_ver}");
+            warn!(
+                "Returned due to version < suffix.head ({}) for version={version} and decision version={decision_ver}",
+                self.meta.head
+            );
             return Ok(());
         }
 
         let Some(sfx_item) = self.get(version)? else {
-            error!(
-                "Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}",
-                self.index_from_head(version)
+            warn!(
+                "Returned due item not found in suffix for version={version} with index={:?}  and decision version={decision_ver}. suffix.head = {}",
+                self.index_from_head(version),
+                self.meta.head
             );
             // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
             return Ok(());
@@ -250,6 +254,7 @@ where
         // The very first item inserted on the suffix will automatically be made head of the suffix.
         if self.meta.head == 0 {
             self.update_head(version);
+            info!("Suffix head set to {version}");
         }
 
         if self.meta.head.le(&version) {
@@ -271,6 +276,8 @@ where
             }));
 
             self.meta.last_insert_vers = version;
+        } else {
+            info!("Skipped inserting into suffix due to head ({}) > message version ({})", self.meta.head, version);
         }
 
         Ok(())
@@ -302,7 +309,11 @@ where
     ///     2. And there is atleast one suffix item remaining, which can be the new head.
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
-        info!("Suffix message length BEFORE pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        info!(
+            "Suffix message length before pruning={} and current suffix head={}!!!",
+            self.messages.len(),
+            self.meta.head
+        );
         let start_ms = Instant::now();
         // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
 
@@ -321,7 +332,11 @@ where
             self.update_head(0)
         }
 
-        info!("Suffix message length AFTER pruning={} and head={}!!!", self.messages.len(), self.meta.head);
+        info!(
+            "Suffix message length after pruning={} and new suffix head={}!!!",
+            self.messages.len(),
+            self.meta.head
+        );
         info!(
             "Prune took {} microseconds and update head took {} microseconds",
             drain_end_ms,
