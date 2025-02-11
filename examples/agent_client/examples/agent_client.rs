@@ -300,11 +300,14 @@ impl Generator<CertificationRequest> for RequestGenerator {
             on_commit: None,
         };
 
+        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
         CertificationRequest {
             message_key: "12345".to_string(),
             candidate: tx_data,
             timeout: None, // this will use the default global value as defined in AgentConfig
             headers: None,
+            certification_started_at: now,
+            request_created_at: now,
         }
     }
 }

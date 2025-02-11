@@ -19,6 +19,7 @@ rdkafka = { version = "0.34.0", features = ["sasl"]  }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { version = "0.25", features = ["derive"] }
+time = { version = "0.3.17" }
 talos_metrics =             { path = "../talos_metrics", version = "0.2.27-dev" }
 talos_agent =               { path = "../talos_agent", version = "0.2.27-dev" }
 talos_certifier =           { path = "../talos_certifier", version = "0.2.27-dev" }

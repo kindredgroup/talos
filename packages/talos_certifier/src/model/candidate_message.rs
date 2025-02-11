@@ -27,7 +27,8 @@ pub struct CandidateMessage {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<Vec<HashMap<String, Value>>>,
-
+    pub certification_started_at: i128,
+    pub request_created_at: i128,
     pub published_at: i128,
     #[serde(skip_deserializing)]
     pub received_at: i128,

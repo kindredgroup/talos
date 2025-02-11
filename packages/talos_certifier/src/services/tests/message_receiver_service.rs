@@ -102,6 +102,8 @@ async fn test_consume_message() {
         metadata: None,
         on_commit: None,
         statemap: None,
+        certification_started_at: 0,
+        request_created_at: 0,
         published_at: 0,
         received_at: 0,
     };
@@ -159,6 +161,8 @@ async fn test_consume_message_error() {
         metadata: None,
         on_commit: None,
         statemap: None,
+        certification_started_at: 0,
+        request_created_at: 0,
         published_at: 0,
         received_at: 0,
     };

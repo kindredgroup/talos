@@ -106,6 +106,8 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                 self.agent_config.agent.clone(),
                 self.agent_config.cohort.clone(),
                 request_msg.request.candidate.clone(),
+                request_msg.request.certification_started_at,
+                request_msg.request.request_created_at,
                 0,
             );
 
@@ -340,6 +342,8 @@ mod tests {
                     statemap: None,
                     on_commit: None,
                 },
+                certification_started_at: 0,
+                request_created_at: 0,
                 headers: None,
             },
             Arc::new(Box::new(tx_answer)),
@@ -674,6 +678,8 @@ mod tests {
                     on_commit: None,
                 },
                 headers: None,
+                certification_started_at: 0,
+                request_created_at: 0,
             },
         };
 

@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TxProcessingTimeline {
+    pub certification_started: i128,
+    pub request_created: i128,
     pub candidate_published: i128,
     pub candidate_received: i128,
     pub candidate_processing_started: i128,

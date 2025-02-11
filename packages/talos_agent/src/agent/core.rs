@@ -256,6 +256,8 @@ mod tests {
             candidate: sample_candidate,
             timeout: Some(Duration::from_secs(1)),
             headers: None,
+            certification_started_at: 0,
+            request_created_at: 0,
         }
     }
 

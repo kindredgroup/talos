@@ -24,6 +24,8 @@ use talos_agent::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
+use time::OffsetDateTime;
+
 use crate::{
     delay_controller::DelayController,
     model::{
@@ -198,7 +200,10 @@ impl Cohort {
         let span_1 = Instant::now();
         // 1. Get the snapshot
         // 2. Send for certification
-        let response = self.send_to_talos(get_certification_candidate_callback).await?;
+
+        let certification_started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+        let response = self.send_to_talos(certification_started_at, get_certification_candidate_callback).await?;
         let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
 
         let h_talos = Arc::clone(&self.talos_histogram);
@@ -313,7 +318,11 @@ impl Cohort {
         result
     }
 
-    async fn send_to_talos<F, Fut>(&self, get_certification_candidate_callback: &F) -> Result<model::CertificationResponse, ClientError>
+    async fn send_to_talos<F, Fut>(
+        &self,
+        certification_started_at: i128,
+        get_certification_candidate_callback: &F,
+    ) -> Result<model::CertificationResponse, ClientError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
@@ -338,7 +347,10 @@ impl Cohort {
         let final_result = loop {
             // Await for snapshot and build the certification request payload.
             // Send the certification payload to talos
-            match self.send_to_talos_attempt(&get_certification_candidate_callback, recent_conflict).await {
+            match self
+                .send_to_talos_attempt(certification_started_at, &get_certification_candidate_callback, recent_conflict)
+                .await
+            {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
@@ -420,7 +432,12 @@ impl Cohort {
         final_result
     }
 
-    async fn send_to_talos_attempt<F, Fut>(&self, get_certification_candidate_callback: &F, previous_conflict: Option<u64>) -> CertificationAttemptOutcome
+    async fn send_to_talos_attempt<F, Fut>(
+        &self,
+        certification_started_at: i128,
+        get_certification_candidate_callback: &F,
+        previous_conflict: Option<u64>,
+    ) -> CertificationAttemptOutcome
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
@@ -476,6 +493,8 @@ impl Cohort {
                 None
             },
             headers: request.headers,
+            certification_started_at,
+            request_created_at: OffsetDateTime::now_utc().unix_timestamp_nanos(),
         };
 
         match self.talos_agent.certify(agent_request).await {
