@@ -4,8 +4,10 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub struct TxProcessingTimeline {
     /// Cohort started certification
+    #[serde(default)]
     pub certification_started: i128,
     /// The request for certification is created
+    #[serde(default)]
     pub request_created: i128,
     /// Candidate published to kafka (agent time)
     pub candidate_published: i128,

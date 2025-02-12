@@ -29,8 +29,10 @@ pub struct CandidateMessage {
     pub statemap: Option<Vec<HashMap<String, Value>>>,
 
     /// Cohort started certification
+    #[serde(default)]
     pub certification_started_at: i128,
     /// The request for certification is created
+    #[serde(default)]
     pub request_created_at: i128,
     /// Candidate published to kafka (agent time)
     pub published_at: i128,
