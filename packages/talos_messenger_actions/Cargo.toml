@@ -1,6 +1,6 @@
 [package]
 name = "talos_messenger_actions"
-version = "0.2.27"
+version = "0.2.28-dev"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -42,12 +42,12 @@ time = { version = "0.3.30" }
 indexmap = { version = "2.0.0", features = ["rayon"] }
 ahash = "0.8.3"
 
-talos_certifier = { path = "../talos_certifier", version = "0.2.27" }
-talos_suffix = { path = "../talos_suffix", version = "0.2.27" }
-talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.27" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.2.27" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.27" }
-talos_messenger_core = { path = "../talos_messenger_core", version = "0.2.27" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.28-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.28-dev" }
+talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.28-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.28-dev" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.28-dev" }
+talos_messenger_core = { path = "../talos_messenger_core", version = "0.2.28-dev" }
 
 
 [dev-dependencies]
