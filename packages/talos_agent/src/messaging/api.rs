@@ -197,5 +197,31 @@ mod tests {
         });
         let _ = format!("{:?}", Decision::Aborted.clone());
     }
+
+    #[test]
+    fn deserialise_using_defaults() {
+        let json = r#"{
+            "xid": "xid-1",
+            "agent": "agent",
+            "cohort": "cohort",
+            "snapshot": 2,
+            "readset": [ "3", "4" ],
+            "readvers": [ 5, 5 ],
+            "writeset": [ "6" ],
+            "publishedAt": 1
+        }"#;
+
+        let deserialised: CandidateMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(deserialised.certification_started_at, 0);
+        assert_eq!(deserialised.request_created_at, 0);
+        assert_eq!(deserialised.published_at, 1);
+        assert_eq!(deserialised.xid, String::from("xid-1"));
+        assert_eq!(deserialised.agent, String::from("agent"));
+        assert_eq!(deserialised.cohort, String::from("cohort"));
+        assert_eq!(deserialised.snapshot, 2);
+        assert_eq!(deserialised.readset, vec!(String::from("3"), String::from("4")));
+        assert_eq!(deserialised.readvers, vec!(5, 5));
+        assert_eq!(deserialised.writeset, vec!(String::from("6")));
+    }
 }
 // $coverage:ignore-end
