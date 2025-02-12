@@ -86,14 +86,108 @@ mod suffix_tests {
         });
     }
 
-    // fn test_is_valid_prune_version_index()
-    // fn test_is_valid_prune_version_index_false()
+    #[test]
+    fn test_insert_duplicate_versions() {
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
+            capacity: 5,
+            ..Default::default()
+        });
 
-    // fn test_reserve_space_if_required()
+        // insert suffix items
+        for vers in 0..20 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
 
-    // fn test_are_prior_items_decided_false()
-    // fn test_are_prior_items_decided_true_prune_index...index()
-    // fn test_are_prior_items_decided_true_0...index()
+        assert_eq!(sfx.messages.len(), 20);
+
+        // insert duplicated suffix items
+        for vers in 10..15 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+        assert_eq!(sfx.messages.len(), 20);
+    }
+    #[test]
+    fn test_insert_versions_with_empty_indices() {
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
+            capacity: 5,
+            ..Default::default()
+        });
+
+        // insert suffix items
+        for vers in 0..20 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+
+        assert_eq!(sfx.messages.len(), 20);
+
+        // insert duplicated suffix items
+        for vers in 30..35 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+        assert_eq!(sfx.messages.len(), 35);
+    }
+    #[test]
+    fn test_insert_versions_with_empty_indices_duplicates() {
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
+            capacity: 5,
+            ..Default::default()
+        });
+
+        // insert suffix items
+        for vers in 0..20 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+
+        assert_eq!(sfx.messages.len(), 20);
+
+        // insert duplicated suffix items
+        for vers in 10..15 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+
+        // insert duplicated suffix items
+        for vers in 30..35 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+        assert_eq!(sfx.messages.len(), 35);
+    }
+    #[test]
+    fn test_insert_versions_with_empty_indices_duplicates_and_prune() {
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
+            capacity: 5,
+            prune_start_threshold: Some(10),
+            ..Default::default()
+        });
+
+        // insert suffix items
+        for vers in 1..=20 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+
+        assert_eq!(sfx.messages.len(), 20);
+        assert_eq!(sfx.meta.head, 1);
+
+        let suffix_len = sfx.messages.len() as u64;
+        // update decisions
+        for vers in 21..=35 {
+            sfx.update_decision(vers - suffix_len, vers).unwrap();
+        }
+
+        assert_eq!(sfx.meta.prune_index, Some(14)); // version 15 at index 14
+
+        let _ = sfx.prune_till_index(sfx.get_safe_prune_index().unwrap());
+        // As prune_start_threshold is after 10 items in suffix, and safe to prune upto index is 14, i.e version 15. Head will move from 1 -> 15.
+        assert_eq!(sfx.meta.head, 15);
+        assert_eq!(sfx.messages.len(), 6);
+
+        // insert suffix items after prune head is at 15, so from 15 to 35 i.e inserting 21 items into suffix. Of which 15 - 20 are duplicates
+        // Therefore they should be ignored and only the rest should be inserting, and the total length should become 21.
+        for vers in 15..=35 {
+            sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
+        }
+
+        assert_eq!(sfx.messages.len(), 21);
+    }
 
     #[test]
     fn test_is_ready_for_prune_returns_false_when_prune_start_threshold_is_not_set() {

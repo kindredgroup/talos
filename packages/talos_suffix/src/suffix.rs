@@ -2,7 +2,7 @@
 
 use std::{collections::VecDeque, time::Instant};
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 
 use crate::{
     core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
@@ -210,6 +210,24 @@ where
                 self.index_from_head(version),
                 self.meta.head
             );
+
+            // This search would be expensive, but this is executed only when version is not found and this helps in debugging when the suffix is inserted in incorrect index.
+            let search_in_other_index: Option<(usize, u64)> = self.messages.iter().enumerate().find_map(|(p, i)| {
+                if let Some(s_item) = i {
+                    if s_item.item_ver.eq(&version) {
+                        return Some((p, version));
+                    }
+                }
+                None
+            });
+            if let Some(s_item) = search_in_other_index {
+                error!(
+                    "Version {version} was found at another index {} while it was expected at index {:?} for suffix head {}. This could lead to ambigious behaviour of suffix.",
+                    s_item.0,
+                    self.index_from_head(version),
+                    self.get_meta().head
+                )
+            }
             // info!("All some items on suffix.... {:?}", self.retrieve_all_some_vec_items());
             return Ok(());
         };
@@ -238,6 +256,10 @@ where
         let index = self.index_from_head(version).ok_or(SuffixError::VersionToIndexConversionError(version))?;
         let suffix_item = self.messages.get(index).and_then(|x| x.as_ref()).cloned();
 
+        if suffix_item.is_none() {
+            debug!("Could not find version {version} at suffix index {index}");
+        }
+
         Ok(suffix_item)
     }
 
@@ -257,28 +279,55 @@ where
             info!("Suffix head set to {version}");
         }
 
-        if self.meta.head.le(&version) {
-            self.reserve_space_if_required(version)?;
-            let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
-
-            if index > 0 {
-                let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
-                for _ in (last_item_index + 1)..index {
-                    self.messages.push_back(None);
-                }
-            }
-
-            self.messages.push_back(Some(SuffixItem {
-                item: message,
-                item_ver: version,
-                decision_ver: None,
-                is_decided: false,
-            }));
-
-            self.meta.last_insert_vers = version;
-        } else {
-            info!("Skipped inserting into suffix due to head ({}) > message version ({})", self.meta.head, version);
+        // If the version to insert is less than the head of suffix, it is safe to discard.
+        if self.meta.head.gt(&version) {
+            info!(
+                "Skipped inserting into suffix as message version received ({}) is below the suffix head version ({})",
+                self.meta.head, version
+            );
+            return Ok(());
         }
+
+        let last_inserted_version = self.meta.last_insert_vers;
+        // If the version to insert is less than the last_inserted_version (tail of suffix), we skip it.
+        // Version numbers should be moving forward. So there are only two possible reasons for this to happen:
+        // - The message with the version is send again.
+        // - Upstream has passed an incorrect version.
+        // In either case it is safe to discard this message.
+        if last_inserted_version > 0 && version.le(&last_inserted_version) {
+            info!("Skipped inserting into suffix as message version received ({version}) is below the suffix tail version ({last_inserted_version}).");
+            return Ok(());
+        }
+
+        // Good to insert.
+        self.reserve_space_if_required(version)?;
+        let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
+        let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
+
+        // empty_slots is used to fill empty indices in the suffix with None between the current tail and the new version being inserted
+        let empty_slots = if index > last_item_index { (index - last_item_index - 1) as i32 } else { 0 };
+        if empty_slots > 0 {
+            let suffix_length_before_empty_slots = self.messages.len();
+            for _ in 0..empty_slots {
+                self.messages.push_back(None);
+            }
+            let suffix_length_after_empty_slots = self.messages.len();
+            debug!("During insert of version {version} to index {index}, last_item_index ={last_item_index} | last_insert_vers = {} | before none insert suffix length = {suffix_length_before_empty_slots} | after = {suffix_length_after_empty_slots} | empty_slots added = {empty_slots}", self.meta.last_insert_vers);
+        }
+
+        self.messages.push_back(Some(SuffixItem {
+            item: message,
+            item_ver: version,
+            decision_ver: None,
+            is_decided: false,
+        }));
+
+        self.meta.last_insert_vers = version;
+
+        debug!(
+            "Inserted version {version} at calculated index on suffix = {index} | actual index on suffix = {}",
+            self.messages.len() - 1
+        );
 
         Ok(())
     }
