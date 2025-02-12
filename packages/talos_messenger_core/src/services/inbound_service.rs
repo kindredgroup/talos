@@ -120,6 +120,10 @@ where
             // error!("Pruning till index {index_to_prune}");
             // Call prune method on suffix.
             let _ = self.suffix.prune_till_index(index_to_prune);
+            debug!(
+                "[Suffix Pruning] suffix after prune printed as tuple of (index, ver, decsision_ver) \n\n {:?}",
+                self.suffix.retrieve_all_some_vec_items()
+            );
         }
     }
 
@@ -229,7 +233,9 @@ where
                             debug!("Candidate version received is {version}");
                             if version > 0 {
                                 // insert item to suffix
-                                let _ = self.suffix.insert(version, candidate.message.into());
+                                if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
+                                    warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
+                                }
 
                                 if let Some(item_to_update) = self.suffix.get_mut(version){
                                     if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
