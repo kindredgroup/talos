@@ -1,6 +1,6 @@
 {
   "name": "cohort_sdk_js-win32-x64-msvc",
-  "version": "0.2.29",
+  "version": "0.2.30-dev",
   "os": [
     "win32"
   ],
