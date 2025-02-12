@@ -27,10 +27,15 @@ pub struct CandidateMessage {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub statemap: Option<Vec<HashMap<String, Value>>>,
+
+    /// Cohort started certification
     pub certification_started_at: i128,
+    /// The request for certification is created
     pub request_created_at: i128,
+    /// Candidate published to kafka (agent time)
     pub published_at: i128,
     #[serde(skip_deserializing)]
+    /// Candidate received by Certifier
     pub received_at: i128,
 }
 
