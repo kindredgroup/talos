@@ -3,7 +3,13 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TxProcessingTimeline {
+    /// Cohort started certification
+    pub certification_started: i128,
+    /// The request for certification is created
+    pub request_created: i128,
+    /// Candidate published to kafka (agent time)
     pub candidate_published: i128,
+    /// Candidate received by Certifier
     pub candidate_received: i128,
     pub candidate_processing_started: i128,
     pub decision_created_at: i128,

@@ -32,11 +32,23 @@ pub struct CandidateMessage {
     pub statemap: Option<StateMap>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_commit: Option<Box<Value>>,
+    /// Cohort started certification
+    pub certification_started_at: i128,
+    /// The request for certification is created
+    pub request_created_at: i128,
+    /// Candidate published to kafka (agent time)
     pub published_at: i128,
 }
 
 impl CandidateMessage {
-    pub fn new(agent_name: String, cohort_name: String, candidate: CandidateData, published_at: i128) -> Self {
+    pub fn new(
+        agent_name: String,
+        cohort_name: String,
+        candidate: CandidateData,
+        certification_started_at: i128,
+        request_created_at: i128,
+        published_at: i128,
+    ) -> Self {
         Self {
             xid: candidate.xid,
             agent: agent_name,
@@ -47,6 +59,8 @@ impl CandidateMessage {
             writeset: candidate.writeset,
             statemap: candidate.statemap,
             on_commit: candidate.on_commit,
+            certification_started_at,
+            request_created_at,
             published_at,
         }
     }
@@ -90,6 +104,8 @@ pub struct DecisionMessage {
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TxProcessingTimeline {
+    pub certification_started: i128,
+    pub request_created: i128,
     pub candidate_published: i128,
     pub candidate_received: i128,
     pub candidate_processing_started: i128,
@@ -147,6 +163,8 @@ mod tests {
                 statemap: None,
                 on_commit: None,
             },
+            0,
+            0,
             0,
         );
 

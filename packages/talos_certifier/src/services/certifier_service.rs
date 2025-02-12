@@ -67,7 +67,7 @@ impl CertifierService {
     pub(crate) fn process_candidate(&mut self, message: &CandidateMessage) -> Result<DecisionMessage, CertificationError> {
         debug!("[Process Candidate message] Version {} ", message.version);
 
-        let can_process_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let can_process_started = OffsetDateTime::now_utc().unix_timestamp_nanos();
         // Insert into Suffix
         if message.version > 0 {
             self.suffix.insert(message.version, message.clone()).map_err(CertificationError::SuffixError)?;
@@ -82,9 +82,11 @@ impl CertifierService {
         // Create the Decision Message
         let mut dm = DecisionMessage::new(message, outcome, suffix_head);
         let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        dm.metrics.certification_started = message.certification_started_at;
+        dm.metrics.request_created = message.request_created_at;
         dm.metrics.candidate_published = message.published_at;
         dm.metrics.candidate_received = message.received_at;
-        dm.metrics.candidate_processing_started = can_process_start;
+        dm.metrics.candidate_processing_started = can_process_started;
         dm.metrics.decision_created_at = now;
         Ok(dm)
     }

@@ -358,6 +358,8 @@ mod tests_publisher {
             writeset: vec!["1".to_string()],
             statemap: None,
             on_commit: None,
+            certification_started_at: 0,
+            request_created_at: 0,
             published_at: 0,
         })
         .unwrap();

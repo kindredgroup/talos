@@ -576,6 +576,7 @@ dependencies = [
  "talos_cohort_replicator",
  "talos_metrics",
  "talos_rdkafka_utils",
+ "time",
  "tokio",
  "uuid",
 ]

@@ -31,6 +31,10 @@ pub struct CertificationRequest {
     pub candidate: CandidateData,
     pub timeout: Option<Duration>,
     pub headers: Option<HashMap<String, String>>,
+    /// Cohort started certification
+    pub certification_started_at: i128,
+    /// The request for certification is created
+    pub request_created_at: i128,
 }
 
 /// The data output from agent to client
