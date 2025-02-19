@@ -1,4 +1,4 @@
-use log::warn;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
@@ -130,17 +130,28 @@ where
         get_statemap_from_suffix_items(items.into_iter())
     }
 
-    pub(crate) async fn prepare_offset_for_commit(&mut self) {
-        if self.last_installing > 0 {
-            if let Some(last_installed) = self.suffix.get_last_installed(Some(self.last_installing)) {
-                let version = last_installed.decision_ver.unwrap();
+    pub(crate) async fn prepare_offset_for_commit(&mut self, version: u64) {
+        info!(
+            "[prepare_offset_for_commit] Last installing version = {} | suffix head = {} | last_installed version ={:?}",
+            self.last_installing,
+            self.suffix.get_suffix_meta().head,
+            version
+        );
+        // if self.last_installing > 0 {
+        if let Some(current_offset) = self.next_commit_offset {
+            if version.gt(&current_offset) {
                 self.next_commit_offset = Some(version);
+                info!("next_commit_offset moving from {:?} --> {} ", current_offset, version);
             }
+        } else {
+            self.next_commit_offset = Some(version)
         }
+        // }
     }
 
     pub(crate) async fn commit(&mut self) {
         if let Some(version) = self.next_commit_offset {
+            info!("Commit till offset {:?} ", version);
             self.receiver.update_offset_to_commit(version as i64).unwrap();
             self.receiver.commit_async();
             self.next_commit_offset = None;

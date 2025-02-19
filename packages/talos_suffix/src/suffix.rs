@@ -273,10 +273,24 @@ where
     }
 
     fn insert(&mut self, version: u64, message: T) -> SuffixResult<()> {
+        // Version 0 is not a valid version in suffix and therefore will be ignored.
+        if version == 0 {
+            info!("Version {version} will be ignored.");
+            return Ok(());
+        }
+
         // The very first item inserted on the suffix will automatically be made head of the suffix.
         if self.meta.head == 0 {
             self.update_head(version);
             info!("Suffix head set to {version}");
+            self.messages.push_back(Some(SuffixItem {
+                item: message,
+                item_ver: version,
+                decision_ver: None,
+                is_decided: false,
+            }));
+            info!("Inserted version {version} as the first item to suffix");
+            return Ok(());
         }
 
         // If the version to insert is less than the head of suffix, it is safe to discard.
@@ -302,10 +316,10 @@ where
         // Good to insert.
         self.reserve_space_if_required(version)?;
         let index = self.index_from_head(version).ok_or(SuffixError::ItemNotFound(version, None))?;
-        let last_item_index = self.index_from_head(self.meta.last_insert_vers).unwrap_or(0);
+        let last_item_index = self.messages.len() - 1;
 
         // empty_slots is used to fill empty indices in the suffix with None between the current tail and the new version being inserted
-        let empty_slots = if index > last_item_index { (index - last_item_index - 1) as i32 } else { 0 };
+        let empty_slots = if index > last_item_index { (index - last_item_index) as i32 } else { 0 };
         if empty_slots > 0 {
             let suffix_length_before_empty_slots = self.messages.len();
             for _ in 0..empty_slots {
@@ -313,21 +327,21 @@ where
             }
             let suffix_length_after_empty_slots = self.messages.len();
             debug!("During insert of version {version} to index {index}, last_item_index ={last_item_index} | last_insert_vers = {} | before none insert suffix length = {suffix_length_before_empty_slots} | after = {suffix_length_after_empty_slots} | empty_slots added = {empty_slots}", self.meta.last_insert_vers);
+            self.messages[index] = Some(SuffixItem {
+                item: message,
+                item_ver: version,
+                decision_ver: None,
+                is_decided: false,
+            });
+
+            self.meta.last_insert_vers = version;
+            info!(
+                "Inserted version {version} at calculated index on suffix = {index} | actual index on suffix = {}",
+                self.messages.len() - 1
+            );
+        } else {
+            warn!("Failed to insert version {version} at index {index}");
         }
-
-        self.messages.push_back(Some(SuffixItem {
-            item: message,
-            item_ver: version,
-            decision_ver: None,
-            is_decided: false,
-        }));
-
-        self.meta.last_insert_vers = version;
-
-        debug!(
-            "Inserted version {version} at calculated index on suffix = {index} | actual index on suffix = {}",
-            self.messages.len() - 1
-        );
 
         Ok(())
     }
@@ -399,17 +413,38 @@ where
     }
 
     fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
-        info!("Suffix before prune.... {}", self.suffix_length());
+        info!("Suffix before - prune head = {} | length = {}", self.meta.head, self.suffix_length());
         if let Some(index) = self.index_from_head(version) {
             info!("Index send for pruning is {index} for version={version}");
             let prune_index = self.find_prune_till_index(index);
             let prune_result = self.prune_till_index(prune_index);
-            info!("Suffix items pruned.... {prune_result:?}");
-            info!("Suffix after prune.... {}", self.suffix_length());
-            info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items());
+            info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items().len());
+            info!("Suffix after - prune head = {} | length = {}", self.meta.head, self.suffix_length());
+            if let Ok(prune_items) = prune_result.as_ref() {
+                info!("Suffix items pruned.... {:?}", prune_items.len());
+            }
+
             return prune_result;
         } else {
-            warn!("Unable to prune as index not found for version {version}.")
+            warn!("Unable to prune as index not found for version {version}.");
+            let search_in_other_index: Option<(usize, u64)> = self.messages.iter().enumerate().find_map(|(p, i)| {
+                if let Some(s_item) = i {
+                    if s_item.item_ver.eq(&version) {
+                        return Some((p, version));
+                    }
+                }
+                None
+            });
+            if let Some(s_item) = search_in_other_index {
+                error!(
+                    "Version {version} was found at another index {} while it was expected at index {:?} for suffix head {}. This could lead to ambigious behaviour of suffix.",
+                    s_item.0,
+                    self.index_from_head(version),
+                    self.get_meta().head
+                );
+            } else {
+                info!("Couldn't prune till version {version} | head = {}", self.get_meta().head);
+            }
         }
         Ok(vec![])
     }

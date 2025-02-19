@@ -8,7 +8,7 @@ use crate::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, info};
+use log::{debug, error, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
@@ -90,6 +90,13 @@ where
                     \n ");
             }
 
+            let last_installed_version = replicator.suffix.get_last_installed(Some(replicator.last_installing)).map(|item| item.item_ver);
+
+            if let Some(version) = last_installed_version {
+                replicator.suffix.update_prune_index(version);
+                replicator.prepare_offset_for_commit(version).await;
+            }
+
             replicator.commit().await;
         }
         // Receive feedback from installer.
@@ -106,12 +113,46 @@ where
 
                             // // if all prior items are installed, then update the prune vers
                             replicator.suffix.update_prune_index(version);
+                            info!("Updated prune index = {:?} and prune_start_threshold = {:?}", replicator.suffix.get_suffix_meta().prune_index, replicator.suffix.get_suffix_meta().prune_start_threshold);
 
-
+                            info!("Replicator last_installing count = {} | is prune_index ({:?}) > prune_start_threshold ({:?}) ==> {}", replicator.last_installing, replicator.suffix.get_suffix_meta().prune_index , replicator.suffix.get_suffix_meta().prune_start_threshold, replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold);
                             // Prune suffix and update suffix head.
-                            if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
-                                replicator.prepare_offset_for_commit().await;
-                                replicator.suffix.prune_till_version(version).unwrap();
+                            let prune_index = replicator.suffix.get_suffix_meta().prune_index;
+                            if replicator.last_installing > 0 && prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
+                                // let last_installed_version = match replicator.suffix.get_last_installed(Some(replicator.last_installing)){
+                                //     Some(item) => Some(item.item_ver),
+                                //     None => None,
+                                // };
+
+                                // let version = replicator.suffix.messages;
+
+                                // info!("Last installed version = {:?}", last_installed_version);
+                                // if let Some(ver) = last_installed_version {
+                                //     replicator.prepare_offset_for_commit(ver).await;
+
+
+                                //     if let Err(err) = replicator.suffix.prune_till_version(ver){
+                                //         error!("Failed to prune suffix till version {ver} with error {:?}", err);
+                                //     };
+                                //     info!("Completed pruning suffix. New head = {} ", replicator.suffix.get_meta().head);
+                                // }
+                                if let Some(index) = prune_index {
+
+                                    let item = replicator.suffix.get_by_index(index);
+
+                                    if let Some(suffix_item) = item {
+                                        let ver = suffix_item.item_ver;
+                                        info!("Last installed version = {:?}", ver);
+                                        replicator.prepare_offset_for_commit(ver).await;
+
+
+                                        if let Err(err) = replicator.suffix.prune_till_version(ver){
+                                            error!("Failed to prune suffix till version {ver} with error {:?}", err);
+                                        };
+                                        info!("Completed pruning suffix. New head = {} ", replicator.suffix.get_meta().head);
+                                    }
+                                };
+
                             }
                             total_items_installed += 1;
                             time_last_item_installed_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
