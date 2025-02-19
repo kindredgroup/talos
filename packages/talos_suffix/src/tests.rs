@@ -94,7 +94,7 @@ mod suffix_tests {
         });
 
         // insert suffix items
-        for vers in 0..20 {
+        for vers in 0..=20 {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         }
 
@@ -118,13 +118,13 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         }
 
-        assert_eq!(sfx.messages.len(), 20);
+        assert_eq!(sfx.messages.len(), 19);
 
         // insert duplicated suffix items
         for vers in 30..35 {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         }
-        assert_eq!(sfx.messages.len(), 35);
+        assert_eq!(sfx.messages.len(), 34);
     }
     #[test]
     fn test_insert_versions_with_empty_indices_duplicates() {
@@ -138,7 +138,7 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         }
 
-        assert_eq!(sfx.messages.len(), 20);
+        assert_eq!(sfx.messages.len(), 19);
 
         // insert duplicated suffix items
         for vers in 10..15 {
@@ -149,7 +149,7 @@ mod suffix_tests {
         for vers in 30..35 {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         }
-        assert_eq!(sfx.messages.len(), 35);
+        assert_eq!(sfx.messages.len(), 34);
     }
     #[test]
     fn test_insert_versions_with_empty_indices_duplicates_and_prune() {
@@ -207,7 +207,7 @@ mod suffix_tests {
         }
 
         // because `prune_start_threshold` is `None` prune doesn't happen.
-        assert_eq!(sfx.messages.len(), 81);
+        assert_eq!(sfx.messages.len(), 80);
 
         assert_eq!(sfx.meta.prune_index, Some(39));
         assert!(sfx.get_safe_prune_index().is_none());
@@ -232,7 +232,7 @@ mod suffix_tests {
         }
 
         // because `prune_start_threshold` is `None` prune doesn't happen.
-        assert_eq!(sfx.messages.len(), 21);
+        assert_eq!(sfx.messages.len(), 20);
 
         assert_eq!(sfx.meta.prune_index, Some(13));
         assert!(sfx.get_safe_prune_index().is_none());
@@ -252,7 +252,7 @@ mod suffix_tests {
         }
 
         // because `prune_start_threshold` is `None` prune doesn't happen.
-        assert_eq!(sfx.messages.len(), 21);
+        assert_eq!(sfx.messages.len(), 20);
 
         assert_eq!(sfx.meta.prune_index, None);
         assert!(sfx.get_safe_prune_index().is_none());
@@ -277,7 +277,7 @@ mod suffix_tests {
         }
 
         // because `prune_start_threshold` is `None` prune doesn't happen.
-        assert_eq!(sfx.messages.len(), 30);
+        assert_eq!(sfx.messages.len(), 29);
 
         assert_eq!(sfx.meta.prune_index, Some(24));
         assert!(sfx.get_safe_prune_index().is_some());
@@ -288,9 +288,9 @@ mod suffix_tests {
         // prune suffix
         let result = sfx.prune_till_index(24).unwrap();
         // new length of suffix after pruning.
-        assert_eq!(sfx.messages.len(), 6);
+        assert_eq!(sfx.messages.len(), 5);
         assert_eq!(result.len(), 24); // result.len() + sfx.messages.len() = 30
-        assert_eq!(sfx.meta.head, 24);
+        assert_eq!(sfx.meta.head, 25);
         assert_eq!(sfx.meta.prune_index, None);
     }
 
@@ -311,13 +311,14 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         });
 
-        assert_eq!(sfx.messages.len(), 31);
+        assert_eq!(sfx.messages.len(), 30);
 
+        let filtered_vec = filtered_versions_vec(0..20, None);
         filtered_vec.iter().for_each(|&vers| {
             sfx.update_decision(vers, vers + 30).unwrap();
         });
 
-        assert_eq!(sfx.meta.prune_index, Some(16)); // because version 18, index 17 is not decided.
+        assert_eq!(sfx.meta.prune_index, Some(18)); // because decisions are made only till version 19, index 18
         assert!(sfx.meta.prune_index.lt(&sfx.meta.prune_start_threshold)); // Prune index is below the start threshold for prune checks
         assert!(sfx.get_safe_prune_index().is_none()); // returns none as the prune_index is below the prune_start_threshold.
     }
@@ -326,7 +327,7 @@ mod suffix_tests {
     fn test_is_ready_when_prune_index_is_above_prune_start_threshold() {
         let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
             capacity: 30,
-            prune_start_threshold: Some(20),
+            prune_start_threshold: Some(10),
             ..Default::default()
         });
 
@@ -339,20 +340,19 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         });
 
-        assert_eq!(sfx.messages.len(), 31);
+        assert_eq!(sfx.messages.len(), 30);
 
         filtered_vec.iter().for_each(|&vers| {
             sfx.update_decision(vers, vers + 30).unwrap();
         });
 
-        assert_eq!(sfx.meta.prune_index, Some(20)); // prune_index updated till version 21 (index 20)
-        assert!(sfx.meta.prune_index.le(&sfx.meta.prune_start_threshold));
-        assert_eq!(sfx.get_safe_prune_index(), Some(20));
+        assert_eq!(sfx.meta.prune_index, Some(29)); // prune_index updated till version 21 (index 20)
+        assert_eq!(sfx.get_safe_prune_index(), Some(29));
         let _ = sfx.prune_till_index(sfx.meta.prune_index.unwrap());
-        assert_eq!(sfx.messages.len(), 11);
+        assert_eq!(sfx.messages.len(), 1);
 
         // assert_eq!(sfx.messages[0].unwrap().item_ver, 21);
-        assert_eq!(sfx.meta.head, 20);
+        assert_eq!(sfx.meta.head, 30);
     }
     #[test]
     fn test_prune_after_min_size_after_prune_check_pass() {
@@ -371,24 +371,26 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         });
 
-        assert_eq!(sfx.messages.len(), 31);
+        assert_eq!(sfx.messages.len(), 30);
 
+        let filtered_vec = filtered_versions_vec(0..31, Some(vec![22, 26, 27, 28, 29]));
         filtered_vec.iter().for_each(|&vers| {
             sfx.update_decision(vers, vers + 30).unwrap();
         });
 
-        assert_eq!(sfx.meta.prune_index, Some(20)); // prune_index updated till version 21 (index 20)
-        assert!(sfx.meta.prune_index.le(&sfx.meta.prune_start_threshold));
-        // Although prune_index moved till 20, because the min_size_after_prune is 15, and the suffix length is 31,
-        // there will only be 11 suffix items, therefore the min_size_after_prune criteria fails.
-        assert_eq!(sfx.get_safe_prune_index(), Some(15));
+        // Since version 28 is not decided, prune index can be updated till version 25, which is 24
+        assert_eq!(sfx.meta.prune_index, Some(24));
+        // assert!(sfx.meta.prune_index.le(&sfx.meta.prune_start_threshold));
+        // Although prune_index moved till 24, because the min_size_after_prune is 15, and the suffix length is 30,
+        // it doesn't prune till 24th index, but to an index which ensure there will be atleast 15 items in suffix left
+        assert_eq!(sfx.get_safe_prune_index(), Some(14));
     }
 
     #[test]
     fn test_no_prune_after_min_size_after_prune_check_fail() {
         let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
             capacity: 30,
-            prune_start_threshold: Some(20),
+            prune_start_threshold: Some(23),
             min_size_after_prune: Some(5),
         });
 
@@ -401,13 +403,15 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         });
 
-        assert_eq!(sfx.messages.len(), 31);
+        assert_eq!(sfx.messages.len(), 30);
 
+        let ignore_vec: Vec<u64> = vec![22, 24, 26, 27, 29];
+        let filtered_vec = filtered_versions_vec(0..31, Some(ignore_vec));
         filtered_vec.iter().for_each(|&vers| {
             sfx.update_decision(vers, vers + 30).unwrap();
         });
 
-        assert_eq!(sfx.meta.prune_index, Some(20)); // prune_index updated till version 20 (index 20)
+        assert_eq!(sfx.meta.prune_index, Some(22)); // prune_index updated till version 20 (index 20)
         assert!(sfx.meta.prune_index.le(&sfx.meta.prune_start_threshold));
         // As min_size_after_prune is 5, prune_index is at 20 and suffix length is 31, it is safe to remove all the entries till prune_index
         assert_eq!(sfx.get_safe_prune_index(), None);

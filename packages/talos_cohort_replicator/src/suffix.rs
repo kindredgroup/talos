@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Debug};
 
-use log::warn;
+use log::{debug, info, warn};
 use serde_json::Value;
 use talos_suffix::{
     core::{SuffixMeta, SuffixResult},
@@ -29,6 +29,7 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     fn get_suffix_meta(&self) -> &SuffixMeta;
     fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Vec<&SuffixItem<T>>;
     fn installed_all_prior_decided_items(&self, version: u64) -> bool;
+    fn get_by_index(&self, index: usize) -> Option<&SuffixItem<T>>;
 }
 
 impl<T> ReplicatorSuffixTrait<T> for Suffix<T>
@@ -71,9 +72,15 @@ where
 
     fn installed_all_prior_decided_items(&self, version: u64) -> bool {
         if version >= self.meta.head {
-            let index = self.index_from_head(version).unwrap();
+            let version_index = self.index_from_head(version).unwrap();
 
-            return self.messages.range(..index).flatten().all(|i| i.is_decided && i.item.is_installed());
+            let start_index = self.get_meta().prune_index.unwrap_or(0);
+
+            return self
+                .messages
+                .range(start_index..version_index)
+                .flatten()
+                .all(|i| i.is_decided && i.item.is_installed());
         }
 
         false
@@ -82,7 +89,19 @@ where
     fn update_prune_index(&mut self, version: u64) {
         if self.installed_all_prior_decided_items(version) {
             let index = self.index_from_head(version).unwrap();
-            self.update_prune_index(Some(index));
+
+            match self.get_meta().prune_index {
+                Some(prune_index) => {
+                    if index.gt(&prune_index) {
+                        info!("[update_prune_index] Updating prune index from {:?} -> {index}", self.get_meta().prune_index);
+                        self.update_prune_index(Some(index));
+                    }
+                }
+                None => {
+                    info!("[update_prune_index] Prune index None. Updating to {index}");
+                    self.update_prune_index(Some(index));
+                }
+            }
         }
     }
 
@@ -121,6 +140,32 @@ where
     fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>> {
         let version = to_version?;
         let to_index = self.index_from_head(version)?;
-        self.messages.range(..to_index).flatten().rev().find(|&i| i.is_decided && i.item.is_installed())
+
+        //
+        debug!(
+            "last_installed version = {version} | index = {to_index} | suffix length = {}",
+            self.messages.len()
+        );
+        if self.messages.is_empty() || to_index > self.messages.len() - 1 {
+            return None;
+        };
+
+        self.messages
+            .range(..=to_index)
+            .flatten()
+            .rev()
+            .find(|&i| i.is_decided && i.item.is_installed())
+    }
+
+    fn get_by_index(&self, index: usize) -> Option<&SuffixItem<T>> {
+        let item = self.messages.get(index);
+
+        match item {
+            Some(Some(suffix_item)) => Some(suffix_item),
+            _ => {
+                warn!("Item not found at index {index}");
+                None
+            }
+        }
     }
 }
