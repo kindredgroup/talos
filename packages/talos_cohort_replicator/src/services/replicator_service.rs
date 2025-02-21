@@ -8,12 +8,14 @@ use crate::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, info};
+use log::{debug, error, info};
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 pub struct ReplicatorServiceConfig {
+    /// Frequency in milliseconds
     pub commit_frequency_ms: u64,
+    /// Enable internal stats
     pub enable_stats: bool,
 }
 
@@ -90,7 +92,12 @@ where
                     \n ");
             }
 
-            replicator.commit().await;
+            if let Some((new_offset, candidate_version, _candidate_index)) = replicator.compute_new_offset(){
+                replicator.suffix.update_prune_index(candidate_version);
+                replicator.prepare_offset_for_commit(new_offset).await;
+                replicator.commit().await;
+            }
+
         }
         // Receive feedback from installer.
         res = replicator_rx.recv() => {
@@ -105,20 +112,36 @@ where
                             replicator.suffix.set_item_installed(version);
 
                             // // if all prior items are installed, then update the prune vers
-                            replicator.suffix.update_prune_index(version);
+                            let updated_prune_index = replicator.suffix.update_prune_index(version);
 
+                            debug!("Replicator last_installing count = {} | is prune_index ({:?}) >= prune_start_threshold ({:?}) ==> {}", replicator.last_installing, replicator.suffix.get_suffix_meta().prune_index , replicator.suffix.get_suffix_meta().prune_start_threshold, replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold);
+                            // When the prune_index was updated, we know the following:
+                            // - New prune_index > previous prune_index
+                            // - It is safe to drop all items in suffix till the prune_index.
+                            if let Some(index) = updated_prune_index {
+                                if replicator.last_installing > 0 && updated_prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
 
-                            // Prune suffix and update suffix head.
-                            if replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
-                                replicator.prepare_offset_for_commit().await;
-                                replicator.suffix.prune_till_version(version).unwrap();
+                                    if let Err(err) = replicator.suffix.prune_till_index(index){
+                                        let item = replicator.suffix.get_by_index(index);
+                                        if let Some(suffix_item) = item {
+                                            let ver = suffix_item.item_ver;
+                                            error!("Failed to prune suffix till version {ver} and index {index}. Suffix head is at {}. Error {:?}", replicator.suffix.get_meta().head, err);
+                                        } else {
+                                            error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", replicator.suffix.get_meta().head, err);
+                                        }
+                                    } else {
+                                        info!("Completed pruning suffix. New head = {} ", replicator.suffix.get_meta().head);
+                                    }
+                                };
+
                             }
                             total_items_installed += 1;
                             time_last_item_installed_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
                         }
-                        ReplicatorChannel::InstallationFailure(_) => {
-                            // panic!("[panic panic panic] Installation Failed and replicator will panic and stop");
+                        ReplicatorChannel::InstallationFailure(err) => {
+                            error!("Installation failed with error {err:?}");
+
                         }
                     }
                 }
