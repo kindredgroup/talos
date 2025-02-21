@@ -289,7 +289,7 @@ where
                 decision_ver: None,
                 is_decided: false,
             }));
-            info!("Inserted version {version} as the first item to suffix");
+            debug!("Inserted version {version} as the first item to suffix");
             return Ok(());
         }
 
@@ -326,7 +326,6 @@ where
                 self.messages.push_back(None);
             }
             let suffix_length_after_empty_slots = self.messages.len();
-            debug!("During insert of version {version} to index {index}, last_item_index ={last_item_index} | last_insert_vers = {} | before none insert suffix length = {suffix_length_before_empty_slots} | after = {suffix_length_after_empty_slots} | empty_slots added = {empty_slots}", self.meta.last_insert_vers);
             self.messages[index] = Some(SuffixItem {
                 item: message,
                 item_ver: version,
@@ -335,9 +334,10 @@ where
             });
 
             self.meta.last_insert_vers = version;
-            info!(
-                "Inserted version {version} at calculated index on suffix = {index} | actual index on suffix = {}",
-                self.messages.len() - 1
+            debug!(
+                "Inserted version {version} at calculated index on suffix = {index} | actual index on suffix = {} | before insert suffix length = {suffix_length_before_empty_slots} | after insert suffix length = {suffix_length_after_empty_slots} | empty_slots added = {}",
+                self.messages.len() - 1,
+                empty_slots - 1,
             );
         } else {
             warn!("Failed to insert version {version} at index {index}");
@@ -373,15 +373,11 @@ where
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
         info!(
-            "Suffix message length before pruning={} and current suffix head={}!!!",
+            "Suffix message length before pruning={} and current suffix head={}",
             self.messages.len(),
             self.meta.head
         );
         let start_ms = Instant::now();
-        // info!("Next suffix item index= {:?} after prune index={prune_index:?}.....", suffix_item.item_ver);
-
-        // let k = self.retrieve_all_some_vec_items();
-        // info!("Items before pruning are \n{k:?}");
 
         let drained_entries = self.messages.drain(..index).collect();
         let drain_end_ms = start_ms.elapsed().as_micros();
@@ -396,18 +392,12 @@ where
         }
 
         info!(
-            "Suffix message length after pruning={} and new suffix head={}!!!",
+            "Suffix message length after pruning={} and new suffix head={} | Prune took {} microseconds and update head took {} microseconds",
             self.messages.len(),
-            self.meta.head
-        );
-        info!(
-            "Prune took {} microseconds and update head took {} microseconds",
+            self.meta.head,
             drain_end_ms,
             start_ms_2.elapsed().as_micros()
         );
-        // let k = self.retrieve_all_some_vec_items();
-        // info!("Items after pruning are \n{k:?}");
-        // }
 
         Ok(drained_entries)
     }
