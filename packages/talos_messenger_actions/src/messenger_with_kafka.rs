@@ -108,6 +108,8 @@ pub struct Configuration {
     /// The more often the commit is done has inverse impact on the latency.
     /// Defaults to 5_000.
     pub commit_size: Option<u32>,
+    /// Commit issuing frequency.
+    pub commit_frequency: Option<u32>,
 }
 
 pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResult {
@@ -132,7 +134,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
 
     // START - Inbound service
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(config.suffix_config.unwrap_or_default());
-    let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size);
+    let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size, config.commit_frequency);
     let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, inbound_service_config);
     // END - Inbound service
 
