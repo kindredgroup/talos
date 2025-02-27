@@ -47,7 +47,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
 
     /// Checks if all versions prioir to this version are already completed, and updates the prune index.
     /// If the prune index was updated, returns the new prune_index, else returns None.
-    fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize>;
+    fn update_prune_index_from_version(&mut self, version: u64) -> Option<(usize, u64)>;
 
     /// Checks if all commit actions are completed for the version
     fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool>;
@@ -205,7 +205,13 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     }
 
     fn set_commit_action(&mut self, commit_actions: HashMap<String, AllowedActionsMapItem>) {
-        self.allowed_actions_map = commit_actions
+        // serde_json::Value fields hold a lot of memory. Therefore the duplications of `on_commit` and `allowed_actions_map` causes lot of memory overhead.
+        // `on_commit` is not longer required once we move the actions to `allowed_actions_map`, and therefore it is fine to set it to `None`.
+
+        // TODO: GK - Address the memory overhead due to the use of `serde_json::Value` in a better way. Explore using `serde_json::RawValue` to just retain the raw value
+        // and parse it only when really required.
+        self.candidate.on_commit = None;
+        self.allowed_actions_map = commit_actions;
     }
 
     fn get_state(&self) -> &SuffixItemState {
@@ -348,7 +354,7 @@ where
         }
     }
 
-    fn update_prune_index_from_version(&mut self, version: u64) -> Option<usize> {
+    fn update_prune_index_from_version(&mut self, version: u64) -> Option<(usize, u64)> {
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
@@ -376,7 +382,7 @@ where
         self.update_prune_index(index.into());
         debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
 
-        Some(index)
+        Some((index, safe_prune_version))
     }
 
     fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool> {

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
@@ -22,15 +24,18 @@ pub struct MessengerInboundServiceConfig {
     /// When the number of feedbacks is greater than the commit_size, a commit is issued.
     /// Default value is 5_000. Updating this value can impact the latency/throughput due to the frequency at which the commits will be issued.
     commit_size: u32,
+    /// Frequency at which to commit should be done in ms
+    commit_frequency: u32,
     /// The allowed on_commit actions
     allowed_actions: HashMap<String, Vec<String>>,
 }
 
 impl MessengerInboundServiceConfig {
-    pub fn new(allowed_actions: HashMap<String, Vec<String>>, commit_size: Option<u32>) -> Self {
+    pub fn new(allowed_actions: HashMap<String, Vec<String>>, commit_size: Option<u32>, commit_frequency: Option<u32>) -> Self {
         Self {
             allowed_actions,
             commit_size: commit_size.unwrap_or(5_000),
+            commit_frequency: commit_frequency.unwrap_or(10 * 1_000),
         }
     }
 }
@@ -44,6 +49,10 @@ where
     pub rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
     pub suffix: Suffix<MessengerCandidate>,
     pub config: MessengerInboundServiceConfig,
+    /// The last version/offset sent for commit. This property shows the version that was last committed, unlike `next_version_to_commit`, which is next to commit.
+    last_committed_version: u64,
+    /// The next version ready to be send for commit.
+    next_version_to_commit: u64,
 }
 
 impl<M> MessengerInboundService<M>
@@ -63,6 +72,8 @@ where
             rx_feedback_channel,
             suffix,
             config,
+            last_committed_version: 0,
+            next_version_to_commit: 0,
         }
     }
     /// Get next versions with their commit actions to process.
@@ -100,17 +111,20 @@ where
         Ok(())
     }
 
-    fn commit_offset(&mut self) {
-        if let Some(index) = self.suffix.get_meta().prune_index {
-            let prune_item_option = self.suffix.messages.get(index);
-
-            if let Some(Some(prune_item)) = prune_item_option {
-                let commit_offset = prune_item.item_ver + 1;
-                debug!("[Commit] Updating tpl to version .. {commit_offset}");
-                let _ = self.message_receiver.update_offset_to_commit(commit_offset as i64);
-
-                let _ = self.message_receiver.commit_async();
+    fn update_commit_offset(&mut self, version: u64) {
+        let last_offset = self.next_version_to_commit;
+        if version.gt(&last_offset) {
+            if let Err(err) = self.message_receiver.update_offset_to_commit(version as i64) {
+                error!("Failed updating offset from {last_offset:?} -> {version} with error {err:?}");
+            } else {
+                self.next_version_to_commit = version;
+                debug!("Commit offset updated from {last_offset:?} -> {version}");
             }
+        } else {
+            debug!(
+                "Skipped updating commit offset as version ({version}) is less than the last committed version ({:?})",
+                last_offset
+            );
         }
     }
 
@@ -136,7 +150,9 @@ where
 
                 // self.all_completed_versions.push(version);
 
-                let _ = self.suffix.update_prune_index_from_version(version);
+                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                    self.update_commit_offset(new_prune_version);
+                }
 
                 debug!("[Actions] All actions for version {version} completed!");
             }
@@ -201,7 +217,8 @@ where
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger service");
 
-        let mut feedback_count: u32 = 0;
+        let mut interval = tokio::time::interval(Duration::from_millis(self.config.commit_frequency as u64));
+
         loop {
             tokio::select! {
                 // Receive feedback from publisher.
@@ -217,9 +234,6 @@ where
                             self.handle_action_success(version, &key);
                         },
                     }
-
-                    feedback_count+=1;
-
 
                 }
                 // 1. Consume message.
@@ -268,6 +282,12 @@ where
                             let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
                             self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
 
+                            if decision.message.is_abort(){
+                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                                    self.update_commit_offset(new_prune_version);
+                                }
+                            }
+
                             // Pick the next items from suffix whose actions are to be processed.
                             self.process_next_actions().await?;
 
@@ -288,6 +308,50 @@ where
                     }
 
                 }
+                // Periodically check and update the commit frequency and prune index.
+                _ = interval.tick() => {
+                    if !self.suffix.messages.is_empty(){
+                        if let  Some(Some(last_item_on_suffix)) = self.suffix.messages.back() {
+                            let last_version = last_item_on_suffix.item_ver;
+                            let last_version_decision_ver = last_item_on_suffix.decision_ver;
+                            let last_committed_version = self.last_committed_version;
+
+                            let version_ready_to_commit = self.next_version_to_commit;
+
+                            if version_ready_to_commit.gt(&last_committed_version) {
+                                // There are more items in suffix.
+                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(last_version) {
+
+                                    // If the new_prune_version is same as the last item on suffix, then is is safe to commit till the decision offset of that message.
+                                    let new_offset = if new_prune_version.eq(&last_version) {
+                                        if let Some(decision_vers) = last_version_decision_ver {
+                                            debug!("Updating to decision offset ({:?})", decision_vers);
+                                            decision_vers
+                                        } else {
+                                            new_prune_version
+                                        }
+
+                                    } else {
+                                        debug!("Updating to candidate offset ({})", new_prune_version);
+                                        new_prune_version
+                                    };
+                                    self.update_commit_offset(new_offset);
+                                    match self.message_receiver.commit() {
+                                        Err(err) => {
+                                            error!("[Commit] Error committing {err:?}");
+                                        }
+                                        Ok(_) => {
+                                            self.last_committed_version = new_offset;
+                                        },
+                                    }
+                                };
+
+                            }
+
+                        }
+                    }
+
+                }
                 else => {
                     warn!("Unhandled arm....");
                 }
@@ -295,10 +359,18 @@ where
             }
 
             // NOTE: Pruning and committing offset adds to latency if done more frequently.
-
-            if feedback_count.ge(&self.config.commit_size) {
-                self.commit_offset();
-                feedback_count = 0;
+            if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
+                match self.message_receiver.commit() {
+                    Err(err) => {
+                        error!("[Commit] Error committing {err:?}");
+                    }
+                    Ok(_) => {
+                        self.last_committed_version = self.next_version_to_commit;
+                        info!("Last commit at offset {}", self.last_committed_version);
+                    }
+                };
+                // else {
+                // }
             }
 
             // Update the prune index and commit

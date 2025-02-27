@@ -183,7 +183,7 @@ impl MessageReciever for KafkaConsumer {
         self.consumer.unsubscribe();
     }
 
-    async fn commit(&self) -> Result<(), SystemServiceError> {
+    fn commit(&self) -> Result<(), Box<SystemServiceError>> {
         if self.tpl.count() > 0 {
             self.consumer
                 .commit(&self.tpl, rdkafka::consumer::CommitMode::Async)
