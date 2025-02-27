@@ -42,7 +42,7 @@ impl MessageReciever for MockReciever {
         Ok(())
     }
 
-    async fn commit(&self) -> Result<(), SystemServiceError> {
+    fn commit(&self) -> Result<(), Box<SystemServiceError>> {
         Ok(())
     }
     fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>> {
