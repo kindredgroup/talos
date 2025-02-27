@@ -1,6 +1,6 @@
 [package]
 name = "talos_messenger_core"
-version = "0.2.32"
+version = "0.2.33-dev"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -41,9 +41,9 @@ time = { version = "0.3.30" }
 indexmap = { version = "2.0.0", features = ["rayon"] }
 ahash = "0.8.3"
 
-talos_certifier = { path = "../talos_certifier", version = "0.2.32" }
-talos_suffix = { path = "../talos_suffix", version = "0.2.32" }
-talos_common_utils = { path = "../../packages/talos_common_utils", version = "0.2.32" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.33-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.33-dev" }
+talos_common_utils = { path = "../../packages/talos_common_utils", version = "0.2.33-dev" }
 
 [dev-dependencies]
 mockall = { version = "0.11.3" }
