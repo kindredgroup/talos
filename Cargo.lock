@@ -589,6 +589,7 @@ dependencies = [
  "chrono",
  "cohort_sdk",
  "env_logger",
+ "litemap",
  "log",
  "napi",
  "napi-build",
@@ -603,6 +604,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+ "zerofrom",
 ]
 
 [[package]]
@@ -2689,6 +2691,7 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "indexmap 2.7.1",
+ "litemap",
  "log",
  "mockall",
  "rand",
@@ -2706,6 +2709,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-test",
+ "zerofrom",
 ]
 
 [[package]]

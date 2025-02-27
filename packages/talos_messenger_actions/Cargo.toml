@@ -42,6 +42,9 @@ time = { version = "0.3.30" }
 indexmap = { version = "2.0.0", features = ["rayon"] }
 ahash = "0.8.3"
 
+zerofrom = { version = "=0.1.5" }
+litemap = { version = "=0.7.4" }
+
 talos_certifier = { path = "../talos_certifier", version = "0.2.32-dev" }
 talos_suffix = { path = "../talos_suffix", version = "0.2.32-dev" }
 talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.32-dev" }
