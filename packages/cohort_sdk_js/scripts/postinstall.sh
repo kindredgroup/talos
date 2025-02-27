@@ -56,7 +56,9 @@ else
     echo "Executing 'npx napi build --platform --release' in 'dist/talos/packages/cohort_sdk_js'"
     cd dist/talos/packages/cohort_sdk_js
     cargo update napi-build@2.1.4 --precise 2.1.3
-    npx napi build --platform --release 
+    cargo update zerofrom@0.1.6 --precise 0.1.5
+    cargo update litemap@0.7.5 --precise 0.7.4
+    npx napi build --platform --release
 fi
 
 returnStatus=$(($?+0))

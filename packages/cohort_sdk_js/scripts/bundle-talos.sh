@@ -46,6 +46,8 @@ cd $TARGET_DIR/packages/cohort_sdk_js/
 pwd
 
 echo "Building project"
+cargo update zerofrom@0.1.6 --precise 0.1.5
+cargo update litemap@0.7.5 --precise 0.7.4
 npm run build
 
 echo "Current content is:"
