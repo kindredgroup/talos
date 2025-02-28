@@ -1,6 +1,6 @@
 [package]
 name = "talos_messenger_actions"
-version = "0.2.35-dev"
+version = "0.2.35"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -45,12 +45,12 @@ ahash = "0.8.3"
 zerofrom = { version = "=0.1.5" }
 litemap = { version = "=0.7.4" }
 
-talos_certifier = { path = "../talos_certifier", version = "0.2.35-dev" }
-talos_suffix = { path = "../talos_suffix", version = "0.2.35-dev" }
-talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.35-dev" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.2.35-dev" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.35-dev" }
-talos_messenger_core = { path = "../talos_messenger_core", version = "0.2.35-dev" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.35" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.35" }
+talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.35" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.35" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.35" }
+talos_messenger_core = { path = "../talos_messenger_core", version = "0.2.35" }
 
 
 [dev-dependencies]
