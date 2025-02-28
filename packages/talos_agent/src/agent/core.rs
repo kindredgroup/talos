@@ -4,7 +4,7 @@ use crate::agent::errors::AgentErrorKind::Certification;
 use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::agent::state_manager::StateManager;
 use crate::api::{AgentConfig, CertificationRequest, CertificationResponse, TalosAgent};
-use crate::messaging::api::{ConsumerType, DecisionMessage, PublisherType};
+use crate::messaging::api::{ConsumerType, PublisherType, TraceableDecision};
 use crate::metrics::client::MetricsClient;
 use crate::metrics::core::Metrics;
 use crate::metrics::model::{EventName, MetricsReport, Signal};
@@ -15,6 +15,7 @@ use std::time::Duration;
 use tokio::task::JoinHandle;
 use tokio::time::error::Elapsed;
 use tokio::time::timeout;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub struct TalosAgentImpl<TCancelTx, TSignalTx, TRespChFactory, TResponseTx, TResponseRx>
 where
@@ -72,11 +73,11 @@ where
     where
         TCertifyRx: Receiver<Data = CertifyRequestChannelMessage> + 'static,
         TCancelRx: Receiver<Data = CancelRequestChannelMessage> + 'static,
-        TDecisionTx: Sender<Data = DecisionMessage> + 'static,
-        TDecisionRx: Receiver<Data = DecisionMessage> + 'static,
+        TDecisionTx: Sender<Data = TraceableDecision> + 'static,
+        TDecisionRx: Receiver<Data = TraceableDecision> + 'static,
     {
         let agent_config = self.agent_config.clone();
-        log::info!("Publisher and Consumer are ready.");
+        tracing::info!("Publisher and Consumer are ready.");
 
         let metrics_client = Arc::clone(&self.metrics_client);
         let handle_to_manager_task = tokio::spawn(async move {
@@ -112,13 +113,22 @@ where
     TResponseRx: Receiver<Data = CertificationResponse> + 'static,
     TRespChFactory: Fn() -> (TResponseTx, TResponseRx) + Send + Sync,
 {
+    #[tracing::instrument(
+        name = "agent_certify",
+        skip(self, request),
+        fields(xid = %request.candidate.xid)
+    )]
     async fn certify(&self, request: CertificationRequest) -> Result<CertificationResponse, AgentError> {
         let (tx, mut rx) = (self.channel_factory)();
         if let Some(mc) = self.metrics_client.as_ref() {
             mc.new_event(EventName::Started, request.candidate.xid.clone()).await.unwrap();
         }
 
-        let m = CertifyRequestChannelMessage::new(&request, Arc::new(Box::new(tx)));
+        let m = CertifyRequestChannelMessage::new(
+            &request,
+            Arc::new(Box::new(tx)),
+            tracing::Span::current().id().map(|id| (tracing::Span::current().context(), id)),
+        );
         let to_state_manager = Arc::clone(&self.tx_certify);
 
         let max_wait: Duration = request.timeout.unwrap_or_else(|| Duration::from_millis(self.agent_config.timeout_ms as u64));

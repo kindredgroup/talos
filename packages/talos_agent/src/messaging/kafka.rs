@@ -1,3 +1,4 @@
+use crate::agent::model::PropagatedSpanContextData;
 use crate::api::TalosType;
 use crate::messaging::api::{
     CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
@@ -5,7 +6,7 @@ use crate::messaging::api::{
 };
 use crate::messaging::errors::{MessagingError, MessagingErrorKind};
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use opentelemetry::Context;
 use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
@@ -19,8 +20,9 @@ use std::time::Duration;
 use std::{str, thread};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
+use tracing::{debug, error, info, warn};
 
-use super::api::TxProcessingTimeline;
+use super::api::{TraceableDecision, TxProcessingTimeline};
 
 /// The Kafka error into generic custom messaging error type
 
@@ -81,32 +83,53 @@ impl Publisher for KafkaPublisher {
         key: String,
         mut message: CandidateMessage,
         headers: Option<HashMap<String, String>>,
+        parent_span_ctx: Option<Context>,
     ) -> Result<PublishResponse, MessagingError> {
-        debug!("KafkaPublisher.send_message(): async publishing message {:?} with key: {}", message, key);
         debug!(
-            "KafkaPublisher.send_message(): async publishing message with headers {:?} with key: {}",
+            "KafkaPublisher.send_message(): async publishing message with headers {:?} and key: {}",
             headers, key
         );
 
         let topic = self.config.topic.clone();
 
-        let extra_headers = headers.map(|hset| {
-            let mut oh = OwnedHeaders::new();
+        let opt_ctx_data = parent_span_ctx.map(|ctx| PropagatedSpanContextData::new_with_otel_context(&ctx).get_data());
+        let mut extra_headers = OwnedHeaders::new();
+        let mut have_headers = false;
+        if let Some(hset) = headers {
             for (k, v) in hset.into_iter() {
-                oh = oh.insert(Header {
+                extra_headers = extra_headers.insert(Header {
                     key: k.as_str(),
                     value: Some(v.as_str()),
                 });
+                have_headers = true;
             }
-            oh
-        });
+        }
+
+        if let Some(ctx_data) = opt_ctx_data {
+            tracing::debug!("passing trace context to message: {:?}", ctx_data);
+            for (k, v) in ctx_data.into_iter() {
+                extra_headers = extra_headers.insert(Header {
+                    key: k.as_str(),
+                    value: Some(v.as_str()),
+                });
+                have_headers = true;
+            }
+        };
 
         message.published_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
         let payload = serde_json::to_string(&message).unwrap();
 
-        let data = KafkaPublisher::make_record(self.agent.clone(), &self.config.topic, key.as_str(), payload.as_str(), extra_headers);
+        let data = KafkaPublisher::make_record(
+            self.agent.clone(),
+            &self.config.topic,
+            key.as_str(),
+            payload.as_str(),
+            if have_headers { Some(extra_headers) } else { None },
+        );
 
         let timeout = Timeout::After(Duration::from_millis(self.config.producer_send_timeout_ms.unwrap_or(10) as u64));
+
+        // return match self.producer.send(data, timeout).instrument(tspan).await {
         return match self.producer.send(data, timeout).await {
             Ok((partition, offset)) => {
                 debug!("KafkaPublisher.send_message(): Published into partition {}, offset: {}", partition, offset);
@@ -168,13 +191,13 @@ impl KafkaConsumer {
         // This line is required for seek operation to be successful.
         partition_list.set_partition_offset(topic, partition, Offset::End)?;
 
-        info!("Assigning partition list to consumer: {:?}", partition_list);
+        debug!("Assigning partition list to consumer: {:?}", partition_list);
         self.consumer.assign(&partition_list)?;
 
-        info!("Fetching offset for partition: {}", partition);
+        debug!("Fetching offset for partition: {}", partition);
         let offset = self.get_offset(partition, Duration::from_secs(5))?;
 
-        info!("Seeking on partition {} to offset: {:?}", partition, offset);
+        debug!("Seeking on partition {} to offset: {:?}", partition, offset);
         self.consumer.seek(topic, partition, offset, Duration::from_secs(5))?;
 
         Ok(())
@@ -194,7 +217,7 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
         self.talos_type.clone()
     }
 
-    async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>> {
+    async fn receive_message(&self) -> Option<Result<TraceableDecision, MessagingError>> {
         let rslt_received = self
             .consumer
             .recv()
@@ -246,7 +269,14 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
         });
 
-        parsed_type.and_then(|message_type| deserialize_decision(&self.get_talos_type(), &message_type, &received.payload_view::<str>()))
+        parsed_type.and_then(|message_type| {
+            deserialize_decision(&self.get_talos_type(), &message_type, &received.payload_view::<str>()).map(|result| {
+                result.map(|decision| TraceableDecision {
+                    decision,
+                    raw_span_context: headers,
+                })
+            })
+        })
     }
 }
 

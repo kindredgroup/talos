@@ -7,7 +7,7 @@ use std::{env, sync::Arc, time::Duration};
 use talos_agent::agent::core::TalosAgentImpl;
 use talos_agent::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use talos_agent::api::{AgentConfig, CandidateData, CertificationRequest, CertificationResponse, TalosAgent, TalosType};
-use talos_agent::messaging::api::DecisionMessage;
+use talos_agent::messaging::api::TraceableDecision;
 use talos_agent::messaging::kafka::KafkaInitializer;
 use talos_agent::metrics::client::MetricsClient;
 use talos_agent::metrics::core::Metrics;
@@ -178,9 +178,9 @@ async fn make_agent(params: LaunchParams) -> impl TalosAgent {
     let tx_certify = SenderWrapper::<CertifyRequestChannelMessage> { tx: tx_certify_ch };
     let rx_certify = ReceiverWrapper::<CertifyRequestChannelMessage> { rx: rx_certify_ch };
 
-    let (tx_decision_ch, rx_decision_ch) = mpsc::channel::<DecisionMessage>(cfg_agent.buffer_size as usize);
-    let tx_decision = SenderWrapper::<DecisionMessage> { tx: tx_decision_ch };
-    let rx_decision = ReceiverWrapper::<DecisionMessage> { rx: rx_decision_ch };
+    let (tx_decision_ch, rx_decision_ch) = mpsc::channel::<TraceableDecision>(cfg_agent.buffer_size as usize);
+    let tx_decision = SenderWrapper::<TraceableDecision> { tx: tx_decision_ch };
+    let rx_decision = ReceiverWrapper::<TraceableDecision> { rx: rx_decision_ch };
 
     let (tx_cancel_ch, rx_cancel_ch) = mpsc::channel::<CancelRequestChannelMessage>(cfg_agent.buffer_size as usize);
     let tx_cancel = SenderWrapper::<CancelRequestChannelMessage> { tx: tx_cancel_ch };

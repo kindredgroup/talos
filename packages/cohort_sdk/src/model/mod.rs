@@ -90,6 +90,18 @@ pub struct Config {
     // Kafka configs for Agent
     //
     pub kafka: KafkaConfig,
+
+    //
+    // OTEL config
+    //
+    pub otel_telemetry: CohortOtelConfig,
+}
+
+#[derive(Clone, Default)]
+pub struct CohortOtelConfig {
+    pub enabled: bool,
+    // The endpoint to OTEL collector
+    pub grpc_endpoint: Option<String>,
 }
 
 impl Config {
@@ -108,6 +120,7 @@ impl Config {
 
             // Kafka
             kafka: kafka_config,
+            otel_telemetry: CohortOtelConfig::default(),
         }
     }
 }

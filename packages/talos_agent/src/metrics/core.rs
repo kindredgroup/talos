@@ -136,7 +136,7 @@ impl Metrics {
         let mut elapsed = 0_u64;
         let progress_frequency = if sorted.len() > 10 { (sorted.len() / 10) as u64 } else { 1 };
 
-        log::warn!(
+        tracing::warn!(
             "METRIC agent-spans(header): {},{},{},{},{},{},{},{},{},{},{},'-',{},{}",
             "total count",
             "roundtrip (mcs)",
@@ -160,7 +160,7 @@ impl Metrics {
             //log::error!("debug: {}, {}, {}, {}", tx.id, tx.candidate_publish_4.as_micros(), tx.candidate_kafka_trip_5.as_micros(), tx.decision_duration_6.as_micros());
 
             if total_count % progress_frequency == 0 {
-                log::warn!("METRIC agent-spans(progress): {} of {}", total_count, sorted.len());
+                tracing::warn!("METRIC agent-spans(progress): {} of {}", total_count, sorted.len());
             }
             if earliest_time == 0 {
                 earliest_time = tx.started_at;
@@ -168,7 +168,7 @@ impl Metrics {
 
             elapsed = tx.started_at - earliest_time;
             if elapsed > bucket_limit as u64 {
-                log::warn!(
+                tracing::warn!(
                     "METRIC agent-spans: {},{},{},{},{},{},{},{},{},{},{},'-',{},{}",
                     total_count,
                     sum.total.as_micros(),
@@ -204,7 +204,7 @@ impl Metrics {
             }
         }
 
-        log::warn!(
+        tracing::warn!(
             "METRIC agent-spans: {},{},{},{},{},{},{},{},{},{},{},'-',{},{}",
             total_count,
             sum.total.as_micros(),

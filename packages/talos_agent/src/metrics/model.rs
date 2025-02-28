@@ -174,21 +174,21 @@ impl MetricsReport {
     pub fn print(&self, duration_ms: u64, errors_count: u64) {
         let headers = r"'Rroundtrip (mcs)' ['client until agent 1 (mcs)', 'enqueued for in-flight tracing 2 (mcs)', 'publishing task spawn 3 (mcs)', 'kafka publishing 4 (mcs)', 'C. kafka trip 5 (mcs)','decision duration 6 (mcs)', 'D. kafka trip 7 (mcs)', 'agent to client 8 (mcs)']";
 
-        log::warn!("");
-        log::warn!("Publishing: {:>5.2} tps", self.publish_rate);
-        log::warn!("Throuhput:  {:>5.2} tps", self.get_rate(duration_ms));
-        log::warn!("");
-        log::warn!("{}", headers);
-        log::warn!("Max (mcs): {}", self.format_certify_max());
-        log::warn!("Min (mcs): {}", self.format_certify_min());
-        log::warn!("99% (mcs): {}", self.format_p99());
-        log::warn!("95% (mcs): {}", self.format_p95());
-        log::warn!("90% (mcs): {}", self.format_p90());
-        log::warn!("75% (mcs): {}", self.format_p75());
-        log::warn!("50% (mcs): {}", self.format_p50());
-        log::warn!("");
-        log::warn!("Min,Max,p75,p90,p95,Errors");
-        log::warn!(
+        tracing::warn!("");
+        tracing::warn!("Publishing: {:>5.2} tps", self.publish_rate);
+        tracing::warn!("Throuhput:  {:>5.2} tps", self.get_rate(duration_ms));
+        tracing::warn!("");
+        tracing::warn!("{}", headers);
+        tracing::warn!("Max (mcs): {}", self.format_certify_max());
+        tracing::warn!("Min (mcs): {}", self.format_certify_min());
+        tracing::warn!("99% (mcs): {}", self.format_p99());
+        tracing::warn!("95% (mcs): {}", self.format_p95());
+        tracing::warn!("90% (mcs): {}", self.format_p90());
+        tracing::warn!("75% (mcs): {}", self.format_p75());
+        tracing::warn!("50% (mcs): {}", self.format_p50());
+        tracing::warn!("");
+        tracing::warn!("Min,Max,p75,p90,p95,Errors");
+        tracing::warn!(
             "{},{},{},{},{},{}",
             self.certify_min.get_total_mcs(),
             self.certify_max.get_total_mcs(),

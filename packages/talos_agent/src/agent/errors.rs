@@ -108,6 +108,7 @@ mod tests {
                 headers: None,
             },
             Arc::new(Box::new(MockNoopSender::new())),
+            None,
         ));
 
         let agent_error: AgentError = send_error.into();

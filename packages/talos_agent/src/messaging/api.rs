@@ -1,8 +1,11 @@
+use core::fmt;
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use crate::api::{CandidateData, StateMap, TalosType};
 use crate::messaging::errors::MessagingError;
 use async_trait::async_trait;
+use opentelemetry::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use strum::{Display, EnumString};
@@ -76,6 +79,12 @@ pub enum Decision {
     Aborted,
 }
 
+impl Display for Decision {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", if *self == Self::Committed { "comitted" } else { "aborted" })
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 pub struct ConflictMessage {
     pub xid: String,
@@ -103,6 +112,12 @@ pub struct DecisionMessage {
     pub metrics: Option<TxProcessingTimeline>,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+pub struct TraceableDecision {
+    pub decision: DecisionMessage,
+    pub raw_span_context: HashMap<String, String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TxProcessingTimeline {
@@ -128,7 +143,13 @@ pub struct PublishResponse {
 /// The publishing contract
 #[async_trait]
 pub trait Publisher {
-    async fn send_message(&self, key: String, message: CandidateMessage, headers: Option<HashMap<String, String>>) -> Result<PublishResponse, MessagingError>;
+    async fn send_message(
+        &self,
+        key: String,
+        message: CandidateMessage,
+        headers: Option<HashMap<String, String>>,
+        parent_span_ctx: Option<Context>,
+    ) -> Result<PublishResponse, MessagingError>;
 }
 
 pub type PublisherType = dyn Publisher + Sync + Send;
@@ -136,7 +157,7 @@ pub type PublisherType = dyn Publisher + Sync + Send;
 /// The consuming contract
 #[async_trait]
 pub trait Consumer {
-    async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>>;
+    async fn receive_message(&self) -> Option<Result<TraceableDecision, MessagingError>>;
     fn get_talos_type(&self) -> TalosType;
 }
 

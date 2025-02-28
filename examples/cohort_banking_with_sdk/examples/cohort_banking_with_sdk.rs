@@ -5,7 +5,7 @@ use banking_common::model::TransferRequest;
 use banking_common::state::postgres::database_config::DatabaseConfig;
 use cohort_banking::app::BankingApp;
 use cohort_banking::examples_support::queue_processor::QueueProcessor;
-use cohort_sdk::model::{BackoffConfig, Config};
+use cohort_sdk::model::{BackoffConfig, CohortOtelConfig, Config};
 use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 
@@ -113,6 +113,7 @@ async fn main() -> Result<(), String> {
         buffer_size: 10_000_000,
         timeout_ms: 600_000,
         kafka: cfg_kafka,
+        otel_telemetry: CohortOtelConfig::default(),
     };
 
     let db_config = DatabaseConfig::from_env(Some("COHORT"))?;

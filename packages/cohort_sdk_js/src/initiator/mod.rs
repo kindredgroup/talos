@@ -6,7 +6,7 @@ use cohort_sdk::model::callback::{
     CandidateOnCommitActions, CandidateOnCommitPublishActions, CertificationCandidate, CertificationCandidateCallbackResponse, CertificationRequest,
     KafkaAction, OutOfOrderInstallOutcome, OutOfOrderInstallRequest, OutOfOrderInstaller,
 };
-use cohort_sdk::model::{CertificationResponse, ClientError, Config, ResponseMetadata};
+use cohort_sdk::model::{CertificationResponse, ClientError, CohortOtelConfig, Config, ResponseMetadata};
 use napi::bindgen_prelude::Promise;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
@@ -36,6 +36,7 @@ pub struct JsInitiatorConfig {
     pub timeout_ms: u32,
 
     pub kafka: JsKafkaConfig,
+    pub otel_telemetry: Option<JsCohortOtelConfig>,
 }
 
 impl From<JsInitiatorConfig> for Config {
@@ -61,6 +62,22 @@ impl From<JsInitiatorConfig> for Config {
             timeout_ms: val.timeout_ms,
 
             kafka: val.kafka.into(),
+            otel_telemetry: val.otel_telemetry.map_or(CohortOtelConfig::default(), |v| v.into()),
+        }
+    }
+}
+
+#[napi(object)]
+pub struct JsCohortOtelConfig {
+    pub enabled: bool,
+    pub grpc_endpoint: Option<String>,
+}
+
+impl From<JsCohortOtelConfig> for CohortOtelConfig {
+    fn from(val: JsCohortOtelConfig) -> Self {
+        CohortOtelConfig {
+            enabled: val.enabled,
+            grpc_endpoint: val.grpc_endpoint,
         }
     }
 }
@@ -248,12 +265,13 @@ impl InternalInitiator {
         #[napi(ts_arg_type = "(error: Error | null, ooRequest: OutOfOrderRequest) => Promise<JsOutOfOrderInstallOutcome>")] ooo_callback: ThreadsafeFunction<
             OutOfOrderRequest,
         >,
+        trace_parent: Option<String>,
     ) -> napi::Result<JsCertificationResponse> {
         let new_request_provider = NewRequestProvider { make_new_request_callback };
         let ooo_impl = OutOfOrderInstallerImpl { ooo_callback };
         let make_new_request = || new_request_provider.make_new_request();
 
-        let response = self.cohort.certify(&make_new_request, &ooo_impl).await.map_err(map_error)?;
+        let response = self.cohort.certify(&make_new_request, &ooo_impl, trace_parent).await.map_err(map_error)?;
         Ok(response.into())
     }
 }
