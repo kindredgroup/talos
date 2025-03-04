@@ -1,13 +1,18 @@
-use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage, PropagatedSpanContextData};
 use crate::api::{AgentConfig, CertificationResponse};
-use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType};
+use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType, TraceableDecision};
 use crate::metrics::client::MetricsClient;
 use crate::metrics::model::{EventName, Signal};
 use crate::mpsc::core::{Receiver, Sender};
 use multimap::MultiMap;
+use opentelemetry::global;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
+
+use tracing::Instrument;
+
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 /// Structure represents client who sent the certification request.
 pub struct WaitingClient {
@@ -25,7 +30,7 @@ impl WaitingClient {
     }
     pub async fn notify(&self, response: CertificationResponse, error_message: String) {
         if let Err(e) = self.tx_sender.send(response).await {
-            log::error!("{}. Error: {}", error_message, e);
+            tracing::error!("{}. Error: {}", error_message, e);
         };
     }
 }
@@ -51,20 +56,19 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     ) where
         TCertifyRx: Receiver<Data = CertifyRequestChannelMessage> + 'static,
         TCancelRx: Receiver<Data = CancelRequestChannelMessage> + 'static,
-        TDecisionRx: Receiver<Data = DecisionMessage>,
+        TDecisionRx: Receiver<Data = TraceableDecision>,
     {
         let mut state: MultiMap<String, WaitingClient> = MultiMap::new();
 
         loop {
             let mc = Arc::clone(&self.metrics_client);
             let publisher_ref = Arc::clone(&publisher);
-
             tokio::select! {
                 rslt_request_msg = rx_certify.recv() => {
-                    if rslt_request_msg.is_none() {
-                        continue;
+                    if let Some(request_msg) = rslt_request_msg {
+                        let span = tracing::span!(parent: request_msg.parent_span.clone().map(|(_, id)| id), tracing::Level::INFO, "agent_core_handle_candidate");
+                        self.handle_candidate(request_msg, publisher_ref, &mut state).instrument(span).await;
                     }
-                    self.handle_candidate(rslt_request_msg, publisher_ref, &mut state).await;
                 }
 
                 rslt_cancel_request_msg = rx_cancel.recv() => {
@@ -76,64 +80,75 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
                         continue;
                     }
 
-                    Self::handle_decision(rslt_decision_msg, &mut state, mc).await;
+                    if let Some(decision_msg) = rslt_decision_msg {
+                        let propagated_context = PropagatedSpanContextData::new_with_data(decision_msg.raw_span_context);
+                        let span_context = global::get_text_map_propagator(|propagator| {
+                            propagator.extract(&propagated_context)
+                        });
+                        let span = tracing::info_span!("agent_core_handle_decision");
+                        span.set_parent(span_context);
+                        let fut_handler = Self::handle_decision(Some(decision_msg.decision), &mut state, mc);
+                        fut_handler.instrument(span).await;
+                    }
                 }
             }
         }
     }
     // $coverage:ignore-end
 
-    /// Passes candidate to kafka publisher and records it in the internal state.
-    /// The publishing action is done asynchronously.
     async fn handle_candidate(
         &self,
-        opt_candidate: Option<CertifyRequestChannelMessage>,
+        request_msg: CertifyRequestChannelMessage,
         publisher: Arc<Box<PublisherType>>,
         state: &mut MultiMap<String, WaitingClient>,
     ) -> Option<JoinHandle<()>> {
-        if let Some(request_msg) = opt_candidate {
-            let wc = WaitingClient::new(Arc::clone(&request_msg.tx_answer));
-            let key = request_msg.request.message_key;
-            let xid = request_msg.request.candidate.xid.clone();
-            let metrics = Arc::clone(&self.metrics_client);
+        let wc = WaitingClient::new(Arc::clone(&request_msg.tx_answer));
+        let key = request_msg.request.message_key;
+        let xid = request_msg.request.candidate.xid.clone();
+        let metrics = Arc::clone(&self.metrics_client);
 
-            state.insert(request_msg.request.candidate.xid.clone(), wc);
-            if let Some(mc) = metrics.as_ref() {
-                mc.new_event(EventName::CandidateEnqueuedInAgent, xid.clone()).await.unwrap();
-            }
-
-            let msg = CandidateMessage::new(
-                self.agent_config.agent.clone(),
-                self.agent_config.cohort.clone(),
-                request_msg.request.candidate.clone(),
-                request_msg.request.certification_started_at,
-                request_msg.request.request_created_at,
-                0,
-            );
-
-            let publisher_ref = Arc::clone(&publisher);
-
-            // Fire and forget, errors will show up in the log,
-            // while corresponding requests will timeout.
-            if let Some(mc) = metrics.as_ref() {
-                mc.new_event(EventName::CandidatePublishTaskStarting, xid.clone()).await.unwrap();
-            }
-            Some(tokio::spawn(async move {
-                if let Some(mc) = metrics.as_ref() {
-                    mc.new_event(EventName::CandidatePublishStarted, xid.clone()).await.unwrap();
-                }
-                let _ = publisher_ref.send_message(key, msg, request_msg.request.headers).await;
-                if let Some(mc) = metrics.as_ref() {
-                    mc.new_event(EventName::CandidatePublished, xid.clone()).await.unwrap();
-                }
-            }))
-        } else {
-            None
+        state.insert(xid.clone(), wc);
+        if let Some(mc) = metrics.as_ref() {
+            mc.new_event(EventName::CandidateEnqueuedInAgent, xid.clone()).await.unwrap();
         }
+
+        let msg = CandidateMessage::new(
+            self.agent_config.agent.clone(),
+            self.agent_config.cohort.clone(),
+            request_msg.request.candidate.clone(),
+            request_msg.request.certification_started_at,
+            request_msg.request.request_created_at,
+            0,
+        );
+
+        let publisher_ref = Arc::clone(&publisher);
+
+        // Fire and forget, errors will show up in the log,
+        // while corresponding requests will timeout.
+        if let Some(mc) = metrics.as_ref() {
+            mc.new_event(EventName::CandidatePublishTaskStarting, xid.clone()).await.unwrap();
+        }
+
+        let span = tracing::info_span!("publisher_service_send_message", xid = xid.clone());
+        let publish_async = async move {
+            if let Some(mc) = metrics.as_ref() {
+                mc.new_event(EventName::CandidatePublishStarted, xid.clone()).await.unwrap();
+            }
+            let _ = publisher_ref
+                .send_message(key, msg, request_msg.request.headers, request_msg.parent_span.map(|(ctx, _)| ctx))
+                .await;
+
+            if let Some(mc) = metrics.as_ref() {
+                mc.new_event(EventName::CandidatePublished, xid.clone()).await.unwrap();
+            }
+        };
+
+        Some(tokio::spawn(publish_async.instrument(span)))
     }
 
     /// Passes decision to agent.
     /// Removes internal state for this XID.
+    // #[tracing::instrument(name = "agent_core_handle_decision", skip_all)]
     async fn handle_decision(
         opt_decision: Option<DecisionMessage>,
         state: &mut MultiMap<String, WaitingClient>,
@@ -149,11 +164,19 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
     /// Cleans the internal state for this XID.
     fn handle_cancellation(opt_cancellation: Option<CancelRequestChannelMessage>, state: &mut MultiMap<String, WaitingClient>) {
         if let Some(message) = opt_cancellation {
-            log::warn!("The candidate '{}' is cancelled.", &message.request.candidate.xid);
+            tracing::warn!("The candidate '{}' is cancelled.", &message.request.candidate.xid);
             state.remove(&message.request.candidate.xid);
         }
     }
 
+    #[tracing::instrument(
+        name = "agent_core_reply"
+        skip_all,
+        fields(
+            xid,
+            decision = %message.decision
+        ),
+    )]
     async fn reply_to_agent(
         xid: &str,
         message: DecisionMessage,
@@ -161,7 +184,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
         metrics_client: Arc<Option<Box<MetricsClient<TSignalTx>>>>,
     ) {
         if clients.is_none() {
-            log::warn!("There are no waiting clients for the candidate '{}'", xid);
+            tracing::warn!("There are no waiting clients for the candidate '{}'", xid);
             return;
         }
 
@@ -295,7 +318,7 @@ mod tests {
 
         #[async_trait]
         impl Publisher for NoopPublisher {
-            async fn send_message(&self, key: String, message: CandidateMessage, headers: Option<HashMap<String,String>>) -> Result<PublishResponse, MessagingError>;
+            async fn send_message(&self, key: String, message: CandidateMessage, headers: Option<HashMap<String,String>>, parent_span_ctx: Option<opentelemetry::Context>) -> Result<PublishResponse, MessagingError>;
         }
     }
 
@@ -342,18 +365,19 @@ mod tests {
                     statemap: None,
                     on_commit: None,
                 },
+                headers: None,
                 certification_started_at: 0,
                 request_created_at: 0,
-                headers: None,
             },
             Arc::new(Box::new(tx_answer)),
+            None,
         )
     }
 
     fn ensure_publisher_is_invoked(cfg_copy: AgentConfig, publisher: &mut MockNoopPublisher) {
         publisher
             .expect_send_message()
-            .withf(move |param_key, param_msg, _param_headers| {
+            .withf(move |param_key, param_msg, _headers, _span_ctx| {
                 param_key == "some key"
                     && param_msg.xid == *"xid1"
                     && param_msg.agent == cfg_copy.agent
@@ -364,7 +388,7 @@ mod tests {
                     && param_msg.writeset == Vec::<String>::new()
             })
             .once()
-            .returning(move |_, _, _| Ok(PublishResponse { partition: 0, offset: 100 }));
+            .returning(move |_, _, _, _| Ok(PublishResponse { partition: 0, offset: 100 }));
     }
 
     fn new_client(tx: MockNoopSender) -> WaitingClient {
@@ -414,7 +438,7 @@ mod tests {
         let xid = "xid1";
         let result = manager
             .handle_candidate(
-                Some(make_candidate_request(xid.to_string(), tx_answer).clone()),
+                make_candidate_request(xid.to_string(), tx_answer).clone(),
                 Arc::new(Box::new(publisher)),
                 &mut state,
             )
@@ -470,36 +494,13 @@ mod tests {
 
         let xid = "xid1";
         let result = manager
-            .handle_candidate(
-                Some(make_candidate_request(xid.to_string(), tx_answer)),
-                Arc::new(Box::new(publisher)),
-                &mut state,
-            )
+            .handle_candidate(make_candidate_request(xid.to_string(), tx_answer), Arc::new(Box::new(publisher)), &mut state)
             .await;
 
         assert!(result.is_some());
         let handle = result.unwrap().await;
         assert!(handle.is_ok());
         assert!(state.get(xid).is_some());
-    }
-
-    #[tokio::test]
-    async fn handle_candidate_should_not_publish() {
-        // No publishing to kafka if there is no request received
-        let metrics_client: Option<Box<MetricsClient<MockNoopMetricsSender>>> = None;
-
-        let manager = StateManager::new(make_config(), Arc::new(metrics_client));
-
-        let mut tx_answer = MockNoopSender::new();
-        tx_answer.expect_send().never();
-
-        let mut publisher = MockNoopPublisher::new();
-        publisher.expect_send_message().never();
-
-        let mut state = MultiMap::<String, WaitingClient>::new();
-        let result = manager.handle_candidate(None, Arc::new(Box::new(publisher)), &mut state).await;
-        assert!(result.is_none());
-        assert_eq!(state.len(), 0);
     }
 
     #[tokio::test]
@@ -585,7 +586,7 @@ mod tests {
 
     #[tokio::test]
     async fn handle_decision_should_emit_metrics() {
-        env_logger::builder().format_timestamp_millis().init();
+        // env_logger::builder().format_timestamp_millis().init();
 
         // time when event was decided (sent by Talos)
         let candidate_time_at = 888;

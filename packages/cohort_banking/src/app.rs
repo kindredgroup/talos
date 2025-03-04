@@ -123,7 +123,7 @@ impl Handler<TransferRequest> for BankingApp {
             .cohort_api
             .as_ref()
             .expect("Banking app is not initialised")
-            .certify(&request_payload_callback, &oo_inst)
+            .certify(&request_payload_callback, &oo_inst, None)
             .await
         {
             Ok(rsp) => {

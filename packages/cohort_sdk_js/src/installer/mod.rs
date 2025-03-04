@@ -77,7 +77,6 @@ pub struct InternalReplicator {
 impl InternalReplicator {
     #[napi]
     pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig) -> napi::Result<InternalReplicator> {
-        env_logger::builder().format_timestamp_millis().init();
         Ok(InternalReplicator { kafka_config, config })
     }
 

@@ -35,8 +35,8 @@ impl DelayController {
         self.multiplier *= 2;
 
         let add = {
-            let mut rnd = rand::thread_rng();
-            rnd.gen_range(m..=m * 2)
+            let mut rnd = rand::rng();
+            rnd.random_range(m..=m * 2)
         };
 
         let delay_ms = std::cmp::min(self.max_sleep_ms, m + add);

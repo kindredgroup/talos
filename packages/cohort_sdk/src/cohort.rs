@@ -1,22 +1,24 @@
+use futures::Future;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
-use futures::Future;
-use opentelemetry_api::{
-    global,
-    metrics::{Counter, Histogram, Unit},
-};
+use opentelemetry::global;
+use tracing::Instrument;
+
 use serde_json::Value;
+use time::OffsetDateTime;
+
 use talos_agent::{
     agent::{
         core::{AgentServices, TalosAgentImpl},
-        model::{CancelRequestChannelMessage, CertifyRequestChannelMessage},
+        model::{CancelRequestChannelMessage, CertifyRequestChannelMessage, PropagatedSpanContextData},
     },
     api::{AgentConfig, CandidateData, CertificationRequest, TalosAgent, TalosType},
     messaging::{
-        api::{Decision, DecisionMessage},
+        api::{Decision, TraceableDecision},
         kafka::KafkaInitializer,
     },
     metrics::{client::MetricsClient, model::Signal},
@@ -24,7 +26,7 @@ use talos_agent::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
-use time::OffsetDateTime;
+use crate::otel::{initialiser::init_otel, meters::CohortMeters};
 
 use crate::{
     delay_controller::DelayController,
@@ -43,18 +45,7 @@ pub struct Cohort {
     config: Config,
     talos_agent: Box<dyn TalosAgent + Sync + Send>,
     agent_services: AgentServices,
-    oo_retry_counter: Arc<Counter<u64>>,
-    oo_giveups_counter: Arc<Counter<u64>>,
-    oo_not_safe_counter: Arc<Counter<u64>>,
-    oo_install_histogram: Arc<Histogram<f64>>,
-    oo_attempts_histogram: Arc<Histogram<u64>>,
-    oo_install_and_wait_histogram: Arc<Histogram<f64>>,
-    oo_wait_histogram: Arc<Histogram<f64>>,
-    talos_histogram: Arc<Histogram<f64>>,
-    talos_aborts_counter: Arc<Counter<u64>>,
-    agent_retries_histogram: Arc<Histogram<u64>>,
-    agent_errors_counter: Arc<Counter<u64>>,
-    db_errors_counter: Arc<Counter<u64>>,
+    otel_meters: CohortMeters,
 }
 
 // #[napi]
@@ -66,6 +57,9 @@ impl Cohort {
         // Param2: Version to install.
         // Returns error description. If string is empty it means there was no error installing
     ) -> Result<Self, ClientError> {
+        let otel_name = format!("{}-cohort_sdk_client", config.cohort.clone());
+        init_otel(otel_name, config.otel_telemetry.enabled, config.otel_telemetry.grpc_endpoint.clone(), "info")?;
+
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.kafka.clone();
 
@@ -80,9 +74,9 @@ impl Cohort {
         let tx_cancel = SenderWrapper::<CancelRequestChannelMessage> { tx: tx_cancel_ch };
         let rx_cancel = ReceiverWrapper::<CancelRequestChannelMessage> { rx: rx_cancel_ch };
 
-        let (tx_decision_ch, rx_decision_ch) = tokio::sync::mpsc::channel::<DecisionMessage>(agent_config.buffer_size as usize);
-        let tx_decision = SenderWrapper::<DecisionMessage> { tx: tx_decision_ch };
-        let rx_decision = ReceiverWrapper::<DecisionMessage> { rx: rx_decision_ch };
+        let (tx_decision_ch, rx_decision_ch) = tokio::sync::mpsc::channel::<TraceableDecision>(agent_config.buffer_size as usize);
+        let tx_decision = SenderWrapper::<TraceableDecision> { tx: tx_decision_ch };
+        let rx_decision = ReceiverWrapper::<TraceableDecision> { rx: rx_decision_ch };
 
         let metrics_client: Option<Box<MetricsClient<SenderWrapper<Signal>>>> = None;
 
@@ -98,7 +92,11 @@ impl Cohort {
             },
         );
 
+        let brokers_list = kafka_config.brokers.join(",");
+        let kspan = tracing::info_span!("cohort_init", brokers = %brokers_list);
+
         let (publisher, consumer) = KafkaInitializer::connect(agent_config.agent.clone(), kafka_config, TalosType::External)
+            .instrument(kspan)
             .await
             .map_err(|me| ClientError {
                 kind: model::ClientErrorKind::Messaging,
@@ -108,49 +106,17 @@ impl Cohort {
 
         let agent_services = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
 
-        let meter = global::meter("cohort_sdk");
-        let oo_install_histogram = meter.f64_histogram("metric_oo_install_duration").with_unit(Unit::new("ms")).init();
-        let oo_attempts_histogram = meter.u64_histogram("metric_oo_attempts").with_unit(Unit::new("tx")).init();
-        let oo_install_and_wait_histogram = meter.f64_histogram("metric_oo_install_and_wait_duration").with_unit(Unit::new("ms")).init();
-        let oo_wait_histogram = meter.f64_histogram("metric_oo_wait_duration").with_unit(Unit::new("ms")).init();
-        let talos_histogram = meter.f64_histogram("metric_talos").with_unit(Unit::new("ms")).init();
-        let oo_retry_counter = meter.u64_counter("metric_oo_retry_count").with_unit(Unit::new("tx")).init();
-        let oo_giveups_counter = meter.u64_counter("metric_oo_giveups_count").with_unit(Unit::new("tx")).init();
-        let oo_not_safe_counter = meter.u64_counter("metric_oo_not_safe_count").with_unit(Unit::new("tx")).init();
-        let talos_aborts_counter = meter.u64_counter("metric_talos_aborts_count").with_unit(Unit::new("tx")).init();
-        let agent_errors_counter = meter.u64_counter("metric_agent_errors_count").with_unit(Unit::new("tx")).init();
-        let agent_retries_histogram = meter.u64_histogram("metric_agent_retries").with_unit(Unit::new("tx")).init();
-        let db_errors_counter = meter.u64_counter("metric_db_errors_count").with_unit(Unit::new("tx")).init();
-
-        oo_retry_counter.add(0, &[]);
-        oo_giveups_counter.add(0, &[]);
-        oo_not_safe_counter.add(0, &[]);
-        talos_aborts_counter.add(0, &[]);
-        agent_errors_counter.add(0, &[]);
-        db_errors_counter.add(0, &[]);
-
         Ok(Self {
             config,
             talos_agent: Box::new(agent),
             agent_services,
-            oo_install_histogram: Arc::new(oo_install_histogram),
-            oo_install_and_wait_histogram: Arc::new(oo_install_and_wait_histogram),
-            oo_wait_histogram: Arc::new(oo_wait_histogram),
-            oo_retry_counter: Arc::new(oo_retry_counter),
-            oo_giveups_counter: Arc::new(oo_giveups_counter),
-            oo_not_safe_counter: Arc::new(oo_not_safe_counter),
-            oo_attempts_histogram: Arc::new(oo_attempts_histogram),
-            talos_histogram: Arc::new(talos_histogram),
-            agent_retries_histogram: Arc::new(agent_retries_histogram),
-            talos_aborts_counter: Arc::new(talos_aborts_counter),
-            agent_errors_counter: Arc::new(agent_errors_counter),
-            db_errors_counter: Arc::new(db_errors_counter),
+            otel_meters: CohortMeters::new(),
         })
     }
 
     fn select_snapshot_and_readvers(cpt_snapshot: u64, cpt_versions: Vec<u64>) -> (u64, Vec<u64>) {
         if cpt_versions.is_empty() {
-            log::debug!(
+            tracing::debug!(
                 "select_snapshot_and_readvers({}, {:?}): {:?}",
                 cpt_snapshot,
                 cpt_versions,
@@ -173,7 +139,7 @@ impl Cohort {
             }
         }
 
-        log::debug!(
+        tracing::debug!(
             "select_snapshot_and_readvers({}, {:?}): {:?}",
             cpt_snapshot,
             cpt_versions,
@@ -191,41 +157,71 @@ impl Cohort {
     /// Uses two callbacks
     ///  - First callback to build the request payload to send to talos for certification
     ///  - The installer callback will be called to do the out of order install.
-    pub async fn certify<F, Fut, O>(&self, get_certification_candidate_callback: &F, oo_installer: &O) -> Result<model::CertificationResponse, ClientError>
+    // #[tracing::instrument(name = "cohort_certify", skip_all)]
+    pub async fn certify<F, Fut, O>(
+        &self,
+        get_certification_candidate_callback: &F,
+        oo_installer: &O,
+        trace_parent: Option<String>,
+    ) -> Result<model::CertificationResponse, ClientError>
     where
         F: Fn() -> Fut,
         Fut: Future<Output = Result<CertificationCandidateCallbackResponse, String>>,
         O: OutOfOrderInstaller,
     {
-        let span_1 = Instant::now();
         // 1. Get the snapshot
         // 2. Send for certification
 
-        let certification_started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let metric_send_to_talos = Instant::now(); // this will be intentionally overwritten
+        let certification_started_at = OffsetDateTime::now_utc().unix_timestamp_nanos(); // this is for metrics which will go into Decision message
 
-        let response = self.send_to_talos(certification_started_at, get_certification_candidate_callback).await?;
-        let span_1_val = span_1.elapsed().as_nanos() as f64 / 1_000_000_f64;
+        let make_new_span = || tracing::info_span!("certify");
 
-        let h_talos = Arc::clone(&self.talos_histogram);
-        tokio::spawn(async move {
-            h_talos.record(span_1_val * 100.0, &[]);
-        });
+        tracing::debug!("Certifying transaction....");
 
-        if response.safepoint.is_none() || response.statemaps.is_none() {
-            return Ok(response);
-        }
-
-        let oooinstall_payload = OutOfOrderInstallRequest {
-            xid: response.xid.clone(),
-            version: response.version,
-            safepoint: response.safepoint.unwrap(),
-            statemaps: response.statemaps.clone().unwrap(),
+        let span_certify = if let Some(trace_parent) = trace_parent {
+            let propagated_context = PropagatedSpanContextData::new_with_trace_parent(trace_parent);
+            let span_context = global::get_text_map_propagator(|propagator| propagator.extract(&propagated_context));
+            let new_span = make_new_span();
+            new_span.set_parent(span_context);
+            new_span
+        } else {
+            make_new_span()
         };
 
-        // 3. OOO install
-        self.install_statemaps_oo(oooinstall_payload, oo_installer).await?;
+        let span_certify_id = span_certify.id().clone();
+        let main_execution = async move {
+            let span_send_to_talos = tracing::info_span!(parent: span_certify_id.clone(), "send_to_talos");
+            let response = self
+                .send_to_talos(certification_started_at, get_certification_candidate_callback)
+                .instrument(span_send_to_talos)
+                .await?;
+            let metric_send_to_talos = metric_send_to_talos.elapsed().as_nanos() as f64 / 1_000_000_f64;
+            self.otel_meters.update_talos_metric(metric_send_to_talos * 100.0);
 
-        Ok(response)
+            if response.safepoint.is_none() || response.statemaps.is_none() {
+                return Ok(response);
+            }
+
+            let oooinstall_payload = OutOfOrderInstallRequest {
+                xid: response.xid.clone(),
+                version: response.version,
+                safepoint: response.safepoint.unwrap(),
+                statemaps: response.statemaps.clone().unwrap(),
+            };
+
+            // 3. OOO install
+            let span_install = tracing::info_span!(parent: span_certify_id, "install_ooo");
+            self.install_statemaps_oo(oooinstall_payload, oo_installer).instrument(span_install).await?;
+
+            Ok(response)
+        };
+
+        let result = main_execution.instrument(span_certify).await;
+
+        tracing::debug!("Certifying transaction ended");
+
+        result
     }
 
     /// Installs the statemap for candidate messages with committed decisions received from talos.
@@ -234,7 +230,7 @@ impl Cohort {
         O: OutOfOrderInstaller,
     {
         let mut controller = DelayController::new(self.config.retry_oo_backoff.min_ms, self.config.retry_oo_backoff.max_ms);
-        let mut attempt = 0;
+        let mut attempt = 0_u32;
         let span_2 = Instant::now();
 
         let mut is_not_save = 0_u64;
@@ -246,14 +242,10 @@ impl Cohort {
 
             let span_3 = Instant::now();
 
-            let install_result = oo_installer.install(install_payload.clone()).await;
+            let tspan = tracing::info_span!("oo installer callback", %attempt);
+            let install_result = oo_installer.install(install_payload.clone()).instrument(tspan).await;
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
-
-            let h_install = Arc::clone(&self.oo_install_histogram);
-
-            tokio::spawn(async move {
-                h_install.record(span_3_val * 100.0, &[]);
-            });
+            self.otel_meters.update_oo_install_metric(span_3_val * 100.0);
 
             let error = match install_result {
                 Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
@@ -289,32 +281,10 @@ impl Cohort {
         let span_2_val = span_2.elapsed().as_nanos() as f64 / 1_000_000_f64;
         let total_sleep = controller.total_sleep_time;
 
-        let c_not_safe = Arc::clone(&self.oo_not_safe_counter);
-        let h_total_sleep = Arc::clone(&self.oo_wait_histogram);
-        let h_attempts = Arc::clone(&self.oo_attempts_histogram);
-        let h_span_2 = Arc::clone(&self.oo_install_and_wait_histogram);
-        let c_giveups = Arc::clone(&self.oo_giveups_counter);
-        let c_retry = Arc::clone(&self.oo_retry_counter);
+        self.otel_meters
+            .update_post_oo_install_metrics(is_not_save, total_sleep, giveups, attempt, span_2_val * 100.0);
 
-        tokio::spawn(async move {
-            if is_not_save > 0 {
-                c_not_safe.add(is_not_save, &[]);
-            }
-            if total_sleep > 0 {
-                h_total_sleep.record(total_sleep as f64 * 100.0, &[]);
-            }
-            if giveups > 0 {
-                c_giveups.add(giveups, &[]);
-            }
-            if attempt > 1 {
-                c_retry.add(attempt as u64 - 1, &[]);
-            }
-
-            h_attempts.record(attempt as u64, &[]);
-            h_span_2.record(span_2_val * 100.0, &[]);
-        });
-
-        log::debug!("Total attempts used to install: {attempt}");
+        tracing::debug!("Total attempts used to install: {attempt}");
         result
     }
 
@@ -348,7 +318,7 @@ impl Cohort {
             // Await for snapshot and build the certification request payload.
             // Send the certification payload to talos
             match self
-                .send_to_talos_attempt(certification_started_at, &get_certification_candidate_callback, recent_conflict)
+                .send_to_talos_attempt(attempts + 1, certification_started_at, &get_certification_candidate_callback, recent_conflict)
                 .await
             {
                 CertificationAttemptOutcome::Success { mut response } => {
@@ -379,7 +349,7 @@ impl Cohort {
                     });
                 }
                 CertificationAttemptOutcome::SnapshotTimeout { waited, conflict } => {
-                    log::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
+                    tracing::error!("Timeout wating for snapshot: {:?}. Waited: {:.2} sec", conflict, waited.as_secs_f32());
                     result = recent_abort.clone().map(Ok);
                 }
                 CertificationAttemptOutcome::DataError { reason } => {
@@ -400,7 +370,7 @@ impl Cohort {
 
             match rslt_response {
                 Ok(response) => {
-                    log::debug!(
+                    tracing::debug!(
                         "Unsuccessful transaction: {:?}. Response: {:?} This might retry. Attempts: {}",
                         response.statemaps,
                         response.decision,
@@ -408,32 +378,23 @@ impl Cohort {
                     );
                 }
                 Err(error) => {
-                    log::debug!("Unsuccessful transaction with error: {:?}. This might retry. Attempts: {}", error, attempts);
+                    tracing::debug!("Unsuccessful transaction with error: {:?}. This might retry. Attempts: {}", error, attempts);
                 }
             }
 
             delay_controller.sleep().await;
         };
 
-        let c_talos_aborts = Arc::clone(&self.talos_aborts_counter);
-        let c_agent_errors = Arc::clone(&self.agent_errors_counter);
-        let c_db_errors = Arc::clone(&self.db_errors_counter);
-        let h_agent_retries = Arc::clone(&self.agent_retries_histogram);
-
-        if agent_errors > 0 || db_errors > 0 || talos_aborts > 0 || attempts > 0 {
-            tokio::spawn(async move {
-                c_talos_aborts.add(talos_aborts, &[]);
-                c_agent_errors.add(agent_errors, &[]);
-                c_db_errors.add(db_errors, &[]);
-                h_agent_retries.record(attempts as u64, &[]);
-            });
-        }
+        self.otel_meters
+            .update_post_send_to_talos_metrics(agent_errors, db_errors, talos_aborts, attempts);
 
         final_result
     }
 
+    #[tracing::instrument(name = "send_to_talos_attempt", skip(self, get_certification_candidate_callback))]
     async fn send_to_talos_attempt<F, Fut>(
         &self,
+        attempt: u32,
         certification_started_at: i128,
         get_certification_candidate_callback: &F,
         previous_conflict: Option<u64>,
@@ -461,11 +422,11 @@ impl Cohort {
             Ok(CertificationCandidateCallbackResponse::Proceed(request)) => request,
         };
 
-        log::debug!(
+        tracing::debug!(
             "loaded state: snapshot: {}, candidate: {:?}, headers: {:?}",
             request.snapshot,
             request.candidate,
-            request.headers
+            request.headers,
         );
 
         let (snapshot, readvers) = Self::select_snapshot_and_readvers(request.snapshot, request.candidate.readvers);
@@ -519,6 +480,7 @@ impl Cohort {
         }
     }
 
+    #[tracing::instrument(name = "create_candidate", skip(self, get_candidate_callback))]
     async fn create_candidate_for_certification<F, Fut>(
         &self,
         get_candidate_callback: &F,

@@ -1,8 +1,7 @@
 [package]
 name = "cohort_sdk_js"
-version = "0.2.35-dev"
+version = "0.2.37-dev"
 edition = "2021"
-
 
 [lib]
 crate-type = ["cdylib"]
@@ -19,33 +18,23 @@ napi = { version = "2.10.3", features = [
     "chrono_date",
     "serde-json",
 ] }
-napi-build = "=2.1.3"
+napi-build = "=2.1.3" # pinned to use rustc 75
 zerofrom = { version = "=0.1.5" }
 litemap = { version = "=0.7.4" }
 napi-derive = "2.9.3"
-thiserror = "1.0"
+thiserror = "2.0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 uuid = { version = "1.4.1", features = ["v4", "serde"] }
 chrono = { version = "0.4.19", features = ["serde"] }
 
-# db migrations
-#refinery = {version="0.8", features=["tokio-postgres"]}
-# crate depencies
-env_logger = { workspace = true }
-log = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
-cohort_sdk = { path = "../cohort_sdk", version = "0.2.35-dev" }
-talos_agent = { path = "../talos_agent", version = "0.2.35-dev" }
-talos_cohort_replicator = { path = "../talos_cohort_replicator", version = "0.2.35-dev" }
-talos_certifier = { path = "../talos_certifier", version = "0.2.35-dev" }
-talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.35-dev" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.35-dev" }
+cohort_sdk = { path = "../cohort_sdk", version = "0.2.37-dev" }
+talos_agent = { path = "../talos_agent", version = "0.2.37-dev" }
+talos_cohort_replicator = { path = "../talos_cohort_replicator", version = "0.2.37-dev" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.37-dev" }
+talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.2.37-dev" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.37-dev" }
 
 async-trait = "0.1.72"
-
-#[dev-dependencies.cargo-husky]
-#version = "1"
-#default-features = false # Disable features which are enabled by default
-#features = ["user-hooks"]

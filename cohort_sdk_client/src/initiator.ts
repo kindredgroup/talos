@@ -19,7 +19,12 @@ export class Initiator {
 
     constructor(readonly impl: InternalInitiator) {}
 
-    async certify(makeNewRequestCallback: () => Promise<JsCertificationCandidateCallbackResponse>, oooInstallCallback: (oooRequest: OutOfOrderRequest) => Promise<JsOutOfOrderInstallOutcome>): Promise<JsCertificationResponse> {
+    // The 'traceParent' parameter allow us to continue span which started on the "JavaScript side"
+    async certify(
+        makeNewRequestCallback: () => Promise<JsCertificationCandidateCallbackResponse>,
+        oooInstallCallback: (oooRequest: OutOfOrderRequest,) => Promise<JsOutOfOrderInstallOutcome>,
+        traceParent?: string
+    ): Promise<JsCertificationResponse> {
         try {
             // This will hide the 'error' parameter from callback (it comes from NAPI).
             const adaptedOooInstallCallback = async (error: Error | null, oooRequest: OutOfOrderRequest): Promise<JsOutOfOrderInstallOutcome> => {
@@ -34,7 +39,7 @@ export class Initiator {
                 }
             }
 
-            return await this.impl.certify(makeNewRequestCallback, adaptedOooInstallCallback)
+            return await this.impl.certify(makeNewRequestCallback, adaptedOooInstallCallback, traceParent)
         } catch (e) {
             const reason: string = e.message
             if (isSdkError(reason)) {

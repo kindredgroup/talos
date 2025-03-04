@@ -1,13 +1,13 @@
-use crate::messaging::api::{ConsumerType, DecisionMessage};
+use crate::messaging::api::{ConsumerType, TraceableDecision};
 use crate::mpsc::core::Sender;
 use std::sync::Arc;
 
-pub struct DecisionReaderService<S: Sender<Data = DecisionMessage>> {
+pub struct DecisionReaderService<S: Sender<Data = TraceableDecision>> {
     consumer: Arc<Box<ConsumerType>>,
     tx_decision: S,
 }
 
-impl<S: Sender<Data = DecisionMessage>> DecisionReaderService<S> {
+impl<S: Sender<Data = TraceableDecision>> DecisionReaderService<S> {
     pub fn new(consumer: Arc<Box<ConsumerType>>, tx_decision: S) -> Self {
         DecisionReaderService { consumer, tx_decision }
     }
@@ -15,7 +15,7 @@ impl<S: Sender<Data = DecisionMessage>> DecisionReaderService<S> {
     pub async fn run(&self) {
         loop {
             if let Err(ReaderError::ChannelIsClosed { e: reason }) = self.read().await {
-                log::error!("Destination channel is closed: {}", reason);
+                tracing::error!("Destination channel is closed: {}", reason);
                 break;
             }
         }
@@ -44,10 +44,12 @@ enum ReaderError {
 // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::api::TalosType;
-    use crate::messaging::api::Consumer;
     use crate::messaging::api::Decision::Committed;
+    use crate::messaging::api::{Consumer, DecisionMessage};
     use crate::messaging::errors::{MessagingError, MessagingErrorKind};
     use async_trait::async_trait;
     use mockall::{mock, Sequence};
@@ -58,8 +60,8 @@ mod tests {
 
         #[async_trait]
         impl Sender for NoopSender {
-            type Data = DecisionMessage;
-            pub async fn send(&self, value: DecisionMessage) -> Result<(), SendError<DecisionMessage>> {}
+            type Data = TraceableDecision;
+            pub async fn send(&self, value: TraceableDecision) -> Result<(), SendError<TraceableDecision>> {}
         }
     }
     mock! {
@@ -68,7 +70,7 @@ mod tests {
         #[async_trait]
         impl Consumer for NoopConsumer {
             pub fn get_talos_type(&self) -> TalosType;
-            pub async fn receive_message(&self) -> Option<Result<DecisionMessage, MessagingError>>;
+            pub async fn receive_message(&self) -> Option<Result<TraceableDecision, MessagingError>>;
         }
     }
 
@@ -77,22 +79,22 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let decision1_sample = make_decision("xid1".to_string());
-        let decision2_sample = make_decision("xid2".to_string());
+        let tdecision1_sample = make_decision("xid1".to_string());
+        let tdecision2_sample = make_decision("xid2".to_string());
 
-        let decision1 = decision1_sample.clone();
-        let decision2 = decision2_sample.clone();
+        let decision1 = tdecision1_sample.decision.clone();
+        let decision2 = tdecision2_sample.decision.clone();
 
         let mut seq = Sequence::new();
         consumer
             .expect_receive_message()
             .once()
             .in_sequence(&mut seq)
-            .returning(move || Some(Ok(decision1_sample.clone())));
+            .returning(move || Some(Ok(tdecision1_sample.clone())));
 
         destination
             .expect_send()
-            .withf(move |param| param.xid == decision1.xid)
+            .withf(move |param| param.decision.xid == decision1.xid)
             .once()
             .in_sequence(&mut seq)
             .returning(|_| Ok(()));
@@ -101,11 +103,11 @@ mod tests {
             .expect_receive_message()
             .once()
             .in_sequence(&mut seq)
-            .returning(move || Some(Ok(decision2_sample.clone())));
+            .returning(move || Some(Ok(tdecision2_sample.clone())));
 
         destination
             .expect_send()
-            .withf(move |param| param.xid == decision2.xid)
+            .withf(move |param| param.decision.xid == decision2.xid)
             .once()
             .in_sequence(&mut seq)
             .returning(|_| Ok(()));
@@ -140,9 +142,8 @@ mod tests {
     async fn should_keep_reading_when_received_none() {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
-        let decision_sample = make_decision("xid1".to_string());
-        let decision1 = decision_sample.clone();
-        let decision2 = decision_sample.clone();
+        let tdecision_sample = make_decision("xid1".to_string());
+        let decision = tdecision_sample.decision.clone();
 
         let mut seq = Sequence::new();
         consumer.expect_receive_message().once().in_sequence(&mut seq).returning(move || None);
@@ -151,11 +152,11 @@ mod tests {
             .expect_receive_message()
             .once()
             .in_sequence(&mut seq)
-            .returning(move || Some(Ok(decision1.clone())));
+            .returning(move || Some(Ok(tdecision_sample.clone())));
 
         destination
             .expect_send()
-            .withf(move |param| param.xid == decision2.xid)
+            .withf(move |param| param.decision.xid == decision.xid)
             .once()
             .returning(move |_| Ok(()));
 
@@ -204,17 +205,20 @@ mod tests {
         reader.run().await;
     }
 
-    fn make_decision(xid: String) -> DecisionMessage {
-        DecisionMessage {
-            xid,
-            agent: String::from("agent"),
-            cohort: String::from("cohort"),
-            decision: Committed,
-            suffix_start: 0_u64,
-            version: 0_u64,
-            safepoint: None,
-            conflicts: None,
-            metrics: None,
+    fn make_decision(xid: String) -> TraceableDecision {
+        TraceableDecision {
+            decision: DecisionMessage {
+                xid,
+                agent: String::from("agent"),
+                cohort: String::from("cohort"),
+                decision: Committed,
+                suffix_start: 0_u64,
+                version: 0_u64,
+                safepoint: None,
+                conflicts: None,
+                metrics: None,
+            },
+            raw_span_context: HashMap::new(),
         }
     }
 }
