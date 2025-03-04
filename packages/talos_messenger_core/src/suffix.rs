@@ -355,6 +355,12 @@ where
     }
 
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<(usize, u64)> {
+        // When suffix is empty, skip logic to update prune index.
+        if self.messages.is_empty() {
+            debug!("Skipped updating the prune_index for version ({version}), as suffix is empty.");
+            return None;
+        }
+
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
