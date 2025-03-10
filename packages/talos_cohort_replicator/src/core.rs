@@ -93,6 +93,7 @@ where
         }
     }
 
+    // TODO, annotate with tracing
     pub(crate) async fn process_consumer_message(&mut self, version: u64, message: T) {
         if version > 0 {
             self.suffix.insert(version, message).unwrap();
@@ -118,6 +119,7 @@ where
         }
     }
 
+    // TODO: Instrument with span
     pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>)> {
         // get batch of items from suffix to install.
         let items = self.suffix.get_message_batch_from_version(self.last_installing, None);

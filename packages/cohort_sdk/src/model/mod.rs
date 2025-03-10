@@ -99,6 +99,7 @@ pub struct Config {
 
 #[derive(Clone, Default)]
 pub struct CohortOtelConfig {
+    pub name: String,
     pub enabled: bool,
     // The endpoint to OTEL collector
     pub grpc_endpoint: Option<String>,

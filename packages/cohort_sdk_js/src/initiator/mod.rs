@@ -1,4 +1,4 @@
-use crate::models::{JsBackoffConfig, JsDecision, JsKafkaConfig};
+use crate::models::{JsBackoffConfig, JsCohortOtelConfig, JsDecision, JsKafkaConfig};
 use crate::sdk_errors::SdkErrorContainer;
 use async_trait::async_trait;
 use cohort_sdk::cohort::Cohort;
@@ -63,21 +63,6 @@ impl From<JsInitiatorConfig> for Config {
 
             kafka: val.kafka.into(),
             otel_telemetry: val.otel_telemetry.map_or(CohortOtelConfig::default(), |v| v.into()),
-        }
-    }
-}
-
-#[napi(object)]
-pub struct JsCohortOtelConfig {
-    pub enabled: bool,
-    pub grpc_endpoint: Option<String>,
-}
-
-impl From<JsCohortOtelConfig> for CohortOtelConfig {
-    fn from(val: JsCohortOtelConfig) -> Self {
-        CohortOtelConfig {
-            enabled: val.enabled,
-            grpc_endpoint: val.grpc_endpoint,
         }
     }
 }

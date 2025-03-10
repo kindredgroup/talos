@@ -1,4 +1,4 @@
-use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage, PropagatedSpanContextData};
+use crate::agent::model::{CancelRequestChannelMessage, CertifyRequestChannelMessage};
 use crate::api::{AgentConfig, CertificationResponse};
 use crate::messaging::api::{CandidateMessage, DecisionMessage, PublisherType, TraceableDecision};
 use crate::metrics::client::MetricsClient;
@@ -7,6 +7,7 @@ use crate::mpsc::core::{Receiver, Sender};
 use multimap::MultiMap;
 use opentelemetry::global;
 use std::sync::Arc;
+use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
 

@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use opentelemetry::global;
@@ -14,7 +15,7 @@ use time::OffsetDateTime;
 use talos_agent::{
     agent::{
         core::{AgentServices, TalosAgentImpl},
-        model::{CancelRequestChannelMessage, CertifyRequestChannelMessage, PropagatedSpanContextData},
+        model::{CancelRequestChannelMessage, CertifyRequestChannelMessage},
     },
     api::{AgentConfig, CandidateData, CertificationRequest, TalosAgent, TalosType},
     messaging::{
@@ -57,7 +58,7 @@ impl Cohort {
         // Param2: Version to install.
         // Returns error description. If string is empty it means there was no error installing
     ) -> Result<Self, ClientError> {
-        let otel_name = format!("{}-cohort_sdk_client", config.cohort.clone());
+        let otel_name = format!("{}-cohort_initiator", config.otel_telemetry.name.clone());
         init_otel(otel_name, config.otel_telemetry.enabled, config.otel_telemetry.grpc_endpoint.clone(), "info")?;
 
         let agent_config: AgentConfig = config.clone().into();

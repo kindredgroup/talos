@@ -641,6 +641,7 @@ dependencies = [
  "talos_agent",
  "talos_certifier",
  "talos_cohort_replicator",
+ "talos_common_utils",
  "talos_metrics",
  "talos_rdkafka_utils",
  "thiserror 2.0.11",
@@ -3167,6 +3168,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strum 0.27.1",
+ "talos_common_utils",
  "talos_rdkafka_utils",
  "thiserror 2.0.11",
  "time",
@@ -3232,28 +3234,38 @@ version = "0.2.39-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
+ "axum",
  "env_logger",
  "indexmap 2.7.1",
  "log",
  "mockall",
+ "opentelemetry 0.28.0",
+ "opentelemetry-otlp",
+ "opentelemetry-stdout 0.28.0",
+ "opentelemetry_sdk 0.28.0",
  "rand 0.8.5",
  "serde",
  "serde_json",
  "strum 0.25.0",
  "talos_certifier",
+ "talos_common_utils",
  "talos_suffix",
  "thiserror 1.0.69",
  "time",
  "tokio",
  "tokio-test",
+ "tonic",
+ "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "talos_common_utils"
 version = "0.2.39-dev"
 dependencies = [
- "env_logger",
- "log",
+ "opentelemetry 0.28.0",
  "serial_test",
 ]
 

@@ -2,6 +2,7 @@ mod callback_impl;
 
 use std::sync::Arc;
 
+use cohort_sdk::otel::initialiser::init_otel;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 
@@ -10,7 +11,10 @@ use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
 use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
 
-use crate::{models::JsKafkaConfig, sdk_errors::SdkErrorContainer};
+use crate::{
+    models::{JsCohortOtelConfig, JsKafkaConfig},
+    sdk_errors::SdkErrorContainer,
+};
 
 use self::callback_impl::{SnapshotProviderDelegate, StatemapInstallerDelegate};
 
@@ -71,13 +75,18 @@ pub struct JsStatemapAndSnapshot {
 pub struct InternalReplicator {
     kafka_config: JsKafkaConfig,
     config: JsReplicatorConfig,
+    otel_telemetry: JsCohortOtelConfig,
 }
 
 #[napi]
 impl InternalReplicator {
     #[napi]
-    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig) -> napi::Result<InternalReplicator> {
-        Ok(InternalReplicator { kafka_config, config })
+    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig, otel_telemetry: JsCohortOtelConfig) -> napi::Result<InternalReplicator> {
+        Ok(InternalReplicator {
+            kafka_config,
+            config,
+            otel_telemetry,
+        })
     }
 
     #[napi]
@@ -88,12 +97,23 @@ impl InternalReplicator {
             JsStatemapAndSnapshot,
         >,
     ) -> napi::Result<()> {
+        let otel_name = format!("{}-cohort_replicator", self.otel_telemetry.name.clone());
+        init_otel(otel_name, self.otel_telemetry.enabled, self.otel_telemetry.grpc_endpoint.clone(), "info").map_err(|otel_error| {
+            let sdk_error = SdkErrorContainer::new(
+                crate::sdk_errors::SdkErrorKind::Internal,
+                format!("Unable to initialise OTEL. Config: ${:?}", self.otel_telemetry),
+                Some(otel_error.to_string()),
+            );
+
+            napi::Error::from_reason(sdk_error.json().to_string())
+        })?;
+
         let kafka_consumer = KafkaConsumer::new(&self.kafka_config.clone().into());
         let brokers = &self.kafka_config.brokers.clone();
         let topic = &self.kafka_config.topic.clone();
 
         kafka_consumer.subscribe().await.map_err(|e| {
-            // "kafka_consumer.subscribe()" never throws, leaving this mapping here jsut in case, but
+            // "kafka_consumer.subscribe()" never throws, leaving this mapping here just in case, but
             // so far testing showed that even when kafka is down during startup this method finishes
             // without error.
             let sdk_error = SdkErrorContainer::new(

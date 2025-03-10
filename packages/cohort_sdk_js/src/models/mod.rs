@@ -1,4 +1,4 @@
-use cohort_sdk::model::BackoffConfig;
+use cohort_sdk::model::{BackoffConfig, CohortOtelConfig};
 use std::collections::HashMap;
 use talos_agent::messaging::api::Decision;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
@@ -69,6 +69,24 @@ impl From<Decision> for JsDecision {
         match value {
             Decision::Committed => JsDecision::Committed,
             Decision::Aborted => JsDecision::Aborted,
+        }
+    }
+}
+
+#[napi(object)]
+#[derive(Debug)]
+pub struct JsCohortOtelConfig {
+    pub name: String,
+    pub enabled: bool,
+    pub grpc_endpoint: Option<String>,
+}
+
+impl From<JsCohortOtelConfig> for CohortOtelConfig {
+    fn from(val: JsCohortOtelConfig) -> Self {
+        CohortOtelConfig {
+            name: val.name,
+            enabled: val.enabled,
+            grpc_endpoint: val.grpc_endpoint,
         }
     }
 }
