@@ -8,8 +8,8 @@ use crate::{
     errors::ReplicatorError,
 };
 
-use tracing::{debug, error};
 use tokio::sync::{mpsc, Semaphore};
+use tracing::{debug, error};
 
 pub struct StatemapInstallerConfig {
     pub thread_pool: Option<u16>,

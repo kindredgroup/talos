@@ -1,8 +1,8 @@
-use tracing::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use tracing::{debug, warn};
 
 use crate::models::ReplicatorCandidateMessage;
 

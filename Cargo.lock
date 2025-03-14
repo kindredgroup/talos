@@ -3235,9 +3235,7 @@ dependencies = [
  "ahash 0.8.11",
  "async-trait",
  "axum",
- "env_logger",
  "indexmap 2.7.1",
- "log",
  "mockall",
  "opentelemetry 0.28.0",
  "opentelemetry-otlp",
@@ -3366,14 +3364,13 @@ version = "0.2.39-dev"
 dependencies = [
  "async-trait",
  "criterion 0.4.0",
- "env_logger",
- "log",
  "mockall",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "tracing",
 ]
 
 [[package]]

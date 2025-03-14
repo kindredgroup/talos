@@ -22,8 +22,6 @@ thiserror =         { version = "1.0.31" }
 # Time
 time =              { version = "0.3.17" }
 
-tracing =               { version = "0.1.41", features = [ "log" ] }
-
 #  indexmap
 indexmap = { version = "2.0.0", features = ["rayon"]}
 ahash = "0.8.3"

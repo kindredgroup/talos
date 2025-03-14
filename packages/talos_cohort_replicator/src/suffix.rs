@@ -1,11 +1,11 @@
 use std::{collections::HashMap, fmt::Debug};
 
-use tracing::{debug, info, warn};
 use serde_json::Value;
 use talos_suffix::{
     core::{SuffixMeta, SuffixResult},
     get_nonempty_suffix_items, Suffix, SuffixItem, SuffixTrait,
 };
+use tracing::{debug, info, warn};
 
 use super::core::CandidateDecisionOutcome;
 

@@ -2,9 +2,9 @@
 
 use std::time::Duration;
 
-use tracing::{debug, error, info};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tracing::{debug, error, info};
 
 use crate::{
     callbacks::ReplicatorSnapshotProvider,
