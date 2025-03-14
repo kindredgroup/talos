@@ -8,13 +8,13 @@ use crate::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use log::{debug, error, info};
 use opentelemetry::{global, trace::TraceContextExt};
 
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tracing::{debug, error, info};
 use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 

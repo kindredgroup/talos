@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Debug};
 
-use log::{debug, info, warn};
+use tracing::{debug, info, warn};
 use serde_json::Value;
 use talos_suffix::{
     core::{SuffixMeta, SuffixResult},

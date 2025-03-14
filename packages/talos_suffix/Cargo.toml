@@ -18,8 +18,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 # Logging
-log = { workspace = true }
-env_logger = { workspace = true }
+#log = { workspace = true }
+#env_logger = { workspace = true }
+
+tracing =               { version = "0.1.41", features = [ "log" ] }
 
 # Test
 mockall = "0.11.0"

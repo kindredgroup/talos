@@ -8,7 +8,7 @@ use crate::{
     errors::ReplicatorError,
 };
 
-use log::{debug, error};
+use tracing::{debug, error};
 use tokio::sync::{mpsc, Semaphore};
 
 pub struct StatemapInstallerConfig {
