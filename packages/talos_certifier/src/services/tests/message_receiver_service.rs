@@ -17,13 +17,13 @@ use crate::{
 };
 
 struct MockReciever {
-    consumer: mpsc::Receiver<ChannelMessage>,
+    consumer: mpsc::Receiver<ChannelMessage<CandidateMessage>>,
     offset: Option<u64>,
 }
 
 #[async_trait]
 impl MessageReciever for MockReciever {
-    type Message = ChannelMessage;
+    type Message = ChannelMessage<CandidateMessage>;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let msg = self.consumer.recv().await.unwrap();
@@ -100,8 +100,6 @@ async fn test_consume_message() {
         readset: vec![],
         writeset: vec!["ksp:w1".to_owned()],
         metadata: None,
-        on_commit: None,
-        statemap: None,
         certification_started_at: 0,
         request_created_at: 0,
         published_at: 0,
@@ -159,8 +157,6 @@ async fn test_consume_message_error() {
         readset: vec![],
         writeset: vec!["ksp:w1".to_owned()],
         metadata: None,
-        on_commit: None,
-        statemap: None,
         certification_started_at: 0,
         request_created_at: 0,
         published_at: 0,

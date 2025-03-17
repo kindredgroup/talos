@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+
 use std::collections::HashMap;
 
-use crate::certifier::CertifierCandidate;
+use crate::{certifier::CertifierCandidate, core::CandidateMessageBaseTrait};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(rename_all = "camelCase", tag = "_typ")]
@@ -22,12 +22,6 @@ pub struct CandidateMessage {
     // OPTIONAL FIELDS
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub on_commit: Option<Box<Value>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub statemap: Option<Vec<HashMap<String, Value>>>,
-
     /// Cohort started certification
     #[serde(default)]
     pub certification_started_at: i128,
@@ -41,6 +35,34 @@ pub struct CandidateMessage {
     pub received_at: i128,
 }
 
+impl CandidateMessageBaseTrait for CandidateMessage {
+    fn get_xid(&self) -> &str {
+        self.xid.as_str()
+    }
+
+    fn get_snapshot(&self) -> u64 {
+        self.snapshot
+    }
+
+    fn get_version(&self) -> u64 {
+        self.version
+    }
+
+    fn get_agent(&self) -> &str {
+        &self.agent
+    }
+
+    fn get_cohort(&self) -> &str {
+        &self.cohort
+    }
+    fn add_version(&mut self, version: u64) {
+        self.version = version;
+    }
+
+    fn add_candidate_received_metric(&mut self, received_at: i128) {
+        self.received_at = received_at;
+    }
+}
 pub trait CandidateReadWriteSet {
     fn get_readset(&self) -> &Vec<String>;
     fn get_writeset(&self) -> &Vec<String>;

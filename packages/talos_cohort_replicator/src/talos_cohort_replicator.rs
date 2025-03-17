@@ -8,7 +8,7 @@ use crate::{
     callbacks::{ReplicatorInstaller, ReplicatorSnapshotProvider},
     core::Replicator,
     errors::ReplicatorError,
-    models::ReplicatorCandidate,
+    models::{ReplicatorCandidate, ReplicatorCandidateMessage},
     services::{
         replicator_service::{replicator_service, ReplicatorServiceConfig},
         statemap_installer_service::{installation_service, StatemapInstallerConfig},
@@ -79,7 +79,7 @@ pub async fn talos_cohort_replicator<M, Snap>(
     config: CohortReplicatorConfig,
 ) -> Result<((), (), ()), ReplicatorError>
 where
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync + 'static,
     Snap: ReplicatorSnapshotProvider + Send + Sync + 'static,
 {
     // ---------- Channels to communicate between threads. ----------

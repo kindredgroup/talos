@@ -21,6 +21,7 @@ use tokio::{
 use crate::{
     core::{ActionService, MessengerChannelFeedback, MessengerCommitActions, MessengerPublisher, PublishActionType},
     errors::{MessengerActionError, MessengerServiceResult},
+    models::MessengerCandidateMessage,
     services::{MessengerInboundService, MessengerInboundServiceConfig},
     suffix::MessengerCandidate,
     utlis::get_actions_deserialised,
@@ -32,13 +33,13 @@ use super::payload::on_commit::MockOnCommitKafkaMessage;
 
 /// Mock receiver to mimic Kafka consumer to use in tests.
 pub struct MockReciever {
-    pub consumer: mpsc::Receiver<ChannelMessage>,
+    pub consumer: mpsc::Receiver<ChannelMessage<MessengerCandidateMessage>>,
     pub offset: i64,
 }
 
 #[async_trait]
 impl MessageReciever for MockReciever {
-    type Message = ChannelMessage;
+    type Message = ChannelMessage<MessengerCandidateMessage>;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let msg = self.consumer.recv().await.unwrap();
@@ -274,7 +275,7 @@ impl MessengerServicesTesterConfigs {
 pub struct MessengerServiceTester<A, M, T>
 where
     A: ActionService,
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
     T: Send + Sync,
 {
     tx_channel_message: mpsc::Sender<T>,
@@ -282,7 +283,7 @@ where
     action_service: A,
 }
 
-impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage> {
+impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<MessengerCandidateMessage>> {
     pub fn new_with_mock_action_service(configs: MessengerServicesTesterConfigs) -> Self {
         let (tx_message_channel, rx_message_channel) = mpsc::channel(10);
 
@@ -334,8 +335,8 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage> {
     /// - `journey_config.expected_feedbacks_in_journey` - This field controls how many iteration of the inbound_service must be run at last to receive the feedbacks from actions.
     pub async fn process_message_journey(
         &mut self,
-        candidate: Option<ChannelMessage>,
-        decision: Option<ChannelMessage>,
+        candidate: Option<ChannelMessage<MessengerCandidateMessage>>,
+        decision: Option<ChannelMessage<MessengerCandidateMessage>>,
         journey_configs: Option<JourneyConfig>,
     ) {
         // Runs Abcast -> Inbound service journey for `Candidate`. This will flow through the `Candidate` message path of the service.
@@ -384,7 +385,7 @@ impl JourneyConfig {
 
 impl<A, M, T> MessengerServiceTester<A, M, T>
 where
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
     A: ActionService,
     T: Send + Sync,
 {

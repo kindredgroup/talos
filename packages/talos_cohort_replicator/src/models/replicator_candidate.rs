@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use talos_certifier::model::CandidateMessage;
 
 use crate::{core::CandidateDecisionOutcome, suffix::ReplicatorSuffixItemTrait};
 
+use super::candidate_message::ReplicatorCandidateMessage;
+
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct ReplicatorCandidate {
-    pub candidate: CandidateMessage,
+    pub candidate: ReplicatorCandidateMessage,
 
     #[serde(skip_deserializing)]
     pub safepoint: Option<u64>,
@@ -20,8 +21,8 @@ pub struct ReplicatorCandidate {
     pub is_installed: bool,
 }
 
-impl From<CandidateMessage> for ReplicatorCandidate {
-    fn from(candidate: CandidateMessage) -> Self {
+impl From<ReplicatorCandidateMessage> for ReplicatorCandidate {
+    fn from(candidate: ReplicatorCandidateMessage) -> Self {
         ReplicatorCandidate {
             candidate,
             safepoint: None,

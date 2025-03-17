@@ -3,9 +3,9 @@ use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
-use crate::certifier::Outcome;
+use crate::{certifier::Outcome, core::CandidateMessageBaseTrait};
 
-use super::{candidate_message::CandidateMessage, metrics::TxProcessingTimeline};
+use super::metrics::TxProcessingTimeline;
 
 pub const DEFAULT_DECISION_MESSAGE_VERSION: u64 = 1_u64;
 
@@ -87,10 +87,11 @@ impl DecisionMessageTrait for DecisionMessage {
 }
 
 impl DecisionMessage {
-    pub fn new(candidate_message: &CandidateMessage, outcome: Outcome, suffix_start: u64) -> Self {
-        let CandidateMessage {
-            xid, agent, cohort, version, ..
-        } = candidate_message;
+    pub fn new<C: CandidateMessageBaseTrait>(candidate_message: &C, outcome: Outcome, suffix_start: u64) -> Self {
+        let xid = candidate_message.get_xid().to_string();
+        let agent = candidate_message.get_agent().to_string();
+        let cohort = candidate_message.get_cohort().to_string();
+        let version = candidate_message.get_version();
 
         let (decision, safepoint, conflict_version) = match outcome {
             Outcome::Commited { discord: _, safepoint } => (Decision::Committed, Some(safepoint), None),
@@ -100,13 +101,13 @@ impl DecisionMessage {
         let time = OffsetDateTime::now_utc().format(&Rfc3339).ok();
 
         Self {
-            xid: xid.clone(),
-            agent: agent.clone(),
-            cohort: cohort.clone(),
+            xid,
+            agent,
+            cohort,
             time,
             decision,
             suffix_start,
-            version: *version,
+            version,
             safepoint,
             conflict_version,
             duplicate_version: None,

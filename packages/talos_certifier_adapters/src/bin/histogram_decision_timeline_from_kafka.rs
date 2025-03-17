@@ -1,6 +1,10 @@
 use std::{collections::HashMap, time::Duration};
 
-use talos_certifier::{model::metrics::TxProcessingTimeline, ports::MessageReciever, ChannelMessage};
+use talos_certifier::{
+    model::{metrics::TxProcessingTimeline, CandidateMessage},
+    ports::MessageReciever,
+    ChannelMessage,
+};
 use talos_certifier_adapters::KafkaConsumer;
 use talos_metrics::model::MinMax;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
@@ -37,7 +41,7 @@ async fn main() -> Result<(), String> {
 
     kafka_consumer.unsubscribe().await;
     kafka_config.group_id = format!("talos-metric-histogram-{}", uuid::Uuid::new_v4());
-    let mut kafka_consumer2 = KafkaConsumer::new(&kafka_config);
+    let mut kafka_consumer2: KafkaConsumer<CandidateMessage> = KafkaConsumer::new(&kafka_config);
 
     kafka_consumer2.subscribe().await.unwrap();
 
@@ -122,7 +126,7 @@ async fn main() -> Result<(), String> {
     Ok(())
 }
 
-async fn aggregate_timelines(consumer: &mut KafkaConsumer) -> Result<(TimelineAggregates, u64), String> {
+async fn aggregate_timelines(consumer: &mut KafkaConsumer<CandidateMessage>) -> Result<(TimelineAggregates, u64), String> {
     let mut total = 0_u64;
     let mut aggregates = TimelineAggregates::default();
     loop {

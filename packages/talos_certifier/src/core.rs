@@ -1,16 +1,24 @@
 use ahash::HashMap;
 use async_trait::async_trait;
+use serde::de::DeserializeOwned;
 use strum::{Display, EnumString};
 use tokio::sync::broadcast;
 
-use crate::{
-    errors::SystemServiceError,
-    model::{CandidateMessage, DecisionMessage},
-};
+use crate::{errors::SystemServiceError, model::DecisionMessage};
+
+pub trait CandidateMessageBaseTrait: DeserializeOwned {
+    fn get_xid(&self) -> &str;
+    fn get_snapshot(&self) -> u64;
+    fn get_version(&self) -> u64;
+    fn get_agent(&self) -> &str;
+    fn get_cohort(&self) -> &str;
+    fn add_version(&mut self, version: u64);
+    fn add_candidate_received_metric(&mut self, received_at: i128);
+}
 
 #[derive(Debug, Clone)]
-pub struct CandidateChannelMessage {
-    pub message: CandidateMessage,
+pub struct CandidateChannelMessage<T: CandidateMessageBaseTrait> {
+    pub message: T,
     pub headers: HashMap<String, String>,
 }
 
@@ -22,8 +30,8 @@ pub struct DecisionChannelMessage {
 }
 
 #[derive(Debug, Clone)]
-pub enum ChannelMessage {
-    Candidate(Box<CandidateChannelMessage>),
+pub enum ChannelMessage<T: CandidateMessageBaseTrait> {
+    Candidate(Box<CandidateChannelMessage<T>>),
     Decision(Box<DecisionChannelMessage>),
 }
 

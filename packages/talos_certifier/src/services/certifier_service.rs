@@ -27,7 +27,7 @@ pub struct CertifierService {
     pub suffix: Suffix<CandidateMessage>,
     pub certifier: Certifier,
     pub system: System,
-    pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
+    pub message_channel_rx: mpsc::Receiver<ChannelMessage<CandidateMessage>>,
     pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
@@ -35,7 +35,7 @@ pub struct CertifierService {
 
 impl CertifierService {
     pub fn new(
-        message_channel_rx: mpsc::Receiver<ChannelMessage>,
+        message_channel_rx: mpsc::Receiver<ChannelMessage<CandidateMessage>>,
         decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
         commit_offset: Arc<AtomicI64>,
         system: System,
@@ -165,7 +165,7 @@ impl CertifierService {
         Ok(())
     }
 
-    pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage>) -> ServiceResult {
+    pub async fn process_message(&mut self, channel_message: &Option<ChannelMessage<CandidateMessage>>) -> ServiceResult {
         if let Err(certification_error) = match channel_message {
             Some(ChannelMessage::Candidate(candidate)) => {
                 let decision_message = self.process_candidate(&candidate.message)?;

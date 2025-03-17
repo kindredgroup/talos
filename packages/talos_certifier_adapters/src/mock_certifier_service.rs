@@ -3,13 +3,13 @@ use async_trait::async_trait;
 use talos_certifier::core::{DecisionOutboxChannelMessage, ServiceResult, SystemService};
 use talos_certifier::errors::{SystemServiceError, SystemServiceErrorKind};
 use talos_certifier::model::metrics::TxProcessingTimeline;
-use talos_certifier::model::{Decision, DecisionMessage};
+use talos_certifier::model::{CandidateMessage, Decision, DecisionMessage};
 use talos_certifier::ports::common::SharedPortTraits;
 use talos_certifier::ChannelMessage;
 use tokio::sync::mpsc;
 
 pub struct MockCertifierService {
-    pub message_channel_rx: mpsc::Receiver<ChannelMessage>,
+    pub message_channel_rx: mpsc::Receiver<ChannelMessage<CandidateMessage>>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
 }
 

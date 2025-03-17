@@ -4,9 +4,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
 use strum::{Display, EnumString};
-use talos_certifier::model::{CandidateMessage, Decision, DecisionMessageTrait};
+use talos_certifier::model::{Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+
+use crate::models::MessengerCandidateMessage;
 
 pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_state(&mut self, state: SuffixItemState);
@@ -188,7 +190,7 @@ pub struct ActionsMapWithVersion {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 pub struct MessengerCandidate {
-    pub candidate: CandidateMessage,
+    pub candidate: MessengerCandidateMessage,
     /// Safepoint received for committed outcomes from certifier.
     safepoint: Option<u64>,
     /// Decision received from certifier.
@@ -203,8 +205,8 @@ pub struct MessengerCandidate {
     headers: HashMap<String, String>,
 }
 
-impl From<CandidateMessage> for MessengerCandidate {
-    fn from(candidate: CandidateMessage) -> Self {
+impl From<MessengerCandidateMessage> for MessengerCandidate {
+    fn from(candidate: MessengerCandidateMessage) -> Self {
         let state = SuffixItemState::AwaitingDecision;
         let mut state_transition_ts: HashMap<MessengerStateTransitionTimestamps, TimeStamp> = HashMap::new();
         let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
