@@ -3312,6 +3312,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-test",
+ "uuid",
 ]
 
 [[package]]

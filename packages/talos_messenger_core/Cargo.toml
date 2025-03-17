@@ -21,6 +21,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 
+
 # Strum
 strum = { version = "0.25", features = ["derive"] }
 
@@ -49,3 +50,5 @@ talos_common_utils = { path = "../../packages/talos_common_utils", version = "0.
 mockall = { version = "0.11.3" }
 tokio-test = { version = "0.4.2" }
 rand = { version = "0.8.5" }
+# uuid
+uuid = { version = "1.4.1", features = ["v4"] }
