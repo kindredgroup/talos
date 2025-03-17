@@ -26,6 +26,40 @@ pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn is_abort(&self) -> Option<bool>;
 }
 
+#[cfg(test)]
+pub trait MessengerSuffixAssertionTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
+    /// Asserts suffix `head` and `prune_index`.
+    ///
+    /// It is important to understand where and why the `head` and `prune_index` are at any time.
+    ///
+    /// - `head` gets updated either at the begining when first none-zero version is inserted into suffix.
+    /// - `prune_index` gets updated when contiguous items in suffix from the head are in the final state `SuffixItemState::Complete(..)`.
+    fn assert_suffix_head_and_prune_index(&self, expected_head: u64, expected_prune_index: Option<usize>) {
+        let suffix_meta = self.get_meta();
+        assert_eq!(
+            suffix_meta.head, expected_head,
+            "Expected head to be {expected_head} but got {:?}",
+            suffix_meta.head
+        );
+        assert_eq!(
+            suffix_meta.prune_index, expected_prune_index,
+            "Expected prune_index to be {expected_prune_index:?} but got {:?}",
+            suffix_meta.prune_index
+        );
+    }
+
+    /// Asserts the state of an item on suffix.
+    /// Checks for `SuffixItemState` actual vs expected for a version.
+    fn assert_item_state(&self, version: u64, expected_state: &SuffixItemState) {
+        let suffix_item = self.get(version).unwrap().unwrap();
+        let actual_state = suffix_item.item.get_state();
+
+        assert_eq!(
+            actual_state, expected_state,
+            "Expected state for version {version} is {expected_state:?} but got {actual_state:?}"
+        );
+    }
+}
 pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     //  Setters
     /// Sets the state of an item by version.
@@ -250,6 +284,9 @@ impl MessengerSuffixItemTrait for MessengerCandidate {
     }
 }
 
+#[cfg(test)]
+impl<T> MessengerSuffixAssertionTrait<T> for Suffix<T> where T: MessengerSuffixItemTrait {}
+
 impl<T> MessengerSuffixTrait<T> for Suffix<T>
 where
     T: MessengerSuffixItemTrait,
@@ -290,9 +327,12 @@ where
                 };
 
                 match self.get(*safepoint) {
-                    // If we find the suffix item from the safepoint, we need to ensure that it already in `Complete` or `Processing` state
+                    // If we find the suffix item from the safepoint, we need to ensure that it already in `Complete`, `PartiallyComplete` or `Processing` state
                     Ok(Some(safepoint_item)) => {
-                        matches!(safepoint_item.item.get_state(), SuffixItemState::Processing | SuffixItemState::Complete(..))
+                        matches!(
+                            safepoint_item.item.get_state(),
+                            SuffixItemState::Processing | SuffixItemState::PartiallyComplete | SuffixItemState::Complete(..)
+                        )
                     }
                     // If we couldn't find the item in suffix, it could be because it was pruned and it is safe to assume that we can consider it.
                     _ => true,

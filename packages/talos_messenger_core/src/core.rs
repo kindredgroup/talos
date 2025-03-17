@@ -33,6 +33,12 @@ pub trait MessengerPublisher {
     ) -> Result<(), MessagePublishError>;
 }
 
+/// Trait for any action service.
+#[async_trait]
+pub trait ActionService {
+    async fn process_action(&mut self) -> MessengerServiceResult;
+}
+
 /// Trait to be implemented by all services.
 #[async_trait]
 pub trait MessengerSystemService {

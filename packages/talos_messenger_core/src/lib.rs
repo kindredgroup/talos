@@ -6,4 +6,4 @@ pub mod talos_messenger_service;
 pub mod utlis;
 
 #[cfg(test)]
-mod tests;
+pub mod tests;

@@ -7,7 +7,10 @@ use log::{debug, error, info, warn};
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tokio::sync::mpsc::{self};
+use tokio::{
+    sync::mpsc::{self},
+    time::Interval,
+};
 
 use crate::{
     core::{MessengerChannelFeedback, MessengerCommitActions, MessengerSystemService},
@@ -49,6 +52,8 @@ where
     pub rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
     pub suffix: Suffix<MessengerCandidate>,
     pub config: MessengerInboundServiceConfig,
+    // Interval at which the commit interval arm should execute.
+    commit_interval: Interval,
     /// The last version/offset sent for commit. This property shows the version that was last committed, unlike `next_version_to_commit`, which is next to commit.
     last_committed_version: u64,
     /// The next version ready to be send for commit.
@@ -66,12 +71,14 @@ where
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
     ) -> Self {
+        let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
         Self {
             message_receiver,
             tx_actions_channel,
             rx_feedback_channel,
             suffix,
             config,
+            commit_interval,
             last_committed_version: 0,
             next_version_to_commit: 0,
         }
@@ -166,7 +173,20 @@ where
         let item_state = self.suffix.get_item_state(version);
         match item_state {
             Some(SuffixItemState::Processing) | Some(SuffixItemState::PartiallyComplete) => {
-                self.suffix.set_item_state(version, SuffixItemState::PartiallyComplete);
+                self.suffix
+                    .set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
+
+                self.suffix.increment_item_action_count(version, action_key);
+                self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::ErrorProcessing);
+                debug!(
+                    "[Action] State version={version} changed from {item_state:?} => {:?}",
+                    self.suffix.get_item_state(version)
+                );
+            }
+            // If there was atleast 1 error, mark the final state as `Complete(ErrorProcessing)`.
+            Some(SuffixItemState::Complete(..)) => {
+                self.suffix
+                    .set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
 
                 self.suffix.increment_item_action_count(version, action_key);
                 self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::ErrorProcessing);
@@ -198,6 +218,174 @@ where
             _ => (),
         };
     }
+
+    pub async fn run_once(&mut self) -> MessengerServiceResult {
+        tokio::select! {
+            // Receive feedback from publisher.
+            Some(feedback_result) = self.rx_feedback_channel.recv() => {
+                match feedback_result {
+                    MessengerChannelFeedback::Error(version, key, message_error) => {
+                        error!("Failed to process version={version} with error={message_error:?}");
+                        self.handle_action_failed(version, &key);
+
+                    },
+                    MessengerChannelFeedback::Success(version, key) => {
+                        error!("Successfully processed version={version} with action_key={key}");
+                        self.handle_action_success(version, &key);
+                    },
+                }
+
+            }
+            // 1. Consume message.
+            // Ok(Some(msg)) = self.message_receiver.consume_message() => {
+            reciever_result = self.message_receiver.consume_message() => {
+
+                match reciever_result {
+                    // 2.1 For CM - Install messages on the version
+                    Ok(Some(ChannelMessage::Candidate(candidate))) => {
+                        let version = candidate.message.version;
+                        debug!("Candidate version received is {version}");
+                        if version > 0 {
+                            // insert item to suffix
+                            if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
+                                warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
+                            }
+
+                            if let Some(item_to_update) = self.suffix.get_mut(version){
+                                if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
+                                    let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
+                                    if filter_actions.is_empty() {
+                                        // There are on_commit actions, but not the ones required by messenger
+                                        item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
+                                    } else {
+                                        item_to_update.item.set_commit_action(filter_actions);
+                                    }
+                                } else {
+                                    //  No on_commit actions
+                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
+
+                                }
+                            };
+
+
+
+                        } else {
+                            warn!("Version 0 will not be inserted into suffix.")
+                        }
+                    },
+                    // 2.2 For DM - Update the decision with outcome + safepoint.
+                    Ok(Some(ChannelMessage::Decision(decision))) => {
+                        let version = decision.message.get_candidate_version();
+                        debug!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
+
+                        // TODO: GK - no hardcoded filters on headers
+                        let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
+                        self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
+
+                        if decision.message.is_abort(){
+                            if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                                self.update_commit_offset(new_prune_version);
+                            }
+                        }
+
+                        // Pick the next items from suffix whose actions are to be processed.
+                        self.process_next_actions().await?;
+
+
+                    },
+                    Ok(None) => {
+                        debug!("No message to process..");
+                    },
+                    Err(error) => {
+                        // Catch the error propogated, and if it has a version, mark the item as completed.
+                        if let Some(version) = error.version {
+                            if let Some(item_to_update) = self.suffix.get_mut(version){
+                                item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
+                            }
+                        }
+                        error!("error consuming message....{:?}", error);
+                    },
+                }
+
+            }
+            // Periodically check and update the commit frequency and prune index.
+            _ = self.commit_interval.tick() => {
+                if !self.suffix.messages.is_empty(){
+                    if let  Some(Some(last_item_on_suffix)) = self.suffix.messages.back() {
+                        let last_version = last_item_on_suffix.item_ver;
+                        let last_version_decision_ver = last_item_on_suffix.decision_ver;
+                        let last_committed_version = self.last_committed_version;
+
+                        let version_ready_to_commit = self.next_version_to_commit;
+
+                        if version_ready_to_commit.gt(&last_committed_version) {
+                            // There are more items in suffix.
+                            if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(last_version) {
+
+                                // If the new_prune_version is same as the last item on suffix, then is is safe to commit till the decision offset of that message.
+                                let new_offset = if new_prune_version.eq(&last_version) {
+                                    if let Some(decision_vers) = last_version_decision_ver {
+                                        debug!("Updating to decision offset ({:?})", decision_vers);
+                                        decision_vers
+                                    } else {
+                                        new_prune_version
+                                    }
+
+                                } else {
+                                    debug!("Updating to candidate offset ({})", new_prune_version);
+                                    new_prune_version
+                                };
+                                self.update_commit_offset(new_offset);
+                                match self.message_receiver.commit() {
+                                    Err(err) => {
+                                        error!("[Commit] Error committing {err:?}");
+                                    }
+                                    Ok(_) => {
+                                        self.last_committed_version = new_offset;
+                                    },
+                                }
+                            };
+
+                        }
+
+                    }
+                }
+
+            }
+            else => {
+                warn!("Unhandled arm....");
+            }
+
+        }
+
+        // NOTE: Pruning and committing offset adds to latency if done more frequently.
+        if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
+            match self.message_receiver.commit() {
+                Err(err) => {
+                    error!("[Commit] Error committing {err:?}");
+                }
+                Ok(_) => {
+                    self.last_committed_version = self.next_version_to_commit;
+                    info!("Last commit at offset {}", self.last_committed_version);
+                }
+            };
+            // else {
+            // }
+        }
+
+        // Update the prune index and commit
+        let SuffixMeta {
+            prune_index,
+            prune_start_threshold,
+            ..
+        } = self.suffix.get_meta();
+
+        if prune_index.gt(prune_start_threshold) {
+            self.suffix_pruning();
+        };
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -217,172 +405,8 @@ where
     async fn run(&mut self) -> MessengerServiceResult {
         info!("Running Messenger service");
 
-        let mut interval = tokio::time::interval(Duration::from_millis(self.config.commit_frequency as u64));
-
         loop {
-            tokio::select! {
-                // Receive feedback from publisher.
-                Some(feedback_result) = self.rx_feedback_channel.recv() => {
-                    match feedback_result {
-                        MessengerChannelFeedback::Error(version, key, message_error) => {
-                            error!("Failed to process version={version} with error={message_error:?}");
-                            self.handle_action_failed(version, &key);
-
-                        },
-                        MessengerChannelFeedback::Success(version, key) => {
-                            debug!("Successfully processed version={version} with action_key={key}");
-                            self.handle_action_success(version, &key);
-                        },
-                    }
-
-                }
-                // 1. Consume message.
-                // Ok(Some(msg)) = self.message_receiver.consume_message() => {
-                reciever_result = self.message_receiver.consume_message() => {
-
-                    match reciever_result {
-                        // 2.1 For CM - Install messages on the version
-                        Ok(Some(ChannelMessage::Candidate(candidate))) => {
-                            let version = candidate.message.version;
-                            debug!("Candidate version received is {version}");
-                            if version > 0 {
-                                // insert item to suffix
-                                if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
-                                    warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
-                                }
-
-                                if let Some(item_to_update) = self.suffix.get_mut(version){
-                                    if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
-                                        let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
-                                        if filter_actions.is_empty() {
-                                            // There are on_commit actions, but not the ones required by messenger
-                                            item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
-                                        } else {
-                                            item_to_update.item.set_commit_action(filter_actions);
-                                        }
-                                    } else {
-                                        //  No on_commit actions
-                                        item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
-
-                                    }
-                                };
-
-
-
-                            } else {
-                                warn!("Version 0 will not be inserted into suffix.")
-                            }
-                        },
-                        // 2.2 For DM - Update the decision with outcome + safepoint.
-                        Ok(Some(ChannelMessage::Decision(decision))) => {
-                            let version = decision.message.get_candidate_version();
-                            debug!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
-
-                            // TODO: GK - no hardcoded filters on headers
-                            let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
-                            self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
-
-                            if decision.message.is_abort(){
-                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-                                    self.update_commit_offset(new_prune_version);
-                                }
-                            }
-
-                            // Pick the next items from suffix whose actions are to be processed.
-                            self.process_next_actions().await?;
-
-
-                        },
-                        Ok(None) => {
-                            debug!("No message to process..");
-                        },
-                        Err(error) => {
-                            // Catch the error propogated, and if it has a version, mark the item as completed.
-                            if let Some(version) = error.version {
-                                if let Some(item_to_update) = self.suffix.get_mut(version){
-                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
-                                }
-                            }
-                            error!("error consuming message....{:?}", error);
-                        },
-                    }
-
-                }
-                // Periodically check and update the commit frequency and prune index.
-                _ = interval.tick() => {
-                    if !self.suffix.messages.is_empty(){
-                        if let  Some(Some(last_item_on_suffix)) = self.suffix.messages.back() {
-                            let last_version = last_item_on_suffix.item_ver;
-                            let last_version_decision_ver = last_item_on_suffix.decision_ver;
-                            let last_committed_version = self.last_committed_version;
-
-                            let version_ready_to_commit = self.next_version_to_commit;
-
-                            if version_ready_to_commit.gt(&last_committed_version) {
-                                // There are more items in suffix.
-                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(last_version) {
-
-                                    // If the new_prune_version is same as the last item on suffix, then is is safe to commit till the decision offset of that message.
-                                    let new_offset = if new_prune_version.eq(&last_version) {
-                                        if let Some(decision_vers) = last_version_decision_ver {
-                                            debug!("Updating to decision offset ({:?})", decision_vers);
-                                            decision_vers
-                                        } else {
-                                            new_prune_version
-                                        }
-
-                                    } else {
-                                        debug!("Updating to candidate offset ({})", new_prune_version);
-                                        new_prune_version
-                                    };
-                                    self.update_commit_offset(new_offset);
-                                    match self.message_receiver.commit() {
-                                        Err(err) => {
-                                            error!("[Commit] Error committing {err:?}");
-                                        }
-                                        Ok(_) => {
-                                            self.last_committed_version = new_offset;
-                                        },
-                                    }
-                                };
-
-                            }
-
-                        }
-                    }
-
-                }
-                else => {
-                    warn!("Unhandled arm....");
-                }
-
-            }
-
-            // NOTE: Pruning and committing offset adds to latency if done more frequently.
-            if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
-                match self.message_receiver.commit() {
-                    Err(err) => {
-                        error!("[Commit] Error committing {err:?}");
-                    }
-                    Ok(_) => {
-                        self.last_committed_version = self.next_version_to_commit;
-                        info!("Last commit at offset {}", self.last_committed_version);
-                    }
-                };
-                // else {
-                // }
-            }
-
-            // Update the prune index and commit
-            let SuffixMeta {
-                prune_index,
-                prune_start_threshold,
-                ..
-            } = self.suffix.get_meta();
-
-            if prune_index.gt(prune_start_threshold) {
-                self.suffix_pruning();
-            };
+            self.run_once().await?;
         }
     }
 }
