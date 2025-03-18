@@ -15,6 +15,7 @@ use tokio::{
 use crate::{
     core::{MessengerChannelFeedback, MessengerCommitActions, MessengerSystemService},
     errors::{MessengerServiceError, MessengerServiceResult},
+    models::MessengerCandidateMessage,
     suffix::{
         MessengerCandidate, MessengerStateTransitionTimestamps, MessengerSuffixItemTrait, MessengerSuffixTrait, SuffixItemCompleteStateReason, SuffixItemState,
     },
@@ -45,7 +46,7 @@ impl MessengerInboundServiceConfig {
 
 pub struct MessengerInboundService<M>
 where
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
 {
     pub message_receiver: M,
     pub tx_actions_channel: mpsc::Sender<MessengerCommitActions>,
@@ -62,7 +63,7 @@ where
 
 impl<M> MessengerInboundService<M>
 where
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
 {
     pub fn new(
         message_receiver: M,
@@ -230,7 +231,7 @@ where
 
                     },
                     MessengerChannelFeedback::Success(version, key) => {
-                        error!("Successfully processed version={version} with action_key={key}");
+                        debug!("Successfully processed version={version} with action_key={key}");
                         self.handle_action_success(version, &key);
                     },
                 }
@@ -391,7 +392,7 @@ where
 #[async_trait]
 impl<M> MessengerSystemService for MessengerInboundService<M>
 where
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync + 'static,
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
 {
     async fn start(&self) -> MessengerServiceResult {
         info!("Start Messenger service");

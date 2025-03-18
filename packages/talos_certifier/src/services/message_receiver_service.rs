@@ -10,13 +10,14 @@ use tokio::{sync::mpsc, time::Interval};
 use crate::{
     core::{ServiceResult, System, SystemService},
     errors::{SystemErrorType, SystemServiceError, SystemServiceErrorKind},
+    model::CandidateMessage,
     ports::{errors::MessageReceiverErrorKind, MessageReciever},
     ChannelMessage,
 };
 
 pub struct MessageReceiverService {
-    pub receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
-    pub message_channel_tx: mpsc::Sender<ChannelMessage>,
+    pub receiver: Box<dyn MessageReciever<Message = ChannelMessage<CandidateMessage>> + Send + Sync>,
+    pub message_channel_tx: mpsc::Sender<ChannelMessage<CandidateMessage>>,
     pub commit_offset: Arc<AtomicI64>,
     pub system: System,
     pub commit_interval: Interval,
@@ -24,8 +25,8 @@ pub struct MessageReceiverService {
 
 impl MessageReceiverService {
     pub fn new(
-        receiver: Box<dyn MessageReciever<Message = ChannelMessage> + Send + Sync>,
-        message_channel_tx: mpsc::Sender<ChannelMessage>,
+        receiver: Box<dyn MessageReciever<Message = ChannelMessage<CandidateMessage>> + Send + Sync>,
+        message_channel_tx: mpsc::Sender<ChannelMessage<CandidateMessage>>,
         commit_offset: Arc<AtomicI64>,
         system: System,
     ) -> Self {

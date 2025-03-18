@@ -4,10 +4,12 @@ use serde_json::{json, Value};
 use talos_certifier::{
     certifier::Outcome,
     core::{CandidateChannelMessage, DecisionChannelMessage},
-    model::{CandidateMessage, DecisionMessage},
+    model::DecisionMessage,
     ChannelMessage,
 };
 use uuid::Uuid;
+
+use crate::models::MessengerCandidateMessage;
 
 pub struct CandidateTestPayload {
     pub message: Value,
@@ -65,17 +67,17 @@ impl Default for CandidateTestPayload {
 //
 
 pub struct MockChannelMessage {
-    candidate: CandidateMessage,
+    candidate: MessengerCandidateMessage,
 }
 
 impl MockChannelMessage {
-    pub fn new(candidate: &CandidateMessage, version: u64) -> Self {
+    pub fn new(candidate: &MessengerCandidateMessage, version: u64) -> Self {
         Self {
-            candidate: CandidateMessage { version, ..candidate.clone() },
+            candidate: MessengerCandidateMessage { version, ..candidate.clone() },
         }
     }
 
-    pub fn build_candidate_channel_message(&self, headers: &HashMap<String, String>) -> ChannelMessage {
+    pub fn build_candidate_channel_message(&self, headers: &HashMap<String, String>) -> ChannelMessage<MessengerCandidateMessage> {
         let channel_candidate = CandidateChannelMessage {
             message: self.candidate.clone(),
             headers: headers.clone(),
@@ -89,7 +91,7 @@ impl MockChannelMessage {
         outcome: &Outcome,
         suffix_start: u64,
         headers: &HashMap<String, String>,
-    ) -> ChannelMessage {
+    ) -> ChannelMessage<MessengerCandidateMessage> {
         let decision = DecisionMessage::new(&self.candidate, outcome.clone(), suffix_start);
 
         let channel_decision = DecisionChannelMessage {

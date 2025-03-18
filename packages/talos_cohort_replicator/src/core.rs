@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::marker::PhantomData;
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 
+use crate::models::ReplicatorCandidateMessage;
+
 use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
     utils::get_statemap_from_suffix_items,
@@ -66,7 +68,7 @@ pub struct Replicator<T, S, M>
 where
     T: ReplicatorSuffixItemTrait,
     S: ReplicatorSuffixTrait<T> + std::fmt::Debug,
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync,
+    M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
     pub receiver: M,
     pub suffix: S,
@@ -79,7 +81,7 @@ impl<T, S, M> Replicator<T, S, M>
 where
     T: ReplicatorSuffixItemTrait,
     S: ReplicatorSuffixTrait<T> + std::fmt::Debug,
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync,
+    M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
     pub fn new(receiver: M, suffix: S) -> Self {
         Replicator {

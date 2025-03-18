@@ -18,7 +18,7 @@ use crate::{
     services::CertifierService,
 };
 
-async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>, candidate_message: CandidateMessage) {
+async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage<CandidateMessage>>, candidate_message: CandidateMessage) {
     tokio::spawn(async move {
         message_channel_tx
             .send(ChannelMessage::Candidate(
@@ -35,7 +35,7 @@ async fn send_candidate_message(message_channel_tx: mpsc::Sender<ChannelMessage>
 
 struct CertifierChannels {
     system_channel: (broadcast::Sender<SystemMessage>, broadcast::Receiver<SystemMessage>),
-    message_channel: (mpsc::Sender<ChannelMessage>, mpsc::Receiver<ChannelMessage>),
+    message_channel: (mpsc::Sender<ChannelMessage<CandidateMessage>>, mpsc::Receiver<ChannelMessage<CandidateMessage>>),
     decision_outbox_channel: (mpsc::Sender<DecisionOutboxChannelMessage>, mpsc::Receiver<DecisionOutboxChannelMessage>),
 }
 
@@ -78,8 +78,6 @@ async fn test_certification_rule_2() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -99,8 +97,6 @@ async fn test_certification_rule_2() {
             readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -157,8 +153,6 @@ async fn test_error_in_processing_candidate_message_certifying() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -212,8 +206,6 @@ async fn test_certification_process_decision() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -281,10 +273,6 @@ async fn test_certification_process_decision_incorrect_version() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            // safepoint: None,
-            // decision_outcome: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -367,8 +355,6 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -390,8 +376,6 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -413,8 +397,6 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -436,8 +418,6 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -459,8 +439,6 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -607,8 +585,6 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,
@@ -630,8 +606,6 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
             // readset: vec!["ksp:r1".to_owned(), "ksp:r2".to_owned()],
             writeset: vec!["ksp:w1".to_owned()],
             metadata: None,
-            on_commit: None,
-            statemap: None,
             certification_started_at: 0,
             request_created_at: 0,
             published_at: 0,

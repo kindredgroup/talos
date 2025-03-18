@@ -4,7 +4,7 @@ use std::{fmt::Debug, time::Duration};
 use crate::{
     core::{Replicator, ReplicatorChannel, StatemapItem},
     errors::ReplicatorError,
-    models::ReplicatorCandidate,
+    models::{ReplicatorCandidate, ReplicatorCandidateMessage},
     suffix::ReplicatorSuffixTrait,
 };
 
@@ -27,7 +27,7 @@ pub async fn replicator_service<S, M>(
 ) -> Result<(), ReplicatorError>
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
-    M: MessageReciever<Message = ChannelMessage> + Send + Sync,
+    M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
     info!("Starting Replicator Service.... ");
     let mut interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));

@@ -1,9 +1,9 @@
-use crate as Adapters;
 use crate::mock_certifier_service::MockCertifierService;
 use crate::PgConfig;
+use crate::{self as Adapters, KafkaConsumer};
 use std::sync::{atomic::AtomicI64, Arc};
 use talos_certifier::core::SystemService;
-use talos_certifier::model::DecisionMessage;
+use talos_certifier::model::{CandidateMessage, DecisionMessage};
 use talos_certifier::ports::DecisionStore;
 
 use talos_certifier::services::CertifierServiceConfig;
@@ -63,7 +63,7 @@ pub async fn certifier_with_kafka_pg(
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let kafka_consumer = Adapters::KafkaConsumer::new(&configuration.kafka_config);
+    let kafka_consumer: KafkaConsumer<CandidateMessage> = Adapters::KafkaConsumer::new(&configuration.kafka_config);
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
     let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
 

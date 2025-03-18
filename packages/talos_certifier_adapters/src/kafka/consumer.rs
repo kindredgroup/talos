@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use log::debug;
@@ -7,9 +7,9 @@ use rdkafka::{
     Message, TopicPartitionList,
 };
 use talos_certifier::{
-    core::{CandidateChannelMessage, DecisionChannelMessage, MessageVariant},
+    core::{CandidateChannelMessage, CandidateMessageBaseTrait, DecisionChannelMessage, MessageVariant},
     errors::SystemServiceError,
-    model::{CandidateMessage, DecisionMessage},
+    model::DecisionMessage,
     ports::{
         common::SharedPortTraits,
         errors::{MessageReceiverError, MessageReceiverErrorKind},
@@ -27,13 +27,14 @@ use super::utils;
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
-pub struct KafkaConsumer {
+pub struct KafkaConsumer<C> {
     pub consumer: Arc<StreamConsumer<DefaultConsumerContext>>,
     pub topic: String,
     pub tpl: TopicPartitionList,
+    _phantom: PhantomData<C>,
 }
 
-impl KafkaConsumer {
+impl<C> KafkaConsumer<C> {
     pub fn new(config: &KafkaConfig) -> Self {
         let consumer = config.build_consumer_config().create().expect("Failed to create consumer");
 
@@ -42,6 +43,7 @@ impl KafkaConsumer {
             consumer: Arc::new(consumer),
             topic,
             tpl: TopicPartitionList::new(),
+            _phantom: PhantomData,
         }
     }
 
@@ -74,8 +76,11 @@ impl KafkaConsumer {
 }
 
 #[async_trait]
-impl MessageReciever for KafkaConsumer {
-    type Message = ChannelMessage;
+impl<C> MessageReciever for KafkaConsumer<C>
+where
+    C: CandidateMessageBaseTrait + Send + Sync,
+{
+    type Message = ChannelMessage<C>;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let message_received = self.consumer.recv().await.map_err(|e| MessageReceiverError {
@@ -118,14 +123,14 @@ impl MessageReciever for KafkaConsumer {
             data: Some(message_type.to_string()),
         })? {
             MessageVariant::Candidate => {
-                let mut msg: CandidateMessage = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
+                let mut msg: C = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
                     kind: MessageReceiverErrorKind::ParseError,
                     version: Some(offset),
                     reason: e.to_string(),
                     data: Some(format!("{:?}", String::from_utf8_lossy(raw_payload))),
                 })?;
-                msg.version = offset;
-                msg.received_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                msg.add_version(offset);
+                msg.add_candidate_received_metric(OffsetDateTime::now_utc().unix_timestamp_nanos());
                 ChannelMessage::Candidate(
                     CandidateChannelMessage {
                         message: msg,
@@ -243,7 +248,10 @@ impl MessageReciever for KafkaConsumer {
 }
 
 #[async_trait]
-impl SharedPortTraits for KafkaConsumer {
+impl<C> SharedPortTraits for KafkaConsumer<C>
+where
+    C: Send + Sync,
+{
     async fn is_healthy(&self) -> bool {
         matches!(self.consumer.client().fetch_metadata(None, Duration::from_secs(2)), Ok(_result))
     }
