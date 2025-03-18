@@ -12,12 +12,6 @@ pub struct MessengerCandidateMessage {
     pub agent: String,
     pub cohort: String,
     pub snapshot: u64,
-    // #[serde(skip_deserializing)]
-    // pub readset: Vec<String>,
-    // #[serde(skip_deserializing)]
-    // pub readvers: Vec<u64>,
-    // #[serde(skip_deserializing)]
-    // pub writeset: Vec<String>,
     #[serde(skip_deserializing)]
     pub version: u64,
     // OPTIONAL FIELDS
@@ -25,9 +19,6 @@ pub struct MessengerCandidateMessage {
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_commit: Option<Box<Value>>,
-
-    // #[serde(skip_deserializing)]
-    // pub statemap: Option<Vec<HashMap<String, Value>>>,
     /// Cohort started certification
     #[serde(default)]
     pub certification_started_at: i128,

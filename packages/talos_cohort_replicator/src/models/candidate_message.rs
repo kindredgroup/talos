@@ -12,12 +12,6 @@ pub struct ReplicatorCandidateMessage {
     pub agent: String,
     pub cohort: String,
     pub snapshot: u64,
-    // #[serde(skip_deserializing)]
-    // pub readset: Vec<String>,
-    // #[serde(skip_deserializing)]
-    // pub readvers: Vec<u64>,
-    // #[serde(skip_deserializing)]
-    // pub writeset: Vec<String>,
     #[serde(skip_deserializing)]
     pub version: u64,
     // OPTIONAL FIELDS
