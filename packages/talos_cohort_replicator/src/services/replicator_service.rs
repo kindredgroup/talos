@@ -43,6 +43,9 @@ where
     let mut time_first_item_created_start_ns: i128 = 0; //
     let mut time_last_item_send_end_ns: i128 = 0;
     let mut time_last_item_installed_ns: i128 = 0;
+    let g_statemaps_batch = global::meter("sdk_replicator").u64_gauge("repl_statemaps_batch").with_unit("statemaps").build();
+    let g_statemaps_tx = global::meter("sdk_replicator").u64_gauge("repl_statemaps_channel").with_unit("items").build();
+    let channel_size = 100_000_u64;
 
     loop {
         tokio::select! {
@@ -81,11 +84,15 @@ where
                         let statemaps_batch = replicator.generate_statemap_batch();
 
                         total_items_send += statemaps_batch.len();
+                        g_statemaps_batch.record(statemaps_batch.len() as u64, &[]);
+                        g_statemaps_tx.record(channel_size - statemaps_tx.capacity() as u64, &[]);
 
                         // Send statemaps batch to
                         for (ver, statemap_vec) in statemaps_batch {
                             statemaps_tx.send((ver, statemap_vec)).await.unwrap();
                         }
+
+                        // statemaps_tx
 
                         time_last_item_send_end_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 

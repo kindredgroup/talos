@@ -8,6 +8,7 @@ use crate::{
     errors::ReplicatorError,
 };
 
+use opentelemetry::global;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error};
 
@@ -19,22 +20,27 @@ async fn statemap_install_future(
     installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
     replicator_tx: mpsc::Sender<ReplicatorChannel>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
-    semaphore: Arc<Semaphore>,
+    // semaphore: Arc<Semaphore>,
     statemaps: Vec<StatemapItem>,
     version: u64,
 ) {
     debug!("[Statemap Installer Service] Received statemap batch ={statemaps:?} and version={version:?}");
     let start_installation_time = Instant::now();
 
-    let permit = semaphore.clone().acquire_owned().await.unwrap();
+    // let permit = semaphore.clone().acquire_owned().await.unwrap();
 
+    let meter = global::meter("sdk_replicator");
+    let c_installed = meter.u64_counter("repl_install_ok").build();
+    let c_install_failed = meter.u64_counter("repl_install_err").build();
     match installer.install(statemaps, version).await {
         Ok(_) => {
             replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![version])).await.unwrap();
             statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
+            c_installed.add(1, &[]);
         }
 
         Err(err) => {
+            c_install_failed.add(1, &[]);
             error!(
                 "Installed failed for version={version:?} with time={:?} error={err:?}",
                 start_installation_time.elapsed()
@@ -54,7 +60,7 @@ async fn statemap_install_future(
                 .unwrap();
         }
     };
-    drop(permit);
+    // drop(permit);
 }
 
 pub async fn installation_service(
@@ -66,27 +72,26 @@ pub async fn installation_service(
 ) -> Result<(), ReplicatorError> {
     let permit_count = config.thread_pool.unwrap_or(50) as usize;
     let semaphore = Arc::new(Semaphore::new(permit_count));
+    let udc_items_installing = global::meter("sdk_replicator")
+        .i64_up_down_counter("repl_items_installing")
+        .with_unit("items")
+        .build();
 
     loop {
-        let available_permits = semaphore.available_permits();
-
-        if available_permits > 0 {
-            if let Some((ver, statemaps)) = installation_rx.recv().await {
-                let replicator_tx_clone = replicator_tx.clone();
-                let statemap_installation_tx_clone = statemap_installation_tx.clone();
-                let installer = Arc::clone(&statemap_installer);
-
-                //  Spawn new task to install the statemap
-                tokio::spawn(statemap_install_future(
-                    installer,
-                    replicator_tx_clone,
-                    statemap_installation_tx_clone,
-                    semaphore.clone(),
-                    statemaps,
-                    ver,
-                ));
-            };
-        };
+        let semaphore = semaphore.clone();
+        let udc_items_installing_copy = udc_items_installing.clone();
+        if let Some((ver, statemaps)) = installation_rx.recv().await {
+            let permit = semaphore.acquire_owned().await.unwrap();
+            let replicator_tx_clone = replicator_tx.clone();
+            let installer = Arc::clone(&statemap_installer);
+            let statemap_installation_tx_clone = statemap_installation_tx.clone();
+            udc_items_installing_copy.add(1, &[]);
+            tokio::spawn(async move {
+                statemap_install_future(installer, replicator_tx_clone, statemap_installation_tx_clone, statemaps, ver).await;
+                drop(permit);
+                udc_items_installing_copy.add(-1, &[]);
+            });
+        }
     }
 }
 // $coverage:ignore-end

@@ -6,7 +6,7 @@ use banking_common::state::postgres::{
     database_config::DatabaseConfig,
 };
 use banking_replicator::{app::BankingReplicatorApp, statemap_installer::BankStatemapInstaller};
-use talos_cohort_replicator::{callbacks::ReplicatorSnapshotProvider, CohortReplicatorConfig};
+use talos_cohort_replicator::{callbacks::ReplicatorSnapshotProvider, otel::otel_config::ReplicatorOtelConfig, CohortReplicatorConfig};
 
 use talos_common_utils::{env_var, env_var_with_defaults};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
@@ -73,6 +73,14 @@ async fn main() {
         certifier_message_receiver_commit_freq_ms: env_var_with_defaults!("REPLICATOR_COMMIT_FREQ_MS", u64, 10_000),
         statemap_queue_cleanup_freq_ms: env_var_with_defaults!("STATEMAP_QUEUE_CLEANUP_FREQUENCY_MS", u64, 10_000),
         statemap_installer_threadpool: env_var_with_defaults!("STATEMAP_INSTALLER_THREAD_POOL", u64, 50),
+        otel_telemetry: ReplicatorOtelConfig {
+            init_otel: true,
+            enable_metrics: false,
+            enable_traces: false,
+            name: "example_replicator".into(),
+            meter_name: "example_replicator".into(),
+            grpc_endpoint: None,
+        },
     };
 
     let snapshot_api = SnapshotApi { db: Arc::clone(&database) };

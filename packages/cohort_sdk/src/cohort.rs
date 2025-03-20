@@ -7,6 +7,7 @@ use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use opentelemetry::global;
+
 use tracing::Instrument;
 
 use serde_json::Value;
@@ -27,7 +28,13 @@ use talos_agent::{
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
-use crate::otel::{initialiser::init_otel, meters::CohortMeters};
+use crate::{
+    model::ClientErrorKind,
+    otel::{
+        initialiser::{init_otel_logs_tracing, init_otel_metrics},
+        meters::CohortMeters,
+    },
+};
 
 use crate::{
     delay_controller::DelayController,
@@ -59,7 +66,19 @@ impl Cohort {
         // Returns error description. If string is empty it means there was no error installing
     ) -> Result<Self, ClientError> {
         let otel_name = format!("{}-cohort_initiator", config.otel_telemetry.name.clone());
-        init_otel(otel_name, config.otel_telemetry.enabled, config.otel_telemetry.grpc_endpoint.clone(), "info")?;
+        init_otel_logs_tracing(
+            otel_name,
+            config.otel_telemetry.enable_traces,
+            config.otel_telemetry.grpc_endpoint.clone(),
+            "info",
+        )?;
+        if config.otel_telemetry.enable_metrics {
+            init_otel_metrics(config.otel_telemetry.grpc_endpoint.clone()).map_err(|otel_error| ClientError {
+                kind: ClientErrorKind::Internal,
+                reason: format!("Unable to initialise OTEL metrics. Config: ${:?}", config.otel_telemetry),
+                cause: Some(otel_error.to_string()),
+            })?;
+        }
 
         let agent_config: AgentConfig = config.clone().into();
         let kafka_config: KafkaConfig = config.kafka.clone();
@@ -107,11 +126,12 @@ impl Cohort {
 
         let agent_services = agent.start(rx_certify, rx_cancel, tx_decision, rx_decision, publisher, consumer);
 
+        let metrics_enabled = config.otel_telemetry.enable_metrics;
         Ok(Self {
             config,
             talos_agent: Box::new(agent),
             agent_services,
-            otel_meters: CohortMeters::new(),
+            otel_meters: CohortMeters::new(metrics_enabled),
         })
     }
 
@@ -198,7 +218,7 @@ impl Cohort {
                 .instrument(span_send_to_talos)
                 .await?;
             let metric_send_to_talos = metric_send_to_talos.elapsed().as_nanos() as f64 / 1_000_000_f64;
-            self.otel_meters.update_talos_metric(metric_send_to_talos * 100.0);
+            self.otel_meters.update_talos_metric(metric_send_to_talos);
 
             if response.safepoint.is_none() || response.statemaps.is_none() {
                 return Ok(response);
@@ -238,6 +258,12 @@ impl Cohort {
         let mut giveups = 0_u64;
 
         let safepoint = install_payload.safepoint;
+        let meter = global::meter("oo_installer");
+        let c_installed = meter.u64_counter("oo_installed").build();
+        let c_safepoint_miss = meter.u64_counter("oo_safepoint_miss").build();
+        let c_install_error = meter.u64_counter("oo_install_error").build();
+        let c_install_giveups = meter.u64_counter("oo_install_giveups").build();
+
         let result = loop {
             attempt += 1;
 
@@ -246,10 +272,11 @@ impl Cohort {
             let tspan = tracing::info_span!("oo installer callback", %attempt);
             let install_result = oo_installer.install(install_payload.clone()).instrument(tspan).await;
             let span_3_val = span_3.elapsed().as_nanos() as f64 / 1_000_000_f64;
-            self.otel_meters.update_oo_install_metric(span_3_val * 100.0);
+            self.otel_meters.update_oo_install_metric(span_3_val);
 
             let error = match install_result {
                 Ok(OutOfOrderInstallOutcome::SafepointCondition) => {
+                    c_safepoint_miss.add(1, &[]);
                     is_not_save += 1;
                     // We create this error as "safepoint timeout" in advance. Error is erased if further attempt will be successfull or replaced with another error.
                     Some(ClientError {
@@ -258,17 +285,24 @@ impl Cohort {
                         cause: None,
                     })
                 }
-                Ok(_) => None,
-                Err(error) => Some(ClientError {
-                    kind: model::ClientErrorKind::OutOfOrderCallbackFailed,
-                    reason: error,
-                    cause: None,
-                }),
+                Ok(_) => {
+                    c_installed.add(1, &[]);
+                    None
+                }
+                Err(error) => {
+                    c_install_error.add(1, &[]);
+                    Some(ClientError {
+                        kind: model::ClientErrorKind::OutOfOrderCallbackFailed,
+                        reason: error,
+                        cause: None,
+                    })
+                }
             };
 
             if let Some(client_error) = error {
                 if attempt >= self.config.retry_oo_attempts_max {
                     giveups += 1;
+                    c_install_giveups.add(1, &[]);
                     break Err(client_error);
                 }
 
@@ -283,7 +317,7 @@ impl Cohort {
         let total_sleep = controller.total_sleep_time;
 
         self.otel_meters
-            .update_post_oo_install_metrics(is_not_save, total_sleep, giveups, attempt, span_2_val * 100.0);
+            .update_post_oo_install_metrics(is_not_save, total_sleep, giveups, attempt, span_2_val);
 
         tracing::debug!("Total attempts used to install: {attempt}");
         result

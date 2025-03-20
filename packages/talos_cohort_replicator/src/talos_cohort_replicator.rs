@@ -7,8 +7,12 @@ use tokio::{sync::mpsc, task::JoinHandle, try_join};
 use crate::{
     callbacks::{ReplicatorInstaller, ReplicatorSnapshotProvider},
     core::Replicator,
-    errors::ReplicatorError,
+    errors::{ReplicatorError, ReplicatorErrorKind},
     models::{ReplicatorCandidate, ReplicatorCandidateMessage},
+    otel::{
+        initialiser::{init_otel_logs_tracing, init_otel_metrics},
+        otel_config::ReplicatorOtelConfig,
+    },
     services::{
         replicator_service::{replicator_service, ReplicatorServiceConfig},
         statemap_installer_service::{installation_service, StatemapInstallerConfig},
@@ -19,24 +23,6 @@ use crate::{
 fn create_channel<T>(channel_size: usize) -> (tokio::sync::mpsc::Sender<T>, tokio::sync::mpsc::Receiver<T>) {
     mpsc::channel::<T>(channel_size)
 }
-
-/// Configs used by the Cohort Replicator
-// pub struct CohortReplicatorConfigBuilder {
-//     /// Replicator and Installer stats. Defaults to `false`.
-//     enable_stats: Option<bool>,
-//     /// Size of channel used to communicate between threads. Defaults to `100_000`
-//     channel_size: Option<u64>,
-
-//     suffix_capacity: Option<u64>,
-//     suffix_prune_threshold: Option<u64>,
-//     suffix_minimum_size_on_prune: Option<u64>,
-
-//     certifier_message_receiver_commit_freq_ms: Option<u64>,
-
-//     statemap_queue_cleanup_freq_ms: Option<u64>,
-
-//     statemap_installer_threadpool: Option<u64>,
-// }
 
 /// Configs used by the Cohort Replicator
 #[derive(Clone, Debug)]
@@ -55,6 +41,8 @@ pub struct CohortReplicatorConfig {
     pub statemap_queue_cleanup_freq_ms: u64,
 
     pub statemap_installer_threadpool: u64,
+
+    pub otel_telemetry: ReplicatorOtelConfig,
 }
 
 async fn flatten_service_result<T>(handle: JoinHandle<Result<T, ReplicatorError>>) -> Result<T, ReplicatorError> {
@@ -82,6 +70,28 @@ where
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync + 'static,
     Snap: ReplicatorSnapshotProvider + Send + Sync + 'static,
 {
+    if config.otel_telemetry.init_otel {
+        init_otel_logs_tracing(
+            config.otel_telemetry.name.clone(),
+            config.otel_telemetry.enable_traces,
+            config.otel_telemetry.grpc_endpoint.clone(),
+            "info",
+        )
+        .map_err(|e| ReplicatorError {
+            kind: ReplicatorErrorKind::Internal,
+            reason: "Unable to initialise OTEL logs and traces for replicator".into(),
+            cause: Some(format!("{:?}", e)),
+        })?;
+
+        if config.otel_telemetry.enable_metrics {
+            init_otel_metrics(config.otel_telemetry.grpc_endpoint).map_err(|e| ReplicatorError {
+                kind: ReplicatorErrorKind::Internal,
+                reason: "Unable to initialise OTEL metrics for replicator".into(),
+                cause: Some(format!("{:?}", e)),
+            })?;
+        }
+    }
+
     // ---------- Channels to communicate between threads. ----------
 
     // Replicator to Statemap queue
@@ -103,7 +113,7 @@ where
     };
     let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
 
-    let replicator = Replicator::new(certifier_message_receiver, suffix);
+    let replicator = Replicator::new_with_metrics(certifier_message_receiver, suffix);
 
     let replicator_service_configs = ReplicatorServiceConfig {
         commit_frequency_ms: config.certifier_message_receiver_commit_freq_ms,
@@ -120,13 +130,17 @@ where
     let queue_config = StatemapQueueServiceConfig {
         enable_stats: config.enable_stats,
         queue_cleanup_frequency_ms: config.statemap_queue_cleanup_freq_ms,
+        enable_metrics: config.otel_telemetry.enable_metrics,
+        meter_name: config.otel_telemetry.meter_name.clone(),
     };
+
     let statemap_queue_handle = tokio::spawn(statemap_queue_service(
         rx_replicator_to_statemap_queue,
         rx_statemaps_install_feedback,
         tx_statemaps_to_install,
         snapshot_api,
         queue_config,
+        config.channel_size,
     ));
 
     // Statemap Installation Service

@@ -2,19 +2,19 @@ mod callback_impl;
 
 use std::sync::Arc;
 
-use cohort_sdk::otel::initialiser::init_otel;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
-
-use serde_json::Value;
-use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::KafkaConsumer;
-use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
 
 use crate::{
     models::{JsCohortOtelConfig, JsKafkaConfig},
     sdk_errors::SdkErrorContainer,
 };
+
+use serde_json::Value;
+use talos_certifier::ports::MessageReciever;
+use talos_certifier_adapters::KafkaConsumer;
+use talos_cohort_replicator::otel::otel_config::ReplicatorOtelConfig;
+use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
 
 use self::callback_impl::{SnapshotProviderDelegate, StatemapInstallerDelegate};
 
@@ -29,6 +29,7 @@ pub struct JsReplicatorConfig {
     pub certifier_message_receiver_commit_freq_ms: i64,
     pub statemap_queue_cleanup_freq_ms: i64,
     pub statemap_installer_threadpool: i64,
+    pub otel_telemetry: JsCohortOtelConfig,
 }
 
 impl From<JsReplicatorConfig> for CohortReplicatorConfig {
@@ -42,6 +43,15 @@ impl From<JsReplicatorConfig> for CohortReplicatorConfig {
             certifier_message_receiver_commit_freq_ms: val.certifier_message_receiver_commit_freq_ms as u64,
             statemap_queue_cleanup_freq_ms: val.statemap_queue_cleanup_freq_ms as u64,
             statemap_installer_threadpool: val.statemap_installer_threadpool as u64,
+            otel_telemetry: ReplicatorOtelConfig {
+                init_otel: val.otel_telemetry.init_otel,
+                enable_metrics: val.otel_telemetry.enable_metrics,
+                enable_traces: val.otel_telemetry.enable_traces,
+                name: val.otel_telemetry.name.clone(),
+                meter_name: val.otel_telemetry.name.clone(),
+                // The endpoint to OTEL collector
+                grpc_endpoint: val.otel_telemetry.grpc_endpoint.clone(),
+            },
         }
     }
 }
@@ -75,18 +85,13 @@ pub struct JsStatemapAndSnapshot {
 pub struct InternalReplicator {
     kafka_config: JsKafkaConfig,
     config: JsReplicatorConfig,
-    otel_telemetry: JsCohortOtelConfig,
 }
 
 #[napi]
 impl InternalReplicator {
     #[napi]
-    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig, otel_telemetry: JsCohortOtelConfig) -> napi::Result<InternalReplicator> {
-        Ok(InternalReplicator {
-            kafka_config,
-            config,
-            otel_telemetry,
-        })
+    pub async fn init(kafka_config: JsKafkaConfig, config: JsReplicatorConfig) -> napi::Result<InternalReplicator> {
+        Ok(InternalReplicator { kafka_config, config })
     }
 
     #[napi]
@@ -97,17 +102,6 @@ impl InternalReplicator {
             JsStatemapAndSnapshot,
         >,
     ) -> napi::Result<()> {
-        let otel_name = format!("{}-cohort_replicator", self.otel_telemetry.name.clone());
-        init_otel(otel_name, self.otel_telemetry.enabled, self.otel_telemetry.grpc_endpoint.clone(), "info").map_err(|otel_error| {
-            let sdk_error = SdkErrorContainer::new(
-                crate::sdk_errors::SdkErrorKind::Internal,
-                format!("Unable to initialise OTEL. Config: ${:?}", self.otel_telemetry),
-                Some(otel_error.to_string()),
-            );
-
-            napi::Error::from_reason(sdk_error.json().to_string())
-        })?;
-
         let kafka_consumer = KafkaConsumer::new(&self.kafka_config.clone().into());
         let brokers = &self.kafka_config.brokers.clone();
         let topic = &self.kafka_config.topic.clone();

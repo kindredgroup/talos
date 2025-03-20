@@ -1,3 +1,4 @@
+use opentelemetry::{global, metrics::Counter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
@@ -74,6 +75,9 @@ where
     pub suffix: S,
     pub last_installing: u64,
     pub next_commit_offset: Option<u64>,
+    pub metric_count_candidate: Option<Counter<u64>>,
+    pub metric_count_dec_commit: Option<Counter<u64>>,
+    pub metric_count_dec_abort: Option<Counter<u64>>,
     _phantom: PhantomData<T>,
 }
 
@@ -83,20 +87,39 @@ where
     S: ReplicatorSuffixTrait<T> + std::fmt::Debug,
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
-    pub fn new(receiver: M, suffix: S) -> Self {
+    pub fn _new(receiver: M, suffix: S) -> Self {
         Replicator {
             receiver,
             suffix,
             last_installing: 0,
             next_commit_offset: None,
+            metric_count_candidate: None,
+            metric_count_dec_commit: None,
+            metric_count_dec_abort: None,
             _phantom: PhantomData,
         }
     }
 
-    // TODO, annotate with tracing
+    pub fn new_with_metrics(receiver: M, suffix: S) -> Self {
+        let meter = global::meter("cohort_sdk_replicator");
+        Replicator {
+            receiver,
+            suffix,
+            last_installing: 0,
+            next_commit_offset: None,
+            metric_count_candidate: Some(meter.u64_counter("c_candidates").build()),
+            metric_count_dec_commit: Some(meter.u64_counter("c_dec_commits").build()),
+            metric_count_dec_abort: Some(meter.u64_counter("c_dec_aborts").build()),
+            _phantom: PhantomData,
+        }
+    }
+
     pub(crate) async fn process_consumer_message(&mut self, version: u64, message: T) {
         if version > 0 {
             self.suffix.insert(version, message).unwrap();
+            if let Some(c) = &self.metric_count_candidate {
+                c.add(1, &[]);
+            }
         } else {
             warn!("Version 0 will not be inserted into suffix.")
         }
@@ -106,16 +129,30 @@ where
         let version = decision_message.get_candidate_version();
 
         let decision_outcome = match decision_message.get_decision() {
-            talos_certifier::model::Decision::Committed => Some(CandidateDecisionOutcome::Committed),
-            talos_certifier::model::Decision::Aborted => Some(CandidateDecisionOutcome::Aborted),
+            talos_certifier::model::Decision::Committed => CandidateDecisionOutcome::Committed,
+            talos_certifier::model::Decision::Aborted => CandidateDecisionOutcome::Aborted,
         };
         self.suffix.update_suffix_item_decision(version, decision_version).unwrap();
-        self.suffix.set_decision_outcome(version, decision_outcome);
+        self.suffix.set_decision_outcome(version, Some(decision_outcome.clone()));
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
         if decision_message.is_duplicate() {
             self.suffix.set_item_installed(version);
+        }
+
+        match decision_outcome {
+            CandidateDecisionOutcome::Committed => {
+                if let Some(c) = &self.metric_count_dec_commit {
+                    c.add(1, &[]);
+                }
+            }
+            CandidateDecisionOutcome::Aborted => {
+                if let Some(c) = &self.metric_count_dec_abort {
+                    c.add(1, &[]);
+                }
+            }
+            _ => {}
         }
     }
 

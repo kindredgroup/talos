@@ -74,10 +74,22 @@ impl From<Decision> for JsDecision {
 }
 
 #[napi(object)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct JsCohortOtelConfig {
+    /**
+     * OTEL can be initialised only once. When replicator and initiator are embedded into a single process
+     * our convention is that OTEL must be setup by initiator. This flag gives hint to replicator to skip init of OTEL.
+     * Please note that even when `enable_metrics=false` and `enable_traces=false`, OTEL logger still must be
+     * initialised. As per convention, this is also done by initiator. If we have 'enable_metrics' and 'enable_traces' = false
+     * and our replicator is running as a separate process (without initiator), we must set init_otel=true.
+     * In that case only logger of OTEL will be initialised.
+     *
+     * This comment also applies to talos_cohort_replicator::otel::otel_config::ReplicatorOtelConfig
+     */
+    pub init_otel: bool,
     pub name: String,
-    pub enabled: bool,
+    pub enable_metrics: bool,
+    pub enable_traces: bool,
     pub grpc_endpoint: Option<String>,
 }
 
@@ -85,7 +97,8 @@ impl From<JsCohortOtelConfig> for CohortOtelConfig {
     fn from(val: JsCohortOtelConfig) -> Self {
         CohortOtelConfig {
             name: val.name,
-            enabled: val.enabled,
+            enable_metrics: val.enable_metrics,
+            enable_traces: val.enable_traces,
             grpc_endpoint: val.grpc_endpoint,
         }
     }

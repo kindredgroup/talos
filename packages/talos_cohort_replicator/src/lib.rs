@@ -2,6 +2,7 @@ pub mod callbacks;
 mod core;
 pub mod errors;
 mod models;
+pub mod otel;
 mod services;
 mod suffix;
 mod talos_cohort_replicator;
