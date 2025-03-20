@@ -2,10 +2,7 @@
 
 use std::time::Duration;
 
-use opentelemetry::{
-    global,
-    metrics::{Gauge, UpDownCounter},
-};
+use opentelemetry::metrics::{Gauge, Meter, UpDownCounter};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
@@ -21,8 +18,6 @@ use crate::{
 pub struct StatemapQueueServiceConfig {
     pub queue_cleanup_frequency_ms: u64,
     pub enable_stats: bool,
-    pub enable_metrics: bool,
-    pub meter_name: String,
 }
 
 impl Default for StatemapQueueServiceConfig {
@@ -30,8 +25,6 @@ impl Default for StatemapQueueServiceConfig {
         Self {
             queue_cleanup_frequency_ms: 10_000,
             enable_stats: false,
-            enable_metrics: false,
-            meter_name: String::from("sdk_replicator"),
         }
     }
 }
@@ -45,11 +38,10 @@ struct Metrics {
 }
 
 impl Metrics {
-    pub fn new(enabled: bool, meter_name: &'static str, channel_size: u64) -> Self {
-        if enabled {
-            let meter = global::meter(meter_name);
+    pub fn new(meter: Option<Meter>, channel_size: u64) -> Self {
+        if let Some(meter) = meter {
             Self {
-                enabled,
+                enabled: true,
                 g_installation_tx_channel_usage: Some(meter.u64_gauge("repl_install_channel").with_unit("items").build()),
                 g_statemap_queue_length: Some(meter.u64_gauge("repl_statemap_queue").with_unit("items").build()),
                 udc_items_in_flight: Some(meter.i64_up_down_counter("repl_items_in_flight").with_unit("items").build()),
@@ -57,7 +49,7 @@ impl Metrics {
             }
         } else {
             Self {
-                enabled,
+                enabled: false,
                 g_installation_tx_channel_usage: None,
                 g_statemap_queue_length: None,
                 udc_items_in_flight: None,
@@ -90,6 +82,7 @@ pub async fn statemap_queue_service<S>(
     snapshot_api: S,
     config: StatemapQueueServiceConfig,
     channel_size: usize,
+    otel_meter: Option<Meter>,
 ) -> Result<(), ReplicatorError>
 where
     S: ReplicatorSnapshotProvider + Send + Sync,
@@ -97,7 +90,7 @@ where
     info!("Starting Installer Queue Service.... ");
     let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
 
-    let metrics = Metrics::new(config.enable_metrics, "sdk_replicator", channel_size as u64);
+    let metrics = Metrics::new(otel_meter, channel_size as u64);
     let mut installation_success_count = 0;
     let mut send_for_install_count = 0;
     let mut first_install_start: i128 = 0; //

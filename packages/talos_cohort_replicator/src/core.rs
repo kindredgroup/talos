@@ -1,4 +1,4 @@
-use opentelemetry::{global, metrics::Counter};
+use opentelemetry::metrics::{Counter, Meter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
@@ -87,29 +87,18 @@ where
     S: ReplicatorSuffixTrait<T> + std::fmt::Debug,
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
-    pub fn _new(receiver: M, suffix: S) -> Self {
+    pub fn new(receiver: M, suffix: S, meter: Option<Meter>) -> Self {
+        let metric_count_candidate = meter.as_ref().map(|m| m.u64_counter("repl_candidates").with_unit("tx").build());
+        let metric_count_dec_commit = meter.as_ref().map(|m| m.u64_counter("repl_dec_commits").with_unit("tx").build());
+        let metric_count_dec_abort = meter.as_ref().map(|m| m.u64_counter("repl_dec_aborts").with_unit("tx").build());
         Replicator {
             receiver,
             suffix,
             last_installing: 0,
             next_commit_offset: None,
-            metric_count_candidate: None,
-            metric_count_dec_commit: None,
-            metric_count_dec_abort: None,
-            _phantom: PhantomData,
-        }
-    }
-
-    pub fn new_with_metrics(receiver: M, suffix: S) -> Self {
-        let meter = global::meter("cohort_sdk_replicator");
-        Replicator {
-            receiver,
-            suffix,
-            last_installing: 0,
-            next_commit_offset: None,
-            metric_count_candidate: Some(meter.u64_counter("c_candidates").build()),
-            metric_count_dec_commit: Some(meter.u64_counter("c_dec_commits").build()),
-            metric_count_dec_abort: Some(meter.u64_counter("c_dec_aborts").build()),
+            metric_count_candidate,
+            metric_count_dec_commit,
+            metric_count_dec_abort,
             _phantom: PhantomData,
         }
     }

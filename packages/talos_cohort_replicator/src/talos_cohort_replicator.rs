@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use opentelemetry::global;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{sync::mpsc, task::JoinHandle, try_join};
@@ -90,6 +91,8 @@ where
                 cause: Some(format!("{:?}", e)),
             })?;
         }
+    } else {
+        tracing::warn!("OTEL will not be initialised for this replicator instance, it may still be used if another module initialises it.")
     }
 
     // ---------- Channels to communicate between threads. ----------
@@ -113,7 +116,13 @@ where
     };
     let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
 
-    let replicator = Replicator::new_with_metrics(certifier_message_receiver, suffix);
+    let meter = if config.otel_telemetry.enable_metrics {
+        Some(global::meter("cohort_sdk_replicator"))
+    } else {
+        None
+    };
+
+    let replicator = Replicator::new(certifier_message_receiver, suffix, meter.clone());
 
     let replicator_service_configs = ReplicatorServiceConfig {
         commit_frequency_ms: config.certifier_message_receiver_commit_freq_ms,
@@ -130,8 +139,6 @@ where
     let queue_config = StatemapQueueServiceConfig {
         enable_stats: config.enable_stats,
         queue_cleanup_frequency_ms: config.statemap_queue_cleanup_freq_ms,
-        enable_metrics: config.otel_telemetry.enable_metrics,
-        meter_name: config.otel_telemetry.meter_name.clone(),
     };
 
     let statemap_queue_handle = tokio::spawn(statemap_queue_service(
@@ -141,6 +148,7 @@ where
         snapshot_api,
         queue_config,
         config.channel_size,
+        meter,
     ));
 
     // Statemap Installation Service
