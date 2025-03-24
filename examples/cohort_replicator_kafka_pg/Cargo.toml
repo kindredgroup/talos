@@ -1,17 +1,17 @@
 [package]
 name = "cohort_replicator_kafka_pg"
-version = "0.2.39-dev"
+version = "0.2.39"
 edition = "2021"
 
 [dev-dependencies]
-banking_common =            { path = "../../packages/banking_common", version = "0.2.39-dev" }
-banking_replicator =        { path = "../../packages/banking_replicator", version = "0.2.39-dev" }
-cohort_banking  =           { path = "../../packages/cohort_banking", version = "0.2.39-dev" }
-talos_cohort_replicator =   { path = "../../packages/talos_cohort_replicator", version = "0.2.39-dev" }
-talos_certifier =           { path = "../../packages/talos_certifier", version = "0.2.39-dev" }
-talos_certifier_adapters =  { path = "../../packages/talos_certifier_adapters", version = "0.2.39-dev" }
-talos_common_utils =        { path = "../../packages/talos_common_utils", version = "0.2.39-dev" }
-talos_rdkafka_utils =       { path = "../../packages/talos_rdkafka_utils", version = "0.2.39-dev" }
+banking_common =            { path = "../../packages/banking_common", version = "0.2.39" }
+banking_replicator =        { path = "../../packages/banking_replicator", version = "0.2.39" }
+cohort_banking  =           { path = "../../packages/cohort_banking", version = "0.2.39" }
+talos_cohort_replicator =   { path = "../../packages/talos_cohort_replicator", version = "0.2.39" }
+talos_certifier =           { path = "../../packages/talos_certifier", version = "0.2.39" }
+talos_certifier_adapters =  { path = "../../packages/talos_certifier_adapters", version = "0.2.39" }
+talos_common_utils =        { path = "../../packages/talos_common_utils", version = "0.2.39" }
+talos_rdkafka_utils =       { path = "../../packages/talos_rdkafka_utils", version = "0.2.39" }
 
 async-trait = { workspace = true }
 env_logger =  { workspace = true }
