@@ -766,6 +766,72 @@ async fn test_suffix_exhaustive_state_transitions_without_pruning() {
 
 // ############################################################# END - state transition related tests  ############################################################# //
 
+/// This test captures the scenario when all the candidate messages we receive are set to one of the early `Complete(..)`, like `Complete(NoCommitActions)` or `CompleteNoRelevantCommitActions`.
+/// In these scenarios, the item in suffix is already moved to the complete state even before the decision has come in.
+///
+/// All the decisions are commits.
+///
+/// For this scenario, the prune_index can move forward, thereby allowing the suffix to prune
+#[tokio::test]
+async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_early_complete_state() {
+    let mut allowed_actions = AHashMap::new();
+    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
+
+    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let configs = MessengerServicesTesterConfigs::new(
+        SuffixConfig {
+            capacity: 50,
+            prune_start_threshold: Some(20),
+            min_size_after_prune: None,
+        },
+        inbound_service_configs,
+    );
+    let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
+
+    let headers = HashMap::new();
+
+    // START - Prepare basic candidates with various different types of on-commit actions
+
+    // Candidate with no on-commit action
+    let candidate_with_no_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().build();
+    assert!(candidate_with_no_on_commit.on_commit.is_none());
+    // Candidate with no supported on-commit action
+    let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
+    let on_commit_value = on_commit.as_value();
+
+    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());
+
+    let commit_outcome = build_mock_outcome(None, Some(0));
+    // ################ insert 100 candidates with its respective decisions  #####################/
+
+    for vers in (1..=40).step_by(2) {
+        if [3, 23, 35].contains(&vers) {
+            // No commit action candidates
+            let cm = MockChannelMessage::new(&candidate_with_no_on_commit, vers);
+            let cm_channel_msg = cm.build_candidate_channel_message(&headers);
+            let dm_channel_msg = cm.build_decision_channel_message(vers + 1, &commit_outcome, 0, &headers);
+            service_tester.process_message_journey(Some(cm_channel_msg), Some(dm_channel_msg), None).await;
+        } else {
+            // Non relevant commit action candidates
+            let cm = MockChannelMessage::new(&candidate_with_irrelevant_on_commit, vers);
+            let cm_channel_msg = cm.build_candidate_channel_message(&headers);
+            let decision_version = vers + 1;
+            let dm_channel_msg = cm.build_decision_channel_message(decision_version, &commit_outcome, 0, &headers);
+            service_tester.process_message_journey(Some(cm_channel_msg), Some(dm_channel_msg), None).await;
+        }
+    }
+
+    let suffix = service_tester.get_suffix();
+    suffix.assert_item_state(
+        39,
+        &SuffixItemState::Complete(crate::suffix::SuffixItemCompleteStateReason::NoRelavantCommitActions),
+    );
+    suffix.assert_suffix_head_and_prune_index(23, Some(16));
+
+    // End - Prepare basic candidates with various different types of on-commit actions
+}
+
 // TODO: GK - Run `test_suffix_exhaustive_state_transitions_without_pruning` with smaller prune_threshold to see how pruning behaves through all the above scenarios.
 
 // TODO: GK - Test commit offset logic
