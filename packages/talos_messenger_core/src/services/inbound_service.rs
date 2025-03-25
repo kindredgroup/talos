@@ -283,11 +283,15 @@ where
                         let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
                         self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
 
-                        if decision.message.is_abort(){
-                            if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-                                self.update_commit_offset(new_prune_version);
+                        // Look for any early `Complete(..)` state, and update the `prune_index` and `commit_offset`.
+                        if let Ok(Some(suffix_item)) = self.suffix.get(version){
+                            if matches!(suffix_item.item.get_state(), SuffixItemState::Complete(..)) {
+                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                                    self.update_commit_offset(new_prune_version);
+                                }
                             }
-                        }
+
+                        };
 
                         // Pick the next items from suffix whose actions are to be processed.
                         self.process_next_actions().await?;

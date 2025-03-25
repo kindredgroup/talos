@@ -53,7 +53,10 @@ pub trait MessengerSuffixAssertionTrait<T: MessengerSuffixItemTrait>: SuffixTrai
     /// Asserts the state of an item on suffix.
     /// Checks for `SuffixItemState` actual vs expected for a version.
     fn assert_item_state(&self, version: u64, expected_state: &SuffixItemState) {
-        let suffix_item = self.get(version).unwrap().unwrap();
+        let suffix_item = self
+            .get(version)
+            .unwrap()
+            .unwrap_or_else(|| panic!("Expected version {version} to be in suffix"));
         let actual_state = suffix_item.item.get_state();
 
         assert_eq!(
