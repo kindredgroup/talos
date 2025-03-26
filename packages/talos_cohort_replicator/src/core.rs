@@ -20,6 +20,8 @@ pub enum StatemapInstallState {
 }
 #[derive(Debug, Clone)]
 pub struct StatemapInstallerHashmap {
+    // enqueued at
+    pub timestamp: i128, // nanos
     pub statemaps: Vec<StatemapItem>,
     pub version: u64,
     pub safepoint: Option<u64>,
@@ -65,6 +67,55 @@ impl StatemapItem {
     }
 }
 
+#[derive(Default)]
+struct Metrics {
+    enabled: bool,
+    c_candidates: Option<Counter<u64>>,
+    c_dec_commits: Option<Counter<u64>>,
+    c_dec_aborts: Option<Counter<u64>>,
+}
+
+impl Metrics {
+    pub fn new(meter: Option<Meter>) -> Self {
+        if let Some(meter) = meter {
+            Self {
+                enabled: true,
+                c_candidates: Some(meter.u64_counter("repl_candidates").with_unit("tx").build()),
+                c_dec_commits: Some(meter.u64_counter("repl_dec_commits").with_unit("tx").build()),
+                c_dec_aborts: Some(meter.u64_counter("repl_dec_aborts").with_unit("tx").build()),
+            }
+        } else {
+            Self {
+                enabled: false,
+                c_candidates: None,
+                c_dec_commits: None,
+                c_dec_aborts: None,
+            }
+        }
+    }
+
+    pub fn add_candidate(&self) {
+        if let Some(c) = &self.c_candidates {
+            c.add(1, &[]);
+        }
+    }
+    pub fn add_decision(&self, outcome: CandidateDecisionOutcome) {
+        if !self.enabled {
+            return;
+        }
+
+        match outcome {
+            CandidateDecisionOutcome::Committed => {
+                let _ = self.c_dec_commits.as_ref().map(|m| m.add(1, &[]));
+            }
+            CandidateDecisionOutcome::Aborted => {
+                let _ = self.c_dec_aborts.as_ref().map(|m| m.add(1, &[]));
+            }
+            _ => {}
+        }
+    }
+}
+
 pub struct Replicator<T, S, M>
 where
     T: ReplicatorSuffixItemTrait,
@@ -75,9 +126,7 @@ where
     pub suffix: S,
     pub last_installing: u64,
     pub next_commit_offset: Option<u64>,
-    pub metric_count_candidate: Option<Counter<u64>>,
-    pub metric_count_dec_commit: Option<Counter<u64>>,
-    pub metric_count_dec_abort: Option<Counter<u64>>,
+    metrics: Metrics,
     _phantom: PhantomData<T>,
 }
 
@@ -88,17 +137,12 @@ where
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
     pub fn new(receiver: M, suffix: S, meter: Option<Meter>) -> Self {
-        let metric_count_candidate = meter.as_ref().map(|m| m.u64_counter("repl_candidates").with_unit("tx").build());
-        let metric_count_dec_commit = meter.as_ref().map(|m| m.u64_counter("repl_dec_commits").with_unit("tx").build());
-        let metric_count_dec_abort = meter.as_ref().map(|m| m.u64_counter("repl_dec_aborts").with_unit("tx").build());
         Replicator {
             receiver,
             suffix,
             last_installing: 0,
             next_commit_offset: None,
-            metric_count_candidate,
-            metric_count_dec_commit,
-            metric_count_dec_abort,
+            metrics: Metrics::new(meter),
             _phantom: PhantomData,
         }
     }
@@ -106,9 +150,7 @@ where
     pub(crate) async fn process_consumer_message(&mut self, version: u64, message: T) {
         if version > 0 {
             self.suffix.insert(version, message).unwrap();
-            if let Some(c) = &self.metric_count_candidate {
-                c.add(1, &[]);
-            }
+            self.metrics.add_candidate();
         } else {
             warn!("Version 0 will not be inserted into suffix.")
         }
@@ -130,19 +172,7 @@ where
             self.suffix.set_item_installed(version);
         }
 
-        match decision_outcome {
-            CandidateDecisionOutcome::Committed => {
-                if let Some(c) = &self.metric_count_dec_commit {
-                    c.add(1, &[]);
-                }
-            }
-            CandidateDecisionOutcome::Aborted => {
-                if let Some(c) = &self.metric_count_dec_abort {
-                    c.add(1, &[]);
-                }
-            }
-            _ => {}
-        }
+        self.metrics.add_decision(decision_outcome);
     }
 
     // TODO: Instrument with span

@@ -9,6 +9,7 @@ use crate::{
 };
 
 use opentelemetry::global;
+use time::OffsetDateTime;
 use tokio::sync::{mpsc, Semaphore};
 use tracing::{debug, error};
 
@@ -32,11 +33,15 @@ async fn statemap_install_future(
     let meter = global::meter("sdk_replicator");
     let c_installed = meter.u64_counter("repl_install_ok").build();
     let c_install_failed = meter.u64_counter("repl_install_err").build();
+    let h_install_latency = meter.f64_histogram("repl_install_latency").build();
+    let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     match installer.install(statemaps, version).await {
         Ok(_) => {
             replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![version])).await.unwrap();
             statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
             c_installed.add(1, &[]);
+            let latency_ms = (OffsetDateTime::now_utc().unix_timestamp_nanos() - started_at) as f64 / 1_000_000_f64;
+            h_install_latency.record(latency_ms, &[]);
         }
 
         Err(err) => {

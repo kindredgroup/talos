@@ -43,7 +43,6 @@ where
     let mut time_first_item_created_start_ns: i128 = 0; //
     let mut time_last_item_send_end_ns: i128 = 0;
     let mut time_last_item_installed_ns: i128 = 0;
-    let g_statemaps_batch = global::meter("sdk_replicator").u64_gauge("repl_statemaps_batch").with_unit("statemaps").build();
     let g_statemaps_tx = global::meter("sdk_replicator").u64_gauge("repl_statemaps_channel").with_unit("items").build();
     let channel_size = 100_000_u64;
 
@@ -57,25 +56,23 @@ where
                 match msg {
                     // 2.1 For CM - Install messages on the version
                     ChannelMessage::Candidate(candidate) => {
-                        let version = candidate.message.version;
-
-                        if let Some(trace_parent) = candidate.get_trace_parent() {
+                        replicator.process_consumer_message(candidate.message.version, candidate.message.into()).await;
+                    },
+                    // 2.2 For DM - Update the decision with outcome + safepoint.
+                    ChannelMessage::Decision(decision) => {
+                        if let Some(trace_parent) = decision.get_trace_parent() {
                             let propagated_context = PropagatedSpanContextData::new_with_trace_parent(trace_parent);
                             let context = global::get_text_map_propagator(|propagator| {
                                 propagator.extract(&propagated_context)
                             });
                             let linked_context = context.span().span_context().clone();
-                            let span = tracing::info_span!("replicator_receive_candidate", xid = candidate.message.xid.clone());
+                            let span = tracing::info_span!("replicator_receive_decision", xid = decision.message.xid.clone());
                             span.add_link(linked_context);
 
-                            replicator.process_consumer_message(version, candidate.message.into()).instrument(span).await;
+                            replicator.process_decision_message(decision.decision_version, decision.message).instrument(span).await;
                         } else {
-                            replicator.process_consumer_message(version, candidate.message.into()).await;
+                            replicator.process_decision_message(decision.decision_version, decision.message).await;
                         }
-                    },
-                    // 2.2 For DM - Update the decision with outcome + safepoint.
-                    ChannelMessage::Decision(decision) => {
-                        replicator.process_decision_message(decision.decision_version, decision.message).await;
 
                         if total_items_send == 0 {
                             time_first_item_created_start_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
@@ -84,7 +81,6 @@ where
                         let statemaps_batch = replicator.generate_statemap_batch();
 
                         total_items_send += statemaps_batch.len();
-                        g_statemaps_batch.record(statemaps_batch.len() as u64, &[]);
                         g_statemaps_tx.record(channel_size - statemaps_tx.capacity() as u64, &[]);
 
                         // Send statemaps batch to
@@ -95,7 +91,6 @@ where
                         // statemaps_tx
 
                         time_last_item_send_end_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
-
                     },
                 }
             }

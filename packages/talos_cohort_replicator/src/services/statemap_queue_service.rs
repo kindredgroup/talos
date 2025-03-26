@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use opentelemetry::metrics::{Gauge, Meter, UpDownCounter};
+use opentelemetry::metrics::{Gauge, Histogram, Meter, UpDownCounter};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info};
@@ -31,6 +31,7 @@ impl Default for StatemapQueueServiceConfig {
 
 struct Metrics {
     enabled: bool,
+    h_installation_latency: Option<Histogram<f64>>,
     g_installation_tx_channel_usage: Option<Gauge<u64>>,
     g_statemap_queue_length: Option<Gauge<u64>>,
     udc_items_in_flight: Option<UpDownCounter<i64>>,
@@ -42,6 +43,7 @@ impl Metrics {
         if let Some(meter) = meter {
             Self {
                 enabled: true,
+                h_installation_latency: Some(meter.f64_histogram("repl_statemap_queue_latency").build()),
                 g_installation_tx_channel_usage: Some(meter.u64_gauge("repl_install_channel").with_unit("items").build()),
                 g_statemap_queue_length: Some(meter.u64_gauge("repl_statemap_queue").with_unit("items").build()),
                 udc_items_in_flight: Some(meter.i64_up_down_counter("repl_items_in_flight").with_unit("items").build()),
@@ -50,6 +52,7 @@ impl Metrics {
         } else {
             Self {
                 enabled: false,
+                h_installation_latency: None,
                 g_installation_tx_channel_usage: None,
                 g_statemap_queue_length: None,
                 udc_items_in_flight: None,
@@ -71,6 +74,12 @@ impl Metrics {
                 .as_ref()
                 .map(|m| m.record(self.channel_size - installation_tx_capacity as u64, &[]));
             let _ = self.g_statemap_queue_length.as_ref().map(|m| m.record(queue_len as u64, &[]));
+        }
+    }
+    pub fn record_latency(&self, latency: Option<Duration>) {
+        if let Some(latency) = latency {
+            let latency_ms = latency.as_nanos() as f64 / 1_000_000_f64;
+            let _ = self.h_installation_latency.as_ref().map(|metric| metric.record(latency_ms, &[]));
         }
     }
 }
@@ -117,7 +126,13 @@ where
                     } else {
                         None
                     };
-                    statemap_installer_queue.insert_queue_item(&ver, StatemapInstallerHashmap { statemaps, version: ver, safepoint, state: StatemapInstallState::Awaiting });
+                    statemap_installer_queue.insert_queue_item(&ver, StatemapInstallerHashmap {
+                        timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos(),
+                        statemaps,
+                        version: ver,
+                        safepoint,
+                        state: StatemapInstallState::Awaiting
+                    });
 
                     // Gets the statemaps to send for installation.
                     let  items_to_install: Vec<u64> = statemap_installer_queue.get_versions_to_install();
@@ -143,13 +158,12 @@ where
                     StatemapInstallationStatus::Success(key) => {
                         metrics.inflight_dec();
                         // installed successfully and will remove the item
-                        statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
-
+                        let enc_time = statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
+                        metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
 
                         if let Some(last_contiguous_install_item) = statemap_installer_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
                             statemap_installer_queue.update_snapshot(last_contiguous_install_item.1.version) ;
                         };
-
 
                         installation_success_count += 1;
                         last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
@@ -159,7 +173,8 @@ where
                         metrics.inflight_dec();
                         error!("Failed to install version={ver} due to error={error:?}");
                         // set the item back to awaiting so that it will be picked again for installation.
-                        statemap_installer_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
+                        let enc_time = statemap_installer_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
+                        metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
                     },
                 }
 
@@ -182,8 +197,6 @@ where
                 metrics.record_sizes(installation_tx.capacity(), statemap_installer_queue.queue.len());
             }
             _ = cleanup_interval.tick() => {
-                metrics.record_sizes(installation_tx.capacity(), statemap_installer_queue.queue.len());
-
                 if config.enable_stats {
                     let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
                     let tps = installation_success_count as f32 / duration_sec;
@@ -242,6 +255,8 @@ where
                 }
 
                 statemap_installer_queue.remove_installed();
+
+                metrics.record_sizes(installation_tx.capacity(), statemap_installer_queue.queue.len());
             }
 
         }

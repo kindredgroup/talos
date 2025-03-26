@@ -35,6 +35,12 @@ pub struct DecisionChannelMessage {
     pub headers: HashMap<String, String>,
 }
 
+impl DecisionChannelMessage {
+    pub fn get_trace_parent(&self) -> Option<String> {
+        self.headers.get("traceparent").cloned()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ChannelMessage<T: CandidateMessageBaseTrait> {
     Candidate(Box<CandidateChannelMessage<T>>),
