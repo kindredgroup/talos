@@ -108,6 +108,7 @@ mod tests {
 
         let deserialised: ReplicatorCandidateMessage = serde_json::from_value(json).unwrap();
         println!("deserialised candidate message: {deserialised:#?}");
+
         assert!(deserialised.statemap.is_some());
         // let first_statemap = deserialised.statemap.unwrap()[0].contains_key("SomeStateMap");
         assert!(deserialised.statemap.unwrap()[0].contains_key("SomeStateMap"));
