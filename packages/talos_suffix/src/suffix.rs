@@ -2,7 +2,7 @@
 
 use std::{collections::VecDeque, time::Instant};
 
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::{
     core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},

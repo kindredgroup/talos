@@ -1,6 +1,5 @@
 use std::collections::{HashMap, VecDeque};
 
-use log::info;
 use serde_json::Value;
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 
@@ -242,7 +241,6 @@ fn test_get_offset_to_commit_from_replicator_suffix() {
     if let Some(prune_index) = suffix.get_meta().prune_index {
         if let Some(item) = suffix.get_by_index(prune_index) {
             let version = item.item_ver;
-            info!("Version {version} got by get_by_index for index {prune_index}");
             suffix.prune_till_version(version).unwrap();
             assert_eq!(suffix.get_meta().head, version);
             assert_eq!(suffix.get_meta().head, 30);

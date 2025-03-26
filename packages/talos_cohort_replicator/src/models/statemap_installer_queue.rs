@@ -37,10 +37,16 @@ impl StatemapInstallerQueue {
         self.queue.insert(*version, installer_item);
     }
 
-    pub fn update_queue_item_state(&mut self, version: &u64, state: StatemapInstallState) {
+    /**
+     * Returns items' enqueueing time
+     */
+    pub fn update_queue_item_state(&mut self, version: &u64, state: StatemapInstallState) -> Option<i128> {
         if let Some(item) = self.queue.get_mut(version) {
-            item.state = state
-        };
+            item.state = state;
+            Some(item.timestamp)
+        } else {
+            None
+        }
     }
 
     pub fn remove_installed(&mut self) -> Option<u64> {
@@ -138,6 +144,7 @@ mod tests {
 
     fn create_initial_test_installer_data(version: &u64, safepoint: Option<u64>) -> StatemapInstallerHashmap {
         StatemapInstallerHashmap {
+            timestamp: 0,
             statemaps: vec![],
             version: *version,
             safepoint,
@@ -155,6 +162,7 @@ mod tests {
         installer_queue.insert_queue_item(
             &version,
             StatemapInstallerHashmap {
+                timestamp: 0,
                 version,
                 safepoint: None,
                 state: crate::core::StatemapInstallState::Awaiting,
@@ -165,6 +173,7 @@ mod tests {
         installer_queue.insert_queue_item(
             &version,
             StatemapInstallerHashmap {
+                timestamp: 0,
                 version,
                 safepoint: None,
                 state: crate::core::StatemapInstallState::Awaiting,

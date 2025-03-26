@@ -65,7 +65,6 @@ impl CandidateMessageBaseTrait for ReplicatorCandidateMessage {
 // // $coverage:ignore-start
 #[cfg(test)]
 mod tests {
-
     use serde_json::json;
     use talos_certifier::test_helpers::mocks::payload::{build_kafka_on_commit_message, build_on_commit_publish_kafka_payload};
 
@@ -108,8 +107,8 @@ mod tests {
         });
 
         let deserialised: ReplicatorCandidateMessage = serde_json::from_value(json).unwrap();
-        env_logger::init();
-        // error!("deserialised candidate message: {deserialised:#?}");
+        println!("deserialised candidate message: {deserialised:#?}");
+
         assert!(deserialised.statemap.is_some());
         // let first_statemap = deserialised.statemap.unwrap()[0].contains_key("SomeStateMap");
         assert!(deserialised.statemap.unwrap()[0].contains_key("SomeStateMap"));

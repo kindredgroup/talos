@@ -1,6 +1,6 @@
 {
   "name": "@kindredgroup/cohort_sdk_client",
-  "version": "0.2.39-dev",
+  "version": "0.2.40-dev",
   "author": "Kindredgroup",
   "license": "MIT",
   "description": "The Cohort SDK library for Talos Certifier clients",
@@ -10,7 +10,7 @@
   "keywords": [],
   "devDependencies": {
     "@types/node": "^20.5.1",
-    "typescript": "^5.1.6"
+    "typescript": "^5.8.2"
   },
   "scripts": {
     "build": "npx tsc -d"

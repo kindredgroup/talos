@@ -494,8 +494,6 @@ mod suffix_tests {
 
     #[test]
     fn update_decision_within_bounds_and_item_exists() {
-        env_logger::init();
-
         let mut sfx = Suffix::with_config(SuffixConfig {
             capacity: 20,
             ..Default::default()

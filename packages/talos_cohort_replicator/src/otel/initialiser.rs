@@ -9,7 +9,10 @@ use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{fmt, EnvFilter};
 
-use crate::model::ClientError;
+/**
+ * This module is intentional duplicate with packages/cohort_sdk/otel.
+ * We will externalise them into re-usable commons when we apply OTEL to full Talos ecosystem.
+ */
 
 pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint: Option<String>, default_level: &'static str) -> Result<(), OtelInitError> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
@@ -111,14 +114,4 @@ pub enum InitErrorType {
     GlobalScubscriberError,
     MetricError,
     SpanExporter,
-}
-
-impl From<OtelInitError> for ClientError {
-    fn from(value: OtelInitError) -> Self {
-        Self {
-            kind: crate::model::ClientErrorKind::Internal,
-            cause: Some(value.to_string()),
-            reason: "Error initialising OTEL".into(),
-        }
-    }
 }

@@ -19,7 +19,7 @@ checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
 name = "agent_client"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -249,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "banking_common"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "deadpool",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "banking_replicator"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "banking_common",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "certifier_kafka_pg"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "cargo-husky",
  "env_logger",
@@ -535,7 +535,7 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 
 [[package]]
 name = "cohort_banking"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_banking_with_sdk"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_replicator_kafka_pg"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "banking_common",
@@ -624,13 +624,14 @@ dependencies = [
 
 [[package]]
 name = "cohort_sdk"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "axum",
  "futures",
  "opentelemetry 0.28.0",
  "opentelemetry-otlp",
+ "opentelemetry-prometheus",
  "opentelemetry-stdout 0.28.0",
  "opentelemetry_sdk 0.28.0",
  "rand 0.9.0",
@@ -641,6 +642,7 @@ dependencies = [
  "talos_agent",
  "talos_certifier",
  "talos_cohort_replicator",
+ "talos_common_utils",
  "talos_metrics",
  "talos_rdkafka_utils",
  "thiserror 2.0.11",
@@ -656,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_sdk_js"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "chrono",
@@ -977,7 +979,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "examples_support"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -1696,7 +1698,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "messenger_using_kafka"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -1989,6 +1991,20 @@ dependencies = [
  "thiserror 2.0.11",
  "tokio",
  "tonic",
+ "tracing",
+]
+
+[[package]]
+name = "opentelemetry-prometheus"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "765a76ba13ec77043903322f85dc5434d7d01a37e75536d0f871ed7b9b5bbf0d"
+dependencies = [
+ "once_cell",
+ "opentelemetry 0.28.0",
+ "opentelemetry_sdk 0.28.0",
+ "prometheus",
+ "protobuf",
  "tracing",
 ]
 
@@ -2332,6 +2348,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "prost"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2353,6 +2384,12 @@ dependencies = [
  "quote",
  "syn 2.0.96",
 ]
+
+[[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "ptr_meta"
@@ -3157,7 +3194,7 @@ dependencies = [
 
 [[package]]
 name = "talos_agent"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "mockall",
@@ -3167,6 +3204,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strum 0.27.1",
+ "talos_common_utils",
  "talos_rdkafka_utils",
  "thiserror 2.0.11",
  "time",
@@ -3179,7 +3217,7 @@ dependencies = [
 
 [[package]]
 name = "talos_certifier"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3200,7 +3238,7 @@ dependencies = [
 
 [[package]]
 name = "talos_certifier_adapters"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3228,38 +3266,46 @@ dependencies = [
 
 [[package]]
 name = "talos_cohort_replicator"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
- "env_logger",
+ "axum",
  "indexmap 2.7.1",
- "log",
  "mockall",
+ "opentelemetry 0.28.0",
+ "opentelemetry-otlp",
+ "opentelemetry-stdout 0.28.0",
+ "opentelemetry_sdk 0.28.0",
  "rand 0.8.5",
  "serde",
  "serde_json",
  "strum 0.25.0",
  "talos_certifier",
+ "talos_common_utils",
  "talos_suffix",
  "thiserror 1.0.69",
  "time",
  "tokio",
  "tokio-test",
+ "tonic",
+ "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
 name = "talos_common_utils"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
- "env_logger",
- "log",
+ "opentelemetry 0.28.0",
  "serial_test",
 ]
 
 [[package]]
 name = "talos_messenger_actions"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3290,7 +3336,7 @@ dependencies = [
 
 [[package]]
 name = "talos_messenger_core"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3317,7 +3363,7 @@ dependencies = [
 
 [[package]]
 name = "talos_metrics"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "env_logger",
  "log",
@@ -3333,7 +3379,7 @@ dependencies = [
 
 [[package]]
 name = "talos_rdkafka_utils"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
@@ -3350,18 +3396,17 @@ dependencies = [
 
 [[package]]
 name = "talos_suffix"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 dependencies = [
  "async-trait",
  "criterion 0.4.0",
- "env_logger",
- "log",
  "mockall",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "tracing",
 ]
 
 [[package]]

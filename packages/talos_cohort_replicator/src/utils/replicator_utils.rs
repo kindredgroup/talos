@@ -11,6 +11,7 @@ pub fn get_filtered_batch<'a, T: ReplicatorSuffixItemTrait + 'a>(messages: impl 
 }
 
 /// Takes an iterator of suffix items and returns a vector of versions and statemaps
+// TODO: Instrument with span
 pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
     messages: impl Iterator<Item = &'a SuffixItem<T>>,
 ) -> Vec<(u64, Vec<StatemapItem>)> {

@@ -1,4 +1,3 @@
-use crate::agent::model::PropagatedSpanContextData;
 use crate::api::TalosType;
 use crate::messaging::api::{
     CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
@@ -18,6 +17,7 @@ use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str, thread};
+use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tracing::{debug, error, info, warn};

@@ -97,9 +97,11 @@ pub struct Config {
     pub otel_telemetry: CohortOtelConfig,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct CohortOtelConfig {
-    pub enabled: bool,
+    pub name: String,
+    pub enable_metrics: bool,
+    pub enable_traces: bool,
     // The endpoint to OTEL collector
     pub grpc_endpoint: Option<String>,
 }

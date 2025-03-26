@@ -22,11 +22,23 @@ pub struct CandidateChannelMessage<T: CandidateMessageBaseTrait> {
     pub headers: HashMap<String, String>,
 }
 
+impl<T: CandidateMessageBaseTrait> CandidateChannelMessage<T> {
+    pub fn get_trace_parent(&self) -> Option<String> {
+        self.headers.get("traceparent").cloned()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DecisionChannelMessage {
     pub decision_version: u64,
     pub message: DecisionMessage,
     pub headers: HashMap<String, String>,
+}
+
+impl DecisionChannelMessage {
+    pub fn get_trace_parent(&self) -> Option<String> {
+        self.headers.get("traceparent").cloned()
+    }
 }
 
 #[derive(Debug, Clone)]

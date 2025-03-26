@@ -1,6 +1,6 @@
 [package]
 name = "cohort_sdk"
-version = "0.2.39-dev"
+version = "0.2.40-dev"
 edition = "2021"
 
 [dependencies]
@@ -17,6 +17,7 @@ tonic =                     { version = "0.12.3" }
 opentelemetry =             { version = "0.28.0", default-features = false, features = ["trace"]  }
 opentelemetry_sdk =         { version = "0.28.0", default-features = false, features = ["trace", "rt-tokio"] }
 opentelemetry-otlp =        { version = "0.28.0", features = [ "trace", "grpc-tonic" ] }
+opentelemetry-prometheus =  { version = "0.28.0" }
 opentelemetry-stdout =      { version = "0.28.0", features = [ "trace" ] }
 tracing =                   { version = "0.1.41", features = [ "log" ] }
 tracing-opentelemetry =     { version = "0.29.0" }
@@ -34,11 +35,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { version = "0.27.1", features = ["derive"] }
 time = { version = "0.3.29" }
-talos_metrics =             { path = "../talos_metrics", version = "0.2.39-dev" }
-talos_agent =               { path = "../talos_agent", version = "0.2.39-dev" }
-talos_certifier =           { path = "../talos_certifier", version = "0.2.39-dev" }
-talos_cohort_replicator =   { path = "../talos_cohort_replicator", version = "0.2.39-dev" }
-talos_rdkafka_utils =       { path = "../talos_rdkafka_utils", version = "0.2.39-dev" }
+talos_metrics =             { path = "../talos_metrics", version = "0.2.40-dev" }
+talos_agent =               { path = "../talos_agent", version = "0.2.40-dev" }
+talos_certifier =           { path = "../talos_certifier", version = "0.2.40-dev" }
+talos_common_utils =        { path = "../talos_common_utils", version = "0.2.40-dev" }
+talos_cohort_replicator =   { path = "../talos_cohort_replicator", version = "0.2.40-dev" }
+talos_rdkafka_utils =       { path = "../talos_rdkafka_utils", version = "0.2.40-dev" }
+
 uuid =                      { version = "1.4.1", features = ["v4"] }
 
 tokio = { workspace = true, features = ["full"] }

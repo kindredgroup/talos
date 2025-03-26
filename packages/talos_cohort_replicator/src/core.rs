@@ -1,8 +1,9 @@
-use log::{debug, warn};
+use opentelemetry::metrics::{Counter, Meter};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use tracing::{debug, warn};
 
 use crate::models::ReplicatorCandidateMessage;
 
@@ -19,6 +20,8 @@ pub enum StatemapInstallState {
 }
 #[derive(Debug, Clone)]
 pub struct StatemapInstallerHashmap {
+    // enqueued at
+    pub timestamp: i128, // nanos
     pub statemaps: Vec<StatemapItem>,
     pub version: u64,
     pub safepoint: Option<u64>,
@@ -64,6 +67,55 @@ impl StatemapItem {
     }
 }
 
+#[derive(Default)]
+struct Metrics {
+    enabled: bool,
+    c_candidates: Option<Counter<u64>>,
+    c_dec_commits: Option<Counter<u64>>,
+    c_dec_aborts: Option<Counter<u64>>,
+}
+
+impl Metrics {
+    pub fn new(meter: Option<Meter>) -> Self {
+        if let Some(meter) = meter {
+            Self {
+                enabled: true,
+                c_candidates: Some(meter.u64_counter("repl_candidates").with_unit("tx").build()),
+                c_dec_commits: Some(meter.u64_counter("repl_dec_commits").with_unit("tx").build()),
+                c_dec_aborts: Some(meter.u64_counter("repl_dec_aborts").with_unit("tx").build()),
+            }
+        } else {
+            Self {
+                enabled: false,
+                c_candidates: None,
+                c_dec_commits: None,
+                c_dec_aborts: None,
+            }
+        }
+    }
+
+    pub fn add_candidate(&self) {
+        if let Some(c) = &self.c_candidates {
+            c.add(1, &[]);
+        }
+    }
+    pub fn add_decision(&self, outcome: CandidateDecisionOutcome) {
+        if !self.enabled {
+            return;
+        }
+
+        match outcome {
+            CandidateDecisionOutcome::Committed => {
+                let _ = self.c_dec_commits.as_ref().map(|m| m.add(1, &[]));
+            }
+            CandidateDecisionOutcome::Aborted => {
+                let _ = self.c_dec_aborts.as_ref().map(|m| m.add(1, &[]));
+            }
+            _ => {}
+        }
+    }
+}
+
 pub struct Replicator<T, S, M>
 where
     T: ReplicatorSuffixItemTrait,
@@ -74,6 +126,7 @@ where
     pub suffix: S,
     pub last_installing: u64,
     pub next_commit_offset: Option<u64>,
+    metrics: Metrics,
     _phantom: PhantomData<T>,
 }
 
@@ -83,12 +136,13 @@ where
     S: ReplicatorSuffixTrait<T> + std::fmt::Debug,
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
-    pub fn new(receiver: M, suffix: S) -> Self {
+    pub fn new(receiver: M, suffix: S, meter: Option<Meter>) -> Self {
         Replicator {
             receiver,
             suffix,
             last_installing: 0,
             next_commit_offset: None,
+            metrics: Metrics::new(meter),
             _phantom: PhantomData,
         }
     }
@@ -96,6 +150,7 @@ where
     pub(crate) async fn process_consumer_message(&mut self, version: u64, message: T) {
         if version > 0 {
             self.suffix.insert(version, message).unwrap();
+            self.metrics.add_candidate();
         } else {
             warn!("Version 0 will not be inserted into suffix.")
         }
@@ -105,19 +160,22 @@ where
         let version = decision_message.get_candidate_version();
 
         let decision_outcome = match decision_message.get_decision() {
-            talos_certifier::model::Decision::Committed => Some(CandidateDecisionOutcome::Committed),
-            talos_certifier::model::Decision::Aborted => Some(CandidateDecisionOutcome::Aborted),
+            talos_certifier::model::Decision::Committed => CandidateDecisionOutcome::Committed,
+            talos_certifier::model::Decision::Aborted => CandidateDecisionOutcome::Aborted,
         };
         self.suffix.update_suffix_item_decision(version, decision_version).unwrap();
-        self.suffix.set_decision_outcome(version, decision_outcome);
+        self.suffix.set_decision_outcome(version, Some(decision_outcome.clone()));
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
         if decision_message.is_duplicate() {
             self.suffix.set_item_installed(version);
         }
+
+        self.metrics.add_decision(decision_outcome);
     }
 
+    // TODO: Instrument with span
     pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>)> {
         // get batch of items from suffix to install.
         let items = self.suffix.get_message_batch_from_version(self.last_installing, None);

@@ -5,12 +5,16 @@ use std::sync::Arc;
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
 
+use crate::{
+    models::{JsCohortOtelConfig, JsKafkaConfig},
+    sdk_errors::SdkErrorContainer,
+};
+
 use serde_json::Value;
 use talos_certifier::ports::MessageReciever;
 use talos_certifier_adapters::KafkaConsumer;
+use talos_cohort_replicator::otel::otel_config::ReplicatorOtelConfig;
 use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
-
-use crate::{models::JsKafkaConfig, sdk_errors::SdkErrorContainer};
 
 use self::callback_impl::{SnapshotProviderDelegate, StatemapInstallerDelegate};
 
@@ -25,6 +29,7 @@ pub struct JsReplicatorConfig {
     pub certifier_message_receiver_commit_freq_ms: i64,
     pub statemap_queue_cleanup_freq_ms: i64,
     pub statemap_installer_threadpool: i64,
+    pub otel_telemetry: JsCohortOtelConfig,
 }
 
 impl From<JsReplicatorConfig> for CohortReplicatorConfig {
@@ -38,6 +43,15 @@ impl From<JsReplicatorConfig> for CohortReplicatorConfig {
             certifier_message_receiver_commit_freq_ms: val.certifier_message_receiver_commit_freq_ms as u64,
             statemap_queue_cleanup_freq_ms: val.statemap_queue_cleanup_freq_ms as u64,
             statemap_installer_threadpool: val.statemap_installer_threadpool as u64,
+            otel_telemetry: ReplicatorOtelConfig {
+                init_otel: val.otel_telemetry.init_otel,
+                enable_metrics: val.otel_telemetry.enable_metrics,
+                enable_traces: val.otel_telemetry.enable_traces,
+                name: val.otel_telemetry.name.clone(),
+                meter_name: val.otel_telemetry.name.clone(),
+                // The endpoint to OTEL collector
+                grpc_endpoint: val.otel_telemetry.grpc_endpoint.clone(),
+            },
         }
     }
 }
@@ -93,7 +107,7 @@ impl InternalReplicator {
         let topic = &self.kafka_config.topic.clone();
 
         kafka_consumer.subscribe().await.map_err(|e| {
-            // "kafka_consumer.subscribe()" never throws, leaving this mapping here jsut in case, but
+            // "kafka_consumer.subscribe()" never throws, leaving this mapping here just in case, but
             // so far testing showed that even when kafka is down during startup this method finishes
             // without error.
             let sdk_error = SdkErrorContainer::new(
