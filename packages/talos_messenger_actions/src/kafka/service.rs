@@ -37,10 +37,13 @@ where
                     commit_actions,
                     headers,
                 } = actions;
-
                 if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()) {
                     match get_actions_deserialised::<Vec<KafkaAction>>(publish_actions_for_type) {
                         Ok(actions) => {
+                            debug!(
+                                "Sending actions for version = {version} \n| Remaining messages in the channel = {}",
+                                self.rx_actions_channel.max_capacity() - self.rx_actions_channel.capacity()
+                            );
                             let total_len = actions.len() as u32;
 
                             let headers_cloned = headers.clone();

@@ -78,7 +78,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     /// Get the state of an item by version.
     fn get_item_state(&self, version: u64) -> Option<SuffixItemState>;
     /// Gets the suffix items eligible to process.
-    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
+    fn get_suffix_items_to_process(&self, limit: Option<u32>) -> Vec<ActionsMapWithVersion>;
     /// Updates the decision for a version.
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D, headers: HashMap<String, String>);
     /// Updates the action for a version using the action_key for lookup.
@@ -87,6 +87,9 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     /// Checks if all versions prioir to this version are already completed, and updates the prune index.
     /// If the prune index was updated, returns the new prune_index, else returns None.
     fn update_prune_index_from_version(&mut self, version: u64) -> Option<(usize, u64)>;
+
+    /// Get all versions on suffix for a state.
+    fn get_versions_by_state(&self, state: &SuffixItemState, start_index: Option<usize>, end_index: Option<usize>) -> Vec<u64>;
 
     /// Checks if all commit actions are completed for the version
     fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool>;
@@ -310,7 +313,9 @@ where
         }
     }
 
-    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
+    fn get_suffix_items_to_process(&self, limit: Option<u32>) -> Vec<ActionsMapWithVersion> {
+        let max_to_take = if let Some(max_limit) = limit { max_limit as usize } else { u32::MAX as usize };
+
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
@@ -343,6 +348,7 @@ where
                     _ => true,
                 }
             })
+            .take(max_to_take)
             // add timings related headers.
             .map(|x| {
                 let mut headers = x.item.get_headers().clone();
@@ -434,6 +440,29 @@ where
         debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
 
         Some((index, safe_prune_version))
+    }
+
+    /// Get all versions on suffix for a state, between an index range.
+    fn get_versions_by_state(&self, state: &SuffixItemState, start_index: Option<usize>, end_index: Option<usize>) -> Vec<u64> {
+        // If suffix is empty, return empty vec
+        if self.messages.is_empty() {
+            return vec![];
+        }
+
+        let start_index = start_index.unwrap_or(0);
+
+        let end_index = match end_index {
+            Some(index) if index > start_index => index,
+            _ => self.suffix_length() - 1,
+        };
+
+        let k = self
+            .messages
+            .range(start_index..=end_index)
+            .flatten()
+            .filter_map(|i| if i.item.get_state().eq(state) { Some(i.item_ver) } else { None })
+            .collect();
+        k
     }
 
     fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool> {

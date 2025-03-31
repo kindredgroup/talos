@@ -1,3 +1,3 @@
 mod inbound_service;
 
-pub use inbound_service::{MessengerInboundService, MessengerInboundServiceConfig};
+pub use inbound_service::{MessengerInboundService, MessengerInboundServiceConfig, TalosBackPressureConfig};

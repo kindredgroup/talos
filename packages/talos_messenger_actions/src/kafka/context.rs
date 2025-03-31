@@ -1,5 +1,5 @@
 use futures_executor::block_on;
-use log::error;
+use log::{debug, error};
 use rdkafka::{producer::ProducerContext, ClientContext};
 use talos_messenger_core::{core::MessengerChannelFeedback, errors::MessengerActionError};
 use tokio::sync::mpsc;
@@ -31,6 +31,12 @@ impl ProducerContext for MessengerProducerContext {
                 // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
                 if let Err(error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(version, "kafka".to_string()))) {
                     error!("[Messenger Producer Context] Error sending feedback for version={version} with error={error:?}");
+                } else {
+                    debug!(
+                        "Finished sending success feedback from producer contextfor an action from version = {}. Total feedbacks remaining to process = {} ",
+                        delivery_opaque.version,
+                        self.tx_feedback_channel.max_capacity() - self.tx_feedback_channel.capacity()
+                    );
                 };
             }
             Err((publish_error, borrowed_message)) => {
@@ -51,6 +57,12 @@ impl ProducerContext for MessengerProducerContext {
                     Box::new(messenger_error),
                 ))) {
                     error!("[Messenger Producer Context] Error sending error feedback for version={version} with \npublish_error={publish_error:?} \nchannel send_error={send_error:?}");
+                } else {
+                    debug!(
+                        "Finshed sending error feedback send from producer context for an action from version = {}. Total feedbacks remaining to process = {} ",
+                        delivery_opaque.version,
+                        self.tx_feedback_channel.max_capacity() - self.tx_feedback_channel.capacity()
+                    );
                 };
             }
         }

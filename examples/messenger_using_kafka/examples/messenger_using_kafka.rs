@@ -1,6 +1,9 @@
 use talos_common_utils::env_var;
 use talos_messenger_actions::messenger_with_kafka::{messenger_with_kafka, Configuration};
-use talos_messenger_core::utlis::{create_whitelist_actions_from_str, ActionsParserConfig};
+use talos_messenger_core::{
+    services::TalosBackPressureConfig,
+    utlis::{create_whitelist_actions_from_str, ActionsParserConfig},
+};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::core::SuffixConfig;
 
@@ -40,6 +43,7 @@ async fn main() {
         channel_buffers: None,
         commit_size: Some(2_000),
         commit_frequency: None,
+        back_pressure_config: Some(TalosBackPressureConfig::new(Some(40), Some(50))),
     };
 
     messenger_with_kafka(config).await.unwrap();

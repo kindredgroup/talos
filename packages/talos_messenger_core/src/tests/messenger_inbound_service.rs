@@ -4,8 +4,8 @@ use talos_suffix::core::SuffixConfig;
 
 use crate::{
     models::MessengerCandidateMessage,
-    services::MessengerInboundServiceConfig,
-    suffix::{MessengerSuffixAssertionTrait, SuffixItemState},
+    services::{MessengerInboundServiceConfig, TalosBackPressureConfig},
+    suffix::{self, MessengerSuffixAssertionTrait, MessengerSuffixTrait, SuffixItemState},
     tests::{
         payload::{
             candidate::{CandidateTestPayload, MockChannelMessage},
@@ -29,6 +29,7 @@ async fn test_suffix_without_feedback() {
     allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
     let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, None);
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -36,6 +37,7 @@ async fn test_suffix_without_feedback() {
             min_size_after_prune: None,
         },
         inbound_service_configs,
+        backpressure_configs,
     );
     let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
     // END - Prep before test
@@ -137,6 +139,7 @@ async fn test_suffix_item_state_by_on_commit() {
     allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
     let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, None);
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -144,6 +147,7 @@ async fn test_suffix_item_state_by_on_commit() {
             min_size_after_prune: None,
         },
         inbound_service_configs,
+        backpressure_configs,
     );
     let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
     // END - Prep before test
@@ -234,6 +238,7 @@ async fn test_suffix_item_state_by_decision() {
     allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
     let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, None);
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -241,6 +246,7 @@ async fn test_suffix_item_state_by_decision() {
             min_size_after_prune: None,
         },
         inbound_service_configs,
+        backpressure_configs,
     );
     let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
     // END - Prep before test
@@ -290,6 +296,7 @@ async fn test_suffix_with_success_feedbacks_only() {
     allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
     let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, None);
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -297,6 +304,7 @@ async fn test_suffix_with_success_feedbacks_only() {
             min_size_after_prune: None,
         },
         inbound_service_configs,
+        backpressure_configs,
     );
     let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
 
@@ -460,6 +468,7 @@ async fn test_suffix_exhaustive_state_transitions_without_pruning() {
     allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
     let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, None);
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -467,6 +476,7 @@ async fn test_suffix_exhaustive_state_transitions_without_pruning() {
             min_size_after_prune: None,
         },
         inbound_service_configs,
+        backpressure_configs,
     );
     let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
 
@@ -778,6 +788,7 @@ async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_earl
     allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
     let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, None);
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -785,6 +796,7 @@ async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_earl
             min_size_after_prune: None,
         },
         inbound_service_configs,
+        backpressure_configs,
     );
     let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
 
@@ -830,6 +842,269 @@ async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_earl
     suffix.assert_suffix_head_and_prune_index(23, Some(16));
 
     // End - Prepare basic candidates with various different types of on-commit actions
+}
+
+// Test to see suffix write is paused and back pressure is applied.
+#[tokio::test]
+async fn test_back_pressure_build_up() {
+    let mut allowed_actions = AHashMap::new();
+    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
+
+    // Max items allowed to be in progress before enforcing back pressure.
+
+    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let backpressure_configs = TalosBackPressureConfig::new(None, Some(2));
+    let configs = MessengerServicesTesterConfigs::new(
+        SuffixConfig {
+            capacity: 50,
+            prune_start_threshold: Some(50),
+            min_size_after_prune: None,
+        },
+        inbound_service_configs,
+        backpressure_configs,
+    );
+    let mut service_tester = MessengerServiceTester::new_with_mock_action_service(configs);
+
+    let headers = HashMap::new();
+    // Candidate with on commit publish to kafka messages.
+    let mut on_commit = MockOnCommitMessage::new();
+
+    let on_commit_count_2 = 2;
+    for _ in 0..on_commit_count_2 {
+        on_commit.insert_kafka_message("some-topic".to_owned(), None, None, get_default_payload());
+    }
+    let on_commit_value = on_commit.as_value();
+    let candidate_with_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    assert!(candidate_with_on_commit.on_commit.is_some());
+
+    // End - Prepare basic candidates with various different types of on-commit actions
+
+    let commit_outcome = build_mock_outcome(None, Some(0));
+    let abort_outcome = build_mock_outcome(None, None);
+
+    // --------------------------------------------------------------------------------------------------------------
+    //
+    //   START - Prepare test candidates and decisions
+    //
+    // --------------------------------------------------------------------------------------------------------------
+
+    // ################ version 20 Candidate (with valid on_commit actions) and Decision  (with commit outcome) #####################/
+    let vers_20 = 20;
+    let cm_20 = MockChannelMessage::new(&candidate_with_on_commit, vers_20);
+    let cm_channel_msg_20 = cm_20.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let dm_channel_msg_20 = cm_20.build_decision_channel_message(vers_20 + 1, &commit_outcome, 0, &headers);
+
+    // ################ version 22 Candidate (with valid on_commit actions) and Decision  (with commit outcome) #####################/
+    let vers_22 = 22;
+    let cm_22 = MockChannelMessage::new(&candidate_with_on_commit, vers_22);
+    let cm_channel_msg_22 = cm_22.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let dm_channel_msg_22 = cm_22.build_decision_channel_message(vers_22 + 1, &commit_outcome, 0, &headers);
+
+    // ################ version 25 Candidate (with valid on_commit actions) and Decision  (with abort outcome) #####################/
+    let vers_25 = 25;
+    let cm_25 = MockChannelMessage::new(&candidate_with_on_commit, vers_25);
+    let cm_channel_msg_25 = cm_25.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let dm_channel_msg_25 = cm_25.build_decision_channel_message(vers_25 + 2, &commit_outcome, 0, &headers);
+
+    // ################ version 30 Candidate (with valid on_commit actions) and Decision  (with commit outcome) #####################/
+    let vers_30 = 30;
+    let cm_30 = MockChannelMessage::new(&candidate_with_on_commit, vers_30);
+    let cm_channel_msg_30 = cm_30.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let dm_channel_msg_30 = cm_30.build_decision_channel_message(vers_30 + 2, &commit_outcome, 0, &headers);
+
+    // ################ version 33 Candidate (with valid on_commit actions) and Decision  (with commit outcome) #####################/
+    let vers_33 = 33;
+    let cm_33 = MockChannelMessage::new(&candidate_with_on_commit, vers_33);
+    let cm_channel_msg_33 = cm_33.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let dm_channel_msg_33 = cm_33.build_decision_channel_message(vers_33 + 2, &abort_outcome, 0, &headers);
+
+    // ################ version 37 Candidate (with valid on_commit actions) and Decision  (with commit outcome) #####################/
+    let vers_37 = 37;
+    let cm_37 = MockChannelMessage::new(&candidate_with_on_commit, vers_37);
+    let cm_channel_msg_37 = cm_37.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let dm_channel_msg_37 = cm_37.build_decision_channel_message(vers_37 + 2, &commit_outcome, 0, &headers);
+
+    // ################ version 40 Candidate (with valid on_commit actions) and Decision  (with commit outcome) #####################/
+    let vers_40 = 40;
+    let cm_40 = MockChannelMessage::new(&candidate_with_on_commit, vers_40);
+    let cm_channel_msg_40 = cm_40.build_candidate_channel_message(&headers);
+
+    // Produces a commit outcome with safepoint as version 3.
+    let _dm_channel_msg_40 = cm_40.build_decision_channel_message(vers_40 + 2, &commit_outcome, 0, &headers);
+
+    //   END - Prepare test candidates and decisions
+
+    env_logger::init();
+
+    // --------------------------------------------------------------------------------------------------------------
+    //
+    //   START - Process the test candidates and decisions and assert
+    //
+    // --------------------------------------------------------------------------------------------------------------
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ######   - Processing candidates 20, 22 and 25 and assert suffix length
+    // ######   - Feedbacks are not processed now
+    // ######   - max items allowed to be processed = 2.
+    //
+    // ******   - 🧪 Expected result - Length of suffix after insert is 6. (Head = 20 | Tail = 25)
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    service_tester.process_message_journey(Some(cm_channel_msg_20), None, None).await;
+    let suffix = service_tester.get_suffix();
+    assert_eq!(suffix.messages.len(), 1);
+
+    // service_tester.process_message_journey(None, None, Some(JourneyConfig::new(true, 5))).await;
+
+    service_tester.process_message_journey(Some(cm_channel_msg_22), None, None).await;
+    let suffix = service_tester.get_suffix();
+    assert_eq!(suffix.messages.len(), 3);
+
+    service_tester.process_message_journey(Some(cm_channel_msg_25), None, None).await;
+    let suffix = service_tester.get_suffix();
+    assert_eq!(suffix.messages.len(), 6);
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ######   - Processing decisions for 20, 22 and 25.
+    // ######       - Decisions are published in the following order - 25, 20 and finally decision for 22.
+    // ######   - Feedbacks are not processed yet.
+    // ######   - max items allowed to be processed = 2.
+    //
+    // ******   - 🧪 Expected result:
+    // ******       - As version 25 and 20 decisions came in first, and since the decisions are commit and there is no
+    // ******         safepoint constraint, those candidates will move to `SuffixItemState::Processing`.
+    // ******       - As version 22 comes last, and the max allowed items to be processed at a time is `2`, the decision will not
+    // ******         received, and therefore the state would be `SuffixItemState::AwaitingDecision`.
+    //
+    // ******       - ✅ !!! Back pressure applied !!! Decision from version 22, is not processed
+    //
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    service_tester.process_message_journey(None, Some(dm_channel_msg_25), None).await;
+    // Scan whole suffix and find items currently Processing
+    let suffix = service_tester.get_suffix();
+    let suffix_items_in_processing_state = suffix.get_versions_by_state(&SuffixItemState::Processing, None, None).len();
+    assert_eq!(suffix_items_in_processing_state, 1);
+
+    service_tester.process_message_journey(None, Some(dm_channel_msg_20), None).await;
+    // Scan whole suffix and find items currently Processing
+    let suffix = service_tester.get_suffix();
+    let suffix_items_in_processing_state = suffix.get_versions_by_state(&SuffixItemState::Processing, None, None).len();
+    assert_eq!(suffix_items_in_processing_state, 2);
+
+    service_tester.process_message_journey(None, Some(dm_channel_msg_22), None).await;
+    // Scan whole suffix and find items currently Processing
+    let suffix = service_tester.get_suffix();
+    let suffix_items_in_processing_state = suffix.get_versions_by_state(&SuffixItemState::Processing, None, None).len();
+
+    assert_eq!(suffix.get_item_state(vers_20).unwrap(), SuffixItemState::Processing);
+    assert_eq!(suffix.get_item_state(vers_25).unwrap(), SuffixItemState::Processing);
+    // Decision message was not consumed due to back pressure applied.
+    assert_eq!(suffix.get_item_state(vers_22).unwrap(), SuffixItemState::AwaitingDecision);
+    assert_eq!(suffix_items_in_processing_state, 2);
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ######   - action service processes for version 25.
+    // ######   - Because version 25's version was first received, it will be send for processing
+    // ######   - We know that version 20 and 25 are in `SuffixItemState::Processing`, and each have 2 on_commit actions.
+    //
+    // ******   - 🧪 Expected result:
+    // ******       - Version 25 state updated to `Complete`.
+    // ******       - Version 22 state updated to `Processing`.
+    // ******       - Version 20 state updated to `Processing`.
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    // Action service will process version 25 `on_commit` actions
+    service_tester.process_message_journey(None, None, Some(JourneyConfig::new(true, 10))).await;
+
+    let suffix = service_tester.get_suffix();
+    assert_eq!(suffix.get_item_state(vers_20).unwrap(), SuffixItemState::Processing);
+    assert_eq!(
+        suffix.get_item_state(vers_25).unwrap(),
+        SuffixItemState::Complete(suffix::SuffixItemCompleteStateReason::Processed)
+    );
+    assert_eq!(suffix.get_item_state(vers_22).unwrap(), SuffixItemState::Processing);
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ######   - Processing candidates 30, 33 and 37
+    // ######   - Processing of decisions are not done at the moment.
+    // ######   - Feedbacks are not processed now
+    // ######   - max items allowed to be processed = 3.
+    //
+    // ******   - 🧪 Expected result:
+    // ******       - ✅ !!! Back pressure applied !!!
+    //              - Version 30, 33 and 37 candidates will not be processed (inserted into suffix).
+    //              - Suffix length remains at 6.
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    service_tester.process_message_journey(Some(cm_channel_msg_30), None, None).await;
+    service_tester.process_message_journey(Some(cm_channel_msg_33), None, None).await;
+    service_tester.process_message_journey(Some(cm_channel_msg_37), None, None).await;
+    let suffix = service_tester.get_suffix();
+    assert_eq!(suffix.messages.len(), 6);
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ######   - Processing `on_commit` actions for version 20 and 22
+    // ######   - We process all the actions available for action service to pick
+    //
+    // ******   - 🧪 Expected result:
+    //              - Version 20, 22 candidates move to final state `Complete(Processed)`.
+    //              - Version 30, 33 and 37 candidates will not be `AwaitingDecision` state.
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    service_tester.process_message_journey(None, None, Some(JourneyConfig::new(true, 2))).await;
+    service_tester.process_message_journey(None, None, Some(JourneyConfig::new(true, 5))).await;
+    let suffix = service_tester.get_suffix();
+    assert_eq!(
+        suffix.get_item_state(vers_20).unwrap(),
+        SuffixItemState::Complete(suffix::SuffixItemCompleteStateReason::Processed)
+    );
+    assert_eq!(
+        suffix.get_item_state(vers_22).unwrap(),
+        SuffixItemState::Complete(suffix::SuffixItemCompleteStateReason::Processed)
+    );
+    assert_eq!(suffix.get_item_state(vers_30).unwrap(), SuffixItemState::AwaitingDecision);
+    assert_eq!(suffix.get_item_state(vers_33).unwrap(), SuffixItemState::AwaitingDecision);
+    assert_eq!(suffix.get_item_state(vers_37).unwrap(), SuffixItemState::AwaitingDecision);
+
+    let total_in_flight = suffix.get_versions_by_state(&SuffixItemState::Processing, None, None).len()
+        + suffix.get_versions_by_state(&SuffixItemState::PartiallyComplete, None, None).len();
+
+    assert_eq!(total_in_flight, 0);
+    assert_eq!(suffix.messages.len(), 18);
+
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    // ######   - Processing decisions for version 33, 30 and 37 and then process candidate 40
+    //
+    // ******   - 🧪 Expected result:
+    //              - Version 30, 37 will be in `Processing` state.
+    //              - Version 33 will be in `Complete(Aborted)` state, due to abort decision.
+    //              - ✅ !!! Back pressure applied !!! Version 40 candidate will not be inserted and suffix length will remain
+    //                same.
+    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    service_tester.process_message_journey(None, Some(dm_channel_msg_33), None).await;
+    service_tester.process_message_journey(None, Some(dm_channel_msg_30), None).await;
+    service_tester.process_message_journey(None, Some(dm_channel_msg_37), None).await;
+    service_tester.process_message_journey(Some(cm_channel_msg_40), None, None).await;
+
+    let suffix = service_tester.get_suffix();
+    assert_eq!(
+        suffix.get_item_state(vers_33).unwrap(),
+        SuffixItemState::Complete(suffix::SuffixItemCompleteStateReason::Aborted)
+    );
+    assert_eq!(suffix.get_item_state(vers_30).unwrap(), SuffixItemState::Processing);
+    assert_eq!(suffix.get_item_state(vers_37).unwrap(), SuffixItemState::Processing);
+    assert_eq!(suffix.messages.len(), 18);
 }
 
 // TODO: GK - Run `test_suffix_exhaustive_state_transitions_without_pruning` with smaller prune_threshold to see how pruning behaves through all the above scenarios.

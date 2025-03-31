@@ -4,7 +4,12 @@ use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
-use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use talos_certifier::{
+    core::{CandidateChannelMessage, DecisionChannelMessage},
+    model::DecisionMessageTrait,
+    ports::{errors::MessageReceiverError, MessageReciever},
+    ChannelMessage,
+};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{
@@ -33,7 +38,6 @@ pub struct MessengerInboundServiceConfig {
     /// The allowed on_commit actions
     allowed_actions: HashMap<String, Vec<String>>,
 }
-
 impl MessengerInboundServiceConfig {
     pub fn new(allowed_actions: HashMap<String, Vec<String>>, commit_size: Option<u32>, commit_frequency: Option<u32>) -> Self {
         Self {
@@ -59,6 +63,89 @@ where
     last_committed_version: u64,
     /// The next version ready to be send for commit.
     next_version_to_commit: u64,
+    // Flag denotes if back pressure is enabled, and therefore the thread cannot receive more messages (candidate/decisions) to process.
+    // enable_back_pressure: bool,
+    /// Number of items currently in progress. Which denotes, the number of items in suffix in `SuffixItemState::Processing` or `SuffixItemState::PartiallyComplete`.
+    in_progress_count: u32,
+    /// Configs to check back pressure.
+    back_pressure_configs: TalosBackPressureConfig,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TalosBackPressureConfig {
+    /// Flag denotes if back pressure is enabled, and therefore the thread cannot receive more messages (candidate/decisions) to process.
+    pub is_enabled: bool,
+    /// Max count before back pressue is enabled.
+    /// if `None`, back pressure logic will not apply.
+    max_threshold: Option<u32>,
+    /// `min_threshold` helps to prevent immediate toggle between switch on and off of the backpressure.
+    /// Batch of items to process, when back pressure is enabled before disable logic is checked?
+    /// if None, no minimum check is done, and as soon as the count is below the max_threshold, back pressure is disabled.
+    min_threshold: Option<u32>,
+}
+
+impl TalosBackPressureConfig {
+    pub fn new(min_threshold: Option<u32>, max_threshold: Option<u32>) -> Self {
+        assert!(
+            min_threshold.le(&max_threshold),
+            "min_threshold ({min_threshold:?}) must be less than max_threshold ({max_threshold:?})"
+        );
+        Self {
+            max_threshold,
+            min_threshold,
+            is_enabled: false,
+        }
+    }
+
+    /// Get the remaining available count before hitting the max_threshold, and thereby enabling back pressure.
+    pub fn get_remaining_count(&self, current_count: u32) -> Option<u32> {
+        self.max_threshold.map(|max| max.saturating_sub(current_count))
+    }
+
+    /// Looks at the `max_threshold` and `min_threshold` to determine if back pressure should be enabled. `max_threshold` is used to determine when to enable the back-pressure
+    /// whereas, `min_threshold` is used to look at the lower bound
+    /// - `max_threshold` - Use to determine the upper bound of maximum items allowed.
+    ///                     If this is set to `None`, no back pressure will be applied.
+    ///                     `max_threshold` is
+    /// - `min_threshold` - Use to determine the lower bound of maximum items allowed. If this is set to `None`, no back pressure will be applied.
+    pub fn should_enable_back_pressure(&mut self, current_count: u32) -> bool {
+        match self.max_threshold {
+            Some(max_threshold) => {
+                // if not enabled, only check against the max_threshold.
+                if current_count >= max_threshold {
+                    true
+                } else {
+                    // if already enabled, check when is it safe to remove.
+
+                    // If there is Some(`min_threshold`), then return true if current_count > `min_threshold`.
+                    // If there is Some(`min_threshold`), then return false if current_count <= `min_threshold`.
+                    // If None, then return false.
+                    match self.min_threshold {
+                        Some(min_threshold) if self.is_enabled => current_count > min_threshold,
+                        _ => false,
+                    }
+                }
+            }
+            // if None, then we don't apply any back pressure.
+            None => false,
+        }
+    }
+}
+
+pub async fn receive_new_message<M>(
+    receiver: &mut M,
+    is_back_pressure_enabled: bool,
+) -> Option<Result<Option<ChannelMessage<MessengerCandidateMessage>>, MessageReceiverError>>
+where
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
+{
+    if is_back_pressure_enabled {
+        // This sleep is fine, this just introduces a delay for fairness so that other async arms of tokio select can execute.
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        None
+    } else {
+        Some(receiver.consume_message().await)
+    }
 }
 
 impl<M> MessengerInboundService<M>
@@ -71,8 +158,10 @@ where
         rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
+        back_pressure_configs: TalosBackPressureConfig,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
+
         Self {
             message_receiver,
             tx_actions_channel,
@@ -82,12 +171,19 @@ where
             commit_interval,
             last_committed_version: 0,
             next_version_to_commit: 0,
+            // enable_back_pressure: false,
+            in_progress_count: 0,
+            back_pressure_configs,
         }
     }
     /// Get next versions with their commit actions to process.
     ///
-    async fn process_next_actions(&mut self) -> MessengerServiceResult {
-        let items_to_process = self.suffix.get_suffix_items_to_process();
+    async fn process_next_actions(&mut self) -> MessengerServiceResult<u32> {
+        let max_new_items_to_pick = self.back_pressure_configs.get_remaining_count(self.in_progress_count);
+
+        let items_to_process = self.suffix.get_suffix_items_to_process(max_new_items_to_pick);
+        let new_in_progress_count = items_to_process.len() as u32;
+
         for item in items_to_process {
             let ver = item.version;
 
@@ -114,9 +210,11 @@ where
 
             // Mark item as in process
             self.suffix.set_item_state(ver, SuffixItemState::Processing);
+            // Increment the in_progress_count which is used to determine when back-pressure is enforced.
+            self.in_progress_count += 1;
         }
 
-        Ok(())
+        Ok(new_in_progress_count)
     }
 
     fn update_commit_offset(&mut self, version: u64) {
@@ -157,6 +255,9 @@ where
                 self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
 
                 // self.all_completed_versions.push(version);
+
+                // When any item moved to final state, we decrement this counter, which thereby relaxes the back-pressure if it was enforced.
+                self.in_progress_count -= 1;
 
                 if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
                     self.update_commit_offset(new_prune_version);
@@ -220,98 +321,151 @@ where
         };
     }
 
+    /// Process the feedback received from another thread for some `on_commit` action.
+    pub(crate) fn process_feedbacks(&mut self, feedback_result: MessengerChannelFeedback) {
+        match feedback_result {
+            MessengerChannelFeedback::Error(version, key, message_error) => {
+                error!("Failed to process version={version} with error={message_error:?}");
+                self.handle_action_failed(version, &key);
+            }
+            MessengerChannelFeedback::Success(version, key) => {
+                debug!("Successfully processed version={version} with action_key={key}");
+                self.handle_action_success(version, &key);
+            }
+        }
+    }
+
+    /// Process the incoming candidate message
+    ///     - Writes the candidate to suffix.
+    ///     - Update to an early `Complete` state based on the `on_commit` actions.
+    ///     - Transform the `on_commit` action to format required internally.
+    pub(crate) fn process_candidate_message(&mut self, candidate: CandidateChannelMessage<MessengerCandidateMessage>) {
+        let version = candidate.message.version;
+        debug!("Candidate version received is {version}");
+        if version > 0 {
+            // insert item to suffix
+            if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
+                warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
+            }
+
+            if let Some(item_to_update) = self.suffix.get_mut(version) {
+                if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
+                    let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
+                    if filter_actions.is_empty() {
+                        // There are on_commit actions, but not the ones required by messenger
+                        item_to_update
+                            .item
+                            .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
+                    } else {
+                        item_to_update.item.set_commit_action(filter_actions);
+                    }
+                } else {
+                    //  No on_commit actions
+                    item_to_update
+                        .item
+                        .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
+                }
+            };
+        } else {
+            warn!("Version 0 will not be inserted into suffix.")
+        }
+    }
+
+    /// Process the incoming decision message
+    ///     - Update the suffix candidate item with decision.
+    ///     - If any type of early `Complete` state, update the `prune_index` and `commit_offset` if applicable.
+    pub(crate) fn process_decision_message(&mut self, decision: DecisionChannelMessage) {
+        let version = decision.message.get_candidate_version();
+        debug!(
+            "[Decision Message] Decision version received = {} for candidate version = {}",
+            decision.decision_version, version
+        );
+
+        // TODO: GK - no hardcoded filters on headers
+        let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
+        self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
+
+        // Look for any early `Complete(..)` state, and update the `prune_index` and `commit_offset`.
+        if let Ok(Some(suffix_item)) = self.suffix.get(version) {
+            if matches!(suffix_item.item.get_state(), SuffixItemState::Complete(..)) {
+                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                    self.update_commit_offset(new_prune_version);
+                }
+            }
+        };
+    }
+
+    /// Compared the `max_in_progress_count` in config against `self.in_progress_count` to determine if back pressure should be enabled.
+    /// This helps to limit processing the incoming messages and therefore enable a bound on the suffix.
+    pub(crate) fn check_for_back_pressure(&mut self) {
+        // // Check to see if back pressure should be enabled.
+        // let should_enable = self
+        //     .config
+        //     .max_in_progress
+        //     .map_or(false, |max_in_progress_count| self.in_progress_count >= max_in_progress_count);
+
+        let should_enable = self.back_pressure_configs.should_enable_back_pressure(self.in_progress_count);
+        if should_enable {
+            // if back pressure was not enabled earlier, but will be enabled now, print a waning.
+            if !self.back_pressure_configs.is_enabled {
+                warn!(
+                    "Applying back pressure as the total number of records currently being processed ({}) >= max in progress allowed ({:?})",
+                    self.in_progress_count, self.back_pressure_configs.max_threshold
+                );
+            }
+            // info!(
+            //     "Back pressure - max_threshold = {:?} | min_threshold = {:?} | current in progress count = {} ",
+            //     self.back_pressure_configs.max_threshold, self.back_pressure_configs.min_threshold, self.in_progress_count
+            // );
+        }
+        self.back_pressure_configs.is_enabled = should_enable;
+    }
+
     pub async fn run_once(&mut self) -> MessengerServiceResult {
         tokio::select! {
-            // Receive feedback from publisher.
+            // feedback arm - Processes the feedbacks
             Some(feedback_result) = self.rx_feedback_channel.recv() => {
-                match feedback_result {
-                    MessengerChannelFeedback::Error(version, key, message_error) => {
-                        error!("Failed to process version={version} with error={message_error:?}");
-                        self.handle_action_failed(version, &key);
-
-                    },
-                    MessengerChannelFeedback::Success(version, key) => {
-                        debug!("Successfully processed version={version} with action_key={key}");
-                        self.handle_action_success(version, &key);
-                    },
-                }
+                self.process_feedbacks(feedback_result);
+                self.process_next_actions().await?;
 
             }
-            // 1. Consume message.
-            // Ok(Some(msg)) = self.message_receiver.consume_message() => {
-            reciever_result = self.message_receiver.consume_message() => {
 
-                match reciever_result {
-                    // 2.1 For CM - Install messages on the version
-                    Ok(Some(ChannelMessage::Candidate(candidate))) => {
-                        let version = candidate.message.version;
-                        debug!("Candidate version received is {version}");
-                        if version > 0 {
-                            // insert item to suffix
-                            if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
-                                warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
-                            }
+            // Incoming message arm -
+            //              - Processes the candidate or decision messages received.
+            //              - Applies back pressure if too many records are being processed.
+            //              - If back pressure is applied, will try to drain as many feedbacks and update the suffix as soon as possible to release the backpressure quickly.
+            result = receive_new_message(&mut self.message_receiver, self.back_pressure_configs.is_enabled) => {
+                if let Some(receiver_result) = result {
+                    match receiver_result {
+                        // 2.1 For CM - Install messages on the version
+                        Ok(Some(ChannelMessage::Candidate(candidate))) => {
+                           self.process_candidate_message(*candidate);
+                        },
+                        // 2.2 For DM - Update the decision with outcome + safepoint.
+                        Ok(Some(ChannelMessage::Decision(decision))) => {
 
-                            if let Some(item_to_update) = self.suffix.get_mut(version){
-                                if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
-                                    let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
-                                    if filter_actions.is_empty() {
-                                        // There are on_commit actions, but not the ones required by messenger
-                                        item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
-                                    } else {
-                                        item_to_update.item.set_commit_action(filter_actions);
-                                    }
-                                } else {
-                                    //  No on_commit actions
-                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
-
-                                }
-                            };
+                            self.process_decision_message(*decision);
+                            // Pick the next items from suffix whose actions are to be processed.
+                            self.process_next_actions().await?;
 
 
-
-                        } else {
-                            warn!("Version 0 will not be inserted into suffix.")
-                        }
-                    },
-                    // 2.2 For DM - Update the decision with outcome + safepoint.
-                    Ok(Some(ChannelMessage::Decision(decision))) => {
-                        let version = decision.message.get_candidate_version();
-                        debug!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
-
-                        // TODO: GK - no hardcoded filters on headers
-                        let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
-                        self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
-
-                        // Look for any early `Complete(..)` state, and update the `prune_index` and `commit_offset`.
-                        if let Ok(Some(suffix_item)) = self.suffix.get(version){
-                            if matches!(suffix_item.item.get_state(), SuffixItemState::Complete(..)) {
-                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-                                    self.update_commit_offset(new_prune_version);
+                        },
+                        Ok(None) => {
+                            debug!("No message to process..");
+                        },
+                        Err(error) => {
+                            // Catch the error propogated, and if it has a version, mark the item as completed.
+                            if let Some(version) = error.version {
+                                if let Some(item_to_update) = self.suffix.get_mut(version){
+                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
                                 }
                             }
-
-                        };
-
-                        // Pick the next items from suffix whose actions are to be processed.
-                        self.process_next_actions().await?;
-
-
-                    },
-                    Ok(None) => {
-                        debug!("No message to process..");
-                    },
-                    Err(error) => {
-                        // Catch the error propogated, and if it has a version, mark the item as completed.
-                        if let Some(version) = error.version {
-                            if let Some(item_to_update) = self.suffix.get_mut(version){
-                                item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
-                            }
-                        }
-                        error!("error consuming message....{:?}", error);
-                    },
+                            error!("error consuming message....{:?}", error);
+                        },
+                    }
+                } else {
+                    debug!("Not consuming new messages due to backpressure enabled. Current in progress count = {} | Total feedbacks available in the feedback channel = {} | total actions send in the actions channel = {}", self.in_progress_count ,self.rx_feedback_channel.max_capacity() - self.rx_feedback_channel.capacity(), self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity());
                 }
-
             }
             // Periodically check and update the commit frequency and prune index.
             _ = self.commit_interval.tick() => {
@@ -362,6 +516,9 @@ where
             }
 
         }
+
+        // Check if back pressure should be enabled.
+        self.check_for_back_pressure();
 
         // NOTE: Pruning and committing offset adds to latency if done more frequently.
         if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
