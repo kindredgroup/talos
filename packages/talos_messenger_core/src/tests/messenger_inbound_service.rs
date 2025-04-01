@@ -173,8 +173,7 @@ async fn test_suffix_item_state_by_on_commit() {
     let on_commit_value = on_commit.as_value();
     let candidate_with_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_on_commit.on_commit.is_some());
-    // env_logger::init();
-    // error!("candidate_with_on_commit is \n {candidate_with_on_commit:#?}");
+
     // END - Prepare basic candidates with various different types of on-commit actions.
 
     let headers = HashMap::new();
@@ -945,8 +944,6 @@ async fn test_back_pressure_build_up() {
     let _dm_channel_msg_40 = cm_40.build_decision_channel_message(vers_40 + 2, &commit_outcome, 0, &headers);
 
     //   END - Prepare test candidates and decisions
-
-    env_logger::init();
 
     // --------------------------------------------------------------------------------------------------------------
     //

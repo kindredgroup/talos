@@ -63,16 +63,14 @@ where
     last_committed_version: u64,
     /// The next version ready to be send for commit.
     next_version_to_commit: u64,
-    // Flag denotes if back pressure is enabled, and therefore the thread cannot receive more messages (candidate/decisions) to process.
-    // enable_back_pressure: bool,
-    /// Number of items currently in progress. Which denotes, the number of items in suffix in `SuffixItemState::Processing` or `SuffixItemState::PartiallyComplete`.
-    in_progress_count: u32,
     /// Configs to check back pressure.
     back_pressure_configs: TalosBackPressureConfig,
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct TalosBackPressureConfig {
+    /// Current count which is used to check against max and min to determine if back-pressure should be applied.
+    current: u32,
     /// Flag denotes if back pressure is enabled, and therefore the thread cannot receive more messages (candidate/decisions) to process.
     pub is_enabled: bool,
     /// Max count before back pressue is enabled.
@@ -88,18 +86,27 @@ impl TalosBackPressureConfig {
     pub fn new(min_threshold: Option<u32>, max_threshold: Option<u32>) -> Self {
         assert!(
             min_threshold.le(&max_threshold),
-            "min_threshold ({min_threshold:?}) must be less than max_threshold ({max_threshold:?})"
+            "min_threshold ({min_threshold:?}) must be less or equal to the max_threshold ({max_threshold:?})"
         );
         Self {
             max_threshold,
             min_threshold,
             is_enabled: false,
+            current: 0,
         }
     }
 
+    pub fn increment_current(&mut self) {
+        self.current += 1;
+    }
+
+    pub fn decrement_current(&mut self) {
+        self.current -= 1;
+    }
+
     /// Get the remaining available count before hitting the max_threshold, and thereby enabling back pressure.
-    pub fn get_remaining_count(&self, current_count: u32) -> Option<u32> {
-        self.max_threshold.map(|max| max.saturating_sub(current_count))
+    pub fn get_remaining_count(&self) -> Option<u32> {
+        self.max_threshold.map(|max| max.saturating_sub(self.current))
     }
 
     /// Looks at the `max_threshold` and `min_threshold` to determine if back pressure should be enabled. `max_threshold` is used to determine when to enable the back-pressure
@@ -108,7 +115,8 @@ impl TalosBackPressureConfig {
     ///                     If this is set to `None`, no back pressure will be applied.
     ///                     `max_threshold` is
     /// - `min_threshold` - Use to determine the lower bound of maximum items allowed. If this is set to `None`, no back pressure will be applied.
-    pub fn should_enable_back_pressure(&mut self, current_count: u32) -> bool {
+    pub fn should_enable_back_pressure(&mut self) -> bool {
+        let current_count = self.current;
         match self.max_threshold {
             Some(max_threshold) => {
                 // if not enabled, only check against the max_threshold.
@@ -172,14 +180,14 @@ where
             last_committed_version: 0,
             next_version_to_commit: 0,
             // enable_back_pressure: false,
-            in_progress_count: 0,
+            // in_progress_count: 0,
             back_pressure_configs,
         }
     }
     /// Get next versions with their commit actions to process.
     ///
     async fn process_next_actions(&mut self) -> MessengerServiceResult<u32> {
-        let max_new_items_to_pick = self.back_pressure_configs.get_remaining_count(self.in_progress_count);
+        let max_new_items_to_pick = self.back_pressure_configs.get_remaining_count();
 
         let items_to_process = self.suffix.get_suffix_items_to_process(max_new_items_to_pick);
         let new_in_progress_count = items_to_process.len() as u32;
@@ -211,7 +219,13 @@ where
             // Mark item as in process
             self.suffix.set_item_state(ver, SuffixItemState::Processing);
             // Increment the in_progress_count which is used to determine when back-pressure is enforced.
-            self.in_progress_count += 1;
+            self.back_pressure_configs.increment_current();
+
+            // info!(
+            //     "Current items in channel = {} | from current count in backpressure configs = {}",
+            //     self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity(),
+            //     self.back_pressure_configs.current
+            // );
         }
 
         Ok(new_in_progress_count)
@@ -257,7 +271,7 @@ where
                 // self.all_completed_versions.push(version);
 
                 // When any item moved to final state, we decrement this counter, which thereby relaxes the back-pressure if it was enforced.
-                self.in_progress_count -= 1;
+                self.back_pressure_configs.decrement_current();
 
                 if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
                     self.update_commit_offset(new_prune_version);
@@ -404,13 +418,13 @@ where
         //     .max_in_progress
         //     .map_or(false, |max_in_progress_count| self.in_progress_count >= max_in_progress_count);
 
-        let should_enable = self.back_pressure_configs.should_enable_back_pressure(self.in_progress_count);
+        let should_enable = self.back_pressure_configs.should_enable_back_pressure();
         if should_enable {
             // if back pressure was not enabled earlier, but will be enabled now, print a waning.
             if !self.back_pressure_configs.is_enabled {
                 warn!(
                     "Applying back pressure as the total number of records currently being processed ({}) >= max in progress allowed ({:?})",
-                    self.in_progress_count, self.back_pressure_configs.max_threshold
+                    self.back_pressure_configs.current, self.back_pressure_configs.max_threshold
                 );
             }
             // info!(
@@ -464,7 +478,7 @@ where
                         },
                     }
                 } else {
-                    debug!("Not consuming new messages due to backpressure enabled. Current in progress count = {} | Total feedbacks available in the feedback channel = {} | total actions send in the actions channel = {}", self.in_progress_count ,self.rx_feedback_channel.max_capacity() - self.rx_feedback_channel.capacity(), self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity());
+                    debug!("Not consuming new messages due to backpressure enabled. Current in progress count = {} | Total feedbacks available in the feedback channel = {} | total actions send in the actions channel = {}", self.back_pressure_configs.current ,self.rx_feedback_channel.max_capacity() - self.rx_feedback_channel.capacity(), self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity());
                 }
             }
             // Periodically check and update the commit frequency and prune index.
