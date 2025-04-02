@@ -74,3 +74,157 @@ impl TalosBackPressureConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::TalosBackPressureConfig;
+
+    #[test]
+    #[should_panic(expected = "min_threshold (Some(50)) must be less or equal to the max_threshold (Some(10))")]
+    fn test_panic_min_greater_than_max_threshold() {
+        let _ = TalosBackPressureConfig::new(Some(50), Some(10));
+    }
+
+    #[test]
+    fn test_back_pressure_when_min_equal_max_threshold() {
+        let mut bp = TalosBackPressureConfig::new(Some(10), Some(10));
+
+        // initially current is at 0.
+        assert_eq!(bp.current, 0);
+        for _ in 0..10 {
+            bp.increment_current()
+        }
+        // current set to 10.
+        assert_eq!(bp.current, 10);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Because the current value is >= to max_threshold, we should enable backpressure.
+        assert!(bp.is_enabled);
+
+        // Decrement the counter two times.
+        bp.decrement_current();
+        bp.decrement_current();
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Because the current value is < max_threshold and since max and min are same, we could disable backpressure.
+        assert!(!bp.is_enabled);
+    }
+
+    #[test]
+    fn test_back_pressure_when_threshold_min_some_max_some() {
+        let mut bp = TalosBackPressureConfig::new(Some(10), Some(20));
+
+        // initially current is at 0.
+        assert_eq!(bp.current, 0);
+        for _ in 0..30 {
+            bp.increment_current()
+        }
+        // current == 30.
+        assert_eq!(bp.current, 30);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Because the current value is >= to max_threshold, we should enable backpressure.
+        assert!(bp.is_enabled);
+
+        // Decrement the counter 10 times.
+        for _ in 0..10 {
+            bp.decrement_current();
+        }
+        // current == 20.
+        assert_eq!(bp.current, 20);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Because the current value is == max_threshold, backpressure will remain on.
+        assert!(bp.is_enabled);
+
+        // Decrement the counter 5 times.
+        for _ in 0..5 {
+            bp.decrement_current();
+        }
+        // current == 15.
+        assert_eq!(bp.current, 15);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Although the current value is < max_threshold, it is still greater than min_threshold, backpressure will remain on.
+        assert!(bp.is_enabled);
+
+        // Decrement the counter 5 times.
+        for _ in 0..5 {
+            bp.decrement_current();
+        }
+        // current == 10.
+        assert_eq!(bp.current, 10);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Although the current value is < max_threshold and == min_threshold, backpressure can be disabled.
+        assert!(!bp.is_enabled);
+    }
+
+    #[test]
+    fn test_back_pressure_when_threshold_min_none_max_some() {
+        let mut bp = TalosBackPressureConfig::new(None, Some(20));
+
+        // initially current is at 0.
+        assert_eq!(bp.current, 0);
+        for _ in 0..30 {
+            bp.increment_current()
+        }
+        // current == 30.
+        assert_eq!(bp.current, 30);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Because the current value is >= to max_threshold, we should enable backpressure.
+        assert!(bp.is_enabled);
+
+        // Decrement the counter 11 times.
+        for _ in 0..11 {
+            bp.decrement_current();
+        }
+        // current == 19.
+        assert_eq!(bp.current, 19);
+
+        let should_enable = bp.should_apply_back_pressure();
+        bp.update_back_pressure_flag(should_enable);
+
+        // Because the current value is < max_threshold, and min_threshold is None, backpressure will be disabled.
+        assert!(!bp.is_enabled);
+    }
+
+    #[test]
+    fn test_back_pressure_when_threshold_min_none_max_none() {
+        let mut bp = TalosBackPressureConfig::new(None, None);
+
+        // initially current is at 0.
+        assert_eq!(bp.current, 0);
+        for _ in 0..1_000 {
+            bp.increment_current()
+        }
+        // current == 1_000.
+        assert_eq!(bp.current, 1_000);
+
+        let should_enable = bp.should_apply_back_pressure();
+
+        // Because the max_threshold is None, no back pressure.
+        assert!(!should_enable);
+    }
+
+    #[test]
+    #[should_panic(expected = "min_threshold (Some(10)) must be less or equal to the max_threshold (None)")]
+    fn test_back_pressure_when_threshold_min_some_max_none() {
+        let _ = TalosBackPressureConfig::new(Some(10), None);
+    }
+}
