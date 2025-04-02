@@ -1,10 +1,11 @@
 use ahash::{AHashMap, HashMap, HashMapExt};
 use talos_certifier::test_helpers::mocks::payload::{build_kafka_on_commit_message, build_on_commit_publish_kafka_payload, get_default_payload};
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_suffix::core::SuffixConfig;
 
 use crate::{
     models::MessengerCandidateMessage,
-    services::{MessengerInboundServiceConfig, TalosBackPressureConfig},
+    services::MessengerInboundServiceConfig,
     suffix::{self, MessengerSuffixAssertionTrait, MessengerSuffixTrait, SuffixItemState},
     tests::{
         payload::{

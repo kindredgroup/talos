@@ -12,6 +12,7 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
 
 use tokio::{
@@ -23,7 +24,7 @@ use crate::{
     core::{ActionService, MessengerChannelFeedback, MessengerCommitActions, MessengerPublisher, PublishActionType},
     errors::{MessengerActionError, MessengerServiceResult},
     models::MessengerCandidateMessage,
-    services::{MessengerInboundService, MessengerInboundServiceConfig, TalosBackPressureConfig},
+    services::{MessengerInboundService, MessengerInboundServiceConfig},
     suffix::MessengerCandidate,
     utlis::get_actions_deserialised,
 };
@@ -263,7 +264,7 @@ pub fn build_mock_outcome(conflict_version: Option<u64>, safepoint: Option<u64>)
 pub struct MessengerServicesTesterConfigs {
     suffix_configs: SuffixConfig,
     inbound_service_configs: MessengerInboundServiceConfig,
-    backpressure_configs: TalosBackPressureConfig,
+    back_pressure_configs: TalosBackPressureConfig,
 }
 
 impl MessengerServicesTesterConfigs {
@@ -271,7 +272,7 @@ impl MessengerServicesTesterConfigs {
         MessengerServicesTesterConfigs {
             suffix_configs,
             inbound_service_configs,
-            backpressure_configs,
+            back_pressure_configs: backpressure_configs,
         }
     }
 }
@@ -326,7 +327,7 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
             rx_feedback_channel,
             suffix,
             configs.inbound_service_configs,
-            configs.backpressure_configs,
+            configs.back_pressure_configs,
         );
 
         // START - Mock Action Service

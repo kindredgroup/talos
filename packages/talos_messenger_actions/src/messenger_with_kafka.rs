@@ -4,10 +4,11 @@ use log::debug;
 use rdkafka::producer::ProducerContext;
 use talos_certifier::ports::{errors::MessagePublishError, MessageReciever};
 use talos_certifier_adapters::KafkaConsumer;
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_messenger_core::{
     core::{MessengerPublisher, PublishActionType},
     errors::{MessengerServiceError, MessengerServiceErrorKind, MessengerServiceResult},
-    services::{MessengerInboundService, MessengerInboundServiceConfig, TalosBackPressureConfig},
+    services::{MessengerInboundService, MessengerInboundServiceConfig},
     suffix::MessengerCandidate,
     talos_messenger_service::TalosMessengerService,
 };

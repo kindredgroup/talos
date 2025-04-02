@@ -10,6 +10,7 @@ use talos_certifier::{
     ports::{errors::MessageReceiverError, MessageReciever},
     ChannelMessage,
 };
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{
@@ -67,79 +68,6 @@ where
     back_pressure_configs: TalosBackPressureConfig,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct TalosBackPressureConfig {
-    /// Current count which is used to check against max and min to determine if back-pressure should be applied.
-    current: u32,
-    /// Flag denotes if back pressure is enabled, and therefore the thread cannot receive more messages (candidate/decisions) to process.
-    pub is_enabled: bool,
-    /// Max count before back pressue is enabled.
-    /// if `None`, back pressure logic will not apply.
-    max_threshold: Option<u32>,
-    /// `min_threshold` helps to prevent immediate toggle between switch on and off of the backpressure.
-    /// Batch of items to process, when back pressure is enabled before disable logic is checked?
-    /// if None, no minimum check is done, and as soon as the count is below the max_threshold, back pressure is disabled.
-    min_threshold: Option<u32>,
-}
-
-impl TalosBackPressureConfig {
-    pub fn new(min_threshold: Option<u32>, max_threshold: Option<u32>) -> Self {
-        assert!(
-            min_threshold.le(&max_threshold),
-            "min_threshold ({min_threshold:?}) must be less or equal to the max_threshold ({max_threshold:?})"
-        );
-        Self {
-            max_threshold,
-            min_threshold,
-            is_enabled: false,
-            current: 0,
-        }
-    }
-
-    pub fn increment_current(&mut self) {
-        self.current += 1;
-    }
-
-    pub fn decrement_current(&mut self) {
-        self.current -= 1;
-    }
-
-    /// Get the remaining available count before hitting the max_threshold, and thereby enabling back pressure.
-    pub fn get_remaining_count(&self) -> Option<u32> {
-        self.max_threshold.map(|max| max.saturating_sub(self.current))
-    }
-
-    /// Looks at the `max_threshold` and `min_threshold` to determine if back pressure should be enabled. `max_threshold` is used to determine when to enable the back-pressure
-    /// whereas, `min_threshold` is used to look at the lower bound
-    /// - `max_threshold` - Use to determine the upper bound of maximum items allowed.
-    ///                     If this is set to `None`, no back pressure will be applied.
-    ///                     `max_threshold` is
-    /// - `min_threshold` - Use to determine the lower bound of maximum items allowed. If this is set to `None`, no back pressure will be applied.
-    pub fn should_enable_back_pressure(&mut self) -> bool {
-        let current_count = self.current;
-        match self.max_threshold {
-            Some(max_threshold) => {
-                // if not enabled, only check against the max_threshold.
-                if current_count >= max_threshold {
-                    true
-                } else {
-                    // if already enabled, check when is it safe to remove.
-
-                    // If there is Some(`min_threshold`), then return true if current_count > `min_threshold`.
-                    // If there is Some(`min_threshold`), then return false if current_count <= `min_threshold`.
-                    // If None, then return false.
-                    match self.min_threshold {
-                        Some(min_threshold) if self.is_enabled => current_count > min_threshold,
-                        _ => false,
-                    }
-                }
-            }
-            // if None, then we don't apply any back pressure.
-            None => false,
-        }
-    }
-}
-
 pub async fn receive_new_message<M>(
     receiver: &mut M,
     is_back_pressure_enabled: bool,
@@ -148,7 +76,8 @@ where
     M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
 {
     if is_back_pressure_enabled {
-        // This sleep is fine, this just introduces a delay for fairness so that other async arms of tokio select can execute.
+        // This sleep with hardcoded value is fine, this just introduces a delay for fairness so that other async arms of tokio select can execute.
+        // We introduce this delay just so that feedback or any other arm gets a chance to execute when back-pressue is enabled.
         tokio::time::sleep(Duration::from_millis(2)).await;
         None
     } else {
@@ -179,8 +108,6 @@ where
             commit_interval,
             last_committed_version: 0,
             next_version_to_commit: 0,
-            // enable_back_pressure: false,
-            // in_progress_count: 0,
             back_pressure_configs,
         }
     }
@@ -220,12 +147,6 @@ where
             self.suffix.set_item_state(ver, SuffixItemState::Processing);
             // Increment the in_progress_count which is used to determine when back-pressure is enforced.
             self.back_pressure_configs.increment_current();
-
-            // info!(
-            //     "Current items in channel = {} | from current count in backpressure configs = {}",
-            //     self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity(),
-            //     self.back_pressure_configs.current
-            // );
         }
 
         Ok(new_in_progress_count)
@@ -409,30 +330,57 @@ where
         };
     }
 
-    /// Compared the `max_in_progress_count` in config against `self.in_progress_count` to determine if back pressure should be enabled.
-    /// This helps to limit processing the incoming messages and therefore enable a bound on the suffix.
-    pub(crate) fn check_for_back_pressure(&mut self) {
-        // // Check to see if back pressure should be enabled.
-        // let should_enable = self
-        //     .config
-        //     .max_in_progress
-        //     .map_or(false, |max_in_progress_count| self.in_progress_count >= max_in_progress_count);
+    /// Common house keeping checks and updates that run at the end of every iteration of `Self::run_once`.
+    /// - Check if backpressure must be enabled.
+    /// - Check if we have crossed the `commit_size` threshold and issue a commit.
+    /// - Check if suffix should be pruned.
+    pub(crate) fn run_once_housekeeping(&mut self) -> MessengerServiceResult {
+        // check back pressure
+        let enable_back_pressure = self.back_pressure_configs.should_apply_back_pressure();
 
-        let should_enable = self.back_pressure_configs.should_enable_back_pressure();
-        if should_enable {
-            // if back pressure was not enabled earlier, but will be enabled now, print a waning.
-            if !self.back_pressure_configs.is_enabled {
-                warn!(
+        // update back pressure if it has changed.
+        if self.back_pressure_configs.is_enabled != enable_back_pressure {
+            if enable_back_pressure {
+                info!(
                     "Applying back pressure as the total number of records currently being processed ({}) >= max in progress allowed ({:?})",
                     self.back_pressure_configs.current, self.back_pressure_configs.max_threshold
                 );
+            } else {
+                info!(
+                    "Removing back pressure as the total number of records currently being processed ({}) < max in progress allowed ({:?})",
+                    self.back_pressure_configs.current, self.back_pressure_configs.max_threshold
+                );
             }
-            // info!(
-            //     "Back pressure - max_threshold = {:?} | min_threshold = {:?} | current in progress count = {} ",
-            //     self.back_pressure_configs.max_threshold, self.back_pressure_configs.min_threshold, self.in_progress_count
-            // );
+            self.back_pressure_configs.update_back_pressure_flag(enable_back_pressure);
         }
-        self.back_pressure_configs.is_enabled = should_enable;
+
+        // NOTE: Pruning and committing offset adds to latency if done more frequently.
+
+        // issue commit, is applicable.
+        if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
+            match self.message_receiver.commit() {
+                Err(err) => {
+                    error!("[Commit] Error committing {err:?}");
+                }
+                Ok(_) => {
+                    self.last_committed_version = self.next_version_to_commit;
+                    info!("Last commit at offset {}", self.last_committed_version);
+                }
+            };
+        }
+
+        // suffix prune, if applicable.
+        let SuffixMeta {
+            prune_index,
+            prune_start_threshold,
+            ..
+        } = self.suffix.get_meta();
+
+        if prune_index.gt(prune_start_threshold) {
+            self.suffix_pruning();
+        };
+
+        Ok(())
     }
 
     pub async fn run_once(&mut self) -> MessengerServiceResult {
@@ -531,34 +479,7 @@ where
 
         }
 
-        // Check if back pressure should be enabled.
-        self.check_for_back_pressure();
-
-        // NOTE: Pruning and committing offset adds to latency if done more frequently.
-        if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
-            match self.message_receiver.commit() {
-                Err(err) => {
-                    error!("[Commit] Error committing {err:?}");
-                }
-                Ok(_) => {
-                    self.last_committed_version = self.next_version_to_commit;
-                    info!("Last commit at offset {}", self.last_committed_version);
-                }
-            };
-            // else {
-            // }
-        }
-
-        // Update the prune index and commit
-        let SuffixMeta {
-            prune_index,
-            prune_start_threshold,
-            ..
-        } = self.suffix.get_meta();
-
-        if prune_index.gt(prune_start_threshold) {
-            self.suffix_pruning();
-        };
+        self.run_once_housekeeping()?;
 
         Ok(())
     }
