@@ -1,4 +1,5 @@
 use ahash::{AHashMap, HashMap, HashMapExt};
+use serde_json::json;
 use talos_certifier::test_helpers::mocks::payload::{build_kafka_on_commit_message, build_on_commit_publish_kafka_payload, get_default_payload};
 use talos_suffix::core::SuffixConfig;
 
@@ -154,8 +155,7 @@ async fn test_suffix_item_state_by_on_commit() {
     assert!(candidate_with_no_on_commit.on_commit.is_none());
 
     // Candidate with no supported on-commit action
-    let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
-    let on_commit_value = on_commit.as_value();
+    let on_commit_value = json!({"notSuportedAction": {"subAction": [{"name": "Kindred"}]}});
 
     let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());
@@ -489,8 +489,7 @@ async fn test_suffix_exhaustive_state_transitions_without_pruning() {
     let candidate_with_no_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().build();
     assert!(candidate_with_no_on_commit.on_commit.is_none());
     // Candidate with no supported on-commit action
-    let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
-    let on_commit_value = on_commit.as_value();
+    let on_commit_value = json!({"notSuportedAction": {"subAction": [{"name": "Kindred"}]}});
 
     let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());
@@ -796,8 +795,7 @@ async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_earl
     let candidate_with_no_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().build();
     assert!(candidate_with_no_on_commit.on_commit.is_none());
     // Candidate with no supported on-commit action
-    let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
-    let on_commit_value = on_commit.as_value();
+    let on_commit_value = json!({"notSuportedAction": {"subAction": [{"name": "Kindred"}]}});
 
     let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());

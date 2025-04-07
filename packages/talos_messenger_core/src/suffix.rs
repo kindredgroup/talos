@@ -1,14 +1,14 @@
 use ahash::{HashMap, HashMapExt};
 use log::{debug, warn};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use std::fmt::Debug;
 use strum::{Display, EnumString};
 use talos_certifier::model::{Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-use crate::models::MessengerCandidateMessage;
+use crate::{core::MessengerCommitActions, models::MessengerCandidateMessage};
 
 pub trait MessengerSuffixItemTrait: Debug + Clone {
     fn set_state(&mut self, state: SuffixItemState);
@@ -78,7 +78,7 @@ pub trait MessengerSuffixTrait<T: MessengerSuffixItemTrait>: SuffixTrait<T> {
     /// Get the state of an item by version.
     fn get_item_state(&self, version: u64) -> Option<SuffixItemState>;
     /// Gets the suffix items eligible to process.
-    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion>;
+    fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions>;
     /// Updates the decision for a version.
     fn update_item_decision<D: DecisionMessageTrait>(&mut self, version: u64, decision_version: u64, decision_message: &D, headers: HashMap<String, String>);
     /// Updates the action for a version using the action_key for lookup.
@@ -151,15 +151,16 @@ pub enum SuffixItemCompleteStateReason {
     ErrorProcessing,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AllowedActionsMapItem {
-    payload: Value,
+    payload: Vec<Box<RawValue>>,
     count: u32,
     total_count: u32,
 }
 
 impl AllowedActionsMapItem {
-    pub fn new(payload: Value, total_count: u32) -> Self {
+    pub fn new(payload: Vec<Box<RawValue>>) -> Self {
+        let total_count = payload.len() as u32;
         AllowedActionsMapItem {
             payload,
             count: 0,
@@ -171,7 +172,7 @@ impl AllowedActionsMapItem {
         self.count += 1;
     }
 
-    pub fn get_payload(&self) -> &Value {
+    pub fn get_payload(&self) -> &Vec<Box<RawValue>> {
         &self.payload
     }
 
@@ -184,14 +185,14 @@ impl AllowedActionsMapItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-pub struct ActionsMapWithVersion {
-    pub actions: HashMap<String, AllowedActionsMapItem>,
-    pub version: u64,
-    pub headers: HashMap<String, String>,
-}
+// #[derive(Debug, Serialize, Deserialize, Clone)]
+// pub struct ActionsMapWithVersion {
+//     pub actions: HashMap<String, AllowedActionsMapItem>,
+//     pub version: u64,
+//     pub headers: HashMap<String, String>,
+// }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MessengerCandidate {
     pub candidate: MessengerCandidateMessage,
     /// Safepoint received for committed outcomes from certifier.
@@ -310,13 +311,13 @@ where
         }
     }
 
-    fn get_suffix_items_to_process(&self) -> Vec<ActionsMapWithVersion> {
+    fn get_suffix_items_to_process(&self) -> Vec<MessengerCommitActions> {
         let current_prune_index = self.get_meta().prune_index;
 
         let start_index = current_prune_index.unwrap_or(0);
 
         // let start_ms = Instant::now();
-        let items: Vec<ActionsMapWithVersion> = self
+        let items: Vec<MessengerCommitActions> = self
             .messages
             // we know from start_index = prune_index, everything prioir to this is already completed.
             // This helps in taking a smaller slice out of the suffix to iterate over.
@@ -357,9 +358,12 @@ where
 
                 headers.extend(state_timestamps_headers);
 
-                ActionsMapWithVersion {
+                MessengerCommitActions {
                     version: x.item_ver,
-                    actions: x.item.get_commit_actions().clone(),
+                    commit_actions: x.item.get_commit_actions().iter().fold(HashMap::new(), |mut acc, (key, value)| {
+                        acc.insert(key.to_string(), value.get_payload().clone());
+                        acc
+                    }),
                     headers,
                 }
             })
@@ -431,7 +435,7 @@ where
         let index = self.index_from_head(safe_prune_version)?;
 
         self.update_prune_index(index.into());
-        debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version}");
+        debug!("[Update prune index] Prune version updated to {index} (version={safe_prune_version})");
 
         Some((index, safe_prune_version))
     }

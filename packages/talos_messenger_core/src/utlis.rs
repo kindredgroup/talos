@@ -2,9 +2,9 @@ use std::any::type_name;
 
 use ahash::{HashMap, HashMapExt};
 use serde::de::DeserializeOwned;
-use serde_json::Value;
+use serde_json::{value::RawValue, Value};
 
-use crate::{errors::MessengerActionError, suffix::AllowedActionsMapItem};
+use crate::{errors::MessengerActionError, models::OnCommitActions, suffix::AllowedActionsMapItem};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ActionsParserConfig<'a> {
@@ -73,17 +73,30 @@ pub fn get_value_by_key<'a>(value: &'a Value, key: &str) -> Option<&'a Value> {
 /// Create a Hashmap of all the actions that require to be actioned by the messenger.
 /// Key for the map is the Action type. eg: "kafka", "mqtt" ..etc
 /// Value for the map contains the payload and some meta information like items actioned, and is completed flag
-pub fn get_allowed_commit_actions(on_commit_actions: &Value, allowed_actions: &HashMap<String, Vec<String>>) -> HashMap<String, AllowedActionsMapItem> {
+pub fn get_allowed_commit_actions(
+    on_commit_actions: &OnCommitActions,
+    allowed_actions: &HashMap<String, Vec<String>>,
+) -> HashMap<String, AllowedActionsMapItem> {
     let mut filtered_actions = HashMap::new();
 
     allowed_actions.iter().for_each(|(action_key, sub_action_keys)| {
-        if let Some(action) = get_value_by_key(on_commit_actions, action_key) {
+        // if let Some(action) = get_value_by_key(on_commit_actions, action_key) {
+        //     for sub_action_key in sub_action_keys {
+        //         if let Some(sub_action) = get_value_by_key(action, sub_action_key) {
+        //             filtered_actions.insert(
+        //                 sub_action_key.to_string(),
+        //                 AllowedActionsMapItem::new(sub_action.clone(), get_total_action_count(sub_action)),
+        //             );
+        //         }
+        //     }
+        // }
+
+        // - look at first level
+        if let Some(first_level) = on_commit_actions.get(action_key) {
+            // - look at second level
             for sub_action_key in sub_action_keys {
-                if let Some(sub_action) = get_value_by_key(action, sub_action_key) {
-                    filtered_actions.insert(
-                        sub_action_key.to_string(),
-                        AllowedActionsMapItem::new(sub_action.clone(), get_total_action_count(sub_action)),
-                    );
+                if let Some(second_level) = first_level.get(sub_action_key) {
+                    filtered_actions.insert(sub_action_key.to_string(), AllowedActionsMapItem::new(second_level.clone()));
                 }
             }
         }
@@ -101,15 +114,23 @@ pub fn get_total_action_count(action: &Value) -> u32 {
 }
 
 /// Retrieves sub actions under publish by using a look key.
-pub fn get_actions_deserialised<T: DeserializeOwned>(actions: &Value) -> Result<T, MessengerActionError> {
-    match serde_json::from_value(actions.clone()) {
-        Ok(res) => Ok(res),
-        Err(err) => Err(MessengerActionError {
-            kind: crate::errors::MessengerActionErrorKind::Deserialisation,
-            reason: format!("Deserialisation to type={} failed, with error={:?}", type_name::<T>(), err),
-            data: actions.to_string(),
-        }),
-    }
+pub fn get_action_deserialised<T: DeserializeOwned>(action: Box<RawValue>) -> Result<T, MessengerActionError> {
+    // let action = action.get();
+    let deserialised_action = serde_json::from_str(action.get()).map_err(|err| MessengerActionError {
+        kind: crate::errors::MessengerActionErrorKind::Deserialisation,
+        reason: format!("Deserialisation to type={} failed, with error={:?}", type_name::<T>(), err),
+        data: action.to_string(),
+    })?;
+
+    Ok(deserialised_action)
+    // match serde_json::from_value(actions.clone()) {
+    //     Ok(res) => Ok(res),
+    //     Err(err) => Err(MessengerActionError {
+    //         kind: crate::errors::MessengerActionErrorKind::Deserialisation,
+    //         reason: format!("Deserialisation to type={} failed, with error={:?}", type_name::<T>(), err),
+    //         data: actions.to_string(),
+    //     }),
+    // }
 }
 
 ///// Retrieves the oncommit actions that are supported by the system.
