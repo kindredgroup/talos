@@ -24,7 +24,7 @@ use crate::{
     models::MessengerCandidateMessage,
     services::{MessengerInboundService, MessengerInboundServiceConfig},
     suffix::MessengerCandidate,
-    utlis::get_actions_deserialised,
+    utlis::get_action_deserialised,
 };
 
 use super::payload::on_commit::MockOnCommitKafkaMessage;
@@ -180,10 +180,10 @@ impl ActionService for MockActionService {
                 } = actions;
 
                 error!("Headers... {headers:#?}");
-                if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()) {
-                    match get_actions_deserialised::<Vec<MockOnCommitKafkaMessage>>(publish_actions_for_type) {
-                        Ok(actions) => {
-                            for _ in actions {
+                if let Some(publish_actions) = commit_actions.get(&self.publisher.get_publish_type().to_string()) {
+                    for publish_action in publish_actions {
+                        match get_action_deserialised::<MockOnCommitKafkaMessage>(publish_action.clone()) {
+                            Ok(_) => {
                                 match headers.get("feedbackType").map(|f| f.to_owned()) {
                                     Some(feedback) if feedback == FeedbackTypeHeader::Error.to_string() => {
                                         self.publisher.send_error_feedback(version).await.unwrap();
@@ -201,14 +201,14 @@ impl ActionService for MockActionService {
                                     }
                                 };
                             }
-                        }
-                        Err(err) => {
-                            error!(
-                                "Failed to deserialise for version={version} key={} for data={:?} with error={:?}",
-                                &self.publisher.get_publish_type(),
-                                err.data,
-                                err.reason
-                            );
+                            Err(err) => {
+                                error!(
+                                    "Failed to deserialise for version={version} key={} for data={:?} with error={:?}",
+                                    &self.publisher.get_publish_type(),
+                                    err.data,
+                                    err.reason
+                                );
+                            }
                         }
                     }
                 }

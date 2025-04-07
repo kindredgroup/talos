@@ -1,7 +1,7 @@
 use ahash::HashMap;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::value::RawValue;
 use strum::{Display, EnumIter, EnumString};
 use talos_certifier::ports::errors::MessagePublishError;
 
@@ -50,7 +50,7 @@ pub trait MessengerSystemService {
 #[derive(Debug, Clone)]
 pub struct MessengerCommitActions {
     pub version: u64,
-    pub commit_actions: HashMap<String, Value>,
+    pub commit_actions: HashMap<String, Vec<Box<RawValue>>>,
     pub headers: HashMap<String, String>,
 }
 

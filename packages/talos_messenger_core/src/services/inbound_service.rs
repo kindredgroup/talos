@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ahash::{HashMap, HashMapExt};
+use ahash::HashMap;
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
@@ -88,24 +88,19 @@ where
     ///
     async fn process_next_actions(&mut self) -> MessengerServiceResult {
         let items_to_process = self.suffix.get_suffix_items_to_process();
-        for item in items_to_process {
-            let ver = item.version;
 
-            let mut headers = item.headers;
+        for mut payload in items_to_process {
+            let ver = payload.version;
+
+            // let mut headers = payload.headers;
             let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
-            headers.insert(MessengerStateTransitionTimestamps::StartOnCommitActions.to_string(), timestamp);
+            payload
+                .headers
+                .insert(MessengerStateTransitionTimestamps::StartOnCommitActions.to_string(), timestamp);
 
-            let payload_to_send = MessengerCommitActions {
-                version: ver,
-                commit_actions: item.actions.iter().fold(HashMap::new(), |mut acc, (key, value)| {
-                    acc.insert(key.to_string(), value.get_payload().clone());
-                    acc
-                }),
-                headers,
-            };
             // send for publishing
 
-            self.tx_actions_channel.send(payload_to_send).await.map_err(|e| MessengerServiceError {
+            self.tx_actions_channel.send(payload).await.map_err(|e| MessengerServiceError {
                 kind: crate::errors::MessengerServiceErrorKind::Channel,
                 reason: e.to_string(),
                 data: Some(ver.to_string()),
@@ -141,7 +136,9 @@ where
         if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
             // error!("Pruning till index {index_to_prune}");
             // Call prune method on suffix.
-            let _ = self.suffix.prune_till_index(index_to_prune);
+            if let Ok(pruned_items) = self.suffix.prune_till_index(index_to_prune) {
+                drop(pruned_items);
+            }
             debug!(
                 "[Suffix Pruning] suffix after prune printed as tuple of (index, ver, decsision_ver) \n\n {:?}",
                 self.suffix.retrieve_all_some_vec_items()
@@ -331,6 +328,9 @@ where
                                 let new_offset = if new_prune_version.eq(&last_version) {
                                     if let Some(decision_vers) = last_version_decision_ver {
                                         debug!("Updating to decision offset ({:?})", decision_vers);
+
+                                        // error!("Resetting suffix to initial state");
+                                        // self.suffix.reset();
                                         decision_vers
                                     } else {
                                         new_prune_version
@@ -346,6 +346,7 @@ where
                                         error!("[Commit] Error committing {err:?}");
                                     }
                                     Ok(_) => {
+                                        info!("Committed to new offset {new_offset}");
                                         self.last_committed_version = new_offset;
                                     },
                                 }

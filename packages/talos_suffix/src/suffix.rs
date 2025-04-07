@@ -58,6 +58,20 @@ where
         Suffix { meta, messages }
     }
 
+    pub fn reset(&mut self) {
+        let meta = SuffixMeta {
+            head: 0,
+            last_insert_vers: 0,
+            prune_index: None,
+            ..self.meta
+        };
+
+        let messages = VecDeque::with_capacity(1_000);
+
+        self.meta = meta;
+        self.messages = messages;
+    }
+
     pub fn index_from_head(&self, version: u64) -> Option<usize> {
         let head = self.meta.head;
         if version < head {
@@ -373,9 +387,10 @@ where
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
         info!(
-            "Suffix message length before pruning={} and current suffix head={}",
+            "Suffix message length before pruning={} and current suffix head={} | suffix capacity = {}",
             self.messages.len(),
-            self.meta.head
+            self.meta.head,
+            self.messages.capacity(),
         );
         let start_ms = Instant::now();
 
@@ -390,13 +405,17 @@ where
         } else {
             self.update_head(0)
         }
+        // let new_suffix_capacity = self.messages.len() + 1_000;
+        // let final_capacity = if new_suffix_capacity > 400_000 { new_suffix_capacity } else { 400_000 };
+        // self.messages.shrink_to(final_capacity);
 
         info!(
-            "Suffix message length after pruning={} and new suffix head={} | Prune took {} microseconds and update head took {} microseconds",
+            "Suffix message length after pruning={} and new suffix head={} | Prune took {} microseconds and update head took {} microseconds | suffix capacity = {}",
             self.messages.len(),
             self.meta.head,
             drain_end_ms,
-            start_ms_2.elapsed().as_micros()
+            start_ms_2.elapsed().as_micros(),
+            self.messages.capacity()
         );
 
         Ok(drained_entries)
