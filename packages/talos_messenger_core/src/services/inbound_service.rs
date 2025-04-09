@@ -303,52 +303,63 @@ where
         }
 
         let current_feedbacks = self.rx_feedback_channel.max_capacity() - self.rx_feedback_channel.capacity();
-        let feedback_limit = current_feedbacks.max(100);
+        let feedback_limit = current_feedbacks.max(30);
         tokio::select! {
             // Receive feedback from publisher.
-            _result = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer,feedback_limit) => {
-                // // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
-                let mut last_version = None;
-                let feedback_buffer = self.feedback_buffer.clone();
-                for feedback_result in feedback_buffer {
-                    match feedback_result {
-                        MessengerChannelFeedback::Error(version, key, message_error) => {
-                            error!("Failed to process version={version} with error={message_error:?}");
-                            self.handle_action_failed(version, &key);
-                            last_version = Some(version);
+            // _result = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer,feedback_limit) => {
+            //     // // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
+            //     let mut last_version = None;
+            //     let start_ms = Instant::now();
+            //     let buffer_len = self.feedback_buffer.len();
+            //     let feedback_buffer = self.feedback_buffer.clone();
+            //     for feedback_result in feedback_buffer {
+            //         match feedback_result {
+            //             MessengerChannelFeedback::Error(version, key, message_error) => {
+            //                 error!("Failed to process version={version} with error={message_error:?}");
+            //                 self.handle_action_failed(version, &key);
+            //                 last_version = Some(version);
 
-                        },
-                        MessengerChannelFeedback::Success(version, key) => {
-                            debug!("Successfully processed version={version} with action_key={key}");
-                            self.handle_action_success(version, &key);
-                            last_version = Some(version);
-                        },
-                    }
-                }
-
-                if let Some(version) = last_version {
-                    if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-                        self.update_commit_offset(new_prune_version);
-                    }
-                }
-                self.feedback_buffer.clear();
-
-            }
-            // Some(feedback_result) = self.rx_feedback_channel.recv() => {
-            //     // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
-            //     match feedback_result {
-            //         MessengerChannelFeedback::Error(version, key, message_error) => {
-            //             error!("Failed to process version={version} with error={message_error:?}");
-            //             self.handle_action_failed(version, &key);
-
-            //         },
-            //         MessengerChannelFeedback::Success(version, key) => {
-            //             debug!("Successfully processed version={version} with action_key={key}");
-            //             self.handle_action_success(version, &key);
-            //         },
+            //             },
+            //             MessengerChannelFeedback::Success(version, key) => {
+            //                 debug!("Successfully processed version={version} with action_key={key}");
+            //                 self.handle_action_success(version, &key);
+            //                 last_version = Some(version);
+            //             },
+            //         }
             //     }
 
+            //     if let Some(version) = last_version {
+            //         if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+            //             self.update_commit_offset(new_prune_version);
+            //         }
+            //     }
+            //     self.feedback_buffer.clear();
+            //     warn!("Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms", start_ms.elapsed().as_millis());
+
+
             // }
+            Some(feedback_result) = self.rx_feedback_channel.recv() => {
+                // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
+                match feedback_result {
+                    MessengerChannelFeedback::Error(version, key, message_error) => {
+                        error!("Failed to process version={version} with error={message_error:?}");
+                        self.handle_action_failed(version, &key);
+
+                        if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                            self.update_commit_offset(new_prune_version);
+                        }
+                    },
+                    MessengerChannelFeedback::Success(version, key) => {
+                        debug!("Successfully processed version={version} with action_key={key}");
+                        self.handle_action_success(version, &key);
+
+                        if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                            self.update_commit_offset(new_prune_version);
+                        }
+                    },
+                }
+
+            }
             // 1. Consume message.
             // Ok(Some(msg)) = self.message_receiver.consume_message() => {
             reciever_result = self.message_receiver.consume_message_with_timeout(self.timeout_ms) => {
@@ -438,6 +449,8 @@ where
             }
             // Periodically check and update the commit frequency and prune index.
             _ = self.commit_interval.tick() => {
+
+                info!("Inside interval tick arm");
 
                 // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
                 // if !self.feedback_buffer.is_empty() {

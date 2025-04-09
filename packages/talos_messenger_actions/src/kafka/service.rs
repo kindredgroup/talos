@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use futures_util::future::join_all;
 use log::{debug, error, info, warn};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, Semaphore};
 
 use talos_messenger_core::{
     core::{ActionService, MessengerChannelFeedback, MessengerCommitActions, MessengerPublisher, MessengerSystemService},
@@ -20,6 +20,8 @@ pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Sen
     pub publisher: Arc<M>,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
     pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
+    /// Limit the number of i/o tasks
+    pub semaphore: Arc<Semaphore>,
 }
 
 #[async_trait]
@@ -52,8 +54,14 @@ where
                         let publish_action_type = self.publisher.get_publish_type().to_string();
                         let publisher = self.publisher.clone();
                         let feedback_channel = self.tx_feedback_channel.clone();
+                        let semaphore = self.semaphore.clone();
+                        // let permits_many = semaphore.acquire_many(publish_actions.len()).await.unwrap(); //TODO: GK handle this error instead of unwrap.
+                        // permits_many.num_permits()
+
                         async move {
                             for publish_action in publish_actions {
+                                let permit = semaphore.clone().acquire_owned().await.unwrap(); //TODO: GK handle this error instead of unwrap.
+
                                 let publish_action_type = publish_action_type.clone();
                                 let publisher = publisher.clone();
                                 let feedback_channel = feedback_channel.clone();
@@ -84,7 +92,10 @@ where
                                                         )
                                                         .await
                                                     {
-                                                        Ok(_) => break,
+                                                        Ok(_) => {
+                                                            drop(permit);
+                                                            break;
+                                                        }
                                                         Err(_) => {}
                                                     };
                                                 }
@@ -104,7 +115,10 @@ where
                                                         )
                                                         .await
                                                     {
-                                                        Ok(_) => break,
+                                                        Ok(_) => {
+                                                            drop(permit);
+                                                            break;
+                                                        }
                                                         Err(_) => {}
                                                     };
                                                 }

@@ -98,7 +98,8 @@ where
             // Add headers if applicable
             let new_record = new_record.headers(build_kafka_headers(headers.clone()));
 
-            match self.producer.send(new_record, Timeout::Never).await {
+            //TODO: GK - Remove the hardcoded timeout milliseconds.
+            match self.producer.send(new_record, Timeout::After(Duration::from_millis(10))).await {
                 Ok(_) => {
                     result = Ok(());
                     break;
@@ -115,7 +116,7 @@ where
                             error_record.key(),
                             retry_duration.as_millis()
                         );
-                    tokio::time::sleep(min_duration_ms * retry_count).await;
+                    // tokio::time::sleep(min_duration_ms * retry_count).await;
                 }
             };
         }

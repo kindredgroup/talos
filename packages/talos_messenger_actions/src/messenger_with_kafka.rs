@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ahash::HashMap;
 use async_trait::async_trait;
 use log::{debug, error};
@@ -155,6 +157,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
         publisher: messenger_kafka_publisher.into(),
         rx_actions_channel,
         tx_feedback_channel,
+        semaphore: Arc::new(tokio::sync::Semaphore::new(50_000)),
     };
 
     // END - Publish service
