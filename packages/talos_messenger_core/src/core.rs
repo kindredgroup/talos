@@ -54,6 +54,7 @@ pub struct MessengerCommitActions {
     pub headers: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone)]
 pub enum MessengerChannelFeedback {
     Error(u64, String, Box<MessengerActionError>),
     Success(u64, String),

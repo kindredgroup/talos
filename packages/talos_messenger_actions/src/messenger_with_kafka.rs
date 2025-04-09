@@ -1,7 +1,7 @@
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::debug;
-use rdkafka::producer::ProducerContext;
+use log::{debug, error};
+use rdkafka::{producer::ProducerContext, IntoOpaque};
 use talos_certifier::ports::{errors::MessagePublishError, MessageReciever};
 use talos_certifier_adapters::KafkaConsumer;
 use talos_messenger_core::{
@@ -22,12 +22,16 @@ use crate::kafka::{
     service::KafkaActionService,
 };
 
-pub struct MessengerKafkaPublisher<C: ProducerContext + 'static> {
-    pub publisher: KafkaProducer<C>,
+pub struct MessengerKafkaPublisher<C, D>
+where
+    C: ProducerContext + 'static,
+    D: IntoOpaque + Clone,
+{
+    pub publisher: KafkaProducer<C, D>,
 }
 
 #[async_trait]
-impl<C> MessengerPublisher for MessengerKafkaPublisher<C>
+impl<C> MessengerPublisher for MessengerKafkaPublisher<C, Box<MessengerProducerDeliveryOpaque>>
 where
     C: ProducerContext<DeliveryOpaque = Box<MessengerProducerDeliveryOpaque>> + 'static,
 {
@@ -70,14 +74,16 @@ where
             headers_to_publish.extend(payload_header);
         }
 
-        self.publisher.publish_to_topic(
-            &payload.topic,
-            payload.partition,
-            payload.key.as_deref(),
-            payload_str,
-            headers_to_publish,
-            Box::new(delivery_opaque),
-        )
+        self.publisher
+            .publish_to_topic(
+                &payload.topic,
+                payload.partition,
+                payload.key.as_deref(),
+                payload_str,
+                headers_to_publish,
+                Box::new(delivery_opaque),
+            )
+            .await
     }
 }
 
@@ -90,7 +96,7 @@ impl Default for ChannelBuffers {
     fn default() -> Self {
         Self {
             actions_channel: 10_000,
-            feedback_channel: 10_000,
+            feedback_channel: 40_000,
         }
     }
 }
@@ -156,5 +162,11 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
         services: vec![Box::new(inbound_service), Box::new(publish_service)],
     };
 
-    messenger_service.run().await
+    let result = if let Err(err) = messenger_service.run().await {
+        error!("Exiting messenger service due to error {err:?}");
+        Err(err)
+    } else {
+        Ok(())
+    };
+    result
 }

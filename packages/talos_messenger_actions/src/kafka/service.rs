@@ -1,14 +1,14 @@
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use futures_util::future::join_all;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
 use talos_messenger_core::{
     core::{ActionService, MessengerChannelFeedback, MessengerCommitActions, MessengerPublisher, MessengerSystemService},
-    errors::MessengerServiceResult,
+    errors::{MessengerActionError, MessengerServiceResult},
     suffix::MessengerStateTransitionTimestamps,
     utlis::get_action_deserialised,
 };
@@ -29,6 +29,12 @@ where
 {
     async fn process_action(&mut self) -> MessengerServiceResult {
         let actions_result = self.rx_actions_channel.recv().await;
+        // if self.rx_actions_channel.max_capacity() - self.rx_actions_channel.capacity() > 0 {
+        //     warn!(
+        //         "Number of actions on channel = {:?}",
+        //         self.rx_actions_channel.max_capacity() - self.rx_actions_channel.capacity()
+        //     );
+        // }
 
         match actions_result {
             Some(actions) => {
@@ -39,35 +45,89 @@ where
                 } = actions;
 
                 if let Some(publish_actions) = commit_actions.get(&self.publisher.get_publish_type().to_string()) {
-                    let total_len = publish_actions.len() as u32;
-                    let mut publish_vec = vec![];
-                    for publish_action in publish_actions {
-                        match get_action_deserialised::<KafkaAction>(publish_action.clone()) {
-                            Ok(action) => {
-                                let headers_cloned = headers.clone();
+                    tokio::spawn({
+                        let total_len = publish_actions.len() as u32;
+                        let publish_actions = publish_actions.clone();
+                        let mut publish_vec = vec![];
+                        let publish_action_type = self.publisher.get_publish_type().to_string();
+                        let publisher = self.publisher.clone();
+                        let feedback_channel = self.tx_feedback_channel.clone();
+                        async move {
+                            for publish_action in publish_actions {
+                                let publish_action_type = publish_action_type.clone();
+                                let publisher = publisher.clone();
+                                let feedback_channel = feedback_channel.clone();
 
-                                let publisher = self.publisher.clone();
-                                let mut headers = headers_cloned.clone();
-                                let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+                                match get_action_deserialised::<KafkaAction>(publish_action.clone()) {
+                                    Ok(action) => {
+                                        let headers_cloned = headers.clone();
 
-                                headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
-                                publish_vec.push(async move {
-                                    if let Err(publish_error) = publisher.send(version, action, headers, total_len).await {
-                                        error!("Failed to publish message for version={version} with error {publish_error}")
+                                        let mut headers = headers_cloned.clone();
+                                        let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
+
+                                        headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
+                                        let feedback_channel = feedback_channel.clone();
+                                        publish_vec.push(async move {
+                                            if let Err(publish_error) = publisher.send(version, action.clone(), headers, total_len).await {
+                                                error!("Failed to publish message for version={version} with error {publish_error}");
+
+                                                loop {
+                                                    let messenger_error = MessengerActionError {
+                                                        kind: talos_messenger_core::errors::MessengerActionErrorKind::Publishing,
+                                                        reason: publish_error.to_string(),
+                                                        data: format!("version={version} message={action:?}"),
+                                                    };
+                                                    match feedback_channel
+                                                        .send_timeout(
+                                                            MessengerChannelFeedback::Error(version, "kafka".to_string(), messenger_error.into()),
+                                                            Duration::from_millis(40), // TODO: GK - Avoid hardcoded values.
+                                                        )
+                                                        .await
+                                                    {
+                                                        Ok(_) => break,
+                                                        Err(_) => {}
+                                                    };
+                                                }
+
+                                                // if let Err(send_feedback_error) = feedback_channel
+                                                //     .send(MessengerChannelFeedback::Error(version, publish_action_type, messenger_error.into()))
+                                                //     .await
+                                                // {
+                                                //     error!("Failed sending feedback over channel due to error {send_feedback_error:?}");
+                                                // };
+                                            } else {
+                                                loop {
+                                                    match feedback_channel
+                                                        .send_timeout(
+                                                            MessengerChannelFeedback::Success(version, "kafka".to_string()),
+                                                            Duration::from_millis(40), // TODO: GK - Avoid hardcoded values.
+                                                        )
+                                                        .await
+                                                    {
+                                                        Ok(_) => break,
+                                                        Err(_) => {}
+                                                    };
+                                                }
+                                            }
+                                        });
                                     }
-                                });
+                                    Err(err) => {
+                                        error!(
+                                            "Failed to deserialise for version={version} key={} for data={:?} with error={:?}",
+                                            &publish_action_type, err.data, err.reason
+                                        );
+                                        if let Err(send_feedback_error) = feedback_channel
+                                            .send(MessengerChannelFeedback::Error(version, publish_action_type, err.into()))
+                                            .await
+                                        {
+                                            error!("Failed sending feedback over channel due to error {send_feedback_error:?}");
+                                        };
+                                    }
+                                }
                             }
-                            Err(err) => {
-                                error!(
-                                    "Failed to deserialise for version={version} key={} for data={:?} with error={:?}",
-                                    &self.publisher.get_publish_type(),
-                                    err.data,
-                                    err.reason
-                                );
-                            }
+                            join_all(publish_vec).await;
                         }
-                    }
-                    join_all(publish_vec).await;
+                    });
                 }
             }
             None => {

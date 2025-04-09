@@ -1,10 +1,15 @@
+use std::time::Duration;
+
 use futures_executor::block_on;
 use log::error;
 use rdkafka::{producer::ProducerContext, ClientContext};
 use talos_messenger_core::{core::MessengerChannelFeedback, errors::MessengerActionError};
-use tokio::sync::mpsc;
+use tokio::{
+    runtime::Handle,
+    sync::mpsc::{self, error::SendTimeoutError},
+};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MessengerProducerDeliveryOpaque {
     pub version: u64,
     pub total_publish_count: u32,
@@ -29,9 +34,24 @@ impl ProducerContext for MessengerProducerContext {
         match result {
             Ok(_msg) => {
                 // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
-                if let Err(error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(version, "kafka".to_string()))) {
-                    error!("[Messenger Producer Context] Error sending feedback for version={version} with error={error:?}");
-                };
+                // if let Err(error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Success(version, "kafka".to_string()))) {
+                //     error!("[Messenger Producer Context] Error sending feedback for version={version} with error={error:?}");
+                // };
+                let _ = Handle::current().block_on(async {
+                    loop {
+                        match self
+                            .tx_feedback_channel
+                            .send_timeout(
+                                MessengerChannelFeedback::Success(version, "kafka".to_string()),
+                                Duration::from_millis(40), // TODO: GK - Avoid hardcoded values.
+                            )
+                            .await
+                        {
+                            Ok(_) => break,
+                            Err(_) => {}
+                        };
+                    }
+                });
             }
             Err((publish_error, borrowed_message)) => {
                 error!(
@@ -45,13 +65,29 @@ impl ProducerContext for MessengerProducerContext {
                     data: format!("version={version} message={:#?}", borrowed_message.detach()),
                 };
                 // Safe to ignore error check, as error occurs only if receiver is closed or dropped, which would happen if the thread receving has errored. In such a scenario, the publisher thread would also shutdown.
-                if let Err(send_error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Error(
-                    version,
-                    "kafka".to_string(),
-                    Box::new(messenger_error),
-                ))) {
-                    error!("[Messenger Producer Context] Error sending error feedback for version={version} with \npublish_error={publish_error:?} \nchannel send_error={send_error:?}");
-                };
+                // if let Err(send_error) = block_on(self.tx_feedback_channel.send(MessengerChannelFeedback::Error(
+                //     version,
+                //     "kafka".to_string(),
+                //     Box::new(messenger_error),
+                // ))) {
+                //     error!("[Messenger Producer Context] Error sending error feedback for version={version} with \npublish_error={publish_error:?} \nchannel send_error={send_error:?}");
+                // };
+                let _ = Handle::current().block_on(async {
+                    let messenger_error_boxed = Box::new(messenger_error);
+                    loop {
+                        match self
+                            .tx_feedback_channel
+                            .send_timeout(
+                                MessengerChannelFeedback::Error(version, "kafka".to_string(), messenger_error_boxed.clone()),
+                                Duration::from_millis(40), // TODO: GK - Avoid hardcoded values.
+                            )
+                            .await
+                        {
+                            Ok(_) => break,
+                            Err(_) => {}
+                        };
+                    }
+                });
             }
         }
     }

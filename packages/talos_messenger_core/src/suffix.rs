@@ -442,7 +442,8 @@ where
 
     fn are_all_actions_complete_for_version(&self, version: u64) -> SuffixResult<bool> {
         if let Ok(Some(item)) = self.get(version) {
-            Ok(item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed()))
+            Ok(item.item.get_commit_actions().iter().all(|(_, x)| x.is_completed())
+                || item.item.get_state() == &SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing))
         } else {
             warn!("could not find item for version={version}");
             Err(talos_suffix::errors::SuffixError::ItemNotFound(version, None))

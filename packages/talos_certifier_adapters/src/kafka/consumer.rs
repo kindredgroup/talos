@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, info, warn};
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -82,13 +82,23 @@ where
 {
     type Message = ChannelMessage<C>;
 
+    async fn consume_message_with_timeout(&mut self, timeout_ms: u64) -> Result<Option<Self::Message>, MessageReceiverError> {
+        if timeout_ms > 0 {
+            warn!("Sleeping for {timeout_ms} ms, before reading the next message.");
+            tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
+        }
+        self.consume_message().await
+    }
+
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
+        // info!("Consuming next message....");
         let message_received = self.consumer.recv().await.map_err(|e| MessageReceiverError {
             kind: MessageReceiverErrorKind::ReceiveError,
             version: None,
             reason: e.to_string(),
             data: None,
         })?;
+        // info!("Received next message....");
 
         let partition = message_received.partition();
 

@@ -20,6 +20,7 @@ pub enum MessengerServiceErrorKind {
     System,
     Channel,
     Messaging,
+    TimedOut,
 }
 
 #[derive(Debug, ThisError, PartialEq, Clone)]

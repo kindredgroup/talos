@@ -13,6 +13,7 @@ pub trait MessageReciever: SharedPortTraits {
     type Message;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
+    async fn consume_message_with_timeout(&mut self, timeout_ms: u64) -> Result<Option<Self::Message>, MessageReceiverError>;
     async fn subscribe(&self) -> Result<(), SystemServiceError>;
     fn commit(&self) -> Result<(), Box<SystemServiceError>>;
     fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>>;

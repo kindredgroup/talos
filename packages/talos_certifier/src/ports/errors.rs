@@ -40,6 +40,7 @@ pub enum MessageReceiverErrorKind {
     SaveVersion,
     SubscribeError,
     CommitError,
+    TimedOut,
 }
 #[derive(Debug, Clone, Eq, PartialEq, ThisError)]
 #[error("Message Receiver Error for version={version:?} with reason={reason} and data={data:?} ")]
