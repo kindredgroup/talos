@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,

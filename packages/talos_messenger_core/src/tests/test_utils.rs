@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::{debug, error};
+use log::{debug, error, warn};
 use strum::{Display, EnumString};
 use talos_certifier::{
     certifier::Outcome,
@@ -40,6 +42,14 @@ pub struct MockReciever {
 #[async_trait]
 impl MessageReciever for MockReciever {
     type Message = ChannelMessage<MessengerCandidateMessage>;
+
+    async fn consume_message_with_timeout(&mut self, timeout_ms: u64) -> Result<Option<Self::Message>, MessageReceiverError> {
+        if timeout_ms > 0 {
+            warn!("Sleeping for {timeout_ms} ms, before reading the next message.");
+            tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
+        }
+        self.consume_message().await
+    }
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let msg = self.consumer.recv().await.unwrap();

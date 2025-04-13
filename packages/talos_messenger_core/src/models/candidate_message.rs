@@ -1,6 +1,5 @@
-use log::{error, warn};
-use serde::{Deserialize, Deserializer, Serialize};
-use serde_json::{value::RawValue, Value};
+use serde::{Deserialize, Serialize};
+use serde_json::value::RawValue;
 use std::collections::HashMap;
 use talos_certifier::core::CandidateMessageBaseTrait;
 
@@ -21,7 +20,7 @@ pub struct MessengerCandidateMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default, deserialize_with = "deserialize_oncommit_actions")]
+    // #[serde(default, deserialize_with = "deserialize_oncommit_actions")]
     pub on_commit: Option<OnCommitActions>,
     /// Cohort started certification
     #[serde(default)]
@@ -66,41 +65,43 @@ impl CandidateMessageBaseTrait for MessengerCandidateMessage {
     }
 }
 
-fn deserialize_oncommit_actions<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<OnCommitActions>, D::Error> {
-    let val = Value::deserialize(deserializer)?;
+// Selectively deserialising `on_commit` actions using `Value::deserialize` is still expensive on very high payload.
+// Instead if deserialization fails, catch the error and skip inserting the candidate to suffix.
+// fn deserialize_oncommit_actions<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<OnCommitActions>, D::Error> {
+//     let val = Value::deserialize(deserializer)?;
 
-    let final_deserialized_output = match val {
-        Value::Null => Ok(None),
-        Value::Object(map) => {
-            let mut result = HashMap::new();
-            for (k1, v1) in map {
-                if let Value::Object(inner_map) = v1 {
-                    let mut inner_result = HashMap::new();
-                    for (k2, v2) in inner_map {
-                        if let Ok(raw_value) = serde_json::from_value(v2) {
-                            inner_result.insert(k2, raw_value);
-                        } else {
-                            warn!("Failed to deserialise on_commit action. Inner value is not deserializable to Vec<Box<RawValue>>");
-                            return Ok(None); // If any inner value fails, return None.
-                        }
-                    }
-                    result.insert(k1, inner_result);
-                } else {
-                    warn!("Failed to deserialise as on_commit action. Outer value is not Object type.");
-                    return Ok(None); // If any outer value is not an object, return None.
-                }
-            }
-            Ok(Some(result))
-        }
-        // Return None for any other type
-        _ => {
-            warn!("Failed to deserialise as on_commit action as it is not of the expected structure. Received on_commit_actions = {val:?}");
-            Ok(None)
-        }
-    };
+//     let final_deserialized_output = match val {
+//         Value::Null => Ok(None),
+//         Value::Object(map) => {
+//             let mut result = HashMap::new();
+//             for (k1, v1) in map {
+//                 if let Value::Object(inner_map) = v1 {
+//                     let mut inner_result = HashMap::new();
+//                     for (k2, v2) in inner_map {
+//                         if let Ok(raw_value) = serde_json::from_value(v2) {
+//                             inner_result.insert(k2, raw_value);
+//                         } else {
+//                             warn!("Failed to deserialise on_commit action. Inner value is not deserializable to Vec<Box<RawValue>>");
+//                             return Ok(None); // If any inner value fails, return None.
+//                         }
+//                     }
+//                     result.insert(k1, inner_result);
+//                 } else {
+//                     warn!("Failed to deserialise as on_commit action. Outer value is not Object type.");
+//                     return Ok(None); // If any outer value is not an object, return None.
+//                 }
+//             }
+//             Ok(Some(result))
+//         }
+//         // Return None for any other type
+//         _ => {
+//             warn!("Failed to deserialise as on_commit action as it is not of the expected structure. Received on_commit_actions = {val:?}");
+//             Ok(None)
+//         }
+//     };
 
-    final_deserialized_output
-}
+//     final_deserialized_output
+// }
 
 // // $coverage:ignore-start
 #[cfg(test)]
@@ -151,40 +152,40 @@ mod tests {
         // error!("deserialised candidate message: {deserialised:#?}");
         assert!(deserialised.on_commit.is_some());
     }
-    #[test]
-    fn deserialise_invalid_on_commit_action() {
-        let on_commit = json!("Test");
+    // #[test]
+    // fn deserialise_invalid_on_commit_action() {
+    //     let on_commit = json!("Test");
 
-        let json = json!({
-            "xid": "1a5793f8-4ca3-420f-8e81-219e7b039e2a",
-            "agent": "test-agent",
-            "cohort": "test-cohort",
-            "readset": [
-                "c5893d97-30f6-446d-a349-1741f7eff599"
-            ],
-            "readvers": [],
-            "snapshot": 2,
-            "writeset": [
-                "c5893d97-30f6-446d-a349-1741f7eff599"
-            ],
-            "statemap": [
-                {
-                    "SomeStateMap": {
-                        "initialVersion": 0,
-                        "newVersion": 20
-                    }
-                }
-            ],
-            "onCommit": on_commit,
-            "certificationStartedAt": 0,
-            "requestCreatedAt": 0,
-            "publishedAt": 0,
-            "receivedAt": 0,
-        });
+    //     let json = json!({
+    //         "xid": "1a5793f8-4ca3-420f-8e81-219e7b039e2a",
+    //         "agent": "test-agent",
+    //         "cohort": "test-cohort",
+    //         "readset": [
+    //             "c5893d97-30f6-446d-a349-1741f7eff599"
+    //         ],
+    //         "readvers": [],
+    //         "snapshot": 2,
+    //         "writeset": [
+    //             "c5893d97-30f6-446d-a349-1741f7eff599"
+    //         ],
+    //         "statemap": [
+    //             {
+    //                 "SomeStateMap": {
+    //                     "initialVersion": 0,
+    //                     "newVersion": 20
+    //                 }
+    //             }
+    //         ],
+    //         "onCommit": on_commit,
+    //         "certificationStartedAt": 0,
+    //         "requestCreatedAt": 0,
+    //         "publishedAt": 0,
+    //         "receivedAt": 0,
+    //     });
 
-        let deserialised: MessengerCandidateMessage = serde_json::from_value(json).unwrap();
-        assert!(deserialised.on_commit.is_none());
-    }
+    //     let deserialised: MessengerCandidateMessage = serde_json::from_value(json).unwrap();
+    //     assert!(deserialised.on_commit.is_none());
+    // }
     #[test]
     fn deserialise_no_on_commit_action() {
         let json = json!({

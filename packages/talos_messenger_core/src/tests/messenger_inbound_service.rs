@@ -16,6 +16,12 @@ use crate::{
     },
 };
 
+fn get_messenger_inbound_config() -> MessengerInboundServiceConfig {
+    let mut allowed_actions = AHashMap::new();
+    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
+
+    MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000), None)
+}
 /// This test doesn't look at the feedbacks and asserts the below scenarios:
 ///  - Version 0 is ignored and has no effect on suffix `head` and `prune_index`
 ///  - Next version of candidate will be set as the `head`. Stored at index 0.
@@ -26,10 +32,8 @@ use crate::{
 #[tokio::test]
 async fn test_suffix_without_feedback() {
     // START - Prep before test
-    let mut allowed_actions = AHashMap::new();
-    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
-    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let inbound_service_configs = get_messenger_inbound_config();
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -134,10 +138,8 @@ async fn test_suffix_without_feedback() {
 #[tokio::test]
 async fn test_suffix_item_state_by_on_commit() {
     // START - Prep before test
-    let mut allowed_actions = AHashMap::new();
-    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
-    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let inbound_service_configs = get_messenger_inbound_config();
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -230,10 +232,8 @@ async fn test_suffix_item_state_by_on_commit() {
 #[tokio::test]
 async fn test_suffix_item_state_by_decision() {
     // START - Prep before test
-    let mut allowed_actions = AHashMap::new();
-    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
-    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let inbound_service_configs = get_messenger_inbound_config();
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -286,10 +286,7 @@ async fn test_suffix_item_state_by_decision() {
 
 #[tokio::test]
 async fn test_suffix_with_success_feedbacks_only() {
-    let mut allowed_actions = AHashMap::new();
-    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
-
-    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let inbound_service_configs = get_messenger_inbound_config();
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -456,10 +453,7 @@ async fn test_suffix_with_success_feedbacks_only() {
 // --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 #[tokio::test]
 async fn test_suffix_exhaustive_state_transitions_without_pruning() {
-    let mut allowed_actions = AHashMap::new();
-    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
-
-    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let inbound_service_configs = get_messenger_inbound_config();
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,
@@ -773,10 +767,7 @@ async fn test_suffix_exhaustive_state_transitions_without_pruning() {
 /// For this scenario, the prune_index can move forward, thereby allowing the suffix to prune
 #[tokio::test]
 async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_early_complete_state() {
-    let mut allowed_actions = AHashMap::new();
-    allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
-
-    let inbound_service_configs = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+    let inbound_service_configs = get_messenger_inbound_config();
     let configs = MessengerServicesTesterConfigs::new(
         SuffixConfig {
             capacity: 50,

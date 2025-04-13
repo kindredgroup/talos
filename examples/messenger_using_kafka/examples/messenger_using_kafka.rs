@@ -40,6 +40,9 @@ async fn main() {
         channel_buffers: None,
         commit_size: Some(2_000),
         commit_frequency: None,
+        kafka_producer_worker_pool: Some(100_000),
+        max_feedback_await_send_ms: Some(10),
+        max_timeout_before_read_message_ms: Some(5),
     };
 
     messenger_with_kafka(config).await.unwrap();

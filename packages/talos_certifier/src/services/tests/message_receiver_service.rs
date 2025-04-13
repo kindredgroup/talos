@@ -1,7 +1,11 @@
-use std::sync::{atomic::AtomicI64, Arc};
+use std::{
+    sync::{atomic::AtomicI64, Arc},
+    time::Duration,
+};
 
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
+use log::warn;
 use tokio::{
     sync::{broadcast, mpsc},
     task::JoinHandle,
@@ -24,6 +28,13 @@ struct MockReciever {
 #[async_trait]
 impl MessageReciever for MockReciever {
     type Message = ChannelMessage<CandidateMessage>;
+    async fn consume_message_with_timeout(&mut self, timeout_ms: u64) -> Result<Option<Self::Message>, MessageReceiverError> {
+        if timeout_ms > 0 {
+            warn!("Sleeping for {timeout_ms} ms, before reading the next message.");
+            tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
+        }
+        self.consume_message().await
+    }
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let msg = self.consumer.recv().await.unwrap();

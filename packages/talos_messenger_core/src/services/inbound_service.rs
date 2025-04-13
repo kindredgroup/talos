@@ -9,7 +9,7 @@ use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{
     sync::mpsc::{self},
-    time::{timeout, Instant, Interval},
+    time::Interval,
 };
 
 use crate::{
@@ -32,14 +32,24 @@ pub struct MessengerInboundServiceConfig {
     commit_frequency: u32,
     /// The allowed on_commit actions
     allowed_actions: HashMap<String, Vec<String>>,
+    /// When the number of messages coming is very high and if the feedbacks are not being processed and the channel filling up,
+    /// we need to introduce a small delay before reading messages so that the feedbacks can be picked up and processed.
+    /// - **Default** - 5ms
+    max_consume_new_message_wait_ms: u32,
 }
 
 impl MessengerInboundServiceConfig {
-    pub fn new(allowed_actions: HashMap<String, Vec<String>>, commit_size: Option<u32>, commit_frequency: Option<u32>) -> Self {
+    pub fn new(
+        allowed_actions: HashMap<String, Vec<String>>,
+        commit_size: Option<u32>,
+        commit_frequency: Option<u32>,
+        max_timeout_before_read_message_ms: Option<u32>,
+    ) -> Self {
         Self {
             allowed_actions,
             commit_size: commit_size.unwrap_or(5_000),
             commit_frequency: commit_frequency.unwrap_or(10 * 1_000),
+            max_consume_new_message_wait_ms: max_timeout_before_read_message_ms.unwrap_or(5),
         }
     }
 }
@@ -59,10 +69,9 @@ where
     last_committed_version: u64,
     /// The next version ready to be send for commit.
     next_version_to_commit: u64,
-    ///
-    timeout_ms: u64,
-    ///
-    feedback_buffer: Vec<MessengerChannelFeedback>,
+    /// Wait time in ms before consuming new incoming message.
+    /// This helps in giving feedback arm opportunity to process the feedback
+    consume_new_message_wait_ms: u32,
 }
 
 impl<M> MessengerInboundService<M>
@@ -77,7 +86,6 @@ where
         config: MessengerInboundServiceConfig,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
-        let buffer_capacity = rx_feedback_channel.max_capacity();
         Self {
             message_receiver,
             tx_actions_channel,
@@ -87,8 +95,7 @@ where
             commit_interval,
             last_committed_version: 0,
             next_version_to_commit: 0,
-            timeout_ms: 0,
-            feedback_buffer: Vec::with_capacity(buffer_capacity),
+            consume_new_message_wait_ms: 0,
         }
     }
     /// Get next versions with their commit actions to process.
@@ -96,7 +103,7 @@ where
     async fn process_next_actions(&mut self) -> MessengerServiceResult {
         let items_to_process = self.suffix.get_suffix_items_to_process();
 
-        info!("Total next actions to process... {}", items_to_process.len());
+        // info!("Total next actions to process... {}", items_to_process.len());
 
         for mut payload in items_to_process {
             let ver = payload.version;
@@ -109,73 +116,40 @@ where
 
             // send for publishing
 
-            // There is no point in sending more messages only for it to fail.
+            // If the actions channel has already reached the max capacity, we don't send this and any remaining messages from the loop, and exit the loop.
             if self.tx_actions_channel.capacity() == 0 {
-                let timeout_error = MessengerServiceError {
-                    kind: crate::errors::MessengerServiceErrorKind::TimedOut,
-                    reason: "Actions channel is at capacity. Timeout out sending actions".to_string(),
-                    data: Some(ver.to_string()),
-                    service: "Inbound Service".to_string(),
-                };
                 warn!(
-                    "We are already at max capacity in actions channel. Current capacity = {} | max capacity = {} ",
+                    "Actions channel at max capacity. This could mean that the actions are not picked for processing at the rate equal or faster than they are added from here. Current capacity = {} | max capacity = {} ",
                     self.tx_actions_channel.capacity(),
                     self.tx_actions_channel.max_capacity()
                 );
                 break;
             } else {
-                match tokio::time::timeout(
-                    Duration::from_millis(30), //TODO: GK - make this configurable.
-                    self.tx_actions_channel.send(payload),
-                )
-                .await
-                {
-                    Ok(res) => match res {
-                        Ok(_) => {
-                            self.suffix.set_item_state(ver, SuffixItemState::Processing);
-                        }
-                        Err(err) => {
-                            error!("Failed sending actions for version {ver} with error {err:?}");
-                            let send_error = MessengerServiceError {
-                                kind: crate::errors::MessengerServiceErrorKind::Channel,
-                                reason: err.to_string(),
-                                data: Some(ver.to_string()),
-                                service: "Inbound Service".to_string(),
-                            };
-                            return Err(send_error);
-                        }
-                    },
-                    Err(_) => {
-                        //TODO: GK - Potential to timeout would be because the channel is full and we aren't able to push new messages. This would be ideal place to enable backpressure.
-                        warn!("Timed out waiting to send on_commit actions for version {ver}.");
-                        let timeout_error = MessengerServiceError {
-                            kind: crate::errors::MessengerServiceErrorKind::TimedOut,
-                            reason: "Timeout out sending actions".to_string(),
-                            data: Some(ver.to_string()),
-                            service: "Inbound Service".to_string(),
-                        };
+                match self.tx_actions_channel.try_send(payload) {
+                    // candidate's state is moved to `Processing`, only if send was successful.
+                    Ok(_) => {
+                        self.suffix.set_item_state(ver, SuffixItemState::Processing);
+                    }
+                    // If the queue is full, we don't move the state to `Processing` and therefore it will be picked in the next iteration.
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        warn!(
+                            "Actions channel at max capacity. This could mean that the actions are not picked for processing at the rate equal or faster than they are added from here. Current capacity = {} | max capacity = {} ",
+                            self.tx_actions_channel.capacity(),
+                            self.tx_actions_channel.max_capacity()
+                        );
                         break;
                     }
-                }
+                    Err(mpsc::error::TrySendError::Closed(msg)) => {
+                        error!("Failed to send actions over actions_channel as channel is closed. Action = {msg:?}");
+                        return Err(MessengerServiceError {
+                            kind: MessengerServiceErrorKind::Channel,
+                            reason: "Actions channel closed".to_string(),
+                            data: Some(msg.version.to_string()),
+                            service: "inbound service".to_string(),
+                        });
+                    }
+                };
             }
-
-            // {
-            //     error!("Failed sending actions for version {ver} with error {err:?}");
-            //     // return Err(err);
-            // } else {
-            // };
-            // if let Err(err) = self.tx_actions_channel.send(payload).await.map_err(|e| MessengerServiceError {
-            //     kind: crate::errors::MessengerServiceErrorKind::Channel,
-            //     reason: e.to_string(),
-            //     data: Some(ver.to_string()),
-            //     service: "Inbound Service".to_string(),
-            // }) {
-            //     error!("Failed sending actions for version {ver} with error {err:?}");
-            //     return Err(err);
-            // };
-
-            // Mark item as in process
-            info!("Finished sending next actions");
         }
 
         Ok(())
@@ -289,57 +263,26 @@ where
     }
 
     pub async fn run_once(&mut self) -> MessengerServiceResult {
-        // When both the actions and feedbacks channel are at max_capacity. We could potential reach
-        // a DEADLOCK if we continue to try consume new messages. Therefore we introduce a timeout so that
-        // the feedback arm gets sufficient time to process the records.
-        if self.rx_feedback_channel.capacity() == 0
-        // ||self.tx_actions_channel.capacity() <= 100
-        {
-            // TODO: GK - Avoid hardcoded value.
-            self.timeout_ms = 5;
-            info!("Timeout set to {}ms.", self.timeout_ms);
+        // When feedbacks channel is at max_capacity. We need to slow the consumptions of new messages and give time for feedbacks to be processed.
+        if self.rx_feedback_channel.capacity() == 0 {
+            // At the moment, we apply a fixed value for the timeout. Eventually when adaptive backpressure comes in, the timeout_ms would be computed based on the backpressure
+            // that needs to be exerted.
+            self.consume_new_message_wait_ms = self.config.max_consume_new_message_wait_ms;
+            debug!(
+                "Feedback channel reached max_capacity of {}. Adding a delay of {}ms before reading messages.",
+                self.rx_feedback_channel.max_capacity(),
+                self.consume_new_message_wait_ms
+            );
         } else {
-            self.timeout_ms = 0;
+            self.consume_new_message_wait_ms = 0;
         }
 
-        let current_feedbacks = self.rx_feedback_channel.max_capacity() - self.rx_feedback_channel.capacity();
-        let feedback_limit = current_feedbacks.max(30);
         tokio::select! {
-            // Receive feedback from publisher.
-            // _result = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer,feedback_limit) => {
-            //     // // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
-            //     let mut last_version = None;
-            //     let start_ms = Instant::now();
-            //     let buffer_len = self.feedback_buffer.len();
-            //     let feedback_buffer = self.feedback_buffer.clone();
-            //     for feedback_result in feedback_buffer {
-            //         match feedback_result {
-            //             MessengerChannelFeedback::Error(version, key, message_error) => {
-            //                 error!("Failed to process version={version} with error={message_error:?}");
-            //                 self.handle_action_failed(version, &key);
-            //                 last_version = Some(version);
-
-            //             },
-            //             MessengerChannelFeedback::Success(version, key) => {
-            //                 debug!("Successfully processed version={version} with action_key={key}");
-            //                 self.handle_action_success(version, &key);
-            //                 last_version = Some(version);
-            //             },
-            //         }
-            //     }
-
-            //     if let Some(version) = last_version {
-            //         if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-            //             self.update_commit_offset(new_prune_version);
-            //         }
-            //     }
-            //     self.feedback_buffer.clear();
-            //     warn!("Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms", start_ms.elapsed().as_millis());
-
-
-            // }
+            // 1. Consume feedbacks
+            // - This will mark the individual actions under a candidate as complete.
+            // - Check if all items under the candidate are complete and move the state to final state `SuffixItemState::Complete(..)`
+            // - Scans suffix from last prune_index to this version in candidate to update the `prune_index`.
             Some(feedback_result) = self.rx_feedback_channel.recv() => {
-                // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
                 match feedback_result {
                     MessengerChannelFeedback::Error(version, key, message_error) => {
                         error!("Failed to process version={version} with error={message_error:?}");
@@ -360,15 +303,27 @@ where
                 }
 
             }
-            // 1. Consume message.
-            // Ok(Some(msg)) = self.message_receiver.consume_message() => {
-            reciever_result = self.message_receiver.consume_message_with_timeout(self.timeout_ms) => {
-                //TODO: GK - Should use Option instead?
+            // 2. Consume incoming candidates and decisions.
+            // - Candidate message
+            //  - Insert the candidate into suffix.
+            //  - Update the state
+            //      - `AwaitingDecision`                    - If there are on_commit actions and they are valid
+            //      - `Complete(NoCommitActions)`           - If there are no on_commit actions
+            //      - `Complete(NoRelavantCommitActions)`   - If the on_commit actions are not valid to be processed.
+            // - Decision message
+            //  - Update the decision for candidate in suffix
+            //  - Update the state
+            //      - `ReadyToProcess`                      - If the decision is `commit`, then it is marked as ready to be processed.
+            //      - `Complete(Abort)`                     - If there decision is `abort`, then move it to a `Compelete` state.
+            //  - Scans the suffix till this version, to pick up all the versions which are `ReadyToProcess` state
+            //      - Send their `on_commit` actions over the actions_channel, and mark them as `Processing`.
+            //      - If sending fails, the state is not updated, and will remain in `ReadyToProcess` so that they are picked again.
+            reciever_result = self.message_receiver.consume_message_with_timeout(self.consume_new_message_wait_ms as u64) => {
                 match reciever_result {
                     // 2.1 For CM - Install messages on the version
                     Ok(Some(ChannelMessage::Candidate(candidate))) => {
                         let version = candidate.message.version;
-                        debug!("Candidate version received is {version}");
+                        info!("Candidate version received is {version}");
                         if version > 0 {
                             // insert item to suffix
                             if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
@@ -394,13 +349,13 @@ where
 
 
                         } else {
-                            warn!("Version 0 will not be inserted into suffix.")
+                            info!("Version 0 will not be inserted into suffix.")
                         }
                     },
                     // 2.2 For DM - Update the decision with outcome + safepoint.
                     Ok(Some(ChannelMessage::Decision(decision))) => {
                         let version = decision.message.get_candidate_version();
-                        debug!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
+                        info!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
 
                         // TODO: GK - no hardcoded filters on headers
                         let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
@@ -416,18 +371,7 @@ where
 
                         };
 
-
-                        // Pick the next items from suffix whose actions are to be processed.
-                        // Timeout error happens when the channel is full. Therefore we sleep before consuming the next message,
-                        // so that we don't reach a DEADLOCK.
-                        if let Err(err) = self.process_next_actions().await{
-                            if err.kind == MessengerServiceErrorKind::TimedOut {
-                                //TODO: GK - no harded coded value here...
-                                self.timeout_ms = 10;
-                            }
-                            return Err(err);
-                        };
-
+                        self.process_next_actions().await?;
 
                     },
                     Ok(None) => {
@@ -444,45 +388,9 @@ where
                     },
                 }
 
-                warn!("Actions in channel = {} | Feedbacks in channels {}", self.tx_actions_channel.max_capacity()-self.tx_actions_channel.capacity(), self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
-
             }
             // Periodically check and update the commit frequency and prune index.
             _ = self.commit_interval.tick() => {
-
-                info!("Inside interval tick arm");
-
-                // error!("Feedback received is.. {feedback_result:?} | Remaining feedbacks = {}",self.rx_feedback_channel.max_capacity()-self.rx_feedback_channel.capacity());
-                // if !self.feedback_buffer.is_empty() {
-                //     let start_ms = Instant::now();
-                //     let buffer_len = self.feedback_buffer.len();
-                //     let mut last_version = None;
-                //     let feedback_buffer = self.feedback_buffer.clone();
-                //     for feedback_result in feedback_buffer {
-                //         match feedback_result {
-                //             MessengerChannelFeedback::Error(version, key, message_error) => {
-                //                 error!("Failed to process version={version} with error={message_error:?}");
-                //                 self.handle_action_failed(version, &key);
-                //                 last_version = Some(version);
-
-                //             },
-                //             MessengerChannelFeedback::Success(version, key) => {
-                //                 debug!("Successfully processed version={version} with action_key={key}");
-                //                 self.handle_action_success(version, &key);
-                //                 last_version = Some(version);
-                //             },
-                //         }
-                //     }
-
-                //     if let Some(version) = last_version {
-                //         if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-                //             self.update_commit_offset(new_prune_version);
-                //         }
-                //     }
-                //     self.feedback_buffer.clear();
-                //     warn!("Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms", start_ms.elapsed().as_millis());
-                // }
-
                 if !self.suffix.messages.is_empty(){
                     if let  Some(Some(last_item_on_suffix)) = self.suffix.messages.back() {
                         let last_version = last_item_on_suffix.item_ver;
