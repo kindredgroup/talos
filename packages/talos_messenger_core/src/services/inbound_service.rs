@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ahash::HashMap;
 use async_trait::async_trait;
@@ -72,6 +72,8 @@ where
     /// Wait time in ms before consuming new incoming message.
     /// This helps in giving feedback arm opportunity to process the feedback
     consume_new_message_wait_ms: u32,
+    ///
+    feedback_buffer: Vec<MessengerChannelFeedback>,
 }
 
 impl<M> MessengerInboundService<M>
@@ -86,6 +88,7 @@ where
         config: MessengerInboundServiceConfig,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
+        let buffer_capacity = rx_feedback_channel.max_capacity();
         Self {
             message_receiver,
             tx_actions_channel,
@@ -96,6 +99,7 @@ where
             last_committed_version: 0,
             next_version_to_commit: 0,
             consume_new_message_wait_ms: 0,
+            feedback_buffer: Vec::with_capacity(buffer_capacity),
         }
     }
     /// Get next versions with their commit actions to process.
@@ -268,10 +272,19 @@ where
             // At the moment, we apply a fixed value for the timeout. Eventually when adaptive backpressure comes in, the timeout_ms would be computed based on the backpressure
             // that needs to be exerted.
             self.consume_new_message_wait_ms = self.config.max_consume_new_message_wait_ms;
-            debug!(
+            info!(
                 "Feedback channel reached max_capacity of {}. Adding a delay of {}ms before reading messages.",
                 self.rx_feedback_channel.max_capacity(),
                 self.consume_new_message_wait_ms
+            );
+            let start_ms = Instant::now();
+            let before_len = self.feedback_buffer.len();
+            // TODO: GK - Remove hardcoded value and use config.
+            let _ = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer, 1_000).await;
+            info!(
+                "Bulk read of {} feedbacks and them them to buffer in {}ms",
+                self.feedback_buffer.len() - before_len,
+                start_ms.elapsed().as_millis()
             );
         } else {
             self.consume_new_message_wait_ms = 0;
@@ -391,6 +404,28 @@ where
             }
             // Periodically check and update the commit frequency and prune index.
             _ = self.commit_interval.tick() => {
+
+                let buffer_len = self.feedback_buffer.len();
+                if buffer_len > 0 {
+                    let start_ms = Instant::now();
+                    let feedback_buffer = self.feedback_buffer.clone();
+                    for feedback_result in feedback_buffer {
+                        match feedback_result {
+                            MessengerChannelFeedback::Error(version, key, message_error) => {
+                                error!("Failed to process version={version} with error={message_error:?}");
+                                self.handle_action_failed(version, &key);
+
+                            },
+                            MessengerChannelFeedback::Success(version, key) => {
+                                debug!("Successfully processed version={version} with action_key={key}");
+                                self.handle_action_success(version, &key);
+                            },
+                        }
+                    }
+
+                    self.feedback_buffer.clear();
+                    info!("Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms", start_ms.elapsed().as_millis());
+                }
                 if !self.suffix.messages.is_empty(){
                     if let  Some(Some(last_item_on_suffix)) = self.suffix.messages.back() {
                         let last_version = last_item_on_suffix.item_ver;
