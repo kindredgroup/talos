@@ -280,12 +280,35 @@ where
             let start_ms = Instant::now();
             let before_len = self.feedback_buffer.len();
             // TODO: GK - Remove hardcoded value and use config.
-            let _ = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer, 1_000).await;
-            info!(
+            let _ = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer, 2_000).await;
+            warn!(
                 "Bulk read of {} feedbacks and them them to buffer in {}ms",
                 self.feedback_buffer.len() - before_len,
                 start_ms.elapsed().as_millis()
             );
+            let buffer_len = self.feedback_buffer.len();
+            if buffer_len > 0 {
+                let start_ms = Instant::now();
+                let feedback_buffer = self.feedback_buffer.clone();
+                for feedback_result in feedback_buffer {
+                    match feedback_result {
+                        MessengerChannelFeedback::Error(version, key, message_error) => {
+                            error!("Failed to process version={version} with error={message_error:?}");
+                            self.handle_action_failed(version, &key);
+                        }
+                        MessengerChannelFeedback::Success(version, key) => {
+                            debug!("Successfully processed version={version} with action_key={key}");
+                            self.handle_action_success(version, &key);
+                        }
+                    }
+                }
+
+                self.feedback_buffer.clear();
+                warn!(
+                    "Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms",
+                    start_ms.elapsed().as_millis()
+                );
+            }
         } else {
             self.consume_new_message_wait_ms = 0;
         }
@@ -405,27 +428,27 @@ where
             // Periodically check and update the commit frequency and prune index.
             _ = self.commit_interval.tick() => {
 
-                let buffer_len = self.feedback_buffer.len();
-                if buffer_len > 0 {
-                    let start_ms = Instant::now();
-                    let feedback_buffer = self.feedback_buffer.clone();
-                    for feedback_result in feedback_buffer {
-                        match feedback_result {
-                            MessengerChannelFeedback::Error(version, key, message_error) => {
-                                error!("Failed to process version={version} with error={message_error:?}");
-                                self.handle_action_failed(version, &key);
+                // let buffer_len = self.feedback_buffer.len();
+                // if buffer_len > 0 {
+                //     let start_ms = Instant::now();
+                //     let feedback_buffer = self.feedback_buffer.clone();
+                //     for feedback_result in feedback_buffer {
+                //         match feedback_result {
+                //             MessengerChannelFeedback::Error(version, key, message_error) => {
+                //                 error!("Failed to process version={version} with error={message_error:?}");
+                //                 self.handle_action_failed(version, &key);
 
-                            },
-                            MessengerChannelFeedback::Success(version, key) => {
-                                debug!("Successfully processed version={version} with action_key={key}");
-                                self.handle_action_success(version, &key);
-                            },
-                        }
-                    }
+                //             },
+                //             MessengerChannelFeedback::Success(version, key) => {
+                //                 debug!("Successfully processed version={version} with action_key={key}");
+                //                 self.handle_action_success(version, &key);
+                //             },
+                //         }
+                //     }
 
-                    self.feedback_buffer.clear();
-                    info!("Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms", start_ms.elapsed().as_millis());
-                }
+                //     self.feedback_buffer.clear();
+                //     info!("Updating suffix using the feedback. Total feedbacks processed = {buffer_len}  in {} ms", start_ms.elapsed().as_millis());
+                // }
                 if !self.suffix.messages.is_empty(){
                     if let  Some(Some(last_item_on_suffix)) = self.suffix.messages.back() {
                         let last_version = last_item_on_suffix.item_ver;
