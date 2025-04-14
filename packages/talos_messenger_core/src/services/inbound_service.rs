@@ -60,7 +60,7 @@ where
 {
     pub message_receiver: M,
     pub tx_actions_channel: mpsc::Sender<MessengerCommitActions>,
-    pub rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
+    pub rx_feedback_channel: mpsc::UnboundedReceiver<MessengerChannelFeedback>,
     pub suffix: Suffix<MessengerCandidate>,
     pub config: MessengerInboundServiceConfig,
     // Interval at which the commit interval arm should execute.
@@ -83,12 +83,12 @@ where
     pub fn new(
         message_receiver: M,
         tx_actions_channel: mpsc::Sender<MessengerCommitActions>,
-        rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
+        rx_feedback_channel: mpsc::UnboundedReceiver<MessengerChannelFeedback>,
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
-        let buffer_capacity = rx_feedback_channel.max_capacity();
+        let buffer_capacity = 100_000; //rx_feedback_channel.max_capacity();
         Self {
             message_receiver,
             tx_actions_channel,
@@ -268,15 +268,21 @@ where
 
     pub async fn run_once(&mut self) -> MessengerServiceResult {
         // When feedbacks channel is at max_capacity. We need to slow the consumptions of new messages and give time for feedbacks to be processed.
-        if self.rx_feedback_channel.capacity() == 0 {
+        //TODO: GK - Remove harcoded value.
+        if self.rx_feedback_channel.len() >= 300_000 {
+            // if self.rx_feedback_channel.capacity() == 0 {
             // At the moment, we apply a fixed value for the timeout. Eventually when adaptive backpressure comes in, the timeout_ms would be computed based on the backpressure
             // that needs to be exerted.
             self.consume_new_message_wait_ms = self.config.max_consume_new_message_wait_ms;
             info!(
-                "Feedback channel reached max_capacity of {}. Adding a delay of {}ms before reading messages.",
-                self.rx_feedback_channel.max_capacity(),
+                "Feedback channel reached max_capacity. Adding a delay of {}ms before reading messages.",
                 self.consume_new_message_wait_ms
             );
+            // info!(
+            //     "Feedback channel reached max_capacity of {}. Adding a delay of {}ms before reading messages.",
+            //     self.rx_feedback_channel.max_capacity(),
+            //     self.consume_new_message_wait_ms
+            // );
             let start_ms = Instant::now();
             let before_len = self.feedback_buffer.len();
             // TODO: GK - Remove hardcoded value and use config.

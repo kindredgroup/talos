@@ -131,7 +131,8 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
         feedback_channel,
     } = config.channel_buffers.unwrap_or_default();
 
-    let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(feedback_channel as usize);
+    // let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(feedback_channel as usize);
+    let (tx_feedback_channel, rx_feedback_channel) = mpsc::unbounded_channel();
     let (tx_actions_channel, rx_actions_channel) = mpsc::channel(actions_channel as usize);
 
     // START - Inbound service

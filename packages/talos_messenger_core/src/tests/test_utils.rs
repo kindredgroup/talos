@@ -16,7 +16,7 @@ use talos_certifier::{
 };
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{
-    sync::mpsc::{self, Sender},
+    sync::mpsc::{self, Sender, UnboundedSender},
     task::JoinHandle,
 };
 
@@ -97,7 +97,7 @@ impl SharedPortTraits for MockReciever {
 
 // ################ Mock Producer  - Start ##########################
 pub struct MockProducer {
-    pub tx_feedback_channel: Sender<MessengerChannelFeedback>,
+    pub tx_feedback_channel: UnboundedSender<MessengerChannelFeedback>,
 }
 
 impl MockProducer {
@@ -112,7 +112,6 @@ impl MockProducer {
                     data: version.to_string(),
                 }),
             ))
-            .await
             .unwrap();
         Ok(())
     }
@@ -120,7 +119,6 @@ impl MockProducer {
     pub async fn send_success_feedback(&self, version: u64) -> Result<(), MessagePublishError> {
         self.tx_feedback_channel
             .send(MessengerChannelFeedback::Success(version, PublishActionType::Kafka.to_string()))
-            .await
             .unwrap();
         Ok(())
     }
@@ -149,7 +147,6 @@ impl MessengerPublisher for MockProducer {
     ) -> Result<(), MessagePublishError> {
         self.tx_feedback_channel
             .send(MessengerChannelFeedback::Success(version, PublishActionType::Kafka.to_string()))
-            .await
             .unwrap();
         Ok(())
     }
@@ -174,7 +171,7 @@ pub enum FeedbackTypeHeader {
 pub struct MockActionService {
     pub publisher: MockProducer,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
-    pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
+    pub tx_feedback_channel: mpsc::UnboundedSender<MessengerChannelFeedback>,
 }
 
 #[async_trait]
@@ -303,7 +300,8 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
         };
 
         let (tx_actions_channel, rx_actions_channel) = mpsc::channel(10);
-        let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(10);
+        let (tx_feedback_channel, rx_feedback_channel) = mpsc::unbounded_channel();
+        // let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(10);
         let suffix = Suffix::with_config(configs.suffix_configs);
         // let mut allowed_actions = AHashMap::new();
         // allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);

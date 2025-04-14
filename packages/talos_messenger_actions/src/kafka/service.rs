@@ -39,7 +39,7 @@ impl KafkaActionServiceConfig {
 pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync + 'static> {
     pub publisher: Arc<M>,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
-    pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
+    pub tx_feedback_channel: mpsc::UnboundedSender<MessengerChannelFeedback>,
     /// Limit the number of i/o tasks
     pub semaphore: Arc<Semaphore>,
     pub config: KafkaActionServiceConfig,
@@ -52,7 +52,7 @@ where
     pub fn new(
         publisher: Arc<M>,
         rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
-        tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
+        tx_feedback_channel: mpsc::UnboundedSender<MessengerChannelFeedback>,
         config: KafkaActionServiceConfig,
     ) -> Self {
         Self {
@@ -142,16 +142,18 @@ where
 
                                             // Feedbacks shouldn't be dropped, therefore we retry till feedbacks eventually goes through.
                                             loop {
-                                                match feedback_channel.try_send(feedback_message.clone()) {
+                                                match feedback_channel.send(feedback_message.clone()) {
                                                     Ok(_) => {
                                                         break;
                                                     }
-                                                    Err(mpsc::error::TrySendError::Full(msg)) => {
-                                                        warn!("Failed to send feedback over feedback_channel as channel is full. Retrying in {max_feedback_await_send_ms}ms. Feedback = {msg:?}");
-                                                    }
-                                                    Err(mpsc::error::TrySendError::Closed(msg)) => {
-                                                        error!("Failed to send feedback over feedback_channel as channel is closed. Feedback = {msg:?}");
-                                                    }
+                                                    Err(err) => {
+                                                        error!("Failed to send feedback over feedback_channel as channel is closed. Error = {err:?}");
+                                                    } // Err(mpsc::error::TrySendError::Full(msg)) => {
+                                                      //     warn!("Failed to send feedback over feedback_channel as channel is full. Retrying in {max_feedback_await_send_ms}ms. Feedback = {msg:?}");
+                                                      // }
+                                                      // Err(mpsc::error::TrySendError::Closed(msg)) => {
+                                                      //     error!("Failed to send feedback over feedback_channel as channel is closed. Feedback = {msg:?}");
+                                                      // }
                                                 };
                                                 tokio::time::sleep(Duration::from_millis(max_feedback_await_send_ms)).await;
                                             }
@@ -166,16 +168,18 @@ where
 
                                         // Feedbacks shouldn't be dropped, therefore we retry till feedbacks eventually goes through.
                                         loop {
-                                            match feedback_channel.try_send(feedback_message.clone()) {
+                                            match feedback_channel.send(feedback_message.clone()) {
                                                 Ok(_) => {
                                                     break;
                                                 }
-                                                Err(mpsc::error::TrySendError::Full(msg)) => {
-                                                    warn!("Failed to send feedback over feedback_channel as channel is full. Feedback = {msg:?}");
-                                                }
-                                                Err(mpsc::error::TrySendError::Closed(msg)) => {
-                                                    warn!("Failed to send feedback over feedback_channel as channel is closed. Feedback = {msg:?}");
-                                                }
+                                                Err(err) => {
+                                                    error!("Failed to send feedback over feedback_channel as channel is closed. Error = {err:?}");
+                                                } // Err(mpsc::error::TrySendError::Full(msg)) => {
+                                                  //     warn!("Failed to send feedback over feedback_channel as channel is full. Feedback = {msg:?}");
+                                                  // }
+                                                  // Err(mpsc::error::TrySendError::Closed(msg)) => {
+                                                  //     warn!("Failed to send feedback over feedback_channel as channel is closed. Feedback = {msg:?}");
+                                                  // }
                                             };
                                             tokio::time::sleep(Duration::from_millis(max_feedback_await_send_ms)).await;
                                         }
