@@ -280,11 +280,11 @@ where
             let start_ms = Instant::now();
             let before_len = self.feedback_buffer.len();
             // TODO: GK - Remove hardcoded value and use config.
-            let _ = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer, 2_000).await;
+            let _ = self.rx_feedback_channel.recv_many(&mut self.feedback_buffer, 20_000).await;
             warn!(
-                "Bulk read of {} feedbacks and them them to buffer in {}ms",
+                "Bulk read of {} feedbacks and them them to buffer in {}ms.",
                 self.feedback_buffer.len() - before_len,
-                start_ms.elapsed().as_millis()
+                start_ms.elapsed().as_millis(),
             );
             let buffer_len = self.feedback_buffer.len();
             if buffer_len > 0 {
