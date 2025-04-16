@@ -6,7 +6,7 @@ use talos_certifier::core::SystemService;
 use talos_certifier::model::{CandidateMessage, DecisionMessage};
 use talos_certifier::ports::DecisionStore;
 
-use talos_certifier::services::CertifierServiceConfig;
+use talos_certifier::services::{CertifierServiceConfig, MessageReceiverServiceConfig};
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
@@ -40,22 +40,28 @@ pub struct Configuration {
     pub kafka_config: KafkaConfig,
     pub certifier_mock: bool,
     pub db_mock: bool,
+    /// Minimum offsets to retain.
+    /// Higher the value, lesser the frequency of commit.
+    /// This would help in hydrating the suffix in certifier so as to help suffix retain a minimum size to
+    /// reduce the initial aborts for fresh certification requests.
+    /// - **Default: 50_000**
+    pub min_commit_threshold: Option<u64>,
+    /// Frequency at which to commit should be issued in ms
+    /// - **Default: 10_000** - 10 seconds
+    pub commit_frequency_ms: Option<u64>,
     /// If not set, defaults to `talos_certifier`.
     /// Setting this can be useful to distinguish unique deployed version of talos certifier for easier debugging.
     pub app_name: Option<String>,
 }
 
 /// Talos certifier instantiated with Kafka as Abcast and Postgres as XDB.
-pub async fn certifier_with_kafka_pg(
-    channel_buffer: TalosCertifierChannelBuffers,
-    configuration: Configuration,
-) -> Result<TalosCertifierService, SystemServiceError> {
+pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffers, config: Configuration) -> Result<TalosCertifierService, SystemServiceError> {
     let (system_notifier, _) = broadcast::channel(channel_buffer.system_broadcast);
 
     let system = System {
         system_notifier,
         is_shutdown: false,
-        name: configuration.app_name.unwrap_or("talos_certifier".to_string()),
+        name: config.app_name.unwrap_or("talos_certifier".to_string()),
     };
 
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);
@@ -63,9 +69,18 @@ pub async fn certifier_with_kafka_pg(
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let kafka_consumer: KafkaConsumer<CandidateMessage> = Adapters::KafkaConsumer::new(&configuration.kafka_config);
+    let kafka_consumer: KafkaConsumer<CandidateMessage> = Adapters::KafkaConsumer::new(&config.kafka_config);
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
-    let message_receiver_service = MessageReceiverService::new(Box::new(kafka_consumer), tx, Arc::clone(&commit_offset), system.clone());
+    let message_receiver_service = MessageReceiverService::new(
+        Box::new(kafka_consumer),
+        tx,
+        Arc::clone(&commit_offset),
+        system.clone(),
+        MessageReceiverServiceConfig {
+            commit_frequency_ms: config.commit_frequency_ms.unwrap_or(10_000),
+            min_commit_threshold: config.min_commit_threshold.unwrap_or(50_000),
+        },
+    );
 
     message_receiver_service.subscribe().await?;
     /* END - Kafka consumer service  */
@@ -73,7 +88,7 @@ pub async fn certifier_with_kafka_pg(
     let (outbound_tx, outbound_rx) = mpsc::channel::<DecisionOutboxChannelMessage>(channel_buffer.decision_outbox);
 
     /* START - Certifier service  */
-    let certifier_service: Box<dyn SystemService + Send + Sync> = match configuration.certifier_mock {
+    let certifier_service: Box<dyn SystemService + Send + Sync> = match config.certifier_mock {
         true => Box::new(MockCertifierService {
             decision_outbox_tx: outbound_tx.clone(),
             message_channel_rx: rx,
@@ -84,7 +99,7 @@ pub async fn certifier_with_kafka_pg(
             Arc::clone(&commit_offset),
             system.clone(),
             Some(CertifierServiceConfig {
-                suffix_config: configuration.suffix_config.unwrap_or_default(),
+                suffix_config: config.suffix_config.unwrap_or_default(),
             }),
         )),
     };
@@ -93,14 +108,10 @@ pub async fn certifier_with_kafka_pg(
 
     /* START - Decision Outbox service  */
 
-    let kafka_producer = Adapters::KafkaProducer::new(&configuration.kafka_config);
-    let data_store: Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync> = match configuration.db_mock {
+    let kafka_producer = Adapters::KafkaProducer::new(&config.kafka_config);
+    let data_store: Box<dyn DecisionStore<Decision = DecisionMessage> + Send + Sync> = match config.db_mock {
         true => Box::new(Adapters::mock_datastore::MockDataStore {}),
-        false => Box::new(
-            Adapters::Pg::new(configuration.pg_config.expect("pg config is required without mock."))
-                .await
-                .unwrap(),
-        ),
+        false => Box::new(Adapters::Pg::new(config.pg_config.expect("pg config is required without mock.")).await.unwrap()),
     };
     let decision_outbox_service = DecisionOutboxService::new(
         outbound_tx.clone(),

@@ -29,7 +29,7 @@ pub struct MessengerInboundServiceConfig {
     /// Default value is 5_000. Updating this value can impact the latency/throughput due to the frequency at which the commits will be issued.
     commit_size: u32,
     /// Frequency at which to commit should be done in ms
-    commit_frequency: u32,
+    commit_frequency_ms: u32,
     /// The allowed on_commit actions
     allowed_actions: HashMap<String, Vec<String>>,
 }
@@ -39,7 +39,7 @@ impl MessengerInboundServiceConfig {
         Self {
             allowed_actions,
             commit_size: commit_size.unwrap_or(5_000),
-            commit_frequency: commit_frequency.unwrap_or(10 * 1_000),
+            commit_frequency_ms: commit_frequency.unwrap_or(10 * 1_000),
         }
     }
 }
@@ -72,7 +72,7 @@ where
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
     ) -> Self {
-        let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
+        let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms as u64));
         Self {
             message_receiver,
             tx_actions_channel,
