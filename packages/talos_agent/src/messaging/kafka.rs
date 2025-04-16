@@ -5,7 +5,8 @@ use crate::messaging::api::{
 };
 use crate::messaging::errors::{MessagingError, MessagingErrorKind};
 use async_trait::async_trait;
-use opentelemetry::Context;
+use opentelemetry::metrics::Gauge;
+use opentelemetry::{global, Context, KeyValue};
 use rdkafka::consumer::{Consumer, ConsumerContext, Rebalance, StreamConsumer};
 use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
@@ -26,6 +27,11 @@ use super::api::{TraceableDecision, TxProcessingTimeline};
 
 /// The Kafka error into generic custom messaging error type
 
+const METRIC_METER_NAME: &str = "cohort_sdk";
+const METRIC_NAME_CERTIFICATION_OFFSET: &str = "metric_certification_offset";
+const METRIC_KEY_MESSAGE_TYPE: &str = "message_type";
+const METRIC_KEY_DECISION_TYPE: &str = "decision";
+
 impl From<KafkaError> for MessagingError {
     fn from(e: KafkaError) -> Self {
         MessagingError {
@@ -43,14 +49,17 @@ pub struct KafkaPublisher {
     agent: String,
     config: KafkaConfig,
     producer: FutureProducer,
+    metric_consumed_offset: Option<Gauge<u64>>,
 }
 
 impl KafkaPublisher {
     pub fn new(agent: String, config: &KafkaConfig) -> Result<KafkaPublisher, MessagingError> {
+        let metric_consumed_offset = Some(global::meter(METRIC_METER_NAME).u64_gauge(METRIC_NAME_CERTIFICATION_OFFSET).build());
         Ok(Self {
             agent,
             config: config.clone(),
             producer: config.build_producer_config().create()?,
+            metric_consumed_offset,
         })
     }
 
@@ -129,10 +138,18 @@ impl Publisher for KafkaPublisher {
 
         let timeout = Timeout::After(Duration::from_millis(self.config.producer_send_timeout_ms.unwrap_or(10) as u64));
 
-        // return match self.producer.send(data, timeout).instrument(tspan).await {
         return match self.producer.send(data, timeout).await {
             Ok((partition, offset)) => {
                 debug!("KafkaPublisher.send_message(): Published into partition {}, offset: {}", partition, offset);
+                if let Some(metric) = &self.metric_consumed_offset {
+                    metric.record(
+                        offset as u64,
+                        &[
+                            KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Candidate"),
+                            KeyValue::new(METRIC_KEY_DECISION_TYPE, "Unknown"),
+                        ],
+                    );
+                }
                 Ok(PublishResponse { partition, offset })
             }
             Err((e, _)) => {
@@ -149,6 +166,7 @@ pub struct KafkaConsumer {
     config: KafkaConfig,
     consumer: StreamConsumer<KafkaConsumerContext>,
     talos_type: TalosType,
+    metric_consumed_offset: Option<Gauge<u64>>,
 }
 
 struct KafkaConsumerContext {}
@@ -169,11 +187,14 @@ impl KafkaConsumer {
     pub fn new(agent: String, config: &KafkaConfig, talos_type: TalosType) -> Result<Self, MessagingError> {
         let consumer = Self::create_consumer(config)?;
 
+        let metric_consumed_offset = Some(global::meter(METRIC_METER_NAME).u64_gauge(METRIC_NAME_CERTIFICATION_OFFSET).build());
+
         Ok(KafkaConsumer {
             agent,
             config: config.clone(),
             consumer,
             talos_type,
+            metric_consumed_offset,
         })
     }
 
@@ -269,11 +290,24 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
             }
         });
 
+        let offset = received.offset() as u64;
+
         parsed_type.and_then(|message_type| {
             deserialize_decision(&self.get_talos_type(), &message_type, &received.payload_view::<str>()).map(|result| {
-                result.map(|decision| TraceableDecision {
-                    decision,
-                    raw_span_context: headers,
+                result.map(|decision| {
+                    if let Some(metric) = &self.metric_consumed_offset {
+                        metric.record(
+                            offset,
+                            &[
+                                KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Decision"),
+                                KeyValue::new(METRIC_KEY_DECISION_TYPE, decision.decision.to_string()),
+                            ],
+                        );
+                    }
+                    TraceableDecision {
+                        decision,
+                        raw_span_context: headers,
+                    }
                 })
             })
         })

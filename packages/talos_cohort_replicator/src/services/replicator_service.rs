@@ -8,7 +8,7 @@ use crate::{
     suffix::ReplicatorSuffixTrait,
 };
 
-use opentelemetry::{global, trace::TraceContextExt};
+use opentelemetry::{global, trace::TraceContextExt, KeyValue};
 
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
@@ -17,6 +17,9 @@ use tokio::sync::mpsc;
 use tracing::Instrument;
 use tracing::{debug, error, info};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
+
+const METRIC_KEY_MESSAGE_TYPE: &str = "message_type";
+const METRIC_KEY_DECISION_TYPE: &str = "decision";
 
 pub struct ReplicatorServiceConfig {
     /// Frequency in milliseconds
@@ -43,7 +46,10 @@ where
     let mut time_first_item_created_start_ns: i128 = 0; //
     let mut time_last_item_send_end_ns: i128 = 0;
     let mut time_last_item_installed_ns: i128 = 0;
+
     let g_statemaps_tx = global::meter("sdk_replicator").u64_gauge("repl_statemaps_channel").with_unit("items").build();
+    let g_consumed_offset = global::meter("sdk_replicator").u64_gauge("repl_consumed_offset").build();
+
     let channel_size = 100_000_u64;
 
     loop {
@@ -56,10 +62,19 @@ where
                 match msg {
                     // 2.1 For CM - Install messages on the version
                     ChannelMessage::Candidate(candidate) => {
-                        replicator.process_consumer_message(candidate.message.version, candidate.message.into()).await;
+                        let offset = candidate.message.version;
+                        replicator.process_consumer_message(offset, candidate.message.into()).await;
+                        g_consumed_offset.record(
+                            offset,
+                            &[
+                                KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Candidate"),
+                                KeyValue::new(METRIC_KEY_DECISION_TYPE, "Unknown"),
+                            ],
+                        );
                     },
                     // 2.2 For DM - Update the decision with outcome + safepoint.
                     ChannelMessage::Decision(decision) => {
+                        let talos_decision = decision.message.decision.to_string();
                         if let Some(trace_parent) = decision.get_trace_parent() {
                             let propagated_context = PropagatedSpanContextData::new_with_trace_parent(trace_parent);
                             let context = global::get_text_map_propagator(|propagator| {
@@ -73,6 +88,14 @@ where
                         } else {
                             replicator.process_decision_message(decision.decision_version, decision.message).await;
                         }
+
+                        g_consumed_offset.record(
+                            decision.decision_version,
+                            &[
+                                KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Decision"),
+                                KeyValue::new(METRIC_KEY_DECISION_TYPE, talos_decision),
+                            ],
+                        );
 
                         if total_items_send == 0 {
                             time_first_item_created_start_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
