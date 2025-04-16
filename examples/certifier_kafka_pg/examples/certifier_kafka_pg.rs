@@ -16,7 +16,18 @@ async fn main() -> Result<(), impl std::error::Error> {
 
     info!("Talos certifier starting...");
 
-    let kafka_config = KafkaConfig::from_env(None);
+    let mut kafka_config = KafkaConfig::from_env(None);
+    kafka_config.extend(
+        None,
+        Some(
+            [
+                // ("debug".to_owned(), "all".to_owned()),
+                ("enable.auto.commit".to_string(), "false".to_string()),
+                ("auto.offset.reset".to_string(), "earliest".to_string()),
+            ]
+            .into(),
+        ),
+    );
     // kafka_config.extend(None, None);
 
     let pg_config = PgConfig::from_env();
@@ -34,6 +45,8 @@ async fn main() -> Result<(), impl std::error::Error> {
         kafka_config,
         db_mock: mock_config.db_mock,
         app_name: None,
+        commit_frequency_ms: Some(10_000),
+        min_commit_threshold: Some(50_000),
     };
 
     let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default(), configuration).await?;

@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, info};
 use rdkafka::{
     consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -48,7 +48,7 @@ impl<C> KafkaConsumer<C> {
     }
 
     pub fn store_offsets(&mut self, partition: i32, offset: i64) -> Result<(), KafkaAdapterError> {
-        debug!("Partition {partition} and Offset {offset}");
+        info!("Partition {partition} and Offset {offset}");
 
         let offset_to_update = offset + 1;
 
