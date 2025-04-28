@@ -1,9 +1,9 @@
 use crate::api::TalosType;
 use crate::messaging::api::{
-    CandidateMessage, ConsumerType, Decision, DecisionMessage, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID,
-    HEADER_MESSAGE_TYPE,
+    CandidateMessage, ConsumerType, PublishResponse, Publisher, PublisherType, TalosMessageType, HEADER_AGENT_ID, HEADER_MESSAGE_TYPE,
 };
 use crate::messaging::errors::{MessagingError, MessagingErrorKind};
+use crate::messaging::message_parser::MessageReceiver;
 use async_trait::async_trait;
 use opentelemetry::metrics::Gauge;
 use opentelemetry::{global, Context, KeyValue};
@@ -12,25 +12,24 @@ use rdkafka::error::KafkaError;
 use rdkafka::message::{Header, Headers, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
-use rdkafka::{ClientContext, Message, Offset, TopicPartitionList};
+use rdkafka::{ClientContext, Offset, TopicPartitionList};
 use std::collections::HashMap;
-use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{str, thread};
+use talos_common_utils::otel::metric_constants::{
+    METRIC_KEY_CERT_DECISION_TYPE, METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_METER_NAME_COHORT_SDK, METRIC_NAME_CERTIFICATION_OFFSET,
+    METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION,
+};
 use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
-use super::api::{TraceableDecision, TxProcessingTimeline};
+use super::api::ReceivedMessage;
+use super::message_parser::MessageListener;
 
 /// The Kafka error into generic custom messaging error type
-
-const METRIC_METER_NAME: &str = "cohort_sdk";
-const METRIC_NAME_CERTIFICATION_OFFSET: &str = "metric_certification_offset";
-const METRIC_KEY_MESSAGE_TYPE: &str = "message_type";
-const METRIC_KEY_DECISION_TYPE: &str = "decision";
 
 impl From<KafkaError> for MessagingError {
     fn from(e: KafkaError) -> Self {
@@ -54,7 +53,11 @@ pub struct KafkaPublisher {
 
 impl KafkaPublisher {
     pub fn new(agent: String, config: &KafkaConfig) -> Result<KafkaPublisher, MessagingError> {
-        let metric_consumed_offset = Some(global::meter(METRIC_METER_NAME).u64_gauge(METRIC_NAME_CERTIFICATION_OFFSET).build());
+        let metric_consumed_offset = Some(
+            global::meter(METRIC_METER_NAME_COHORT_SDK)
+                .u64_gauge(format!("cohort_sdk_{}", METRIC_NAME_CERTIFICATION_OFFSET))
+                .build(),
+        );
         Ok(Self {
             agent,
             config: config.clone(),
@@ -145,8 +148,8 @@ impl Publisher for KafkaPublisher {
                     metric.record(
                         offset as u64,
                         &[
-                            KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Candidate"),
-                            KeyValue::new(METRIC_KEY_DECISION_TYPE, "Unknown"),
+                            KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE),
+                            KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN),
                         ],
                     );
                 }
@@ -186,9 +189,11 @@ impl ConsumerContext for KafkaConsumerContext {
 impl KafkaConsumer {
     pub fn new(agent: String, config: &KafkaConfig, talos_type: TalosType) -> Result<Self, MessagingError> {
         let consumer = Self::create_consumer(config)?;
-
-        let metric_consumed_offset = Some(global::meter(METRIC_METER_NAME).u64_gauge(METRIC_NAME_CERTIFICATION_OFFSET).build());
-
+        let metric_consumed_offset = Some(
+            global::meter(METRIC_METER_NAME_COHORT_SDK)
+                .u64_gauge(format!("cohort_sdk_{}", METRIC_NAME_CERTIFICATION_OFFSET))
+                .build(),
+        );
         Ok(KafkaConsumer {
             agent,
             config: config.clone(),
@@ -238,132 +243,56 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
         self.talos_type.clone()
     }
 
-    async fn receive_message(&self) -> Option<Result<TraceableDecision, MessagingError>> {
-        let rslt_received = self
+    async fn receive_message(&self) -> Result<ReceivedMessage, MessagingError> {
+        let received = self
             .consumer
             .recv()
             .await
-            .map_err(|kafka_error| MessagingError::new_consuming(kafka_error.to_string()));
+            .map_err(|kafka_error| MessagingError::new_consuming(kafka_error.to_string()))?;
 
-        if let Err(e) = rslt_received {
-            return Some(Err(e));
-        }
-
-        let received = rslt_received.unwrap();
-
-        // Extract headers
-        let headers = match received.headers() {
-            Some(bh) => {
-                let mut headers = HashMap::<String, String>::new();
-                for header in bh.iter() {
-                    if let Some(v) = header.value {
-                        headers.insert(header.key.to_string(), String::from_utf8_lossy(v).to_string());
-                    }
-                }
-
-                headers
-            }
-            _ => HashMap::<String, String>::new(),
-        };
-
-        // Extract agent id from headers
-        let is_id_matching = match headers.get(HEADER_AGENT_ID) {
-            Some(value) => value == self.agent.as_str(),
-            None => false,
-        };
-
-        if !is_id_matching {
-            return None;
-        }
-
-        // Extract message type from headers
-        let parsed_type = headers.get(HEADER_MESSAGE_TYPE).and_then(|raw| match TalosMessageType::try_from(raw.as_str()) {
-            Ok(parsed_type) => Some(parsed_type),
-            Err(parse_error) => {
-                warn!(
-                    "KafkaConsumer.receive_message(): Unknown header value messageType='{}', skipping this message: {}. Error: {}",
-                    raw,
-                    received.offset(),
-                    parse_error
-                );
-                None
-            }
-        });
-
-        let offset = received.offset() as u64;
-
-        parsed_type.and_then(|message_type| {
-            deserialize_decision(&self.get_talos_type(), &message_type, &received.payload_view::<str>()).map(|result| {
-                result.map(|decision| {
-                    if let Some(metric) = &self.metric_consumed_offset {
-                        metric.record(
-                            offset,
-                            &[
-                                KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Decision"),
-                                KeyValue::new(METRIC_KEY_DECISION_TYPE, decision.decision.to_string()),
-                            ],
-                        );
-                    }
-                    TraceableDecision {
-                        decision,
-                        raw_span_context: headers,
-                    }
-                })
-            })
-        })
+        let mut parser = MessageReceiver::new(self.agent.as_str(), self.get_talos_type(), &received);
+        parser.add_listener(self);
+        let _ = parser.read_headers()?;
+        parser.read_content()
     }
 }
 
-/// Utilities.
-
-fn deserialize_decision(
-    talos_type: &TalosType,
-    message_type: &TalosMessageType,
-    payload_view: &Option<Result<&str, Utf8Error>>,
-) -> Option<Result<DecisionMessage, MessagingError>> {
-    match message_type {
-        TalosMessageType::Candidate => match talos_type {
-            TalosType::External => None,
-            TalosType::InProcessMock => payload_view.and_then(|raw_payload| Some(parse_payload_as_candidate(&raw_payload, Decision::Committed))),
-        },
-
-        // Take only decisions...
-        TalosMessageType::Decision => payload_view.and_then(|raw_payload| Some(parse_payload_as_decision(&raw_payload))),
+impl MessageListener for KafkaConsumer {
+    fn on_candidate(&self, message: &ReceivedMessage) {
+        let offset = message.offset;
+        if let Some(m) = self.metric_consumed_offset.clone() {
+            m.record(
+                offset,
+                &[
+                    KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE),
+                    KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN),
+                ],
+            )
+        }
     }
-}
 
-fn parse_payload_as_decision(raw_payload: &Result<&str, Utf8Error>) -> Result<DecisionMessage, MessagingError> {
-    let json_as_text = raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
+    fn on_decision(&self, message: &ReceivedMessage) {
+        if self.metric_consumed_offset.is_none() {
+            return;
+        }
 
-    // convert JSON text into DecisionMessage
-    serde_json::from_str::<DecisionMessage>(json_as_text)
-        .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))
-}
+        let metric = self.metric_consumed_offset.clone().unwrap();
 
-fn parse_payload_as_candidate(raw_payload: &Result<&str, Utf8Error>, decision: Decision) -> Result<DecisionMessage, MessagingError> {
-    let json_as_text = raw_payload.map_err(|utf_error| MessagingError::new_corrupted_payload("Payload is not UTF8 text".to_string(), utf_error.to_string()))?;
+        let decision_value = match &message.decision {
+            None => METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN.to_owned(),
+            Some(td) => td.decision.decision.to_string(),
+        };
 
-    let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
-    let metrics = TxProcessingTimeline {
-        candidate_received: now,
-        decision_created_at: now,
-        ..Default::default()
-    };
+        tracing::warn!("Registering decision metric: offset={}, decision={}", message.offset, decision_value);
 
-    // convert JSON text into DecisionMessage
-    serde_json::from_str::<CandidateMessage>(json_as_text)
-        .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))
-        .map(|candidate| DecisionMessage {
-            xid: candidate.xid,
-            agent: candidate.agent,
-            cohort: candidate.cohort,
-            decision,
-            suffix_start: 0,
-            version: 0,
-            safepoint: None,
-            conflicts: None,
-            metrics: Some(metrics),
-        })
+        metric.record(
+            message.offset,
+            &[
+                KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION.to_string()),
+                KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, decision_value),
+            ],
+        );
+    }
 }
 
 // $coverage:ignore-start

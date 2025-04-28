@@ -11,15 +11,18 @@ use crate::{
 use opentelemetry::{global, trace::TraceContextExt, KeyValue};
 
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
-use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
+use talos_common_utils::otel::{
+    metric_constants::{
+        METRIC_KEY_CERT_DECISION_TYPE, METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_NAME_CERTIFICATION_OFFSET, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN,
+        METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION,
+    },
+    propagated_context::PropagatedSpanContextData,
+};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 use tracing::{debug, error, info};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
-
-const METRIC_KEY_MESSAGE_TYPE: &str = "message_type";
-const METRIC_KEY_DECISION_TYPE: &str = "decision";
 
 pub struct ReplicatorServiceConfig {
     /// Frequency in milliseconds
@@ -48,7 +51,9 @@ where
     let mut time_last_item_installed_ns: i128 = 0;
 
     let g_statemaps_tx = global::meter("sdk_replicator").u64_gauge("repl_statemaps_channel").with_unit("items").build();
-    let g_consumed_offset = global::meter("sdk_replicator").u64_gauge("repl_consumed_offset").build();
+    let g_consumed_offset = global::meter("sdk_replicator")
+        .u64_gauge(format!("repl_{}", METRIC_NAME_CERTIFICATION_OFFSET))
+        .build();
 
     let channel_size = 100_000_u64;
 
@@ -67,8 +72,8 @@ where
                         g_consumed_offset.record(
                             offset,
                             &[
-                                KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Candidate"),
-                                KeyValue::new(METRIC_KEY_DECISION_TYPE, "Unknown"),
+                                KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE),
+                                KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN),
                             ],
                         );
                     },
@@ -92,8 +97,8 @@ where
                         g_consumed_offset.record(
                             decision.decision_version,
                             &[
-                                KeyValue::new(METRIC_KEY_MESSAGE_TYPE, "Decision"),
-                                KeyValue::new(METRIC_KEY_DECISION_TYPE, talos_decision),
+                                KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION),
+                                KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, talos_decision),
                             ],
                         );
 
