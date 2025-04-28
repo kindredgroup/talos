@@ -5,7 +5,6 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
-use strum::{Display, EnumString};
 
 ///
 /// Data structures and interfaces exposed to agent client
@@ -58,7 +57,7 @@ pub struct AgentConfig {
     pub timeout_ms: u32,
 }
 
-#[derive(Clone, Debug, EnumString, Display, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum TalosType {
     External,      // kafka listener and decision publisher is the external process
     InProcessMock, // kafka listener and decision publisher is out internal function

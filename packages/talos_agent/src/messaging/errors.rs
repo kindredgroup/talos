@@ -17,15 +17,6 @@ pub struct MessagingError {
     pub cause: Option<String>,
 }
 
-impl MessagingError {
-    pub fn corrupted(reason: String, cause: Option<String>) -> Self {
-        Self {
-            kind: MessagingErrorKind::CorruptedPayload,
-            reason,
-            cause,
-        }
-    }
-}
 impl From<String> for MessagingError {
     fn from(reason: String) -> Self {
         MessagingError {
