@@ -4,7 +4,13 @@ use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
-use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use talos_certifier::{
+    core::{CandidateChannelMessage, DecisionChannelMessage},
+    model::DecisionMessageTrait,
+    ports::{errors::MessageReceiverError, MessageReciever},
+    ChannelMessage,
+};
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{
@@ -33,7 +39,6 @@ pub struct MessengerInboundServiceConfig {
     /// The allowed on_commit actions
     allowed_actions: HashMap<String, Vec<String>>,
 }
-
 impl MessengerInboundServiceConfig {
     pub fn new(allowed_actions: HashMap<String, Vec<String>>, commit_size: Option<u32>, commit_frequency: Option<u32>) -> Self {
         Self {
@@ -59,6 +64,25 @@ where
     last_committed_version: u64,
     /// The next version ready to be send for commit.
     next_version_to_commit: u64,
+    /// Configs to check back pressure.
+    back_pressure_configs: TalosBackPressureConfig,
+}
+
+pub async fn receive_new_message<M>(
+    receiver: &mut M,
+    is_back_pressure_enabled: bool,
+) -> Option<Result<Option<ChannelMessage<MessengerCandidateMessage>>, MessageReceiverError>>
+where
+    M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
+{
+    if is_back_pressure_enabled {
+        // This sleep with hardcoded value is fine, this just introduces a delay for fairness so that other async arms of tokio select can execute.
+        // We introduce this delay just so that feedback or any other arm gets a chance to execute when back-pressue is enabled.
+        tokio::time::sleep(Duration::from_millis(2)).await;
+        None
+    } else {
+        Some(receiver.consume_message().await)
+    }
 }
 
 impl<M> MessengerInboundService<M>
@@ -71,8 +95,10 @@ where
         rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
+        back_pressure_configs: TalosBackPressureConfig,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency as u64));
+
         Self {
             message_receiver,
             tx_actions_channel,
@@ -82,12 +108,17 @@ where
             commit_interval,
             last_committed_version: 0,
             next_version_to_commit: 0,
+            back_pressure_configs,
         }
     }
     /// Get next versions with their commit actions to process.
     ///
-    async fn process_next_actions(&mut self) -> MessengerServiceResult {
-        let items_to_process = self.suffix.get_suffix_items_to_process();
+    async fn process_next_actions(&mut self) -> MessengerServiceResult<u32> {
+        let max_new_items_to_pick = self.back_pressure_configs.get_remaining_count();
+
+        let items_to_process = self.suffix.get_suffix_items_to_process(max_new_items_to_pick);
+        let new_in_progress_count = items_to_process.len() as u32;
+
         for item in items_to_process {
             let ver = item.version;
 
@@ -114,9 +145,11 @@ where
 
             // Mark item as in process
             self.suffix.set_item_state(ver, SuffixItemState::Processing);
+            // Increment the in_progress_count which is used to determine when back-pressure is enforced.
+            self.back_pressure_configs.increment_current();
         }
 
-        Ok(())
+        Ok(new_in_progress_count)
     }
 
     fn update_commit_offset(&mut self, version: u64) {
@@ -157,6 +190,9 @@ where
                 self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
 
                 // self.all_completed_versions.push(version);
+
+                // When any item moved to final state, we decrement this counter, which thereby relaxes the back-pressure if it was enforced.
+                self.back_pressure_configs.decrement_current();
 
                 if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
                     self.update_commit_offset(new_prune_version);
@@ -220,98 +256,178 @@ where
         };
     }
 
+    /// Process the feedback received from another thread for some `on_commit` action.
+    pub(crate) fn process_feedbacks(&mut self, feedback_result: MessengerChannelFeedback) {
+        match feedback_result {
+            MessengerChannelFeedback::Error(version, key, message_error) => {
+                error!("Failed to process version={version} with error={message_error:?}");
+                self.handle_action_failed(version, &key);
+            }
+            MessengerChannelFeedback::Success(version, key) => {
+                debug!("Successfully processed version={version} with action_key={key}");
+                self.handle_action_success(version, &key);
+            }
+        }
+    }
+
+    /// Process the incoming candidate message
+    ///     - Writes the candidate to suffix.
+    ///     - Update to an early `Complete` state based on the `on_commit` actions.
+    ///     - Transform the `on_commit` action to format required internally.
+    pub(crate) fn process_candidate_message(&mut self, candidate: CandidateChannelMessage<MessengerCandidateMessage>) {
+        let version = candidate.message.version;
+        debug!("Candidate version received is {version}");
+        if version > 0 {
+            // insert item to suffix
+            if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
+                warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
+            }
+
+            if let Some(item_to_update) = self.suffix.get_mut(version) {
+                if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
+                    let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
+                    if filter_actions.is_empty() {
+                        // There are on_commit actions, but not the ones required by messenger
+                        item_to_update
+                            .item
+                            .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
+                    } else {
+                        item_to_update.item.set_commit_action(filter_actions);
+                    }
+                } else {
+                    //  No on_commit actions
+                    item_to_update
+                        .item
+                        .set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
+                }
+            };
+        } else {
+            warn!("Version 0 will not be inserted into suffix.")
+        }
+    }
+
+    /// Process the incoming decision message
+    ///     - Update the suffix candidate item with decision.
+    ///     - If any type of early `Complete` state, update the `prune_index` and `commit_offset` if applicable.
+    pub(crate) fn process_decision_message(&mut self, decision: DecisionChannelMessage) {
+        let version = decision.message.get_candidate_version();
+        debug!(
+            "[Decision Message] Decision version received = {} for candidate version = {}",
+            decision.decision_version, version
+        );
+
+        // TODO: GK - no hardcoded filters on headers
+        let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
+        self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
+
+        // Look for any early `Complete(..)` state, and update the `prune_index` and `commit_offset`.
+        if let Ok(Some(suffix_item)) = self.suffix.get(version) {
+            if matches!(suffix_item.item.get_state(), SuffixItemState::Complete(..)) {
+                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
+                    self.update_commit_offset(new_prune_version);
+                }
+            }
+        };
+    }
+
+    /// Common house keeping checks and updates that run at the end of every iteration of `Self::run_once`.
+    /// - Check if backpressure must be enabled.
+    /// - Check if we have crossed the `commit_size` threshold and issue a commit.
+    /// - Check if suffix should be pruned.
+    pub(crate) fn run_once_housekeeping(&mut self) -> MessengerServiceResult {
+        // check back pressure
+        let enable_back_pressure = self.back_pressure_configs.should_apply_back_pressure();
+
+        // update back pressure if it has changed.
+        if self.back_pressure_configs.is_enabled != enable_back_pressure {
+            if enable_back_pressure {
+                info!(
+                    "Applying back pressure as the total number of records currently being processed ({}) >= max in progress allowed ({:?})",
+                    self.back_pressure_configs.current, self.back_pressure_configs.max_threshold
+                );
+            } else {
+                info!(
+                    "Removing back pressure as the total number of records currently being processed ({}) < max in progress allowed ({:?})",
+                    self.back_pressure_configs.current, self.back_pressure_configs.max_threshold
+                );
+            }
+            self.back_pressure_configs.update_back_pressure_flag(enable_back_pressure);
+        }
+
+        // NOTE: Pruning and committing offset adds to latency if done more frequently.
+
+        // issue commit, is applicable.
+        if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
+            match self.message_receiver.commit() {
+                Err(err) => {
+                    error!("[Commit] Error committing {err:?}");
+                }
+                Ok(_) => {
+                    self.last_committed_version = self.next_version_to_commit;
+                    info!("Last commit at offset {}", self.last_committed_version);
+                }
+            };
+        }
+
+        // suffix prune, if applicable.
+        let SuffixMeta {
+            prune_index,
+            prune_start_threshold,
+            ..
+        } = self.suffix.get_meta();
+
+        if prune_index.gt(prune_start_threshold) {
+            self.suffix_pruning();
+        };
+
+        Ok(())
+    }
+
     pub async fn run_once(&mut self) -> MessengerServiceResult {
         tokio::select! {
-            // Receive feedback from publisher.
+            // feedback arm - Processes the feedbacks
             Some(feedback_result) = self.rx_feedback_channel.recv() => {
-                match feedback_result {
-                    MessengerChannelFeedback::Error(version, key, message_error) => {
-                        error!("Failed to process version={version} with error={message_error:?}");
-                        self.handle_action_failed(version, &key);
-
-                    },
-                    MessengerChannelFeedback::Success(version, key) => {
-                        debug!("Successfully processed version={version} with action_key={key}");
-                        self.handle_action_success(version, &key);
-                    },
-                }
+                self.process_feedbacks(feedback_result);
+                self.process_next_actions().await?;
 
             }
-            // 1. Consume message.
-            // Ok(Some(msg)) = self.message_receiver.consume_message() => {
-            reciever_result = self.message_receiver.consume_message() => {
 
-                match reciever_result {
-                    // 2.1 For CM - Install messages on the version
-                    Ok(Some(ChannelMessage::Candidate(candidate))) => {
-                        let version = candidate.message.version;
-                        debug!("Candidate version received is {version}");
-                        if version > 0 {
-                            // insert item to suffix
-                            if let Err(insert_error) = self.suffix.insert(version, candidate.message.into()) {
-                                warn!("Failed to insert version {version} into suffix with error {insert_error:?}");
-                            }
+            // Incoming message arm -
+            //              - Processes the candidate or decision messages received.
+            //              - Applies back pressure if too many records are being processed.
+            //              - If back pressure is applied, will try to drain as many feedbacks and update the suffix as soon as possible to release the backpressure quickly.
+            result = receive_new_message(&mut self.message_receiver, self.back_pressure_configs.is_enabled) => {
+                if let Some(receiver_result) = result {
+                    match receiver_result {
+                        // 2.1 For CM - Install messages on the version
+                        Ok(Some(ChannelMessage::Candidate(candidate))) => {
+                           self.process_candidate_message(*candidate);
+                        },
+                        // 2.2 For DM - Update the decision with outcome + safepoint.
+                        Ok(Some(ChannelMessage::Decision(decision))) => {
 
-                            if let Some(item_to_update) = self.suffix.get_mut(version){
-                                if let Some(commit_actions) = &item_to_update.item.candidate.on_commit {
-                                    let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
-                                    if filter_actions.is_empty() {
-                                        // There are on_commit actions, but not the ones required by messenger
-                                        item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
-                                    } else {
-                                        item_to_update.item.set_commit_action(filter_actions);
-                                    }
-                                } else {
-                                    //  No on_commit actions
-                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
-
-                                }
-                            };
+                            self.process_decision_message(*decision);
+                            // Pick the next items from suffix whose actions are to be processed.
+                            self.process_next_actions().await?;
 
 
-
-                        } else {
-                            warn!("Version 0 will not be inserted into suffix.")
-                        }
-                    },
-                    // 2.2 For DM - Update the decision with outcome + safepoint.
-                    Ok(Some(ChannelMessage::Decision(decision))) => {
-                        let version = decision.message.get_candidate_version();
-                        debug!("[Decision Message] Decision version received = {} for candidate version = {}", decision.decision_version, version);
-
-                        // TODO: GK - no hardcoded filters on headers
-                        let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
-                        self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
-
-                        // Look for any early `Complete(..)` state, and update the `prune_index` and `commit_offset`.
-                        if let Ok(Some(suffix_item)) = self.suffix.get(version){
-                            if matches!(suffix_item.item.get_state(), SuffixItemState::Complete(..)) {
-                                if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
-                                    self.update_commit_offset(new_prune_version);
+                        },
+                        Ok(None) => {
+                            debug!("No message to process..");
+                        },
+                        Err(error) => {
+                            // Catch the error propogated, and if it has a version, mark the item as completed.
+                            if let Some(version) = error.version {
+                                if let Some(item_to_update) = self.suffix.get_mut(version){
+                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
                                 }
                             }
-
-                        };
-
-                        // Pick the next items from suffix whose actions are to be processed.
-                        self.process_next_actions().await?;
-
-
-                    },
-                    Ok(None) => {
-                        debug!("No message to process..");
-                    },
-                    Err(error) => {
-                        // Catch the error propogated, and if it has a version, mark the item as completed.
-                        if let Some(version) = error.version {
-                            if let Some(item_to_update) = self.suffix.get_mut(version){
-                                item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
-                            }
-                        }
-                        error!("error consuming message....{:?}", error);
-                    },
+                            error!("error consuming message....{:?}", error);
+                        },
+                    }
+                } else {
+                    debug!("Not consuming new messages due to backpressure enabled. Current in progress count = {} | Total feedbacks available in the feedback channel = {} | total actions send in the actions channel = {}", self.back_pressure_configs.current ,self.rx_feedback_channel.max_capacity() - self.rx_feedback_channel.capacity(), self.tx_actions_channel.max_capacity() - self.tx_actions_channel.capacity());
                 }
-
             }
             // Periodically check and update the commit frequency and prune index.
             _ = self.commit_interval.tick() => {
@@ -363,31 +479,7 @@ where
 
         }
 
-        // NOTE: Pruning and committing offset adds to latency if done more frequently.
-        if (self.next_version_to_commit - self.last_committed_version).ge(&(self.config.commit_size as u64)) {
-            match self.message_receiver.commit() {
-                Err(err) => {
-                    error!("[Commit] Error committing {err:?}");
-                }
-                Ok(_) => {
-                    self.last_committed_version = self.next_version_to_commit;
-                    info!("Last commit at offset {}", self.last_committed_version);
-                }
-            };
-            // else {
-            // }
-        }
-
-        // Update the prune index and commit
-        let SuffixMeta {
-            prune_index,
-            prune_start_threshold,
-            ..
-        } = self.suffix.get_meta();
-
-        if prune_index.gt(prune_start_threshold) {
-            self.suffix_pruning();
-        };
+        self.run_once_housekeeping()?;
 
         Ok(())
     }

@@ -12,7 +12,9 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
+
 use tokio::{
     sync::mpsc::{self, Sender},
     task::JoinHandle,
@@ -171,6 +173,7 @@ pub struct MockActionService {
 impl ActionService for MockActionService {
     async fn process_action(&mut self) -> MessengerServiceResult {
         let actions_result = self.rx_actions_channel.try_recv();
+        // error!("Action result on try_recv is {actions_result:?}");
         match actions_result {
             Ok(actions) => {
                 let MessengerCommitActions {
@@ -179,7 +182,7 @@ impl ActionService for MockActionService {
                     headers,
                 } = actions;
 
-                error!("Headers... {headers:#?}");
+                // error!("Headers... {headers:#?}");
                 if let Some(publish_actions_for_type) = commit_actions.get(&self.publisher.get_publish_type().to_string()) {
                     match get_actions_deserialised::<Vec<MockOnCommitKafkaMessage>>(publish_actions_for_type) {
                         Ok(actions) => {
@@ -261,13 +264,32 @@ pub fn build_mock_outcome(conflict_version: Option<u64>, safepoint: Option<u64>)
 pub struct MessengerServicesTesterConfigs {
     suffix_configs: SuffixConfig,
     inbound_service_configs: MessengerInboundServiceConfig,
+    back_pressure_configs: TalosBackPressureConfig,
 }
 
 impl MessengerServicesTesterConfigs {
-    pub fn new(suffix_configs: SuffixConfig, inbound_service_configs: MessengerInboundServiceConfig) -> Self {
+    pub fn new(suffix_configs: SuffixConfig, inbound_service_configs: MessengerInboundServiceConfig, backpressure_configs: TalosBackPressureConfig) -> Self {
         MessengerServicesTesterConfigs {
             suffix_configs,
             inbound_service_configs,
+            back_pressure_configs: backpressure_configs,
+        }
+    }
+}
+
+pub struct JourneyConfig {
+    /// Should the journey process the actions in the actions service.
+    should_process_actions: bool,
+    /// There can be `n` number of actions under `on_commit` of a version.
+    /// Therefore this field helps to iterate through the feedbacks from actions_service for the actions.
+    run_inbound_service_count: u32,
+}
+
+impl JourneyConfig {
+    pub fn new(process_actions: bool, run_inbound_service_count: u32) -> Self {
+        JourneyConfig {
+            run_inbound_service_count,
+            should_process_actions: process_actions,
         }
     }
 }
@@ -305,6 +327,7 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
             rx_feedback_channel,
             suffix,
             configs.inbound_service_configs,
+            configs.back_pressure_configs,
         );
 
         // START - Mock Action Service
@@ -357,28 +380,11 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
             }
 
             // Action Service -> Inbound Service.
-            if configs.expected_feedbacks_in_journey > 0 {
-                for _ in 1..=configs.expected_feedbacks_in_journey {
+            if configs.run_inbound_service_count > 0 {
+                for _ in 1..=configs.run_inbound_service_count {
                     self.inbound_service.run_once().await.unwrap();
                 }
             }
-        }
-    }
-}
-
-pub struct JourneyConfig {
-    /// Should the journey process the actions in the actions service.
-    should_process_actions: bool,
-    /// There can be `n` number of actions under `on_commit` of a version.
-    /// Therefore this field helps to iterate through the feedbacks from actions_service for the actions.
-    expected_feedbacks_in_journey: u32,
-}
-
-impl JourneyConfig {
-    pub fn new(process_actions: bool, expected_feedbacks: u32) -> Self {
-        JourneyConfig {
-            expected_feedbacks_in_journey: expected_feedbacks,
-            should_process_actions: process_actions,
         }
     }
 }

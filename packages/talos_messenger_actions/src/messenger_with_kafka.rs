@@ -4,6 +4,7 @@ use log::debug;
 use rdkafka::producer::ProducerContext;
 use talos_certifier::ports::{errors::MessagePublishError, MessageReciever};
 use talos_certifier_adapters::KafkaConsumer;
+use talos_common_utils::back_pressure::TalosBackPressureConfig;
 use talos_messenger_core::{
     core::{MessengerPublisher, PublishActionType},
     errors::{MessengerServiceError, MessengerServiceErrorKind, MessengerServiceResult},
@@ -110,6 +111,8 @@ pub struct Configuration {
     pub commit_size: Option<u32>,
     /// Commit issuing frequency.
     pub commit_frequency: Option<u32>,
+    /// messenger can receive more messages.
+    pub back_pressure_config: Option<TalosBackPressureConfig>,
 }
 
 pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResult {
@@ -135,7 +138,14 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
     // START - Inbound service
     let suffix: Suffix<MessengerCandidate> = Suffix::with_config(config.suffix_config.unwrap_or_default());
     let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size, config.commit_frequency);
-    let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, inbound_service_config);
+    let inbound_service = MessengerInboundService::new(
+        kafka_consumer,
+        tx_actions_channel,
+        rx_feedback_channel,
+        suffix,
+        inbound_service_config,
+        config.back_pressure_config.unwrap_or_default(),
+    );
     // END - Inbound service
 
     // START - Publish service

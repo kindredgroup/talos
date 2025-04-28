@@ -1,6 +1,6 @@
 use thiserror::Error as ThisError;
 
-pub type MessengerServiceResult = Result<(), MessengerServiceError>;
+pub type MessengerServiceResult<T = ()> = Result<T, MessengerServiceError>;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum MessengerActionErrorKind {
