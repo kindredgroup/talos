@@ -298,6 +298,9 @@ where
 
 
                     },
+                    Ok(Some(ChannelMessage::Reset)) => {
+                        debug!("Channel reset message received.");
+                    },
                     Ok(None) => {
                         debug!("No message to process..");
                     },

@@ -58,6 +58,17 @@ where
         Suffix { meta, messages }
     }
 
+    /// Resets the suffix to initial state.
+    pub fn reset(&mut self) {
+        // Reset suffix meta.
+        self.meta.head = 0;
+        self.meta.last_insert_vers = 0;
+        self.meta.prune_index = None;
+
+        // Clear the suffix messages vecdequeue.
+        self.messages.clear();
+    }
+
     pub fn index_from_head(&self, version: u64) -> Option<usize> {
         let head = self.meta.head;
         if version < head {

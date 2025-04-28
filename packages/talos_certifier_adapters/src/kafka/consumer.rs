@@ -3,7 +3,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use log::debug;
 use rdkafka::{
-    consumer::{Consumer, DefaultConsumerContext, StreamConsumer},
+    consumer::{Consumer, ConsumerContext, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
 };
 use talos_certifier::{
@@ -27,16 +27,30 @@ use super::utils;
 
 // Kafka Consumer Client
 // #[derive(Debug, Clone)]
-pub struct KafkaConsumer<C> {
-    pub consumer: Arc<StreamConsumer<DefaultConsumerContext>>,
+pub struct KafkaConsumer<M, C = DefaultConsumerContext>
+where
+    C: ConsumerContext,
+{
+    pub consumer: Arc<StreamConsumer<C>>,
     pub topic: String,
     pub tpl: TopicPartitionList,
-    _phantom: PhantomData<C>,
+    _phantom: PhantomData<M>,
 }
 
-impl<C> KafkaConsumer<C> {
+impl<M> KafkaConsumer<M, DefaultConsumerContext> {
+    /// Create a new Kafka consumer with `DefaultConsumerContext`
     pub fn new(config: &KafkaConfig) -> Self {
-        let consumer = config.build_consumer_config().create().expect("Failed to create consumer");
+        KafkaConsumer::with_context(config, DefaultConsumerContext)
+    }
+}
+
+impl<M, C> KafkaConsumer<M, C>
+where
+    C: ConsumerContext + 'static,
+{
+    /// Create a new Kafka consumer with custom consumer context.
+    pub fn with_context(config: &KafkaConfig, context: C) -> Self {
+        let consumer = config.build_consumer_config().create_with_context(context).expect("Failed to create consumer");
 
         let topic = config.topic.clone();
         Self {
@@ -56,7 +70,6 @@ impl<C> KafkaConsumer<C> {
             Some(tpl) => {
                 let offset_in_tpl = tpl.offset().to_raw().unwrap_or_default();
 
-                // error!("Offset received ={offset} and offset in tpl ={offset_in_tpl}");
                 if offset_to_update > offset_in_tpl {
                     // error!("Updating partition offset....");
                     self.tpl
@@ -76,11 +89,12 @@ impl<C> KafkaConsumer<C> {
 }
 
 #[async_trait]
-impl<C> MessageReciever for KafkaConsumer<C>
+impl<M, C> MessageReciever for KafkaConsumer<M, C>
 where
-    C: CandidateMessageBaseTrait + Send + Sync,
+    M: CandidateMessageBaseTrait + Send + Sync,
+    C: ConsumerContext + 'static,
 {
-    type Message = ChannelMessage<C>;
+    type Message = ChannelMessage<M>;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let message_received = self.consumer.recv().await.map_err(|e| MessageReceiverError {
@@ -123,7 +137,7 @@ where
             data: Some(message_type.to_string()),
         })? {
             MessageVariant::Candidate => {
-                let mut msg: C = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
+                let mut msg: M = utils::parse_kafka_payload(raw_payload).map_err(|e| MessageReceiverError {
                     kind: MessageReceiverErrorKind::ParseError,
                     version: Some(offset),
                     reason: e.to_string(),
@@ -248,9 +262,10 @@ where
 }
 
 #[async_trait]
-impl<C> SharedPortTraits for KafkaConsumer<C>
+impl<M, C> SharedPortTraits for KafkaConsumer<M, C>
 where
-    C: Send + Sync,
+    M: Send + Sync,
+    C: ConsumerContext,
 {
     async fn is_healthy(&self) -> bool {
         matches!(self.consumer.client().fetch_metadata(None, Duration::from_secs(2)), Ok(_result))
