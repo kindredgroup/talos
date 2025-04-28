@@ -92,6 +92,9 @@ where
 
                         time_last_item_send_end_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
                     },
+                    ChannelMessage::Reset => {
+                        debug!("Channel reset message received.");
+                    }
                 }
             }
         }

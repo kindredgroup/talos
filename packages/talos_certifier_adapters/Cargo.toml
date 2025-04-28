@@ -22,9 +22,11 @@ env_logger = { workspace = true }
 # Async
 tokio = { workspace = true }
 async-trait = { workspace = true }
-futures-util = "0.3.21"
+# Futures
+futures-util = "0.3.26"
+futures-executor = "0.3.28"
 # Kafka
-rdkafka = { version = "0.34.0", features = ["sasl"]  }
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 
 #  Ahash hashmap
 ahash = "0.8.3"
@@ -48,10 +50,10 @@ thiserror = "1.0.31"
 mockall = "0.11.0"
 
 # internal crates
-talos_metrics =       { path = "../talos_metrics", version = "0.2.41-dev" }
-talos_certifier =     { path = "../talos_certifier", version = "0.2.41-dev" }
-talos_suffix =        { path = "../talos_suffix", version = "0.2.41-dev" }
-talos_common_utils =  { path = "../talos_common_utils", version = "0.2.41-dev" }
+talos_metrics = { path = "../talos_metrics", version = "0.2.41-dev" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.41-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.41-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.41-dev" }
 talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.41-dev" }
 
 
