@@ -118,42 +118,6 @@ pub struct TraceableDecision {
     pub raw_span_context: HashMap<String, String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
-pub struct ReceivedMessage {
-    pub decision: Option<TraceableDecision>,
-    pub is_decision: bool,
-    pub offset: u64,
-}
-
-impl ReceivedMessage {
-    pub fn new_candidate(offset: u64) -> Self {
-        Self {
-            decision: None,
-            is_decision: false,
-            offset,
-        }
-    }
-
-    pub fn new_decision_for_another_agent(offset: u64) -> Self {
-        Self {
-            decision: None,
-            is_decision: true,
-            offset,
-        }
-    }
-
-    pub fn new_decision(decision: DecisionMessage, offset: u64, headers: HashMap<String, String>) -> Self {
-        Self {
-            decision: Some(TraceableDecision {
-                decision,
-                raw_span_context: headers,
-            }),
-            is_decision: true,
-            offset,
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct TxProcessingTimeline {
@@ -193,7 +157,7 @@ pub type PublisherType = dyn Publisher + Sync + Send;
 /// The consuming contract
 #[async_trait]
 pub trait Consumer {
-    async fn receive_message(&self) -> Result<ReceivedMessage, MessagingError>;
+    async fn receive_message(&self) -> Option<Result<TraceableDecision, MessagingError>>;
     fn get_talos_type(&self) -> TalosType;
 }
 

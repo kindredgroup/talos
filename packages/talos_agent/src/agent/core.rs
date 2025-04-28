@@ -161,7 +161,7 @@ where
             Ok(rslt_certify) => rslt_certify,
             Err(_) => {
                 let _ = self.tx_cancel.send(CancelRequestChannelMessage { request }).await;
-                Err(AgentError::new_certify_timeout(xid, max_wait.as_millis()))
+                Err(AgentError::new_certify_timout(xid, max_wait.as_millis()))
             }
         }
     }

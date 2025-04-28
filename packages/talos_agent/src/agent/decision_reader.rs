@@ -1,12 +1,5 @@
-use opentelemetry::{global, KeyValue};
-use talos_common_utils::otel::metric_constants::{
-    METRIC_KEY_CERT_DECISION_TYPE, METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_METER_NAME_COHORT_SDK, METRIC_NAME_AGENT_OFFSET_LAG, METRIC_NAME_CERTIFICATION_OFFSET,
-    METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION,
-};
-
 use crate::messaging::api::{ConsumerType, TraceableDecision};
 use crate::mpsc::core::Sender;
-use std::cmp::max;
 use std::sync::Arc;
 
 pub struct DecisionReaderService<S: Sender<Data = TraceableDecision>> {
@@ -20,54 +13,25 @@ impl<S: Sender<Data = TraceableDecision>> DecisionReaderService<S> {
     }
 
     pub async fn run(&self) {
-        let mut candidate_offset: u64 = 0;
-        let metric_agent_lag = global::meter(METRIC_METER_NAME_COHORT_SDK).u64_gauge(METRIC_NAME_AGENT_OFFSET_LAG).build();
-        let metric_certification_offset = global::meter(METRIC_METER_NAME_COHORT_SDK).u64_gauge(METRIC_NAME_CERTIFICATION_OFFSET).build();
         loop {
-            match self.read().await {
-                Ok((is_decision, offset)) => {
-                    if !is_decision {
-                        candidate_offset = offset;
-                    } else {
-                        let lag = max(0, candidate_offset - offset);
-                        metric_agent_lag.record(lag, &[]);
-                        metric_certification_offset.record(
-                            lag,
-                            &[
-                                KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION),
-                                KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN),
-                            ],
-                        );
-                    }
-                }
-                Err(ReaderError::ChannelIsClosed { e: reason }) => {
-                    tracing::error!("Destination channel is closed: {}", reason);
-                    break;
-                }
-                _ => {}
+            if let Err(ReaderError::ChannelIsClosed { e: reason }) = self.read().await {
+                tracing::error!("Destination channel is closed: {}", reason);
+                break;
             }
         }
     }
 
-    async fn read(&self) -> Result<(bool, u64), ReaderError> {
+    async fn read(&self) -> Result<(), ReaderError> {
         match self.consumer.receive_message().await {
-            Ok(response) => {
-                if !response.is_decision || response.decision.is_none() {
-                    return Ok::<(bool, u64), ReaderError>((response.is_decision, response.offset));
-                }
+            Some(Ok(decision_msg)) => Ok(self
+                .tx_decision
+                .send(decision_msg)
+                .await
+                .map_err(|send_error| ReaderError::ChannelIsClosed { e: format!("{}", send_error) })?),
 
-                let decision = response.decision.unwrap();
-                self.tx_decision
-                    .send(decision)
-                    .await
-                    .map_err(|send_error| ReaderError::ChannelIsClosed { e: send_error.to_string() })?;
+            Some(Err(_)) => Err(ReaderError::ConsumerError),
 
-                Ok((true, response.offset))
-            }
-            Err(err) => {
-                tracing::warn!("Error receiving message: {}", err);
-                Err(ReaderError::ConsumerError)
-            }
+            None => Ok(()),
         }
     }
 }
@@ -85,7 +49,7 @@ mod tests {
     use super::*;
     use crate::api::TalosType;
     use crate::messaging::api::Decision::Committed;
-    use crate::messaging::api::{Consumer, DecisionMessage, ReceivedMessage};
+    use crate::messaging::api::{Consumer, DecisionMessage};
     use crate::messaging::errors::{MessagingError, MessagingErrorKind};
     use async_trait::async_trait;
     use mockall::{mock, Sequence};
@@ -106,7 +70,7 @@ mod tests {
         #[async_trait]
         impl Consumer for NoopConsumer {
             pub fn get_talos_type(&self) -> TalosType;
-            pub async fn receive_message(&self) -> Result<ReceivedMessage, MessagingError>;
+            pub async fn receive_message(&self) -> Option<Result<TraceableDecision, MessagingError>>;
         }
     }
 
@@ -115,18 +79,18 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let response1_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new());
-        let response2_sample = ReceivedMessage::new_decision(make_decision("xid2".to_string()), 2, HashMap::new());
+        let tdecision1_sample = make_decision("xid1".to_string());
+        let tdecision2_sample = make_decision("xid2".to_string());
 
-        let decision1 = response1_sample.decision.clone().unwrap().decision.clone();
-        let decision2 = response2_sample.decision.clone().unwrap().decision.clone();
+        let decision1 = tdecision1_sample.decision.clone();
+        let decision2 = tdecision2_sample.decision.clone();
 
         let mut seq = Sequence::new();
         consumer
             .expect_receive_message()
             .once()
             .in_sequence(&mut seq)
-            .returning(move || Ok(response1_sample.clone()));
+            .returning(move || Some(Ok(tdecision1_sample.clone())));
 
         destination
             .expect_send()
@@ -139,7 +103,7 @@ mod tests {
             .expect_receive_message()
             .once()
             .in_sequence(&mut seq)
-            .returning(move || Ok(response2_sample.clone()));
+            .returning(move || Some(Ok(tdecision2_sample.clone())));
 
         destination
             .expect_send()
@@ -161,17 +125,46 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let response_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new());
+        let decision_sample = make_decision("xid1".to_string());
 
-        let response = response_sample.clone();
-        let decision_to_send = response_sample.decision.unwrap().clone();
+        let decision_copy1 = decision_sample.clone();
+        let decision_copy2 = decision_sample.clone();
 
-        consumer.expect_receive_message().once().returning(move || Ok(response.clone()));
+        consumer.expect_receive_message().once().returning(move || Some(Ok(decision_copy1.clone())));
 
-        destination.expect_send().once().returning(move |_| Err(SendError(decision_to_send.clone())));
+        destination.expect_send().once().returning(move |_| Err(SendError(decision_copy2.clone())));
 
         let reader = DecisionReaderService::new(Arc::new(Box::new(consumer)), destination);
         reader.run().await;
+    }
+
+    #[tokio::test]
+    async fn should_keep_reading_when_received_none() {
+        let mut consumer = MockNoopConsumer::new();
+        let mut destination = MockNoopSender::new();
+        let tdecision_sample = make_decision("xid1".to_string());
+        let decision = tdecision_sample.decision.clone();
+
+        let mut seq = Sequence::new();
+        consumer.expect_receive_message().once().in_sequence(&mut seq).returning(move || None);
+
+        consumer
+            .expect_receive_message()
+            .once()
+            .in_sequence(&mut seq)
+            .returning(move || Some(Ok(tdecision_sample.clone())));
+
+        destination
+            .expect_send()
+            .withf(move |param| param.decision.xid == decision.xid)
+            .once()
+            .returning(move |_| Ok(()));
+
+        let reader = DecisionReaderService::new(Arc::new(Box::new(consumer)), destination);
+        let result = reader.read().await;
+        assert!(result.is_ok());
+        let result = reader.read().await;
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -179,19 +172,19 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let response_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new());
-        let response = response_sample.clone();
-        let decision_to_send = response_sample.decision.unwrap();
+        let decision_sample = make_decision("xid1".to_string());
+        let decision_copy1 = decision_sample.clone();
+        let decision_copy2 = decision_sample.clone();
 
         let mut seq = Sequence::new();
 
         // the first call returns an error
         consumer.expect_receive_message().once().in_sequence(&mut seq).returning(move || {
-            Err(MessagingError {
+            Some(Err(MessagingError {
                 kind: MessagingErrorKind::Consuming,
                 reason: "Simulating error".to_string(),
                 cause: None,
-            })
+            }))
         });
 
         // the second call returns message
@@ -199,30 +192,33 @@ mod tests {
             .expect_receive_message()
             .once()
             .in_sequence(&mut seq)
-            .returning(move || Ok(response.clone()));
+            .returning(move || Some(Ok(decision_copy1.clone())));
 
         // This recording is to interrupt the run loop
         destination
             .expect_send()
             .once()
             .in_sequence(&mut seq)
-            .returning(move |_| Err(SendError(decision_to_send.clone())));
+            .returning(move |_| Err(SendError(decision_copy2.clone())));
 
         let reader = DecisionReaderService::new(Arc::new(Box::new(consumer)), destination);
         reader.run().await;
     }
 
-    fn make_decision(xid: String) -> DecisionMessage {
-        DecisionMessage {
-            xid,
-            agent: String::from("agent"),
-            cohort: String::from("cohort"),
-            decision: Committed,
-            suffix_start: 0_u64,
-            version: 0_u64,
-            safepoint: None,
-            conflicts: None,
-            metrics: None,
+    fn make_decision(xid: String) -> TraceableDecision {
+        TraceableDecision {
+            decision: DecisionMessage {
+                xid,
+                agent: String::from("agent"),
+                cohort: String::from("cohort"),
+                decision: Committed,
+                suffix_start: 0_u64,
+                version: 0_u64,
+                safepoint: None,
+                conflicts: None,
+                metrics: None,
+            },
+            raw_span_context: HashMap::new(),
         }
     }
 }

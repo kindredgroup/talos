@@ -21,7 +21,7 @@ pub struct AgentError {
 }
 
 impl AgentError {
-    pub fn new_certify_timeout(xid: String, elapsed_ms: u128) -> AgentError {
+    pub fn new_certify_timout(xid: String, elapsed_ms: u128) -> AgentError {
         AgentError {
             kind: CertificationTimeout { xid, elapsed_ms },
             reason: "Timeout".to_string(),
@@ -76,8 +76,8 @@ mod tests {
     }
 
     #[test]
-    fn new_certify_timeout() {
-        let agent_error = AgentError::new_certify_timeout("xid".to_string(), 111);
+    fn new_certify_timout() {
+        let agent_error = AgentError::new_certify_timout("xid".to_string(), 111);
         assert_eq!(
             agent_error.kind,
             CertificationTimeout {
