@@ -1,4 +1,5 @@
 use ahash::AHashMap;
+use log::debug;
 
 use super::CertifierCandidate;
 
@@ -81,6 +82,10 @@ impl Certifier {
 
         // Rule R2: Conditional abort transactions below suffix boundary
         if certify_tx.is_version_above_snapshot(Certifier::get_certifier_base_ver(suffix_head, certify_tx.vers)) {
+            debug!(
+                "Aborting due snapshot for candidate below suffix head. version = {} | suffix_head = {} | snapshot = {} ",
+                certify_tx.vers, suffix_head, certify_tx.snapshot,
+            );
             return CertifyOutcome::Aborted {
                 version: None,
                 discord: Discord::Permissive,
@@ -96,6 +101,10 @@ impl Certifier {
             }
             None
         }) {
+            debug!(
+                "Aborting due to version {} having antidependency against version = {} ",
+                certify_tx.vers, antidependecy_vers,
+            );
             return CertifyOutcome::Aborted {
                 version: Some(antidependecy_vers),
                 discord: Discord::Assertive,

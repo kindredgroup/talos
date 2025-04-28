@@ -45,6 +45,7 @@ impl DecisionChannelMessage {
 pub enum ChannelMessage<T: CandidateMessageBaseTrait> {
     Candidate(Box<CandidateChannelMessage<T>>),
     Decision(Box<DecisionChannelMessage>),
+    Reset,
 }
 
 #[derive(Debug, Display, Eq, PartialEq, EnumString)]

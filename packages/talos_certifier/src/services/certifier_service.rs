@@ -2,7 +2,7 @@ use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use talos_suffix::core::SuffixConfig;
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::OffsetDateTime;
@@ -188,6 +188,27 @@ impl CertifierService {
             }
 
             Some(ChannelMessage::Decision(decision)) => self.process_decision(decision.decision_version, &decision.message),
+
+            Some(ChannelMessage::Reset) => {
+                info!("Reset request received, resetting suffix.");
+                debug!(
+                    "Before suffix reset - suffix head = {} | suffix length = {} | last inserted version = {} ",
+                    self.suffix.meta.head,
+                    self.suffix.messages.len(),
+                    self.suffix.meta.last_insert_vers
+                );
+                // Clear suffix.
+                self.suffix.reset();
+                debug!(
+                    "After suffix reset - suffix head = {} | suffix length = {}",
+                    self.suffix.meta.head,
+                    self.suffix.messages.len()
+                );
+                // Clear the read and write set maps.
+                self.certifier.reads.clear();
+                self.certifier.writes.clear();
+                Ok(())
+            }
 
             None => Ok(()),
             // _ => (),

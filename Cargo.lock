@@ -3244,6 +3244,7 @@ dependencies = [
  "async-trait",
  "deadpool-postgres",
  "env_logger",
+ "futures-executor",
  "futures-util",
  "log",
  "mockall",

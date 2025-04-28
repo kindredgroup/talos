@@ -1,3 +1,4 @@
+use crate::certifier_context::CertifierConsumerContext;
 use crate::mock_certifier_service::MockCertifierService;
 use crate::PgConfig;
 use crate::{self as Adapters, KafkaConsumer};
@@ -69,7 +70,13 @@ pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffer
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let kafka_consumer: KafkaConsumer<CandidateMessage> = Adapters::KafkaConsumer::new(&config.kafka_config);
+    let kafka_consumer: KafkaConsumer<CandidateMessage, CertifierConsumerContext> = Adapters::KafkaConsumer::with_context(
+        &config.kafka_config,
+        CertifierConsumerContext {
+            topic: config.kafka_config.topic.clone(),
+            message_channel_tx: tx.clone(),
+        },
+    );
     // let kafka_consumer_service = KafkaConsumerService::new(kafka_consumer, tx, system.clone());
     let message_receiver_service = MessageReceiverService::new(
         Box::new(kafka_consumer),
