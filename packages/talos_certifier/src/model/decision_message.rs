@@ -1,5 +1,6 @@
 // use super::CandidateMessage;
 use serde::{Deserialize, Serialize};
+use strum::Display;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
@@ -9,7 +10,7 @@ use super::metrics::TxProcessingTimeline;
 
 pub const DEFAULT_DECISION_MESSAGE_VERSION: u64 = 1_u64;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Display)]
 pub enum Decision {
     #[serde(rename = "committed")]
     Committed,
