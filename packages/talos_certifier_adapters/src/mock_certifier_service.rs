@@ -62,6 +62,9 @@ impl SystemService for MockCertifierService {
                     Some(ChannelMessage::Decision(_)) => {
                         // ignore decision
                     },
+                    Some(ChannelMessage::Reset) => {
+                        // ignore reset
+                    },
 
                     None => (),
                 }
