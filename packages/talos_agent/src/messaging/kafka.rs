@@ -283,8 +283,6 @@ impl MessageListener for KafkaConsumer {
             Some(td) => td.decision.decision.to_string(),
         };
 
-        tracing::warn!("Registering decision metric: offset={}, decision={}", message.offset, decision_value);
-
         metric.record(
             message.offset,
             &[

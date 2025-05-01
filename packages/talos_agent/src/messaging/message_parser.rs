@@ -61,7 +61,6 @@ impl<'a, L: MessageListener> MessageReceiver<'a, L> {
 
                     if key == HEADER_AGENT_ID {
                         self.is_id_matching = value == self.agent_name;
-                        tracing::warn!("key={}, value={}, agent={}", key, value, self.agent_name);
                     } else if key == HEADER_MESSAGE_TYPE {
                         let message_type = TalosMessageType::try_from(value.as_str()).map_err(|parse_error| {
                             MessagingError::corrupted(

@@ -32,7 +32,7 @@ impl<S: Sender<Data = TraceableDecision>> DecisionReaderService<S> {
                         let lag = max(0, candidate_offset - offset);
                         metric_agent_lag.record(lag, &[]);
                         metric_certification_offset.record(
-                            lag,
+                            offset,
                             &[
                                 KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION),
                                 KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN),
