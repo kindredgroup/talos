@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
+use tokio::sync::mpsc;
 
 use crate::{
     models::{JsCohortOtelConfig, JsKafkaConfig},
@@ -12,8 +13,8 @@ use crate::{
 
 use serde_json::Value;
 use talos_certifier::ports::MessageReciever;
-use talos_certifier_adapters::KafkaConsumer;
-use talos_cohort_replicator::otel::otel_config::ReplicatorOtelConfig;
+use talos_certifier_adapters::{kafka::contexts::ReplicatorConsumerContext, KafkaConsumer};
+use talos_cohort_replicator::{otel::otel_config::ReplicatorOtelConfig, StatemapQueueChannelMessage};
 use talos_cohort_replicator::{talos_cohort_replicator, CohortReplicatorConfig, StatemapItem};
 
 use self::callback_impl::{SnapshotProviderDelegate, StatemapInstallerDelegate};
@@ -102,7 +103,24 @@ impl InternalReplicator {
             JsStatemapAndSnapshot,
         >,
     ) -> napi::Result<()> {
-        let kafka_consumer = KafkaConsumer::new(&self.kafka_config.clone().into());
+        let (statemaps_tx, statemaps_rx) = mpsc::channel::<StatemapQueueChannelMessage>(self.config.channel_size as usize);
+
+        let statemaps_tx_clone = statemaps_tx.clone();
+        let fun = move || {
+            println!("Hello world");
+            //TODO: GK - Handle the error.
+
+            let _ = statemaps_tx_clone.try_send(StatemapQueueChannelMessage::ResetLastInstalledVersion);
+            Ok(())
+        };
+
+        let kafka_consumer = KafkaConsumer::with_context(
+            &self.kafka_config.clone().into(),
+            ReplicatorConsumerContext {
+                topic: self.kafka_config.topic.clone(),
+                rebalance_assign_callback_fn: fun,
+            },
+        );
         let brokers = &self.kafka_config.brokers.clone();
         let topic = &self.kafka_config.topic.clone();
 
@@ -130,6 +148,7 @@ impl InternalReplicator {
                 callback: snapshot_provider_callback,
             },
             config,
+            (statemaps_tx, statemaps_rx),
         )
         .await
         .map_err(|e| {

@@ -2,10 +2,11 @@
 use std::{fmt::Debug, time::Duration};
 
 use crate::{
-    core::{Replicator, ReplicatorChannel, StatemapItem},
+    core::{Replicator, ReplicatorChannel},
     errors::ReplicatorError,
     models::{ReplicatorCandidate, ReplicatorCandidateMessage},
     suffix::ReplicatorSuffixTrait,
+    StatemapQueueChannelMessage,
 };
 
 use opentelemetry::{global, trace::TraceContextExt, KeyValue};
@@ -32,7 +33,7 @@ pub struct ReplicatorServiceConfig {
 }
 
 pub async fn replicator_service<S, M>(
-    statemaps_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+    statemaps_tx: mpsc::Sender<StatemapQueueChannelMessage>,
     mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     mut replicator: Replicator<ReplicatorCandidate, S, M>,
     config: ReplicatorServiceConfig,
@@ -113,7 +114,7 @@ where
 
                         // Send statemaps batch to
                         for (ver, statemap_vec) in statemaps_batch {
-                            statemaps_tx.send((ver, statemap_vec)).await.unwrap();
+                            statemaps_tx.send(StatemapQueueChannelMessage::Message((ver, statemap_vec))).await.unwrap();
                         }
 
                         // statemaps_tx

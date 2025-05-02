@@ -5,11 +5,11 @@ use std::time::Duration;
 use opentelemetry::metrics::{Gauge, Histogram, Meter, UpDownCounter};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 use crate::{
     callbacks::ReplicatorSnapshotProvider,
-    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem},
+    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
     errors::{ReplicatorError, ReplicatorErrorKind},
     models::StatemapInstallerQueue,
 };
@@ -84,58 +84,160 @@ impl Metrics {
     }
 }
 
-pub async fn statemap_queue_service<S>(
-    mut statemaps_rx: mpsc::Receiver<(u64, Vec<StatemapItem>)>,
-    mut statemap_installation_rx: mpsc::Receiver<StatemapInstallationStatus>,
-    installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
-    snapshot_api: S,
-    config: StatemapQueueServiceConfig,
-    channel_size: usize,
-    otel_meter: Option<Meter>,
-) -> Result<(), ReplicatorError>
+pub struct StatemapQueueService<S>
 where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
-    info!("Starting Installer Queue Service.... ");
-    let mut cleanup_interval = tokio::time::interval(Duration::from_millis(config.queue_cleanup_frequency_ms));
+    statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
+    installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
+    installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+    statemap_queue: StatemapInstallerQueue,
+    snapshot_api: S,
+    config: StatemapQueueServiceConfig,
+    metrics: Metrics,
+}
 
-    let metrics = Metrics::new(otel_meter, channel_size as u64);
-    let mut installation_success_count = 0;
-    let mut send_for_install_count = 0;
-    let mut first_install_start: i128 = 0; //
-    let mut last_install_end: i128 = 0; //  = OffsetDateTime::now_utc().unix_timestamp_nanos();
+impl<S> StatemapQueueService<S>
+where
+    S: ReplicatorSnapshotProvider + Send + Sync,
+{
+    pub fn new(
+        statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
+        installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
+        installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+        snapshot_api: S,
+        config: StatemapQueueServiceConfig,
+        channel_size: usize,
+        otel_meter: Option<Meter>,
+    ) -> Self {
+        let metrics = Metrics::new(otel_meter, channel_size as u64);
+        Self {
+            statemaps_rx,
+            installation_feedback_rx,
+            installation_tx,
+            snapshot_api,
+            config,
+            metrics,
+            statemap_queue: StatemapInstallerQueue::default(),
+        }
+    }
 
-    let mut statemap_installer_queue = StatemapInstallerQueue::default();
-    //Gets snapshot initial version from db.
-    statemap_installer_queue.update_snapshot(snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
-        kind: ReplicatorErrorKind::Persistence,
-        reason: "Unable to get initial snapshot".into(),
-        cause: Some(e.to_string()),
-    })?);
+    async fn update_snapshot(&mut self) -> Result<(), ReplicatorError> {
+        let snapshot_version = self.snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
+            kind: ReplicatorErrorKind::Persistence,
+            reason: "Unable to get initial snapshot".into(),
+            cause: Some(e.to_string()),
+        })?;
 
-    loop {
-        tokio::select! {
-            statemap_batch_option = statemaps_rx.recv() => {
+        if snapshot_version > self.statemap_queue.snapshot_version {
+            error!("Updating snapshot version from {} to {snapshot_version}", self.statemap_queue.snapshot_version);
+            self.statemap_queue.update_snapshot(snapshot_version);
+        }
 
-                if let Some((ver, statemaps)) = statemap_batch_option {
+        Ok(())
+    }
 
-                    // Inserts the statemaps to the map
+    pub async fn run(&mut self) -> Result<(), ReplicatorError> {
+        info!("Starting Statemap Queue Service.... ");
+        let mut cleanup_interval = tokio::time::interval(Duration::from_millis(self.config.queue_cleanup_frequency_ms));
 
-                    let safepoint = if let Some(first_statemap) = statemaps.first() {
-                        first_statemap.safepoint
-                    } else {
-                        None
-                    };
-                    statemap_installer_queue.insert_queue_item(&ver, StatemapInstallerHashmap {
-                        timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos(),
-                        statemaps,
-                        version: ver,
-                        safepoint,
-                        state: StatemapInstallState::Awaiting
-                    });
+        // let metrics = Metrics::new(self.otel_meter, self.channel_size as u64);
+        let mut installation_success_count = 0;
+        let mut send_for_install_count = 0;
+        let mut first_install_start: i128 = 0; //
+        let mut last_install_end: i128 = 0; //  = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-                    // Gets the statemaps to send for installation.
-                    let  items_to_install: Vec<u64> = statemap_installer_queue.get_versions_to_install();
+        //Gets snapshot initial version from db.
+        self.update_snapshot().await?;
+
+        loop {
+            tokio::select! {
+                statemap_channel_message = self.statemaps_rx.recv() => {
+                    // Insert messages into the internal queue and set the status to `StatemapInstallState::Awaiting`
+                    // Pick statemaps eligible to be installed and send to `statemap_installer_service`, and set their state to `StatemapInstallState::Inflight`.
+                    match statemap_channel_message {
+                        Some(StatemapQueueChannelMessage::Message((ver, statemaps))) => {
+
+                            // Inserts the statemaps to the map
+
+                            let safepoint = if let Some(first_statemap) = statemaps.first() {
+                                first_statemap.safepoint
+                            } else {
+                                None
+                            };
+                            self.statemap_queue.insert_queue_item(&ver, StatemapInstallerHashmap {
+                                timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos(),
+                                statemaps,
+                                version: ver,
+                                safepoint,
+                                state: StatemapInstallState::Awaiting
+                            });
+
+                            // Gets the statemaps to send for installation.
+                            let  items_to_install: Vec<u64> = self.statemap_queue.get_versions_to_install();
+
+                            // Sends for installation.
+                            for key in items_to_install {
+                                // Send for installation
+                                if send_for_install_count == 0 {
+                                    first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                                }
+                                send_for_install_count += 1;
+                                self.installation_tx.send((key, self.statemap_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
+                                self.metrics.inflight_inc();
+                                // Update the status flag
+                                self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
+                            }
+
+                            self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
+                        },
+                        // Update the snapshot value.
+                        Some(StatemapQueueChannelMessage::ResetLastInstalledVersion) => {
+                            error!("Called StatemapQueueChannelMessage::ResetLastInstalledVersion");
+                            self.update_snapshot().await?;
+
+                            // Last version on queue.
+                            if let Some(k) = self.statemap_queue.queue.last(){
+                                error!("Last version on queue = {} and its safepoint = {:?}", k.1.version, k.1.safepoint);
+                            };
+
+                            // Last contiguous installed version
+                            if let Some(last_contiguous_install_item) = self.statemap_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
+                                error!("Last contiguous installed version = {}", last_contiguous_install_item.1.version);
+
+                            };
+                        },
+
+                        None => {},
+                    }
+
+                }
+                Some(install_result) = self.installation_feedback_rx.recv() => {
+                    match install_result {
+                        StatemapInstallationStatus::Success(key) => {
+                            self.metrics.inflight_dec();
+                            // installed successfully and will remove the item
+                            let enc_time = self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
+                            self.metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
+
+                            if let Some(last_contiguous_install_item) = self.statemap_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
+                                self.statemap_queue.update_snapshot(last_contiguous_install_item.1.version) ;
+                            };
+
+                            installation_success_count += 1;
+                            last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+                        },
+                        StatemapInstallationStatus::Error(ver, error) => {
+                            self.metrics.inflight_dec();
+                            error!("Failed to install version={ver} due to error={error:?}");
+                            // set the item back to awaiting so that it will be picked again for installation.
+                            let enc_time = self.statemap_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
+                            self.metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
+                        },
+                    }
+
+                    let  items_to_install: Vec<u64> = self.statemap_queue.get_versions_to_install();
 
                     // Sends for installation.
                     for key in items_to_install {
@@ -144,123 +246,85 @@ where
                             first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
                         }
                         send_for_install_count += 1;
-                        installation_tx.send((key, statemap_installer_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
-                        metrics.inflight_inc();
+                        self.installation_tx.send((key, self.statemap_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
+                        self.metrics.inflight_inc();
+
                         // Update the status flag
-                        statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
+                        self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
                     }
 
-                    metrics.record_sizes(installation_tx.capacity(), statemap_installer_queue.queue.len());
+                    self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
                 }
-            }
-            Some(install_result) = statemap_installation_rx.recv() => {
-                match install_result {
-                    StatemapInstallationStatus::Success(key) => {
-                        metrics.inflight_dec();
-                        // installed successfully and will remove the item
-                        let enc_time = statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
-                        metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
+                _ = cleanup_interval.tick() => {
 
-                        if let Some(last_contiguous_install_item) = statemap_installer_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
-                            statemap_installer_queue.update_snapshot(last_contiguous_install_item.1.version) ;
-                        };
+                    self.statemap_queue.remove_installed();
 
-                        installation_success_count += 1;
-                        last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                    // if self.config.enable_stats {
+                        let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
+                        let tps = installation_success_count as f32 / duration_sec;
 
-                    },
-                    StatemapInstallationStatus::Error(ver, error) => {
-                        metrics.inflight_dec();
-                        error!("Failed to install version={ver} due to error={error:?}");
-                        // set the item back to awaiting so that it will be picked again for installation.
-                        let enc_time = statemap_installer_queue.update_queue_item_state(&ver, StatemapInstallState::Awaiting);
-                        metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
-                    },
-                }
+                        let awaiting_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
+                        let inflight_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
 
-                let  items_to_install: Vec<u64> = statemap_installer_queue.get_versions_to_install();
+                        error!("Statemap Queue Service stats:- tps = {tps:.3} | Count of items in AWAITING state = {awaiting_count} |  Count of items in INFLIGHT state = {inflight_count} | Count of items in INSTALLED state = {installation_success_count}");
+                        // error!("
+                        // Statemap Installer Queue Stats:
+                        //     tps             : {tps:.3}
+                        //     counts          :
+                        //                     | success={installation_success_count}
+                        //                     | awaiting_installs={awaiting_count}
+                        //                     | inflight_count={inflight_count}
+                        //     current snapshot: {}
+                        //     \n ", self.statemap_queue.snapshot_version);
+                        //   last vers send to install : {last_item_send_for_install}
 
-                // Sends for installation.
-                for key in items_to_install {
-                    // Send for installation
-                    if send_for_install_count == 0 {
-                        first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    }
-                    send_for_install_count += 1;
-                    installation_tx.send((key, statemap_installer_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
-                    metrics.inflight_inc();
+                        if self.config.enable_stats && awaiting_count > 0 && inflight_count == 0
+                        {
+                            let result = self.statemap_queue.dbg_get_versions_to_install();
+                            let final_items = result.installable_items;
+                            let criteria_awaiting_state = &result.filter_steps_insights[0];
+                            let criteria_snapshot_check = &result.filter_steps_insights[1];
+                            let criteria_seriazable_check = &result.filter_steps_insights[2];
 
-                    // Update the status flag
-                    statemap_installer_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
-                }
-
-                metrics.record_sizes(installation_tx.capacity(), statemap_installer_queue.queue.len());
-            }
-            _ = cleanup_interval.tick() => {
-                if config.enable_stats {
-                    let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
-                    let tps = installation_success_count as f32 / duration_sec;
-
-                    let awaiting_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
-                    let inflight_count = statemap_installer_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
-                    debug!("
-                    Statemap Installer Queue Stats:
-                        tps             : {tps:.3}
-                        counts          :
-                                        | success={installation_success_count}
-                                        | awaiting_installs={awaiting_count}
-                                        | inflight_count={inflight_count}
-                        current snapshot: {}
-                        \n ", statemap_installer_queue.snapshot_version);
-                    //   last vers send to install : {last_item_send_for_install}
-
-                    if config.enable_stats && awaiting_count > 0 && inflight_count == 0
-                    {
-                        let result = statemap_installer_queue.dbg_get_versions_to_install();
-                        let final_items = result.installable_items;
-                        let criteria_awaiting_state = &result.filter_steps_insights[0];
-                        let criteria_snapshot_check = &result.filter_steps_insights[1];
-                        let criteria_seriazable_check = &result.filter_steps_insights[2];
-
-                        if let Some(first_item_to_fail_safepoint_check) = criteria_snapshot_check.filter_reject_items.first() {
-                            debug!("\n\n
-                +----------+-----------------------------------+----------------------------+
-                | Total    | Items in queue                    | {}
-                +----------+-----------------------------------+----------------------------+
-                | Filter 1 | Items in AWAITING state           | {}
-                | Filter 2 | Items whose safepoint <= snapshot | {}
-                |          |                                   | Current snapshot={}
-                |          |-----------------------------------+----------------------------+
-                |          |  > First item to fail this check  | Version={}
-                |          |                                   | Safepoint={:?}
-                |          |-----------------------------------+----------------------------+
-                | Filter 3 | Items serializable in the batch   | {}
-                |          |  > Non serializable items count   | {}
-                +----------+-----------------------------------+------+---------------------+
-                | Total    | Items ready to install            | {}
-                +----------+-----------------------------------+----------------------------+
-                            \n\n",
-                            criteria_awaiting_state.filter_enter_count,
-                            criteria_awaiting_state.filter_exit_count,
-                            criteria_snapshot_check.filter_exit_count,
-                            statemap_installer_queue.snapshot_version,
-                            first_item_to_fail_safepoint_check.version,
-                            first_item_to_fail_safepoint_check.safepoint,
-                            criteria_seriazable_check.filter_exit_count,
-                            criteria_seriazable_check.filter_reject_items.len(),
-                            final_items.len(),
-                        );
+                            if let Some(first_item_to_fail_safepoint_check) = criteria_snapshot_check.filter_reject_items.first() {
+                                error!("\n\n
+                    +----------+-----------------------------------+----------------------------+
+                    | Total    | Items in queue                    | {}
+                    +----------+-----------------------------------+----------------------------+
+                    | Filter 1 | Items in AWAITING state           | {}
+                    | Filter 2 | Items whose safepoint <= snapshot | {}
+                    |          |                                   | Current snapshot={}
+                    |          |-----------------------------------+----------------------------+
+                    |          |  > First item to fail this check  | Version={}
+                    |          |                                   | Safepoint={:?}
+                    |          |-----------------------------------+----------------------------+
+                    | Filter 3 | Items serializable in the batch   | {}
+                    |          |  > Non serializable items count   | {}
+                    +----------+-----------------------------------+------+---------------------+
+                    | Total    | Items ready to install            | {}
+                    +----------+-----------------------------------+----------------------------+
+                                \n\n",
+                                criteria_awaiting_state.filter_enter_count,
+                                criteria_awaiting_state.filter_exit_count,
+                                criteria_snapshot_check.filter_exit_count,
+                                self.statemap_queue.snapshot_version,
+                                first_item_to_fail_safepoint_check.version,
+                                first_item_to_fail_safepoint_check.safepoint,
+                                criteria_seriazable_check.filter_exit_count,
+                                criteria_seriazable_check.filter_reject_items.len(),
+                                final_items.len(),
+                            );
+                            }
                         }
-                    }
+                    // }
+
+
+
+                    self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
                 }
 
-                statemap_installer_queue.remove_installed();
-
-                metrics.record_sizes(installation_tx.capacity(), statemap_installer_queue.queue.len());
             }
-
         }
     }
 }
-
 // $coverage:ignore-end

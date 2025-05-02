@@ -13,6 +13,12 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum StatemapQueueChannelMessage {
+    Message((u64, Vec<StatemapItem>)),
+    ResetLastInstalledVersion,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum StatemapInstallState {
     Awaiting,
     Inflight,

@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use ahash::RandomState;
 use indexmap::IndexMap;
+use tracing::{debug, info};
 
 use crate::{
     core::{StatemapInstallState, StatemapInstallerHashmap},
@@ -28,6 +29,7 @@ pub struct StatemapInstallerQueue {
 
 impl StatemapInstallerQueue {
     pub fn update_snapshot(&mut self, snapshot_version: u64) {
+        debug!("Updating snapshot_version to {}", snapshot_version);
         self.snapshot_version = snapshot_version;
     }
 

@@ -1,4 +1,4 @@
-use crate::certifier_context::CertifierConsumerContext;
+use crate::kafka::contexts::CertifierConsumerContext;
 use crate::mock_certifier_service::MockCertifierService;
 use crate::PgConfig;
 use crate::{self as Adapters, KafkaConsumer};
