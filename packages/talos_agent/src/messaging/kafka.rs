@@ -170,6 +170,7 @@ pub struct KafkaConsumer {
     consumer: StreamConsumer<KafkaConsumerContext>,
     talos_type: TalosType,
     metric_consumed_offset: Option<Gauge<u64>>,
+    recent_candidate_offset: u64,
 }
 
 struct KafkaConsumerContext {}
@@ -200,6 +201,7 @@ impl KafkaConsumer {
             consumer,
             talos_type,
             metric_consumed_offset,
+            recent_candidate_offset: 0,
         })
     }
 
@@ -260,6 +262,26 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
 impl MessageListener for KafkaConsumer {
     fn on_candidate(&self, message: &ReceivedMessage) {
         let offset = message.offset;
+        if offset < self.recent_candidate_offset {
+            // ok this is totally unexpected state. Did kafka topic reset? Is kafka re-delivering old message?
+            let message_time_info = message.timestamp.map(|millis| {
+                let message_time = OffsetDateTime::from_unix_timestamp(millis);
+                if message_time.is_ok() {
+                    let now = OffsetDateTime::now_utc();
+                    let elapsed = (now.unix_timestamp_nanos() - message_time.unwrap().unix_timestamp_nanos()) as f64 / 1_000_000_f64;
+                    format!("(time: {}, elapsed: {}ms)", message_time.unwrap(), elapsed)
+                } else {
+                    "no-data".to_owned()
+                }
+            });
+            tracing::warn!(
+                "Agent is receiving old candidate with offset: {} and timestamp: {:?}. Most recent recorded offset is: {}, delta: -{}",
+                offset,
+                message_time_info,
+                self.recent_candidate_offset,
+                self.recent_candidate_offset - offset,
+            );
+        }
         if let Some(m) = self.metric_consumed_offset.clone() {
             m.record(
                 offset,

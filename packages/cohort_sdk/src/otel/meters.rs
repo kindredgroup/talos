@@ -7,7 +7,7 @@ use talos_common_utils::otel::metric_constants::METRIC_KEY_IS_SUCCESS;
 
 pub struct CohortMeters {
     enabled: bool,
-    oo_installs: Option<Counter<u64>>,
+    oo_installs_counter: Option<Counter<u64>>,
     oo_retry_counter: Option<Counter<u64>>,
     oo_giveups_counter: Option<Counter<u64>>,
     oo_not_safe_counter: Option<Counter<u64>>,
@@ -39,7 +39,7 @@ impl CohortMeters {
             let talos_duration_hist = meter.f64_histogram("metric_talos").with_unit("ms").build();
             let agent_retries_hist = meter.u64_histogram("metric_agent_retries").with_unit("tx").build();
 
-            let oo_installs = meter.u64_counter("metric_oo_installs").with_unit("tx").build();
+            let oo_installs_counter = meter.u64_counter("metric_oo_installs").with_unit("tx").build();
             let oo_retry_counter = meter.u64_counter("metric_oo_retry").with_unit("tx").build();
             let oo_giveups_counter = meter.u64_counter("metric_oo_giveups").with_unit("tx").build();
             let oo_not_safe_counter = meter.u64_counter("metric_oo_not_safe").with_unit("tx").build();
@@ -47,8 +47,8 @@ impl CohortMeters {
             let agent_errors_counter = meter.u64_counter("metric_agent_errors").with_unit("tx").build();
             let db_errors_counter = meter.u64_counter("metric_db_errors").with_unit("tx").build();
 
-            oo_installs.add(0, &[KeyValue::new(METRIC_KEY_IS_SUCCESS, true.to_string())]);
-            oo_installs.add(0, &[KeyValue::new(METRIC_KEY_IS_SUCCESS, false.to_string())]);
+            oo_installs_counter.add(0, &[KeyValue::new(METRIC_KEY_IS_SUCCESS, true.to_string())]);
+            oo_installs_counter.add(0, &[KeyValue::new(METRIC_KEY_IS_SUCCESS, false.to_string())]);
 
             oo_retry_counter.add(0, &[]);
             oo_giveups_counter.add(0, &[]);
@@ -59,7 +59,7 @@ impl CohortMeters {
 
             Self {
                 enabled,
-                oo_installs: Some(oo_installs),
+                oo_installs_counter: Some(oo_installs_counter),
                 oo_install_duration_hist: Some(oo_install_duration_hist),
                 oo_install_and_wait_duration_hist: Some(oo_install_and_wait_duration_hist),
                 oo_wait_duration_hist: Some(oo_wait_duration_hist),
@@ -76,7 +76,7 @@ impl CohortMeters {
         } else {
             Self {
                 enabled,
-                oo_installs: None,
+                oo_installs_counter: None,
                 oo_install_duration_hist: None,
                 oo_install_and_wait_duration_hist: None,
                 oo_wait_duration_hist: None,
@@ -128,7 +128,7 @@ impl CohortMeters {
             return;
         }
 
-        let c_installs = self.oo_installs.clone().unwrap();
+        let c_installs = self.oo_installs_counter.clone().unwrap();
         let c_not_safe = self.oo_not_safe_counter.clone().unwrap();
         let h_total_sleep = self.oo_wait_duration_hist.clone().unwrap();
         let h_attempts = self.oo_attempts_hist.clone().unwrap();
