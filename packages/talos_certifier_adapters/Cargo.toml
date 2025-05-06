@@ -1,7 +1,7 @@
 [package]
 # [package]
 name = "talos_certifier_adapters"
-version = "0.2.44-dev"
+version = "0.2.46-dev"
 edition = "2021"
 keywords = ["talos", "adapters"]
 license = "MIT"
@@ -50,11 +50,11 @@ thiserror = "1.0.31"
 mockall = "0.11.0"
 
 # internal crates
-talos_metrics = { path = "../talos_metrics", version = "0.2.44-dev" }
-talos_certifier = { path = "../talos_certifier", version = "0.2.44-dev" }
-talos_suffix = { path = "../talos_suffix", version = "0.2.44-dev" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.2.44-dev" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.44-dev" }
+talos_metrics = { path = "../talos_metrics", version = "0.2.46-dev" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.46-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.46-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.46-dev" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.2.46-dev" }
 
 
 [dev-dependencies]

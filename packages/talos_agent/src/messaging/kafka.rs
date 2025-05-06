@@ -118,7 +118,6 @@ impl Publisher for KafkaPublisher {
         }
 
         if let Some(ctx_data) = opt_ctx_data {
-            tracing::debug!("passing trace context to message: {:?}", ctx_data);
             for (k, v) in ctx_data.into_iter() {
                 extra_headers = extra_headers.insert(Header {
                     key: k.as_str(),
@@ -260,6 +259,9 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
 impl MessageListener for KafkaConsumer {
     fn on_candidate(&self, message: &ReceivedMessage) {
         let offset = message.offset;
+        // Did kafka topic reset? Is kafka re-delivering old message?
+        tracing::debug!("Agent is receiving candidate with offset: {}", offset);
+
         if let Some(m) = self.metric_consumed_offset.clone() {
             m.record(
                 offset,
@@ -282,8 +284,6 @@ impl MessageListener for KafkaConsumer {
             None => METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN.to_owned(),
             Some(td) => td.decision.decision.to_string(),
         };
-
-        tracing::warn!("Registering decision metric: offset={}, decision={}", message.offset, decision_value);
 
         metric.record(
             message.offset,
