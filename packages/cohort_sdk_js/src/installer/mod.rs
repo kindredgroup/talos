@@ -106,10 +106,8 @@ impl InternalReplicator {
         let (statemaps_tx, statemaps_rx) = mpsc::channel::<StatemapQueueChannelMessage>(self.config.channel_size as usize);
 
         let statemaps_tx_clone = statemaps_tx.clone();
-        let fun = move || {
-            println!("Hello world");
+        let rebalance_callback_fn = move || {
             //TODO: GK - Handle the error.
-
             let _ = statemaps_tx_clone.try_send(StatemapQueueChannelMessage::ResetLastInstalledVersion);
             Ok(())
         };
@@ -118,7 +116,7 @@ impl InternalReplicator {
             &self.kafka_config.clone().into(),
             ReplicatorConsumerContext {
                 topic: self.kafka_config.topic.clone(),
-                rebalance_assign_callback_fn: fun,
+                rebalance_assign_callback_fn: rebalance_callback_fn,
             },
         );
         let brokers = &self.kafka_config.brokers.clone();
@@ -147,8 +145,8 @@ impl InternalReplicator {
             SnapshotProviderDelegate {
                 callback: snapshot_provider_callback,
             },
-            config,
             (statemaps_tx, statemaps_rx),
+            config,
         )
         .await
         .map_err(|e| {

@@ -25,14 +25,23 @@ async fn test_queue_service_snapshot_version_above_safepoint_below_snapshot() {
     let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
     let (_statemap_installation_tx, statemap_installation_rx) = mpsc::channel(50);
     let (installation_tx, mut installation_rx) = mpsc::channel(50);
+    let (replicator_feedback_tx, _) = mpsc::channel(50);
     let config = StatemapQueueServiceConfig {
-        queue_cleanup_frequency_ms: 1 * 60 * 1000, // 1 hour
+        queue_cleanup_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
     };
     let snapshot_api = SnapshotApi { snapshot: 8 };
 
-    let mut queue_svc =
-        statemap_queue_service::StatemapQueueService::new(statemaps_rx, statemap_installation_rx, installation_tx, snapshot_api, config, 0, None);
+    let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
+        statemaps_rx,
+        installation_tx,
+        statemap_installation_rx,
+        replicator_feedback_tx,
+        snapshot_api,
+        config,
+        0,
+        None,
+    );
 
     tokio::spawn(async move {
         queue_svc.run().await.unwrap();
@@ -56,18 +65,28 @@ async fn test_queue_service_snapshot_version_above_safepoint_below_snapshot() {
 /// Therefore the only scneario when this could happen is when an inactive replicator becomes active, and it has a very old
 /// snapshot value
 #[tokio::test]
+
 async fn test_queue_service_version_and_safepoint_above_snapshot() {
     let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
-    let (_statemap_installation_tx, statemap_installation_rx) = mpsc::channel(50);
+    let (_, statemap_installation_rx) = mpsc::channel(50);
     let (installation_tx, mut installation_rx) = mpsc::channel(50);
+    let (replicator_feedback_tx, _) = mpsc::channel(50);
     let config = StatemapQueueServiceConfig {
-        queue_cleanup_frequency_ms: 1 * 60 * 1000, // 1 hour
+        queue_cleanup_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
     };
     let snapshot_api = SnapshotApi { snapshot: 8 };
 
-    let mut queue_svc =
-        statemap_queue_service::StatemapQueueService::new(statemaps_rx, statemap_installation_rx, installation_tx, snapshot_api, config, 0, None);
+    let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
+        statemaps_rx,
+        installation_tx,
+        statemap_installation_rx,
+        replicator_feedback_tx,
+        snapshot_api,
+        config,
+        0,
+        None,
+    );
 
     tokio::spawn(async move {
         queue_svc.run().await.unwrap();
@@ -93,16 +112,25 @@ async fn test_queue_service_version_and_safepoint_above_snapshot() {
 #[tokio::test]
 async fn test_queue_service_version_and_safepoint_below_snapshot() {
     let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
-    let (_statemap_installation_tx, statemap_installation_rx) = mpsc::channel(50);
+    let (_, statemap_installation_rx) = mpsc::channel(50);
     let (installation_tx, mut installation_rx) = mpsc::channel(50);
+    let (replicator_feedback_tx, _) = mpsc::channel(50);
     let config = StatemapQueueServiceConfig {
-        queue_cleanup_frequency_ms: 1 * 60 * 1000, // 1 hour
+        queue_cleanup_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
     };
     let snapshot_api = SnapshotApi { snapshot: 8 };
 
-    let mut queue_svc =
-        statemap_queue_service::StatemapQueueService::new(statemaps_rx, statemap_installation_rx, installation_tx, snapshot_api, config, 0, None);
+    let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
+        statemaps_rx,
+        installation_tx,
+        statemap_installation_rx,
+        replicator_feedback_tx,
+        snapshot_api,
+        config,
+        0,
+        None,
+    );
 
     tokio::spawn(async move {
         queue_svc.run().await.unwrap();

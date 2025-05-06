@@ -25,19 +25,10 @@ where
                 let k = partitions.elements_for_topic(&self.topic);
                 if !k.is_empty() {
                     let _ = (self.rebalance_assign_callback_fn)();
-                    println!("Consumer connected to partition of certification topic: {:?}", self.topic);
+                    info!("Consumer connected to a partition of certification topic: {:?}", self.topic);
                 }
             }
-            Rebalance::Revoke(_partitions) => {
-                // let k = partitions.elements_for_topic(&self.topic);
-                // if !k.is_empty() {
-                //     info!("Sending reset message due to partition revoked on certification topic {}", self.topic);
-                //     match self.tx_channel.try_send(StatemapQueueChannel::ResetLastInstalledVersion){
-                //         Ok(_) => todo!(),
-                //         Err(_) => todo!(),
-                //     }
-                // }
-            }
+            Rebalance::Revoke(_partitions) => {}
             Rebalance::Error(e) => error!("Rebalance error: {}", e),
         }
     }

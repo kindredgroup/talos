@@ -9,9 +9,10 @@ use tracing::{error, info};
 
 use crate::{
     callbacks::ReplicatorSnapshotProvider,
-    core::{StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
+    core::{ReplicatorChannel, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
     errors::{ReplicatorError, ReplicatorErrorKind},
     models::StatemapInstallerQueue,
+    utils::{send_with_retry, SendWithRetryConfig},
 };
 
 #[derive(Debug)]
@@ -89,8 +90,9 @@ where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
     statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
-    installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
     installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+    installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
+    replicator_feedback: mpsc::Sender<ReplicatorChannel>,
     statemap_queue: StatemapInstallerQueue,
     snapshot_api: S,
     config: StatemapQueueServiceConfig,
@@ -101,10 +103,12 @@ impl<S> StatemapQueueService<S>
 where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
-        installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
         installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+        installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
+        replicator_feedback_tx: mpsc::Sender<ReplicatorChannel>,
         snapshot_api: S,
         config: StatemapQueueServiceConfig,
         channel_size: usize,
@@ -113,8 +117,9 @@ where
         let metrics = Metrics::new(otel_meter, channel_size as u64);
         Self {
             statemaps_rx,
-            installation_feedback_rx,
             installation_tx,
+            installation_feedback_rx,
+            replicator_feedback: replicator_feedback_tx,
             snapshot_api,
             config,
             metrics,
@@ -122,19 +127,37 @@ where
         }
     }
 
-    async fn update_snapshot(&mut self) -> Result<(), ReplicatorError> {
-        let snapshot_version = self.snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
+    async fn get_latest_snapshot_from_callback(&mut self) -> Result<u64, ReplicatorError> {
+        self.snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
             kind: ReplicatorErrorKind::Persistence,
-            reason: "Unable to get initial snapshot".into(),
+            reason: "Failed to get snapshot version from db".into(),
             cause: Some(e.to_string()),
-        })?;
+        })
+    }
 
+    fn update_snapshot(&mut self, snapshot_version: u64) -> Option<u64> {
         if snapshot_version > self.statemap_queue.snapshot_version {
-            error!("Updating snapshot version from {} to {snapshot_version}", self.statemap_queue.snapshot_version);
+            info!("Updating snapshot version from {} to {snapshot_version}", self.statemap_queue.snapshot_version);
             self.statemap_queue.update_snapshot(snapshot_version);
+            Some(snapshot_version)
+        } else {
+            None
+        }
+    }
+
+    /// If a version is not on the queue, get the nearest version below the provided version from queue.
+    fn get_nearest_valid_version(&self, version: u64) -> Option<u64> {
+        if self.statemap_queue.queue.get_index_of(&version).is_some() {
+            return Some(version);
         }
 
-        Ok(())
+        if let Some((last_below_version, _)) = self.statemap_queue.queue.iter().take_while(|(v, _)| **v < version).last() {
+            if self.statemap_queue.queue.get_index_of(last_below_version).is_some() {
+                return Some(*last_below_version);
+            }
+        }
+
+        None
     }
 
     pub async fn run(&mut self) -> Result<(), ReplicatorError> {
@@ -148,7 +171,8 @@ where
         let mut last_install_end: i128 = 0; //  = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         //Gets snapshot initial version from db.
-        self.update_snapshot().await?;
+        let snapshot_version_from_db = self.get_latest_snapshot_from_callback().await?;
+        self.update_snapshot(snapshot_version_from_db);
 
         loop {
             tokio::select! {
@@ -193,19 +217,26 @@ where
                         },
                         // Update the snapshot value.
                         Some(StatemapQueueChannelMessage::ResetLastInstalledVersion) => {
-                            error!("Called StatemapQueueChannelMessage::ResetLastInstalledVersion");
-                            self.update_snapshot().await?;
+                            info!("Fetching latest snapshot version from callback");
+                            let snapshot_version_from_callback = self.get_latest_snapshot_from_callback().await?;
 
-                            // Last version on queue.
-                            if let Some(k) = self.statemap_queue.queue.last(){
-                                error!("Last version on queue = {} and its safepoint = {:?}", k.1.version, k.1.safepoint);
-                            };
+                            // Update the snapshot with the latest from callback only if it is greater than our internal snapshot tracker.
+                            if snapshot_version_from_callback >= self.statemap_queue.snapshot_version {
+                                self.update_snapshot(snapshot_version_from_callback);
+                                // The snapshot version we updated may not be present in the queue, so we get the nearest one below this snapshot version and prune till that version
+                                // If there are no versions below this one, then there is no need to prune.
+                                if let Some(version) = self.get_nearest_valid_version(snapshot_version_from_callback) {
+                                    // prune items till the specified version.
+                                    self.statemap_queue.prune_till_version(version);
+                                    // Inform replicator service to remove all versions below this index.
+                                    if let Err(err) = send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(version), SendWithRetryConfig { max_duration_ms: None, max_attemptes: None }).await {
+                                        error!("Failed to send LastInstalledVersion {version} with error {err:?}");
+                                    }
 
-                            // Last contiguous installed version
-                            if let Some(last_contiguous_install_item) = self.statemap_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
-                                error!("Last contiguous installed version = {}", last_contiguous_install_item.1.version);
+                                };
 
-                            };
+                            }
+
                         },
 
                         None => {},
@@ -214,14 +245,19 @@ where
                 }
                 Some(install_result) = self.installation_feedback_rx.recv() => {
                     match install_result {
-                        StatemapInstallationStatus::Success(key) => {
+                        StatemapInstallationStatus::Success(version) => {
                             self.metrics.inflight_dec();
                             // installed successfully and will remove the item
-                            let enc_time = self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Installed);
+                            let enc_time = self.statemap_queue.update_queue_item_state(&version, StatemapInstallState::Installed);
                             self.metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
 
-                            if let Some(last_contiguous_install_item) = self.statemap_queue.queue.iter().take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed).last(){
-                                self.statemap_queue.update_snapshot(last_contiguous_install_item.1.version) ;
+                            if let Some(version) = self.statemap_queue.get_last_installed_version(){
+                                if self.update_snapshot(version).is_some() {
+                                    // Inform replicator service to remove all versions below this.
+                                    if let Err(err) = send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), SendWithRetryConfig::default()).await {
+                                        error!("Failed to send LastInstalledVersion {} with error {err:?}", self.statemap_queue.snapshot_version);
+                                    }
+                                }
                             };
 
                             installation_success_count += 1;
@@ -257,7 +293,18 @@ where
                 }
                 _ = cleanup_interval.tick() => {
 
-                    self.statemap_queue.remove_installed();
+                    let last_version = self.statemap_queue.get_last_installed_version();
+
+                    if let Some(version) = self.statemap_queue.get_last_installed_version(){
+                        self.update_snapshot(version);
+
+                    };
+                    let result = self.statemap_queue.prune_till_version(self.statemap_queue.snapshot_version);
+
+                    if result > 0 {
+                        error!("Pruned {} items from queue | snapshot_version = {} ", result, self.statemap_queue.snapshot_version);
+                    }
+
 
                     // if self.config.enable_stats {
                         let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
@@ -266,7 +313,21 @@ where
                         let awaiting_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
                         let inflight_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
 
-                        error!("Statemap Queue Service stats:- tps = {tps:.3} | Count of items in AWAITING state = {awaiting_count} |  Count of items in INFLIGHT state = {inflight_count} | Count of items in INSTALLED state = {installation_success_count}");
+                        error!("Statemap Queue Service stats:- tps = {tps:.3} | Count of items in AWAITING state = {awaiting_count} |  Count of items in INFLIGHT state = {inflight_count} | Count of items in INSTALLED state = {installation_success_count} | statemap queue length = {}",self.statemap_queue.queue.len());
+                        if self.statemap_queue.queue.is_empty() {
+                            let first_item = self.statemap_queue.queue.first();
+                            let last_item = self.statemap_queue.queue.last();
+
+                            error!(
+                                "First item in queue = {} with state = {:?} | Last item in queue = {} with state = {:?} | snapshot_version = {} | last_version in this interval tick = {last_version:?}",
+                                first_item.unwrap().0,
+                                first_item.unwrap().1.state,
+                                last_item.unwrap().0,
+                                last_item.unwrap().1.state,
+                                self.statemap_queue.snapshot_version
+
+                            );
+                        }
                         // error!("
                         // Statemap Installer Queue Stats:
                         //     tps             : {tps:.3}

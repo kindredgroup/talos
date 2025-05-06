@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Instant};
 
 use crate::{
     callbacks::ReplicatorInstaller,
-    core::{ReplicatorChannel, StatemapInstallationStatus, StatemapItem},
+    core::{StatemapInstallationStatus, StatemapItem},
     errors::ReplicatorError,
 };
 
@@ -19,7 +19,6 @@ pub struct StatemapInstallerConfig {
 
 async fn statemap_install_future(
     installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
-    replicator_tx: mpsc::Sender<ReplicatorChannel>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
     // semaphore: Arc<Semaphore>,
     statemaps: Vec<StatemapItem>,
@@ -37,7 +36,6 @@ async fn statemap_install_future(
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
     match installer.install(statemaps, version).await {
         Ok(_) => {
-            replicator_tx.send(ReplicatorChannel::InstallationSuccess(vec![version])).await.unwrap();
             statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
             c_installed.add(1, &[]);
             let latency_ms = (OffsetDateTime::now_utc().unix_timestamp_nanos() - started_at) as f64 / 1_000_000_f64;
@@ -50,12 +48,6 @@ async fn statemap_install_future(
                 "Installed failed for version={version:?} with time={:?} error={err:?}",
                 start_installation_time.elapsed()
             );
-            replicator_tx
-                .send(ReplicatorChannel::InstallationFailure(format!(
-                    "Failed to install version={version:?} with error={err:?}"
-                )))
-                .await
-                .unwrap();
             statemap_installation_tx
                 .send(StatemapInstallationStatus::Error(
                     version,
@@ -69,7 +61,6 @@ async fn statemap_install_future(
 }
 
 pub async fn installation_service(
-    replicator_tx: mpsc::Sender<ReplicatorChannel>,
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
     mut installation_rx: mpsc::Receiver<(u64, Vec<StatemapItem>)>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
@@ -87,12 +78,11 @@ pub async fn installation_service(
         let udc_items_installing_copy = udc_items_installing.clone();
         if let Some((ver, statemaps)) = installation_rx.recv().await {
             let permit = semaphore.acquire_owned().await.unwrap();
-            let replicator_tx_clone = replicator_tx.clone();
             let installer = Arc::clone(&statemap_installer);
             let statemap_installation_tx_clone = statemap_installation_tx.clone();
             udc_items_installing_copy.add(1, &[]);
             tokio::spawn(async move {
-                statemap_install_future(installer, replicator_tx_clone, statemap_installation_tx_clone, statemaps, ver).await;
+                statemap_install_future(installer, statemap_installation_tx_clone, statemaps, ver).await;
                 drop(permit);
                 udc_items_installing_copy.add(-1, &[]);
             });

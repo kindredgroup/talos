@@ -66,8 +66,8 @@ pub async fn talos_cohort_replicator<M, Snap>(
     certifier_message_receiver: M,                                  //used by Replicator service
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>, // Used by Statemap queue service
     snapshot_api: Snap,                                             // Used by Statemap Installer service.
-    config: CohortReplicatorConfig,
     statemap_channel: (mpsc::Sender<StatemapQueueChannelMessage>, mpsc::Receiver<StatemapQueueChannelMessage>),
+    config: CohortReplicatorConfig,
 ) -> Result<((), (), ()), ReplicatorError>
 where
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync + 'static,
@@ -145,8 +145,9 @@ where
 
     let mut statemap_queue_service_1 = StatemapQueueService::new(
         statemap_channel.1,
-        rx_statemaps_install_feedback,
         tx_statemaps_to_install,
+        rx_statemaps_install_feedback,
+        tx_installation_feedback_to_replicator,
         snapshot_api,
         queue_config,
         config.channel_size,
@@ -161,7 +162,6 @@ where
     };
 
     let statemap_installer_handle = tokio::spawn(installation_service(
-        tx_installation_feedback_to_replicator,
         Arc::clone(&statemap_installer),
         rx_statemaps_to_install,
         tx_statemaps_install_feedback,
