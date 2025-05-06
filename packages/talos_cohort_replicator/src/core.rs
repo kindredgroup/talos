@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use talos_common_utils::ResetVariantTrait;
 use tracing::{debug, warn};
 
 use crate::models::ReplicatorCandidateMessage;
@@ -15,7 +16,11 @@ use super::{
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatemapQueueChannelMessage {
     Message((u64, Vec<StatemapItem>)),
-    ResetLastInstalledVersion,
+    UpdateSnapshot,
+}
+
+impl ResetVariantTrait for StatemapQueueChannelMessage {
+    const RESET_VARIANT: Self = StatemapQueueChannelMessage::UpdateSnapshot;
 }
 
 #[derive(Debug, Clone, PartialEq)]

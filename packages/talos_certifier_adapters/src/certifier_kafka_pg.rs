@@ -8,6 +8,7 @@ use talos_certifier::model::{CandidateMessage, DecisionMessage};
 use talos_certifier::ports::DecisionStore;
 
 use talos_certifier::services::{CertifierServiceConfig, MessageReceiverServiceConfig};
+use talos_certifier::ChannelMessage;
 use talos_certifier::{
     core::{DecisionOutboxChannelMessage, System},
     errors::SystemServiceError,
@@ -70,7 +71,7 @@ pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffer
     /* START - Kafka consumer service  */
     let commit_offset: Arc<AtomicI64> = Arc::new(0.into());
 
-    let kafka_consumer: KafkaConsumer<CandidateMessage, CertifierConsumerContext> = Adapters::KafkaConsumer::with_context(
+    let kafka_consumer: KafkaConsumer<CandidateMessage, CertifierConsumerContext<ChannelMessage<CandidateMessage>>> = Adapters::KafkaConsumer::with_context(
         &config.kafka_config,
         CertifierConsumerContext {
             topic: config.kafka_config.topic.clone(),

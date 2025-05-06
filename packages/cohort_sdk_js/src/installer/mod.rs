@@ -106,17 +106,12 @@ impl InternalReplicator {
         let (statemaps_tx, statemaps_rx) = mpsc::channel::<StatemapQueueChannelMessage>(self.config.channel_size as usize);
 
         let statemaps_tx_clone = statemaps_tx.clone();
-        let rebalance_callback_fn = move || {
-            //TODO: GK - Handle the error.
-            let _ = statemaps_tx_clone.try_send(StatemapQueueChannelMessage::ResetLastInstalledVersion);
-            Ok(())
-        };
 
         let kafka_consumer = KafkaConsumer::with_context(
             &self.kafka_config.clone().into(),
             ReplicatorConsumerContext {
                 topic: self.kafka_config.topic.clone(),
-                rebalance_assign_callback_fn: rebalance_callback_fn,
+                message_channel_tx: statemaps_tx_clone,
             },
         );
         let brokers = &self.kafka_config.brokers.clone();

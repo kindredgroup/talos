@@ -144,3 +144,20 @@ async fn test_queue_service_version_and_safepoint_below_snapshot() {
     let receive_result = installation_rx.try_recv();
     assert_eq!(receive_result, Err(TryRecvError::Empty));
 }
+
+// More test to do:-
+// - Test  StatemapQueueChannelMessage::Message((ver, statemaps)) -> get_versions_to_install,
+//      - Check against `StatemapInstallState`
+//      - Check safepoint against snapshot version
+//      - Check safepoint to see which items are serialisable.
+// - Test StatemapQueueChannelMessage::ResetLastInstalledVersion
+//      - Test initial snapshot version
+//      - Test when new snapshot >= internal snapshot_version
+//      - Test when new snapshot < internal snapshot_version
+// - Test feedback from install StatemapInstallationStatus::Success(version)
+//      - When all version below are successfully installed.
+//      - When there are some versions not installed yet.
+// - Test feedback from install StatemapInstallationStatus::Error
+//      - Check when item is moved back to `Awaiting`, how does it behave if some other version has this version as safepoint
+//      - Check when item is moved back to `Awaiting`, how does it behave if some other version doesn't have this version as safepoint
+// - Test statemap_queue prune logic.

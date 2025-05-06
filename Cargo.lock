@@ -3229,6 +3229,7 @@ dependencies = [
  "serde",
  "serde_json",
  "strum 0.24.1",
+ "talos_common_utils",
  "talos_suffix",
  "thiserror 1.0.69",
  "time",
@@ -3302,6 +3303,7 @@ version = "0.2.47-dev"
 dependencies = [
  "opentelemetry 0.28.0",
  "serial_test",
+ "tokio",
 ]
 
 [[package]]

@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use opentelemetry::metrics::{Gauge, Histogram, Meter, UpDownCounter};
+use talos_common_utils::sync::{try_send_with_retry, TrySendWithRetryConfig};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tracing::{error, info};
@@ -12,7 +13,6 @@ use crate::{
     core::{ReplicatorChannel, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
     errors::{ReplicatorError, ReplicatorErrorKind},
     models::StatemapInstallerQueue,
-    utils::{send_with_retry, SendWithRetryConfig},
 };
 
 #[derive(Debug)]
@@ -216,7 +216,7 @@ where
                             self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
                         },
                         // Update the snapshot value.
-                        Some(StatemapQueueChannelMessage::ResetLastInstalledVersion) => {
+                        Some(StatemapQueueChannelMessage::UpdateSnapshot) => {
                             info!("Fetching latest snapshot version from callback");
                             let snapshot_version_from_callback = self.get_latest_snapshot_from_callback().await?;
 
@@ -229,7 +229,7 @@ where
                                     // prune items till the specified version.
                                     self.statemap_queue.prune_till_version(version);
                                     // Inform replicator service to remove all versions below this index.
-                                    if let Err(err) = send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(version), SendWithRetryConfig { max_duration_ms: None, max_attemptes: None }).await {
+                                    if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(version), TrySendWithRetryConfig::default()).await {
                                         error!("Failed to send LastInstalledVersion {version} with error {err:?}");
                                     }
 
@@ -254,7 +254,7 @@ where
                             if let Some(version) = self.statemap_queue.get_last_installed_version(){
                                 if self.update_snapshot(version).is_some() {
                                     // Inform replicator service to remove all versions below this.
-                                    if let Err(err) = send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), SendWithRetryConfig::default()).await {
+                                    if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), TrySendWithRetryConfig::default()).await {
                                         error!("Failed to send LastInstalledVersion {} with error {err:?}", self.statemap_queue.snapshot_version);
                                     }
                                 }
@@ -302,11 +302,11 @@ where
                     let result = self.statemap_queue.prune_till_version(self.statemap_queue.snapshot_version);
 
                     if result > 0 {
-                        error!("Pruned {} items from queue | snapshot_version = {} ", result, self.statemap_queue.snapshot_version);
+                        info!("Pruned {} items from queue | snapshot_version = {} ", result, self.statemap_queue.snapshot_version);
                     }
 
 
-                    // if self.config.enable_stats {
+                    if self.config.enable_stats {
                         let duration_sec = Duration::from_nanos((last_install_end - first_install_start) as u64).as_secs_f32();
                         let tps = installation_success_count as f32 / duration_sec;
 
@@ -377,7 +377,7 @@ where
                             );
                             }
                         }
-                    // }
+                    }
 
 
 
