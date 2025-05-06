@@ -97,7 +97,7 @@ impl<'a, L: MessageListener> MessageReceiver<'a, L> {
 
     pub(crate) fn read_content(self) -> Result<ReceivedMessage, MessagingError> {
         if self.is_decision && !self.is_id_matching {
-            let received_decision = ReceivedMessage::new_decision_for_another_agent(self.offset, self.raw_message.timestamp().to_millis());
+            let received_decision = ReceivedMessage::new_decision_for_another_agent(self.offset);
             let _ = self.message_listener.map(|handler| handler.on_decision(&received_decision));
             return Ok(received_decision);
         }
@@ -115,7 +115,7 @@ impl<'a, L: MessageListener> MessageReceiver<'a, L> {
             // convert JSON text into DecisionMessage
             let decision = serde_json::from_str::<DecisionMessage>(json_as_text)
                 .map_err(|json_error| MessagingError::new_corrupted_payload("Payload is not JSON text".to_string(), json_error.to_string()))?;
-            let received_decision = ReceivedMessage::new_decision(decision, self.offset, self.headers, self.raw_message.timestamp().to_millis());
+            let received_decision = ReceivedMessage::new_decision(decision, self.offset, self.headers);
             let _ = self.message_listener.map(|handler| handler.on_decision(&received_decision));
             received_decision
         } else {
@@ -124,14 +124,14 @@ impl<'a, L: MessageListener> MessageReceiver<'a, L> {
                 TalosType::External => {
                     // treat candidate as normal candidate
 
-                    let received_candidate = ReceivedMessage::new_candidate(self.offset, self.raw_message.timestamp().to_millis());
+                    let received_candidate = ReceivedMessage::new_candidate(self.offset);
                     let _ = self.message_listener.map(|handler| handler.on_candidate(&received_candidate));
                     received_candidate
                 }
                 TalosType::InProcessMock => {
                     // treat candidate as decision
                     let decision = Self::parse_payload_as_candidate(json_as_text, Decision::Committed)?;
-                    let received_decision = ReceivedMessage::new_decision(decision, self.offset, self.headers, self.raw_message.timestamp().to_millis());
+                    let received_decision = ReceivedMessage::new_decision(decision, self.offset, self.headers);
                     let _ = self.message_listener.map(|handler| handler.on_decision(&received_decision));
                     received_decision
                 }

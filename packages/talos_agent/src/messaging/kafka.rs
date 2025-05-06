@@ -259,18 +259,8 @@ impl crate::messaging::api::Consumer for KafkaConsumer {
 impl MessageListener for KafkaConsumer {
     fn on_candidate(&self, message: &ReceivedMessage) {
         let offset = message.offset;
-        // ok this is totally unexpected state. Did kafka topic reset? Is kafka re-delivering old message?
-        let message_time_info = message.timestamp.map(|millis| {
-            let message_time = OffsetDateTime::from_unix_timestamp(millis);
-            if message_time.is_ok() {
-                let now = OffsetDateTime::now_utc();
-                let elapsed = (now.unix_timestamp_nanos() - message_time.unwrap().unix_timestamp_nanos()) as f64 / 1_000_000_f64;
-                format!("(time: {}, elapsed: {}ms)", message_time.unwrap(), elapsed)
-            } else {
-                "no-data".to_owned()
-            }
-        });
-        tracing::debug!("Agent is receiving candidate with offset: {} and timestamp: {:?}", offset, message_time_info);
+        // Did kafka topic reset? Is kafka re-delivering old message?
+        tracing::debug!("Agent is receiving candidate with offset: {}", offset);
 
         if let Some(m) = self.metric_consumed_offset.clone() {
             m.record(

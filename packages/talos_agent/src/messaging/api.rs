@@ -123,29 +123,26 @@ pub struct ReceivedMessage {
     pub decision: Option<TraceableDecision>,
     pub is_decision: bool,
     pub offset: u64,
-    pub timestamp: Option<i64>,
 }
 
 impl ReceivedMessage {
-    pub fn new_candidate(offset: u64, timestamp: Option<i64>) -> Self {
+    pub fn new_candidate(offset: u64) -> Self {
         Self {
             decision: None,
             is_decision: false,
             offset,
-            timestamp,
         }
     }
 
-    pub fn new_decision_for_another_agent(offset: u64, timestamp: Option<i64>) -> Self {
+    pub fn new_decision_for_another_agent(offset: u64) -> Self {
         Self {
             decision: None,
             is_decision: true,
             offset,
-            timestamp,
         }
     }
 
-    pub fn new_decision(decision: DecisionMessage, offset: u64, headers: HashMap<String, String>, timestamp: Option<i64>) -> Self {
+    pub fn new_decision(decision: DecisionMessage, offset: u64, headers: HashMap<String, String>) -> Self {
         Self {
             decision: Some(TraceableDecision {
                 decision,
@@ -153,7 +150,6 @@ impl ReceivedMessage {
             }),
             is_decision: true,
             offset,
-            timestamp,
         }
     }
 }

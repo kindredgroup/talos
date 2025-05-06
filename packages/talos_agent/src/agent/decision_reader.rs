@@ -115,8 +115,8 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let response1_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new(), None);
-        let response2_sample = ReceivedMessage::new_decision(make_decision("xid2".to_string()), 2, HashMap::new(), None);
+        let response1_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new());
+        let response2_sample = ReceivedMessage::new_decision(make_decision("xid2".to_string()), 2, HashMap::new());
 
         let decision1 = response1_sample.decision.clone().unwrap().decision.clone();
         let decision2 = response2_sample.decision.clone().unwrap().decision.clone();
@@ -161,7 +161,7 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let response_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new(), None);
+        let response_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new());
 
         let response = response_sample.clone();
         let decision_to_send = response_sample.decision.unwrap().clone();
@@ -179,7 +179,7 @@ mod tests {
         let mut consumer = MockNoopConsumer::new();
         let mut destination = MockNoopSender::new();
 
-        let response_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new(), None);
+        let response_sample = ReceivedMessage::new_decision(make_decision("xid1".to_string()), 2, HashMap::new());
         let response = response_sample.clone();
         let decision_to_send = response_sample.decision.unwrap();
 
