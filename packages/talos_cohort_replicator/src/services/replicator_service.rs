@@ -150,7 +150,7 @@ where
                             }
                         } else {
                             replicator.prepare_offset_for_commit(version);
-                            error!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", replicator.suffix.get_meta().head, replicator.suffix.get_suffix_len());
+                            info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", replicator.suffix.get_meta().head, replicator.suffix.get_suffix_len());
                         }
                     }
                 }

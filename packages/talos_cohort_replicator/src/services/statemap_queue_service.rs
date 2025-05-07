@@ -36,6 +36,7 @@ struct Metrics {
     h_installation_latency: Option<Histogram<f64>>,
     g_installation_tx_channel_usage: Option<Gauge<u64>>,
     g_statemap_queue_length: Option<Gauge<u64>>,
+    g_snapshot_version: Option<Gauge<u64>>,
     udc_items_in_flight: Option<UpDownCounter<i64>>,
     channel_size: u64,
 
@@ -59,6 +60,7 @@ impl Metrics {
                 h_installation_latency: Some(meter.f64_histogram("repl_statemap_queue_latency").build()),
                 g_installation_tx_channel_usage: Some(meter.u64_gauge("repl_install_channel").with_unit("items").build()),
                 g_statemap_queue_length: Some(meter.u64_gauge("repl_statemap_queue").with_unit("items").build()),
+                g_snapshot_version: Some(meter.u64_gauge("repl_statemap_queue_snapshot").with_unit("items").build()),
                 udc_items_in_flight: Some(meter.i64_up_down_counter("repl_items_in_flight").with_unit("items").build()),
                 ..metrics_default
             }
@@ -72,6 +74,11 @@ impl Metrics {
     }
     pub fn inflight_dec(&self) {
         let _ = self.udc_items_in_flight.as_ref().map(|m| m.add(-1, &[]));
+    }
+    pub fn record_snapshot(&self, snapshot: u64) {
+        if self.enabled {
+            let _ = self.g_snapshot_version.as_ref().map(|m| m.record(snapshot, &[]));
+        }
     }
     pub fn record_sizes(&self, installation_tx_capacity: usize, queue_len: usize) {
         if self.enabled {
@@ -147,6 +154,8 @@ where
         if snapshot_version > self.statemap_queue.snapshot_version {
             info!("Updating snapshot version from {} to {snapshot_version}", self.statemap_queue.snapshot_version);
             self.statemap_queue.update_snapshot(snapshot_version);
+
+            self.metrics.record_snapshot(snapshot_version);
             Some(snapshot_version)
         } else {
             None
@@ -166,6 +175,35 @@ where
         }
 
         None
+    }
+
+    /// Gets the statemaps eligible to be installed and sends it over the channel to the **_installer service_**.
+    async fn send_statemaps_for_install(&mut self) {
+        // Gets the statemaps to send for installation.
+        let items_to_install: Vec<u64> = self.statemap_queue.get_versions_to_install();
+
+        // Sends for installation.
+        for key in items_to_install {
+            // Send for installation
+            if self.metrics.send_for_install_count == 0 {
+                self.metrics.first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
+            }
+            self.metrics.send_for_install_count += 1;
+            if let Some(item) = self.statemap_queue.queue.get(&key) {
+                match self.installation_tx.send((key, item.statemaps.clone())).await {
+                    Ok(_) => {
+                        self.metrics.inflight_inc();
+                        self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
+                    }
+                    Err(err) => {
+                        error!("Failed to send statemaps of version {key}. Error {err:?}");
+                        // If there is error, stop sending further, and they will be picked again to be send.
+                        break;
+                    }
+                }
+            }
+            // Update the status flag
+        }
     }
 
     pub async fn run_once(&mut self) -> Result<(), ReplicatorError> {
@@ -228,21 +266,8 @@ where
                     None => {},
                 }
 
-                // Gets the statemaps to send for installation.
-                let  items_to_install: Vec<u64> = self.statemap_queue.get_versions_to_install();
-
-                // Sends for installation.
-                for key in items_to_install {
-                    // Send for installation
-                    if self.metrics.send_for_install_count == 0 {
-                        self.metrics.first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    }
-                    self.metrics.send_for_install_count += 1;
-                    self.installation_tx.send((key, self.statemap_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
-                    self.metrics.inflight_inc();
-                    // Update the status flag
-                    self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
-                }
+                // Get statemap items from queue and send it for installation.
+                self.send_statemaps_for_install().await;
 
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
 
@@ -277,21 +302,8 @@ where
                     },
                 }
 
-                let  items_to_install: Vec<u64> = self.statemap_queue.get_versions_to_install();
-
-                // Sends for installation.
-                for key in items_to_install {
-                    // Send for installation
-                    if self.metrics.send_for_install_count == 0 {
-                        self.metrics.first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    }
-                    self.metrics.send_for_install_count += 1;
-                    self.installation_tx.send((key, self.statemap_queue.queue.get(&key).unwrap().statemaps.clone())).await.unwrap();
-                    self.metrics.inflight_inc();
-
-                    // Update the status flag
-                    self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
-                }
+                // Get statemap items from queue and send it for installation.
+                self.send_statemaps_for_install().await;
 
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
             }
@@ -301,16 +313,10 @@ where
                 if let Some(version) = self.statemap_queue.get_last_contiguous_installed_version(){
                     last_version = Some(version);
                     self.update_snapshot(version);
-                    // // If update_snapshot method return `None`, then its implied that the last contiguous installed version is below the snapshot_version.
-                    // // This ideally shouldn't happen, unless some other instance has already updated the snapshot, but we
-                    // let version_to_send = if let Some(updated_snapshot_version) = self.update_snapshot(version) {
-                    //     updated_snapshot_version
-                    // } else {
-                    //     version
-                    // };
 
                 };
                 let result = self.statemap_queue.prune_till_version(self.statemap_queue.snapshot_version);
+                self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
                 // Inform replicator service to remove all versions below this.
                 if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), TrySendWithRetryConfig::default()).await {
                     error!("Failed to send LastInstalledVersion {} with error {err:?}", self.statemap_queue.snapshot_version);
