@@ -4,7 +4,7 @@ use rdkafka::{
     consumer::{ConsumerContext, Rebalance},
     ClientContext,
 };
-use talos_certifier::{model::CandidateMessage, ChannelMessage};
+
 use talos_common_utils::{
     sync::{try_send_with_retry, TrySendWithRetryConfig},
     ResetVariantTrait,
