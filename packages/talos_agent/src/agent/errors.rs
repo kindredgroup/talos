@@ -5,14 +5,14 @@ use strum::Display;
 use thiserror::Error as ThisError;
 use tokio::sync::mpsc::error::SendError;
 
-#[derive(Debug, Display, PartialEq)]
+#[derive(Debug, Display, PartialEq, Clone)]
 pub enum AgentErrorKind {
     Certification { xid: String },
     CertificationTimeout { xid: String, elapsed_ms: u128 },
     Messaging,
 }
 
-#[derive(Debug, ThisError)]
+#[derive(Debug, ThisError, Clone)]
 #[error("Talos agent error: '{kind}'.\nReason: {reason}\nCause: {cause:?}")]
 pub struct AgentError {
     pub kind: AgentErrorKind,

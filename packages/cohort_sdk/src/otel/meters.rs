@@ -3,7 +3,9 @@ use opentelemetry::{
     metrics::{Counter, Histogram},
     KeyValue,
 };
-use talos_common_utils::otel::metric_constants::METRIC_KEY_IS_SUCCESS;
+use talos_common_utils::otel::metric_constants::{METRIC_KEY_IS_SUCCESS, METRIC_KEY_REASON};
+
+use crate::model::internal::CertificationAttemptFailure;
 
 pub struct CohortMeters {
     enabled: bool,
@@ -20,6 +22,7 @@ pub struct CohortMeters {
     agent_retries_hist: Option<Histogram<u64>>,
     agent_errors_counter: Option<Counter<u64>>,
     db_errors_counter: Option<Counter<u64>>,
+    errors_counter: Option<Counter<u64>>,
 }
 
 impl Default for CohortMeters {
@@ -46,6 +49,7 @@ impl CohortMeters {
             let talos_aborts_counter = meter.u64_counter("metric_talos_aborts").with_unit("tx").build();
             let agent_errors_counter = meter.u64_counter("metric_agent_errors").with_unit("tx").build();
             let db_errors_counter = meter.u64_counter("metric_db_errors").with_unit("tx").build();
+            let errors_counter = meter.u64_counter("metric_errors").build();
 
             oo_installs_counter.add(0, &[KeyValue::new(METRIC_KEY_IS_SUCCESS, true.to_string())]);
             oo_installs_counter.add(0, &[KeyValue::new(METRIC_KEY_IS_SUCCESS, false.to_string())]);
@@ -56,6 +60,12 @@ impl CohortMeters {
             talos_aborts_counter.add(0, &[]);
             agent_errors_counter.add(0, &[]);
             db_errors_counter.add(0, &[]);
+            //errors_counter.add(0, &[KeyValue::new(METRIC_KEY_REASON, CertificationAttemptFailure::NotApplicable.to_string())]);
+            errors_counter.add(0, &[KeyValue::new(METRIC_KEY_REASON, CertificationAttemptFailure::Aborted.to_string())]);
+            errors_counter.add(0, &[KeyValue::new(METRIC_KEY_REASON, CertificationAttemptFailure::AgentError.to_string())]);
+            errors_counter.add(0, &[KeyValue::new(METRIC_KEY_REASON, CertificationAttemptFailure::Cancelled.to_string())]);
+            errors_counter.add(0, &[KeyValue::new(METRIC_KEY_REASON, CertificationAttemptFailure::Conflict.to_string())]);
+            errors_counter.add(0, &[KeyValue::new(METRIC_KEY_REASON, CertificationAttemptFailure::DataError.to_string())]);
 
             Self {
                 enabled,
@@ -72,6 +82,7 @@ impl CohortMeters {
                 talos_aborts_counter: Some(talos_aborts_counter),
                 agent_errors_counter: Some(agent_errors_counter),
                 db_errors_counter: Some(db_errors_counter),
+                errors_counter: Some(errors_counter),
             }
         } else {
             Self {
@@ -89,6 +100,7 @@ impl CohortMeters {
                 talos_aborts_counter: None,
                 agent_errors_counter: None,
                 db_errors_counter: None,
+                errors_counter: None,
             }
         }
     }
@@ -156,7 +168,14 @@ impl CohortMeters {
         });
     }
 
-    pub fn update_post_send_to_talos_metrics(&self, agent_errors: u64, db_errors: u64, talos_aborts: u64, attempts: u32) {
+    pub(crate) fn update_post_send_to_talos_metrics(
+        &self,
+        agent_errors: u64,
+        db_errors: u64,
+        talos_aborts: u64,
+        attempts: u32,
+        not_concluded_reason: Option<CertificationAttemptFailure>,
+    ) {
         if !self.enabled {
             return;
         }
@@ -164,13 +183,17 @@ impl CohortMeters {
         let c_talos_aborts = self.talos_aborts_counter.clone().unwrap();
         let c_agent_errors = self.agent_errors_counter.clone().unwrap();
         let c_db_errors = self.db_errors_counter.clone().unwrap();
+        let c_errors = self.errors_counter.clone().unwrap();
         let h_agent_retries = self.agent_retries_hist.clone().unwrap();
 
-        if agent_errors > 0 || db_errors > 0 || talos_aborts > 0 || attempts > 0 {
+        if not_concluded_reason.is_some() || agent_errors > 0 || db_errors > 0 || talos_aborts > 0 || attempts > 0 {
             tokio::spawn(async move {
                 c_talos_aborts.add(talos_aborts, &[]);
                 c_agent_errors.add(agent_errors, &[]);
                 c_db_errors.add(db_errors, &[]);
+                if let Some(reason) = not_concluded_reason {
+                    c_errors.add(1, &[KeyValue::new(METRIC_KEY_REASON, reason.to_string())]);
+                }
                 h_agent_retries.record(attempts as u64, &[]);
             });
         }
