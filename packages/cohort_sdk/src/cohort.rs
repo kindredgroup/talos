@@ -29,7 +29,7 @@ use talos_agent::{
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 use crate::{
-    model::ClientErrorKind,
+    model::{internal::CertificationAttemptFailure, ClientErrorKind},
     otel::{
         initialiser::{init_otel_logs_tracing, init_otel_metrics},
         meters::CohortMeters,
@@ -336,6 +336,8 @@ impl Cohort {
         let mut agent_errors = 0_u64;
         let mut db_errors = 0_u64;
 
+        let mut not_concluded_reason: Option<CertificationAttemptFailure>;
+
         let mut recent_conflict: Option<u64> = None;
         let mut recent_abort: Option<CertificationResponse> = None;
 
@@ -346,13 +348,16 @@ impl Cohort {
         let final_result = loop {
             // Await for snapshot and build the certification request payload.
             // Send the certification payload to talos
-            match self
+            let send_result = self
                 .send_to_talos_attempt(attempts + 1, certification_started_at, &get_certification_candidate_callback, recent_conflict)
-                .await
-            {
+                .await;
+            not_concluded_reason = Some(send_result.clone().into());
+
+            match send_result {
                 CertificationAttemptOutcome::Success { mut response } => {
                     response.metadata.duration_ms = started_at.elapsed().as_millis() as u64;
                     response.metadata.attempts = attempts;
+                    not_concluded_reason = None;
                     break Ok(response);
                 }
                 CertificationAttemptOutcome::Aborted { mut response } => {
@@ -415,7 +420,7 @@ impl Cohort {
         };
 
         self.otel_meters
-            .update_post_send_to_talos_metrics(agent_errors, db_errors, talos_aborts, attempts);
+            .update_post_send_to_talos_metrics(agent_errors, db_errors, talos_aborts, attempts, not_concluded_reason);
 
         final_result
     }
