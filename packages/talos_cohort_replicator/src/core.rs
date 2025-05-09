@@ -60,7 +60,7 @@ pub enum CandidateDecisionOutcome {
     Undecided,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct StatemapItem {
     pub action: String,
     pub version: u64,

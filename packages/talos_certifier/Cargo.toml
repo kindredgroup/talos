@@ -38,6 +38,8 @@ thiserror = "1.0.31"
 talos_suffix = { path = "../talos_suffix", version = "0.2.47-dev" }
 talos_common_utils = { path = "../talos_common_utils", version = "0.2.47-dev" }
 
+uuid = { version = "1.4.1", features = ["v4"] }
+
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = "0.4"

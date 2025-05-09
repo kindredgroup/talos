@@ -91,15 +91,26 @@ where
         false
     }
 
+    /// In suffix for replicator, the prune_index is updated only when the `last_installed_version` is received to the service.
+    /// Considering `last_installed_version` to be the only source that controls the suffix pruning, one of the following can happen
+    ///  - `last_installed_version` < `head of suffix`, do not update the `prune_index`.
+    ///  - `last_installed_version` >= `head of suffix` && `last_installed_version` <= `tail of suffix`, update the `prune_index`
+    ///  - `last_installed_version` > `tail of suffix`, update the `prune_index`.
     fn update_prune_index(&mut self, version: u64) -> Option<usize> {
-        let index = self.index_from_head(version)?;
-        let index_some = Some(index);
-        if index_some > self.meta.prune_index && index < self.messages.len() {
-            self.update_prune_index(Some(index));
-            Some(index)
-        } else {
-            None
+        // If suffix is empty, nothing to prune.
+        if self.messages.is_empty() {
+            return None;
         }
+
+        // If the index is not found, return None
+        let index = self.index_from_head(version)?;
+
+        // If the calculated index is greater than the suffix tail, clamp to the last index in suffix.
+        if index >= self.messages.len() {
+            return Some(self.messages.len() - 1);
+        }
+
+        Some(index)
     }
 
     fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Vec<&SuffixItem<T>> {
@@ -109,15 +120,7 @@ where
             None => self.messages.len(),
         };
 
-        let from_index = if from > 0 {
-            if let Some(index) = self.index_from_head(from) {
-                index + 1
-            } else {
-                0
-            }
-        } else {
-            0
-        };
+        let from_index = if let Some(index) = self.index_from_head(from) { index + 1 } else { 0 };
 
         get_nonempty_suffix_items(self.messages.range(from_index..)) // take only some items in suffix
             .take_while(|m| m.is_decided) // take items till we find a not decided item.

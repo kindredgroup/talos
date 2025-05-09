@@ -176,9 +176,9 @@ mod suffix_tests {
         assert_eq!(sfx.meta.prune_index, Some(14)); // version 15 at index 14
 
         let _ = sfx.prune_till_index(sfx.get_safe_prune_index().unwrap());
-        // As prune_start_threshold is after 10 items in suffix, and safe to prune upto index is 14, i.e version 15. Head will move from 1 -> 15.
-        assert_eq!(sfx.meta.head, 15);
-        assert_eq!(sfx.messages.len(), 6);
+        // As prune_start_threshold is after 10 items in suffix, and safe to prune upto index is 14, i.e version 15. Head will move from 1 -> 16.
+        assert_eq!(sfx.meta.head, 16);
+        assert_eq!(sfx.messages.len(), 5);
 
         // insert suffix items after prune head is at 15, so from 15 to 35 i.e inserting 21 items into suffix. Of which 15 - 20 are duplicates
         // Therefore they should be ignored and only the rest should be inserting, and the total length should become 21.
@@ -186,7 +186,7 @@ mod suffix_tests {
             sfx.insert(vers, create_mock_candidate_message(vers)).unwrap();
         }
 
-        assert_eq!(sfx.messages.len(), 21);
+        assert_eq!(sfx.messages.len(), 20);
     }
 
     #[test]
@@ -288,9 +288,9 @@ mod suffix_tests {
         // prune suffix
         let result = sfx.prune_till_index(24).unwrap();
         // new length of suffix after pruning.
-        assert_eq!(sfx.messages.len(), 5);
-        assert_eq!(result.len(), 24); // result.len() + sfx.messages.len() = 30
-        assert_eq!(sfx.meta.head, 25);
+        assert_eq!(sfx.messages.len(), 4);
+        assert_eq!(result.len(), 25); // result.len() + sfx.messages.len() = 30
+        assert_eq!(sfx.meta.head, 26);
         assert_eq!(sfx.meta.prune_index, None);
     }
 
@@ -346,13 +346,14 @@ mod suffix_tests {
             sfx.update_decision(vers, vers + 30).unwrap();
         });
 
-        assert_eq!(sfx.meta.prune_index, Some(29)); // prune_index updated till version 21 (index 20)
+        // prune_index at 29 (which is version 30)
+        assert_eq!(sfx.meta.prune_index, Some(29));
         assert_eq!(sfx.get_safe_prune_index(), Some(29));
         let _ = sfx.prune_till_index(sfx.meta.prune_index.unwrap());
-        assert_eq!(sfx.messages.len(), 1);
+        assert_eq!(sfx.messages.len(), 0);
 
         // assert_eq!(sfx.messages[0].unwrap().item_ver, 21);
-        assert_eq!(sfx.meta.head, 30);
+        assert_eq!(sfx.meta.head, 0);
     }
     #[test]
     fn test_prune_after_min_size_after_prune_check_pass() {

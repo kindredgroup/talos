@@ -8,46 +8,57 @@ doctest = false
 
 [dependencies]
 # Packages from workspace
-async-trait =       { workspace = true }
+async-trait = { workspace = true }
 #env_logger =        { workspace = true }
 #log =               { workspace = true }
-serde =             { workspace = true }
-serde_json =        { workspace = true }
-tokio =             { workspace = true, features = ["full"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
-strum =             { version = "0.25", features = ["derive"] }
+strum = { version = "0.25", features = ["derive"] }
 # Error
-thiserror =         { version = "1.0.31" }
+thiserror = { version = "1.0.31" }
 
 # Time
-time =              { version = "0.3.17" }
+time = { version = "0.3.17" }
 
 #  indexmap
-indexmap = { version = "2.0.0", features = ["rayon"]}
+indexmap = { version = "2.0.0", features = ["rayon"] }
 ahash = "0.8.3"
 
-talos_certifier =            { path = "../talos_certifier", version = "0.2.47-dev" }
-talos_common_utils =         { path = "../talos_common_utils", version = "0.2.47-dev" }
-talos_suffix =               { path = "../talos_suffix", version = "0.2.47-dev" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.47-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.47-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.47-dev" }
 
 # Tracing dependencies
 #   We will move telemetry dependencies to the workspace once we adapt all projects. Currenly only SDK uses them.
 
 #   For OTEL exporter over 'GRPC' protocol
-axum =                      { version = "0.7" } # 0.7 is intentionally pinned
-tonic =                     { version = "0.12.3" }
+axum = { version = "0.7" }     # 0.7 is intentionally pinned
+tonic = { version = "0.12.3" }
 
-opentelemetry =             { version = "0.28.0", default-features = false, features = ["trace"]  }
-opentelemetry_sdk =         { version = "0.28.0", default-features = false, features = ["trace", "rt-tokio"] }
-opentelemetry-otlp =        { version = "0.28.0", features = [ "trace", "grpc-tonic" ] }
-opentelemetry-stdout =      { version = "0.28.0", features = [ "trace" ] }
-tracing =                   { version = "0.1.41", features = [ "log" ] }
-tracing-opentelemetry =     { version = "0.29.0" }
-tracing-bunyan-formatter =  { version = "0.3.10" }
-tracing-subscriber =        { version = "0.3.19", features = [ "fmt", "ansi", "json", "registry", "env-filter" ] }
+opentelemetry = { version = "0.28.0", default-features = false, features = [
+    "trace",
+] }
+opentelemetry_sdk = { version = "0.28.0", default-features = false, features = [
+    "trace",
+    "rt-tokio",
+] }
+opentelemetry-otlp = { version = "0.28.0", features = ["trace", "grpc-tonic"] }
+opentelemetry-stdout = { version = "0.28.0", features = ["trace"] }
+tracing = { version = "0.1.41", features = ["log"] }
+tracing-opentelemetry = { version = "0.29.0" }
+tracing-bunyan-formatter = { version = "0.3.10" }
+tracing-subscriber = { version = "0.3.19", features = [
+    "fmt",
+    "ansi",
+    "json",
+    "registry",
+    "env-filter",
+] }
 # The end of tracing dependencies
 
 [dev-dependencies]
-mockall =       { version = "0.11.3" }
-tokio-test =    { version = "0.4.2" }
-rand =          { version = "0.8.5" }
+mockall = { version = "0.11.3" }
+tokio-test = { version = "0.4.2" }
+rand = { version = "0.8.5" }

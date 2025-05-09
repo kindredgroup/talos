@@ -15,7 +15,7 @@ use crate::{
         otel_config::ReplicatorOtelConfig,
     },
     services::{
-        replicator_service::{replicator_service, ReplicatorServiceConfig},
+        replicator_service::{ReplicatorService, ReplicatorServiceConfig},
         statemap_installer_service::{installation_service, StatemapInstallerConfig},
         statemap_queue_service::{StatemapQueueService, StatemapQueueServiceConfig},
     },
@@ -130,12 +130,15 @@ where
         commit_frequency_ms: config.certifier_message_receiver_commit_freq_ms,
         enable_stats: config.enable_stats,
     };
-    let replicator_handle = tokio::spawn(replicator_service(
+
+    let mut replicator_service = ReplicatorService::new(
         statemap_channel.0,
         rx_installation_feedback_to_replicator,
         replicator,
         replicator_service_configs,
-    ));
+    );
+
+    let replicator_handle = tokio::spawn(async move { replicator_service.run().await });
 
     // Statemap Queue Service
     let queue_config = StatemapQueueServiceConfig {
@@ -143,7 +146,7 @@ where
         queue_cleanup_frequency_ms: config.statemap_queue_cleanup_freq_ms,
     };
 
-    let mut statemap_queue_service_1 = StatemapQueueService::new(
+    let mut statemap_queue_service_ = StatemapQueueService::new(
         statemap_channel.1,
         tx_statemaps_to_install,
         rx_statemaps_install_feedback,
@@ -154,7 +157,7 @@ where
         meter,
     );
 
-    let statemap_queue_handle = tokio::spawn(async move { statemap_queue_service_1.run().await });
+    let statemap_queue_handle = tokio::spawn(async move { statemap_queue_service_.run().await });
 
     // Statemap Installation Service
     let installer_config = StatemapInstallerConfig {

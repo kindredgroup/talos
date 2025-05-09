@@ -390,17 +390,28 @@ where
         );
         let start_ms = Instant::now();
 
-        let drained_entries = self.messages.drain(..index).collect();
+        let (drained_entries, new_head) = match self.messages.range(index..).skip(1).find(|m| m.is_some()) {
+            Some(Some(next_item)) => {
+                let next_version = next_item.item_ver;
+                let next_index = self.index_from_head(next_version).unwrap();
+                let drained = self.messages.drain(..next_index).collect();
+
+                (drained, next_version)
+            }
+            _ => {
+                let drained = self.messages.drain(..).collect();
+                self.update_head(0);
+                (drained, 0)
+            }
+        };
+
+        // let drained_entries = self.messages.drain(..=index).collect();
         let drain_end_ms = start_ms.elapsed().as_micros();
 
         self.update_prune_index(None);
+        self.update_head(new_head);
 
         let start_ms_2 = Instant::now();
-        if let Some(Some(s_item)) = self.messages.iter().find(|m| m.is_some()) {
-            self.update_head(s_item.item_ver);
-        } else {
-            self.update_head(0)
-        }
 
         info!(
             "Suffix message length after pruning={} and new suffix head={} | Prune took {} microseconds and update head took {} microseconds",
