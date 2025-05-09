@@ -63,7 +63,6 @@ struct Metrics {
     g_statemap_queue_length: Option<Gauge<u64>>,
     g_snapshot_version: Option<Gauge<u64>>,
     udc_items_in_flight: Option<UpDownCounter<i64>>,
-    g_installation_tps: Option<Gauge<f64>>,
     //
     install_tracker: TpsTracker,
     channel_size: u64,
@@ -82,7 +81,6 @@ impl Metrics {
                 g_installation_tx_channel_usage: Some(meter.u64_gauge("repl_install_channel").with_unit("items").build()),
                 g_statemap_queue_length: Some(meter.u64_gauge("repl_statemap_queue").with_unit("items").build()),
                 g_snapshot_version: Some(meter.u64_gauge("repl_statemap_queue_snapshot").with_unit("items").build()),
-                g_installation_tps: Some(meter.f64_gauge("repl_statemap_queue_installation_tps").with_unit("items").build()),
                 udc_items_in_flight: Some(meter.i64_up_down_counter("repl_items_in_flight").with_unit("items").build()),
                 ..metrics_default
             }
@@ -95,9 +93,8 @@ impl Metrics {
         &self.install_tracker
     }
 
-    pub fn record_installation_tps(&mut self) {
+    pub fn increment_install_tracker(&mut self) {
         self.install_tracker.increment_count();
-        let _ = self.g_installation_tps.as_ref().map(|m| m.record(self.install_tracker.get_tps(), &[]));
     }
 
     pub fn inflight_inc(&self) {
@@ -352,7 +349,7 @@ where
                         self.metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
                     },
                 }
-                self.metrics.record_installation_tps();
+                self.metrics.increment_install_tracker();
 
                 // Get statemap items from queue and send it for installation.
                 self.send_statemaps_for_install().await;

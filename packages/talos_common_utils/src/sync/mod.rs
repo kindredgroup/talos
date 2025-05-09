@@ -15,7 +15,7 @@ pub struct TrySendWithRetryConfig {
     /// Overall number of retries.
     /// - Use `None` to disable this check.
     /// - Defaults to 5 retries.
-    pub max_retry_attemptes: Option<u32>,
+    pub max_retry_attempts: Option<u32>,
 }
 
 impl Default for TrySendWithRetryConfig {
@@ -23,7 +23,7 @@ impl Default for TrySendWithRetryConfig {
         Self {
             max_sleep_ms: 30,
             max_retry_duration_ms: Some(1_000),
-            max_retry_attemptes: Some(5),
+            max_retry_attempts: Some(5),
         }
     }
 }
@@ -45,7 +45,7 @@ pub async fn try_send_with_retry<T: Clone>(tx: &mpsc::Sender<T>, message: T, con
                 );
 
                 // If reached max attempts, break.
-                if let Some(max_attempts) = config.max_retry_attemptes {
+                if let Some(max_attempts) = config.max_retry_attempts {
                     if counter >= max_attempts {
                         break Err(TrySendError::Full(message));
                     }
