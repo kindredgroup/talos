@@ -82,6 +82,9 @@ impl StatemapInstallerQueue {
         self.queue.values().filter(is_queue_item_state_match(state))
     }
 
+    #[deprecated]
+    #[allow(dead_code)]
+    //TODO: GK - keeping it for now, although it is not used anymore. Will remove it in future if it is not needed back.
     pub(crate) fn dbg_get_versions_to_install(&self) -> DbgQueueInstallItemsSummary<&StatemapInstallerHashmap> {
         let mut intermediate_steps = vec![];
 

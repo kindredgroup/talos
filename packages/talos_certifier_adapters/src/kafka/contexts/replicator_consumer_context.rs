@@ -1,4 +1,3 @@
-use futures_executor::block_on;
 use tokio::sync::mpsc;
 
 use log::{error, info};
@@ -24,7 +23,7 @@ where
 impl<T> ClientContext for ReplicatorConsumerContext<T> where T: ResetVariantTrait + Send + Sync {}
 impl<T> ConsumerContext for ReplicatorConsumerContext<T>
 where
-    T: ResetVariantTrait + Clone + Send + Sync,
+    T: ResetVariantTrait + Clone + Send + Sync + 'static,
 {
     fn post_rebalance(&self, rebalance: &rdkafka::consumer::Rebalance<'_>) {
         match rebalance {
@@ -32,13 +31,14 @@ where
                 info!("Rebalance complete and partition of certification topic: {:?} is assigned", self.topic);
                 let tpl_vec = partitions.elements_for_topic(&self.topic);
                 if !tpl_vec.is_empty() {
-                    if let Err(err) = block_on(try_send_with_retry(
-                        &self.message_channel_tx,
-                        T::get_reset_variant(),
-                        TrySendWithRetryConfig::default(),
-                    )) {
-                        error!("Failed to send reset message due to error {err:?}");
-                    };
+                    tokio::task::spawn({
+                        let message_channel_tx = self.message_channel_tx.clone();
+                        async move {
+                            if let Err(err) = try_send_with_retry(&message_channel_tx, T::get_reset_variant(), TrySendWithRetryConfig::default()).await {
+                                error!("Failed to send reset message due to error {err:?}");
+                            };
+                        }
+                    });
                 }
             }
             Rebalance::Revoke(_partitions) => {}

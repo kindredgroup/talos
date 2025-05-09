@@ -1,9 +1,7 @@
 use std::{cmp::max, time::Duration};
 
-use tokio::{
-    sync::mpsc::{self, error::TrySendError},
-    time::Instant,
-};
+use time::OffsetDateTime;
+use tokio::sync::mpsc::{self, error::TrySendError};
 
 /// Configuration for attempting to retry sending message via an tokio::mpsc::Sender
 pub struct TrySendWithRetryConfig {
@@ -31,7 +29,9 @@ impl Default for TrySendWithRetryConfig {
 }
 
 pub async fn try_send_with_retry<T: Clone>(tx: &mpsc::Sender<T>, message: T, config: TrySendWithRetryConfig) -> Result<(), TrySendError<T>> {
-    let start = Instant::now();
+    let abort_time = config
+        .max_retry_duration_ms
+        .map(|max_duration_ms| OffsetDateTime::now_utc().unix_timestamp_nanos() + (max_duration_ms * 1_000_000) as i128);
     let mut counter = 0;
 
     loop {
@@ -51,8 +51,8 @@ pub async fn try_send_with_retry<T: Clone>(tx: &mpsc::Sender<T>, message: T, con
                     }
                 }
                 // If reached max allowed duration, break.
-                if let Some(max_duration_ms) = config.max_retry_duration_ms {
-                    if start.elapsed().as_millis() + sleep_time as u128 >= max_duration_ms as u128 {
+                if let Some(stop_ns) = abort_time {
+                    if OffsetDateTime::now_utc().unix_timestamp_nanos() >= stop_ns {
                         break Err(TrySendError::Full(message));
                     }
                 }

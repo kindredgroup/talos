@@ -3246,7 +3246,6 @@ dependencies = [
  "async-trait",
  "deadpool-postgres",
  "env_logger",
- "futures-executor",
  "futures-util",
  "log",
  "mockall",
@@ -3304,6 +3303,7 @@ version = "0.2.47-dev"
 dependencies = [
  "opentelemetry 0.28.0",
  "serial_test",
+ "time",
  "tokio",
 ]
 

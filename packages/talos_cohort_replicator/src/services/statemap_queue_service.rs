@@ -31,21 +31,42 @@ impl Default for StatemapQueueServiceConfig {
 }
 
 #[derive(Debug, Default)]
+struct TpsTracker {
+    /// First item recorded in nanoseconds
+    first_item_at_ns: i128,
+    /// Last item recorded in nanoseconds
+    last_item_at_ns: i128,
+    /// Total number of items
+    count: u64,
+}
+
+impl TpsTracker {
+    pub fn increment_count(&mut self) {
+        if self.first_item_at_ns == 0 {
+            self.first_item_at_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        }
+        self.last_item_at_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        self.count += 1;
+    }
+
+    pub fn get_tps(&self) -> f64 {
+        self.count as f64 / Duration::from_nanos((self.last_item_at_ns - self.first_item_at_ns) as u64).as_secs_f64()
+    }
+}
+
+#[derive(Debug, Default)]
 struct Metrics {
     enabled: bool,
+    // Used for Otel
     h_installation_latency: Option<Histogram<f64>>,
     g_installation_tx_channel_usage: Option<Gauge<u64>>,
     g_statemap_queue_length: Option<Gauge<u64>>,
     g_snapshot_version: Option<Gauge<u64>>,
     udc_items_in_flight: Option<UpDownCounter<i64>>,
+    g_installation_tps: Option<Gauge<f64>>,
+    //
+    install_tracker: TpsTracker,
     channel_size: u64,
-
-    // Internal metrics for debugging
-    // TODO: GK - remove at later time or export to telemetry the derived metrics.
-    pub installation_success_count: u32,
-    pub send_for_install_count: u32,
-    pub first_install_start: i128,
-    pub last_install_end: i128,
 }
 
 impl Metrics {
@@ -61,12 +82,22 @@ impl Metrics {
                 g_installation_tx_channel_usage: Some(meter.u64_gauge("repl_install_channel").with_unit("items").build()),
                 g_statemap_queue_length: Some(meter.u64_gauge("repl_statemap_queue").with_unit("items").build()),
                 g_snapshot_version: Some(meter.u64_gauge("repl_statemap_queue_snapshot").with_unit("items").build()),
+                g_installation_tps: Some(meter.f64_gauge("repl_statemap_queue_installation_tps").with_unit("items").build()),
                 udc_items_in_flight: Some(meter.i64_up_down_counter("repl_items_in_flight").with_unit("items").build()),
                 ..metrics_default
             }
         } else {
             metrics_default
         }
+    }
+
+    pub fn get_installation_tracker(&self) -> &TpsTracker {
+        &self.install_tracker
+    }
+
+    pub fn record_installation_tps(&mut self) {
+        self.install_tracker.increment_count();
+        let _ = self.g_installation_tps.as_ref().map(|m| m.record(self.install_tracker.get_tps(), &[]));
     }
 
     pub fn inflight_inc(&self) {
@@ -185,10 +216,6 @@ where
         // Sends for installation.
         for key in items_to_install {
             // Send for installation
-            if self.metrics.send_for_install_count == 0 {
-                self.metrics.first_install_start = OffsetDateTime::now_utc().unix_timestamp_nanos();
-            }
-            self.metrics.send_for_install_count += 1;
             if let Some(item) = self.statemap_queue.queue.get(&key) {
                 match self.installation_tx.send((key, item.statemaps.clone())).await {
                     Ok(_) => {
@@ -203,6 +230,29 @@ where
                 }
             }
             // Update the status flag
+        }
+    }
+    /// Internal logs and stats to help while debugging.
+    fn print_stats(&self) {
+        let tps = self.metrics.get_installation_tracker().get_tps();
+
+        let awaiting_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
+        let inflight_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
+        let installed_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Installed).count();
+
+        info!("Statemap Queue Service stats:- tps = {tps:.3} | Count of items in AWAITING state = {awaiting_count} |  Count of items in INFLIGHT state = {inflight_count} | Count of items in INSTALLED state = {} | statemap queue length = {}",installed_count, self.statemap_queue.queue.len());
+        if !self.statemap_queue.queue.is_empty() {
+            let first_item = self.statemap_queue.queue.first();
+            let last_item = self.statemap_queue.queue.last();
+
+            info!("First item in queue = {} with state = {:?} | Last item in queue = {} with state = {:?} | snapshot_version = {} | last_contiguous_install_version in this interval tick = {:?}",
+                first_item.unwrap().0,
+                first_item.unwrap().1.state,
+                last_item.unwrap().0,
+                last_item.unwrap().1.state,
+                self.statemap_queue.snapshot_version,
+                self.statemap_queue.get_last_contiguous_installed_version()
+            );
         }
     }
 
@@ -242,8 +292,8 @@ where
                     },
                     // Update the snapshot value.
                     Some(StatemapQueueChannelMessage::UpdateSnapshot) => {
-                        info!("Fetching latest snapshot version from callback");
                         let snapshot_version_from_callback = self.get_latest_snapshot_from_callback().await?;
+                        info!("Fetched new snapshot version from callback. Version = {snapshot_version_from_callback}");
 
                         // Update the snapshot with the latest from callback only if it is greater than our internal snapshot tracker.
                         if self.update_snapshot(snapshot_version_from_callback).is_some() {
@@ -254,7 +304,7 @@ where
                                 self.statemap_queue.prune_till_version(version);
                                 // Inform replicator service to remove all versions below this index.
                                 if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(version), TrySendWithRetryConfig::default()).await {
-                                    error!("Failed to send LastInstalledVersion {version} with error {err:?}");
+                                    error!("Failed to send latest snapshot_version {version} with error {err:?}");
                                 }
 
                             };
@@ -280,18 +330,19 @@ where
                         let enc_time = self.statemap_queue.update_queue_item_state(&version, StatemapInstallState::Installed);
                         self.metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
 
+                        // Although we receive the version which was successfully installed, this cannot be used to update the snapshot_version, as there could potentially be some items prior
+                        // to that for which we haven't received feedback or received `Error` feedback and waiting for it to be retried.
+                        // Contiguous installed versions are checked to gurantee, the snapshot_version is updated only till the version prior to which every other item is already installed.
                         if let Some(version) = self.statemap_queue.get_last_contiguous_installed_version(){
+                            // Even though we may get valid version to update, the snapshot update function below could still return None when, somewhere in between we may have updated the snapshot version but
+                            // some of the items where send out on the channel to be installed, and we are receiving the feedback now.
                             if self.update_snapshot(version).is_some() {
                                 // Inform replicator service to remove all versions below this.
                                 if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), TrySendWithRetryConfig::default()).await {
-                                    error!("Failed to send LastInstalledVersion {} with error {err:?}", self.statemap_queue.snapshot_version);
+                                    error!("Failed to send latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
                                 }
                             }
                         };
-
-                        self.metrics.installation_success_count += 1;
-                        self.metrics.last_install_end = OffsetDateTime::now_utc().unix_timestamp_nanos();
-
                     },
                     StatemapInstallationStatus::Error(ver, error) => {
                         self.metrics.inflight_dec();
@@ -301,6 +352,7 @@ where
                         self.metrics.record_latency(enc_time.map(|enqueue_time_nanos| Duration::from_nanos((OffsetDateTime::now_utc().unix_timestamp_nanos() - enqueue_time_nanos) as u64)));
                     },
                 }
+                self.metrics.record_installation_tps();
 
                 // Get statemap items from queue and send it for installation.
                 self.send_statemaps_for_install().await;
@@ -309,9 +361,8 @@ where
             }
             _ = self.cleanup_interval.tick() => {
 
-                let mut last_version = None;
+
                 if let Some(version) = self.statemap_queue.get_last_contiguous_installed_version(){
-                    last_version = Some(version);
                     self.update_snapshot(version);
 
                 };
@@ -319,77 +370,16 @@ where
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
                 // Inform replicator service to remove all versions below this.
                 if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), TrySendWithRetryConfig::default()).await {
-                    error!("Failed to send LastInstalledVersion {} with error {err:?}", self.statemap_queue.snapshot_version);
+                    error!("Failed to send latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
                 }
 
                 if result.is_some() {
                     info!("Pruned {:?} items from queue | snapshot_version = {} ", result, self.statemap_queue.snapshot_version);
                 }
 
-
                 if self.config.enable_stats {
-                    let duration_sec = Duration::from_nanos((self.metrics.last_install_end - self.metrics.first_install_start) as u64).as_secs_f32();
-                    let tps = self.metrics.installation_success_count as f32 / duration_sec;
-
-                    let awaiting_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Awaiting).count();
-                    let inflight_count = self.statemap_queue.filter_items_by_state(StatemapInstallState::Inflight).count();
-
-                    info!("Statemap Queue Service stats:- tps = {tps:.3} | Count of items in AWAITING state = {awaiting_count} |  Count of items in INFLIGHT state = {inflight_count} | Count of items in INSTALLED state = {} | statemap queue length = {}",self.metrics.installation_success_count, self.statemap_queue.queue.len());
-                    if self.statemap_queue.queue.is_empty() {
-                        let first_item = self.statemap_queue.queue.first();
-                        let last_item = self.statemap_queue.queue.last();
-
-                        info!(
-                            "First item in queue = {} with state = {:?} | Last item in queue = {} with state = {:?} | snapshot_version = {} | last_contiguous_install_version in this interval tick = {last_version:?}",
-                            first_item.unwrap().0,
-                            first_item.unwrap().1.state,
-                            last_item.unwrap().0,
-                            last_item.unwrap().1.state,
-                            self.statemap_queue.snapshot_version
-
-                        );
-                    }
-
-                    if self.config.enable_stats && awaiting_count > 0 && inflight_count == 0
-                    {
-                        let result = self.statemap_queue.dbg_get_versions_to_install();
-                        let final_items = result.installable_items;
-                        let criteria_awaiting_state = &result.filter_steps_insights[0];
-                        let criteria_snapshot_check = &result.filter_steps_insights[1];
-                        let criteria_seriazable_check = &result.filter_steps_insights[2];
-
-                        if let Some(first_item_to_fail_safepoint_check) = criteria_snapshot_check.filter_reject_items.first() {
-                            info!("\n\n
-                +----------+-----------------------------------+----------------------------+
-                | Total    | Items in queue                    | {}
-                +----------+-----------------------------------+----------------------------+
-                | Filter 1 | Items in AWAITING state           | {}
-                | Filter 2 | Items whose safepoint <= snapshot | {}
-                |          |                                   | Current snapshot={}
-                |          |-----------------------------------+----------------------------+
-                |          |  > First item to fail this check  | Version={}
-                |          |                                   | Safepoint={:?}
-                |          |-----------------------------------+----------------------------+
-                | Filter 3 | Items serializable in the batch   | {}
-                |          |  > Non serializable items count   | {}
-                +----------+-----------------------------------+------+---------------------+
-                | Total    | Items ready to install            | {}
-                +----------+-----------------------------------+----------------------------+
-                            \n\n",
-                            criteria_awaiting_state.filter_enter_count,
-                            criteria_awaiting_state.filter_exit_count,
-                            criteria_snapshot_check.filter_exit_count,
-                            self.statemap_queue.snapshot_version,
-                            first_item_to_fail_safepoint_check.version,
-                            first_item_to_fail_safepoint_check.safepoint,
-                            criteria_seriazable_check.filter_exit_count,
-                            criteria_seriazable_check.filter_reject_items.len(),
-                            final_items.len(),
-                        );
-                        }
-                    }
+                    self.print_stats();
                 }
-
 
 
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());

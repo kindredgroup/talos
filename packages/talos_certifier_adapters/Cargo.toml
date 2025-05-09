@@ -24,7 +24,6 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 # Futures
 futures-util = "0.3.26"
-futures-executor = "0.3.28"
 # Kafka
 rdkafka = { version = "0.34.0", features = ["sasl"] }
 

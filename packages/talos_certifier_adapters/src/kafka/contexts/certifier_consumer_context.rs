@@ -1,4 +1,3 @@
-use futures_executor::block_on;
 use log::{error, info};
 use rdkafka::{
     consumer::{ConsumerContext, Rebalance},
@@ -14,7 +13,7 @@ use tokio::sync::mpsc;
 /// Certifier's consumer context used to detect a rebalance and send a `ChannelMessage::Reset` to reset the suffix in `certifier service`.
 pub struct CertifierConsumerContext<T>
 where
-    T: ResetVariantTrait + Send + Sync,
+    T: ResetVariantTrait + Send + Sync + 'static,
 {
     pub topic: String,
     pub message_channel_tx: mpsc::Sender<T>,
@@ -36,13 +35,14 @@ where
             Rebalance::Revoke(partitions) => {
                 let tpl_vec = partitions.elements_for_topic(&self.topic);
                 if !tpl_vec.is_empty() {
-                    if let Err(err) = block_on(try_send_with_retry(
-                        &self.message_channel_tx,
-                        T::get_reset_variant(),
-                        TrySendWithRetryConfig::default(),
-                    )) {
-                        error!("Failed to send reset message due to error {err:?}");
-                    };
+                    tokio::task::spawn({
+                        let message_channel_tx = self.message_channel_tx.clone();
+                        async move {
+                            if let Err(err) = try_send_with_retry(&message_channel_tx, T::get_reset_variant(), TrySendWithRetryConfig::default()).await {
+                                error!("Failed to send reset message due to error {err:?}");
+                            };
+                        }
+                    });
                 }
             }
             Rebalance::Error(e) => error!("Rebalance error: {}", e),

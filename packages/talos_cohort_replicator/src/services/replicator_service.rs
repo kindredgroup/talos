@@ -191,6 +191,9 @@ where
                             }
                         } else {
                             self.replicator.prepare_offset_for_commit(version);
+
+                            self.replicator.commit().await;
+
                             info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", self.replicator.suffix.get_meta().head, self.replicator.suffix.get_suffix_len());
                         }
                     }
