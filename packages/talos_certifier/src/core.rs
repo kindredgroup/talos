@@ -2,6 +2,7 @@ use ahash::HashMap;
 use async_trait::async_trait;
 use serde::de::DeserializeOwned;
 use strum::{Display, EnumString};
+use talos_common_utils::ResetVariantTrait;
 use tokio::sync::broadcast;
 
 use crate::{errors::SystemServiceError, model::DecisionMessage};
@@ -46,6 +47,13 @@ pub enum ChannelMessage<T: CandidateMessageBaseTrait> {
     Candidate(Box<CandidateChannelMessage<T>>),
     Decision(Box<DecisionChannelMessage>),
     Reset,
+}
+
+impl<T> ResetVariantTrait for ChannelMessage<T>
+where
+    T: CandidateMessageBaseTrait,
+{
+    const RESET_VARIANT: Self = ChannelMessage::Reset;
 }
 
 #[derive(Debug, Display, Eq, PartialEq, EnumString)]

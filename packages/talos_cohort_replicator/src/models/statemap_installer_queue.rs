@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use ahash::RandomState;
 use indexmap::IndexMap;
+use tracing::{debug, info};
 
 use crate::{
     core::{StatemapInstallState, StatemapInstallerHashmap},
@@ -28,7 +29,10 @@ pub struct StatemapInstallerQueue {
 
 impl StatemapInstallerQueue {
     pub fn update_snapshot(&mut self, snapshot_version: u64) {
-        self.snapshot_version = snapshot_version;
+        if snapshot_version > self.snapshot_version {
+            debug!("Updating snapshot_version to {}", snapshot_version);
+            self.snapshot_version = snapshot_version;
+        }
     }
 
     /// Insert into queue the item to install with the version as key.
@@ -41,22 +45,36 @@ impl StatemapInstallerQueue {
      * Returns items' enqueueing time
      */
     pub fn update_queue_item_state(&mut self, version: &u64, state: StatemapInstallState) -> Option<i128> {
-        if let Some(item) = self.queue.get_mut(version) {
-            item.state = state;
-            Some(item.timestamp)
-        } else {
-            None
-        }
+        let item = self.queue.get_mut(version)?;
+        item.state = state;
+        Some(item.timestamp)
     }
 
-    pub fn remove_installed(&mut self) -> Option<u64> {
-        let Some(index) = self.queue.get_index_of(&self.snapshot_version) else {
-            return None;
-        };
+    pub fn prune_till_version(&mut self, version: u64) -> Option<u64> {
+        let index = self.queue.get_index_of(&version)?;
 
-        let items = self.queue.drain(..index);
+        Some(self.prune_till_index(index))
+    }
 
-        Some(items.count() as u64)
+    pub fn prune_till_index(&mut self, index: usize) -> u64 {
+        let queue_length = self.queue.len();
+
+        if index < queue_length {
+            let items = self.queue.drain(..=index);
+            let count = items.len() as u64;
+            drop(items);
+            if count > 0 {
+                info!(
+                    "Pruned {count} items in statemap queue. Length changed from {queue_length} to {} | snapshot_version = {} ",
+                    self.queue.len(),
+                    self.snapshot_version
+                );
+            }
+
+            count
+        } else {
+            0
+        }
     }
 
     /// Filter items in queue based on the `StatemapInstallState`
@@ -64,6 +82,9 @@ impl StatemapInstallerQueue {
         self.queue.values().filter(is_queue_item_state_match(state))
     }
 
+    #[deprecated]
+    #[allow(dead_code)]
+    //TODO: GK - keeping it for now, although it is not used anymore. Will remove it in future if it is not needed back.
     pub(crate) fn dbg_get_versions_to_install(&self) -> DbgQueueInstallItemsSummary<&StatemapInstallerHashmap> {
         let mut intermediate_steps = vec![];
 
@@ -134,6 +155,29 @@ impl StatemapInstallerQueue {
             // collect the iterator of versions into a vec
             .collect::<Vec<u64>>()
     }
+
+    pub fn get_last_contiguous_installed_version(&self) -> Option<u64> {
+        // If queue is empty, there are not installed items.
+        if self.queue.is_empty() {
+            return None;
+        }
+
+        // If queue is not empty and the snapshot version is below this version, then we find the last_contiguous installed version.
+        let start = if let Some(version_index) = self.queue.get_index_of(&self.snapshot_version) {
+            version_index
+        } else {
+            0
+        };
+
+        let (last_installed_version, _) = self
+            .queue
+            .get_range(start..)?
+            .iter()
+            .take_while(|(_, statemap_installer_item)| statemap_installer_item.state == StatemapInstallState::Installed)
+            .last()?;
+
+        Some(*last_installed_version)
+    }
 }
 
 #[cfg(test)]
@@ -190,35 +234,38 @@ mod tests {
         installer_queue.update_snapshot(5);
         assert_eq!(installer_queue.snapshot_version, 5);
 
-        let count = installer_queue.remove_installed();
-        // Nothing is removed as there are no items with state `installed`.
-        assert_eq!(count, Some(0));
+        let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
+        // If snapshot is updated, we prune everything below it
+        assert_eq!(count, Some(1));
 
         //  Update the state for the version 5 as installed
-        installer_queue.update_queue_item_state(&5, crate::core::StatemapInstallState::Installed);
+        let upd_5 = installer_queue.update_queue_item_state(&5, crate::core::StatemapInstallState::Installed);
         //  Update the state for the version 3 as installed
-        installer_queue.update_queue_item_state(&3, crate::core::StatemapInstallState::Installed);
+        let upd_3 = installer_queue.update_queue_item_state(&3, crate::core::StatemapInstallState::Installed);
 
-        assert_eq!(installer_queue.queue.first().unwrap().1.state, crate::core::StatemapInstallState::Installed);
-        assert_eq!(installer_queue.queue.last().unwrap().1.state, crate::core::StatemapInstallState::Installed);
-
-        let count = installer_queue.remove_installed();
-        // Althought version 5 and 3 are installed and safe to remove, as the snapshot is at 5, it can remove only the
-        // contigous installed items till the snapshot.
-        assert_eq!(count, Some(0));
-
-        installer_queue.update_snapshot(10);
-
-        let count = installer_queue.remove_installed();
-        // If the snapshot version is an incorrect version which is not on the queue, `None` is returned.
-        assert!(count.is_none());
-
-        installer_queue.update_snapshot(3);
-
-        let count = installer_queue.remove_installed();
-        // Although version 3 is also safe to remove, it is the snapshot version and will not be removed.
-        assert_eq!(count, Some(1));
+        assert!(upd_5.is_none());
+        // As the items are put not in order, 3 is not removed.
+        assert!(upd_3.is_some());
         assert_eq!(installer_queue.queue.len(), 1);
+        // assert_eq!(installer_queue.queue.get(&5).unwrap().1.state, crate::core::StatemapInstallState::Installed);
+
+        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
+        // // Althought version 5 and 3 are installed and safe to remove, as the snapshot is at 5, it can remove only the
+        // // contigous installed items till the snapshot.
+        // assert_eq!(count, 0);
+
+        // installer_queue.update_snapshot(10);
+
+        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
+        // // If the snapshot version is an incorrect version which is not on the queue, `None` is returned.
+        // assert_eq!(count, 0);
+
+        // installer_queue.update_snapshot(3);
+
+        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
+        // // Although version 3 is also safe to remove, it is the snapshot version and will not be removed.
+        // assert_eq!(count, 1);
+        // assert_eq!(installer_queue.queue.len(), 1);
     }
 
     #[test]

@@ -2,13 +2,14 @@
 use std::{fmt::Debug, time::Duration};
 
 use crate::{
-    core::{Replicator, ReplicatorChannel, StatemapItem},
+    core::{Replicator, ReplicatorChannel},
     errors::ReplicatorError,
     models::{ReplicatorCandidate, ReplicatorCandidateMessage},
     suffix::ReplicatorSuffixTrait,
+    StatemapQueueChannelMessage,
 };
 
-use opentelemetry::{global, trace::TraceContextExt, KeyValue};
+use opentelemetry::{global, metrics::Gauge, trace::TraceContextExt, KeyValue};
 
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_common_utils::otel::{
@@ -18,8 +19,8 @@ use talos_common_utils::otel::{
     },
     propagated_context::PropagatedSpanContextData,
 };
-use time::OffsetDateTime;
-use tokio::sync::mpsc;
+
+use tokio::{sync::mpsc, time::Interval};
 use tracing::Instrument;
 use tracing::{debug, error, info};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
@@ -31,174 +32,183 @@ pub struct ReplicatorServiceConfig {
     pub enable_stats: bool,
 }
 
-pub async fn replicator_service<S, M>(
-    statemaps_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
-    mut replicator_rx: mpsc::Receiver<ReplicatorChannel>,
-    mut replicator: Replicator<ReplicatorCandidate, S, M>,
-    config: ReplicatorServiceConfig,
-) -> Result<(), ReplicatorError>
+struct ReplicatorMetrics {
+    /// Records the number of items in the statemap channel.
+    g_statemaps_tx: Gauge<u64>,
+    /// Records the versions received from message receiver.
+    g_consumed_offset: Gauge<u64>,
+}
+
+impl ReplicatorMetrics {
+    pub fn new() -> Self {
+        let g_statemaps_tx: opentelemetry::metrics::Gauge<u64> = global::meter("sdk_replicator").u64_gauge("repl_statemaps_channel").with_unit("items").build();
+        let g_consumed_offset = global::meter("sdk_replicator")
+            .u64_gauge(format!("repl_{}", METRIC_NAME_CERTIFICATION_OFFSET))
+            .build();
+
+        Self {
+            g_statemaps_tx,
+            g_consumed_offset,
+        }
+    }
+
+    pub fn record_consumed_offset(&self, offset: u64, attributes: &[KeyValue]) {
+        self.g_consumed_offset.record(offset, attributes);
+    }
+
+    pub fn record_statemap_tx_count(&self, count: u64) {
+        self.g_statemaps_tx.record(count, &[]);
+    }
+}
+
+pub struct ReplicatorService<S, M>
 where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
-    info!("Starting Replicator Service.... ");
-    let mut interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
+    statemaps_tx: mpsc::Sender<StatemapQueueChannelMessage>,
+    replicator_rx: mpsc::Receiver<ReplicatorChannel>,
+    pub replicator: Replicator<ReplicatorCandidate, S, M>,
+    #[allow(dead_code)]
+    config: ReplicatorServiceConfig,
+    interval: Interval,
+    metrics: ReplicatorMetrics,
+}
 
-    let mut total_items_send = 0;
-    let mut total_items_installed = 0;
-    let mut time_first_item_created_start_ns: i128 = 0; //
-    let mut time_last_item_send_end_ns: i128 = 0;
-    let mut time_last_item_installed_ns: i128 = 0;
+impl<S, M> ReplicatorService<S, M>
+where
+    S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
+    M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
+{
+    pub fn new(
+        statemaps_tx: mpsc::Sender<StatemapQueueChannelMessage>,
+        replicator_rx: mpsc::Receiver<ReplicatorChannel>,
+        replicator: Replicator<ReplicatorCandidate, S, M>,
+        config: ReplicatorServiceConfig,
+    ) -> Self {
+        let metrics = ReplicatorMetrics::new();
+        let interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
+        Self {
+            statemaps_tx,
+            replicator_rx,
+            replicator,
+            config,
+            interval,
+            metrics,
+        }
+    }
 
-    let g_statemaps_tx = global::meter("sdk_replicator").u64_gauge("repl_statemaps_channel").with_unit("items").build();
-    let g_consumed_offset = global::meter("sdk_replicator")
-        .u64_gauge(format!("repl_{}", METRIC_NAME_CERTIFICATION_OFFSET))
-        .build();
-
-    let channel_size = 100_000_u64;
-
-    loop {
+    pub async fn run_once(&mut self) -> Result<(), ReplicatorError> {
         tokio::select! {
-        // 1. Consume message.
-        res = replicator.receiver.consume_message() => {
-            if let Ok(Some(msg)) = res {
+            // 1. Consume message.
+            res = self.replicator.receiver.consume_message() => {
+                if let Ok(Some(msg)) = res {
+                    // 2. Add/update to suffix.
+                    match msg {
+                        // 2.1 For CM - Install messages on the version
+                        ChannelMessage::Candidate(candidate) => {
+                            let offset = candidate.message.version;
+                            self.replicator.process_consumer_message(offset, candidate.message.into()).await;
 
-                // 2. Add/update to suffix.
-                match msg {
-                    // 2.1 For CM - Install messages on the version
-                    ChannelMessage::Candidate(candidate) => {
-                        let offset = candidate.message.version;
-                        replicator.process_consumer_message(offset, candidate.message.into()).await;
-                        g_consumed_offset.record(
-                            offset,
-                            &[
+                            self.metrics.record_consumed_offset(offset, &[
                                 KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE),
                                 KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN),
-                            ],
-                        );
-                    },
-                    // 2.2 For DM - Update the decision with outcome + safepoint.
-                    ChannelMessage::Decision(decision) => {
-                        let talos_decision = decision.message.decision.to_string();
-                        if let Some(trace_parent) = decision.get_trace_parent() {
-                            let propagated_context = PropagatedSpanContextData::new_with_trace_parent(trace_parent);
-                            let context = global::get_text_map_propagator(|propagator| {
-                                propagator.extract(&propagated_context)
-                            });
-                            let linked_context = context.span().span_context().clone();
-                            let span = tracing::info_span!("replicator_receive_decision", xid = decision.message.xid.clone());
-                            span.add_link(linked_context);
+                            ]);
+                        },
+                        // 2.2 For DM - Update the decision with outcome + safepoint.
+                        ChannelMessage::Decision(decision) => {
+                            let talos_decision = decision.message.decision.to_string();
+                            if let Some(trace_parent) = decision.get_trace_parent() {
+                                let propagated_context = PropagatedSpanContextData::new_with_trace_parent(trace_parent);
+                                let context = global::get_text_map_propagator(|propagator| {
+                                    propagator.extract(&propagated_context)
+                                });
+                                let linked_context = context.span().span_context().clone();
+                                let span = tracing::info_span!("replicator_receive_decision", xid = decision.message.xid.clone());
+                                span.add_link(linked_context);
 
-                            replicator.process_decision_message(decision.decision_version, decision.message).instrument(span).await;
-                        } else {
-                            replicator.process_decision_message(decision.decision_version, decision.message).await;
-                        }
+                                self.replicator.process_decision_message(decision.decision_version, decision.message).instrument(span).await;
+                            } else {
+                                self.replicator.process_decision_message(decision.decision_version, decision.message).await;
+                            }
 
-                        g_consumed_offset.record(
-                            decision.decision_version,
-                            &[
+                            self.metrics.record_consumed_offset(decision.decision_version, &[
                                 KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION),
                                 KeyValue::new(METRIC_KEY_CERT_DECISION_TYPE, talos_decision),
-                            ],
-                        );
-
-                        if total_items_send == 0 {
-                            time_first_item_created_start_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                        }
-                        // Get a batch of remaining versions with their statemaps to install.
-                        let statemaps_batch = replicator.generate_statemap_batch();
-
-                        total_items_send += statemaps_batch.len();
-                        g_statemaps_tx.record(channel_size - statemaps_tx.capacity() as u64, &[]);
-
-                        // Send statemaps batch to
-                        for (ver, statemap_vec) in statemaps_batch {
-                            statemaps_tx.send((ver, statemap_vec)).await.unwrap();
-                        }
-
-                        // statemaps_tx
-
-                        time_last_item_send_end_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
-                    },
-                    ChannelMessage::Reset => {
-                        debug!("Channel reset message received.");
-                    }
-                }
-            }
-        }
-        // Commit offsets at interval.
-        _ = interval.tick() => {
-            if config.enable_stats {
-                let duration_sec = Duration::from_nanos((time_last_item_send_end_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
-                let tps_send = total_items_send as f32 / duration_sec;
+                            ],);
 
 
-                let duration_installed_sec = Duration::from_nanos((time_last_item_installed_ns - time_first_item_created_start_ns) as u64).as_secs_f32();
-                let tps_install = total_items_installed as f32 / duration_installed_sec;
-                // let tps_install_feedback =
+                            // Get a batch of remaining versions with their statemaps to install.
+                            let statemaps_batch = self.replicator.generate_statemap_batch();
 
-                debug!("
-                Replicator Stats:
-                      send for install      : tps={tps_send:.3}    | count={total_items_send}
-                      installed             : tps={tps_install:.3}    | count={total_items_installed}
-                    \n ");
-            }
+                            self.metrics.record_statemap_tx_count((self.statemaps_tx.max_capacity() - self.statemaps_tx.capacity()) as u64);
 
-            if let Some((new_offset, candidate_version, _candidate_index)) = replicator.compute_new_offset(){
-                replicator.suffix.update_prune_index(candidate_version);
-                replicator.prepare_offset_for_commit(new_offset).await;
-                replicator.commit().await;
-            }
-
-        }
-        // Receive feedback from installer.
-        res = replicator_rx.recv() => {
-                if let Some(result) = res {
-                    match result {
-                        // 4. Remove the versions if installations are complete.
-                        ReplicatorChannel::InstallationSuccess(vers) => {
-
-                            let version = vers.last().unwrap().to_owned();
-                            debug!("Installated successfully till version={version:?}");
-                            // Mark the suffix item as installed.
-                            replicator.suffix.set_item_installed(version);
-
-                            // // if all prior items are installed, then update the prune vers
-                            let updated_prune_index = replicator.suffix.update_prune_index(version);
-
-                            debug!("Replicator last_installing count = {} | is prune_index ({:?}) >= prune_start_threshold ({:?}) ==> {}", replicator.last_installing, replicator.suffix.get_suffix_meta().prune_index , replicator.suffix.get_suffix_meta().prune_start_threshold, replicator.suffix.get_suffix_meta().prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold);
-                            // When the prune_index was updated, we know the following:
-                            // - New prune_index > previous prune_index
-                            // - It is safe to drop all items in suffix till the prune_index.
-                            if let Some(index) = updated_prune_index {
-                                if replicator.last_installing > 0 && updated_prune_index >= replicator.suffix.get_suffix_meta().prune_start_threshold {
-
-                                    if let Err(err) = replicator.suffix.prune_till_index(index){
-                                        let item = replicator.suffix.get_by_index(index);
-                                        if let Some(suffix_item) = item {
-                                            let ver = suffix_item.item_ver;
-                                            error!("Failed to prune suffix till version {ver} and index {index}. Suffix head is at {}. Error {:?}", replicator.suffix.get_meta().head, err);
-                                        } else {
-                                            error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", replicator.suffix.get_meta().head, err);
-                                        }
-                                    } else {
-                                        info!("Completed pruning suffix. New head = {} ", replicator.suffix.get_meta().head);
-                                    }
-                                };
-
+                            // Send statemaps batch to
+                            for (ver, statemap_vec) in statemaps_batch {
+                                self.statemaps_tx.send(StatemapQueueChannelMessage::Message((ver, statemap_vec))).await.unwrap();
                             }
-                            total_items_installed += 1;
-                            time_last_item_installed_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-                        }
-                        ReplicatorChannel::InstallationFailure(err) => {
-                            error!("Installation failed with error {err:?}");
-
+                        },
+                        ChannelMessage::Reset => {
+                            debug!("Channel reset message received.");
                         }
                     }
                 }
             }
+            // Commit offsets at interval.
+            _ = self.interval.tick() => {
+                // If last item on suffix, we can commit till it's decision
+                let suffix_length = self.replicator.suffix.get_suffix_len();
+                let last_suffix_index = if suffix_length > 0 { suffix_length - 1 } else { 0 };
 
+                if let Some(next_commit_offset) = self.replicator.next_commit_offset {
+                    if let Some(index) = self.replicator.suffix.get_index_from_head(next_commit_offset) {
+
+                        if index == last_suffix_index {
+                            if let Ok(Some(c)) = self.replicator.suffix.get(next_commit_offset){
+                                if let Some(decision_version) = c.decision_ver {
+                                    self.replicator.prepare_offset_for_commit(decision_version);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                self.replicator.commit().await;
+
+            }
+            // Receive feedback from installer.
+            res = self.replicator_rx.recv() => {
+                if let Some(ReplicatorChannel::LastInstalledVersion(version)) = res {
+                    if let Some(index) = self.replicator.suffix.update_prune_index(version) {
+                        if let Err(err) = self.replicator.suffix.prune_till_index(index){
+                            let item = self.replicator.suffix.get_by_index(index);
+                            if let Some(suffix_item) = item {
+                                let ver = suffix_item.item_ver;
+                                error!("Failed to prune suffix till version {ver} and index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
+                            } else {
+                                error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
+                            }
+                        } else {
+                            self.replicator.prepare_offset_for_commit(version);
+
+                            self.replicator.commit().await;
+
+                            info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", self.replicator.suffix.get_meta().head, self.replicator.suffix.get_suffix_len());
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub async fn run(&mut self) -> Result<(), ReplicatorError> {
+        info!("Starting Replicator Service.... ");
+
+        loop {
+            self.run_once().await?;
         }
     }
 }

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::marker::PhantomData;
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
+use talos_common_utils::ResetVariantTrait;
 use tracing::{debug, warn};
 
 use crate::models::ReplicatorCandidateMessage;
@@ -11,6 +12,16 @@ use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
     utils::get_statemap_from_suffix_items,
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StatemapQueueChannelMessage {
+    Message((u64, Vec<StatemapItem>)),
+    UpdateSnapshot,
+}
+
+impl ResetVariantTrait for StatemapQueueChannelMessage {
+    const RESET_VARIANT: Self = StatemapQueueChannelMessage::UpdateSnapshot;
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatemapInstallState {
@@ -34,10 +45,11 @@ pub enum StatemapInstallationStatus {
     Error(u64, String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ReplicatorChannel {
-    InstallationSuccess(Vec<u64>),
-    InstallationFailure(String),
+    /// The last installed version, which will be used to update the prune_index in suffix
+    /// to enable suffix pruning.
+    LastInstalledVersion(u64),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -48,7 +60,7 @@ pub enum CandidateDecisionOutcome {
     Undecided,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct StatemapItem {
     pub action: String,
     pub version: u64,
@@ -189,49 +201,8 @@ where
         // generate the statemap from each item in batch.
         get_statemap_from_suffix_items(items.into_iter())
     }
-    /// Computes the new offset and returns a tuple of the new offset and the corresponding candidate version and the index in suffix
-    ///
-    ///  return Option<new_offset, candidate_version, suffix_index>
-    pub(crate) fn compute_new_offset(&self) -> Option<(u64, u64, usize)> {
-        let last_installed_item = self.suffix.get_last_installed(Some(self.last_installing))?;
-        let candidate_version = last_installed_item.item_ver;
 
-        let candidate_index = self.suffix.get_index_from_head(last_installed_item.item_ver)?;
-        let suffix_length = self.suffix.get_suffix_len();
-        let last_suffix_index = if suffix_length > 0 { suffix_length - 1 } else { 0 };
-
-        // When a commit has been issued earlier.
-        if let Some(current_commit_offset) = self.next_commit_offset {
-            // When this is not the last candidate on suffix.
-            if candidate_version.gt(&current_commit_offset) {
-                // When it is the last candidate on suffix.
-                // And we know as this is the last installed version in suffix, there is no candidates bet the candidate and decision version.
-                // In such scenario, it is safe to commit till the decision version
-                if candidate_index.eq(&last_suffix_index) {
-                    let decision_version = last_installed_item.decision_ver?;
-                    //  Because candidate version > current offset, we can imply decision version will also be > current offset.
-                    debug!("[compute_new_offset] New offset (decision version) {decision_version} | current offset {current_commit_offset}");
-                    return Some((decision_version, candidate_version, candidate_index));
-                }
-                debug!("[compute_new_offset] New offset (candidate version) {candidate_version} | current offset {current_commit_offset}");
-                return Some((candidate_version, candidate_version, candidate_index));
-            };
-
-            debug!(
-                "[compute_new_offset] No new offset computed. Last installed version = {} | Current offset = {:?}",
-                candidate_version, self.next_commit_offset,
-            );
-            return None;
-        }
-        // When a commit hasn't been issued yet.
-        debug!(
-            "[compute_new_offset] First offset computed. Last installed version = {} | Current offset = {:?}",
-            candidate_version, self.next_commit_offset,
-        );
-        Some((candidate_version, candidate_version, candidate_index))
-    }
-
-    pub(crate) async fn prepare_offset_for_commit(&mut self, version: u64) {
+    pub(crate) fn prepare_offset_for_commit(&mut self, version: u64) {
         debug!(
             "[prepare_offset_for_commit] Last installing version = {} | suffix head = {} | last_installed version ={:?}",
             self.last_installing,

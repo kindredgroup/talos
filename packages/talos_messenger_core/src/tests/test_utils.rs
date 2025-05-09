@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use log::{debug, error};
 use strum::{Display, EnumString};
 use talos_certifier::{
-    certifier::Outcome,
     errors::SystemServiceError,
     ports::{
         common::SharedPortTraits,
@@ -218,34 +217,6 @@ impl ActionService for MockActionService {
             }
         }
         Ok(())
-    }
-}
-
-/// Build mock outcome required for the decision.
-///
-/// - When the first parameter  is `Some(version)` - return `Aborted` with discord `Assertive`.
-///
-/// - When the first parameter is `None` and safepoint is `Some(version)` - return `Committed` with discord `Assertive`.
-///
-/// - Else - return `Aborted` with discord `Permissive`.
-pub fn build_mock_outcome(conflict_version: Option<u64>, safepoint: Option<u64>) -> Outcome {
-    if let Some(version) = conflict_version {
-        return Outcome::Aborted {
-            version: Some(version),
-            discord: talos_certifier::certifier::Discord::Assertive,
-        };
-    }
-
-    if let Some(vers) = safepoint {
-        return Outcome::Commited {
-            discord: talos_certifier::certifier::Discord::Assertive,
-            safepoint: vers,
-        };
-    }
-
-    Outcome::Aborted {
-        version: None,
-        discord: talos_certifier::certifier::Discord::Permissive,
     }
 }
 
