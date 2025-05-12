@@ -195,6 +195,105 @@ async fn test_replicator_service_inserting_candidates_to_suffix() {
     assert_eq!(replicator_svc.replicator.suffix.messages.len(), 8);
 }
 
+// - Test decisions coming through first
+//      - When decision version is below suffix head
+//      - When decision version > suffix head
+#[tokio::test]
+async fn test_replicator_service_receiving_decisions_first() {
+    let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
+    let (replicator_feedback_tx, replicator_feedback_rx) = mpsc::channel(50);
+    let (tx_message_channel, rx_message_channel) = mpsc::channel(10);
+
+    let receiver = MockReciever {
+        consumer: rx_message_channel,
+        offset: 0,
+    };
+
+    let config = ReplicatorServiceConfig {
+        commit_frequency_ms: 60_000, // 1 hour
+        enable_stats: false,
+    };
+
+    let suffix_config = SuffixConfig {
+        capacity: 1_000,
+        prune_start_threshold: Some(10),
+        min_size_after_prune: None,
+    };
+    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
+
+    let replicator = Replicator::new(receiver, suffix, None);
+
+    let mut replicator_svc = ReplicatorService::new(statemaps_tx, replicator_feedback_rx, replicator, config);
+
+    // ************* start of assertions *************** //
+    let headers = HashMap::new();
+
+    replicator_feedback_tx
+        .send(crate::core::ReplicatorChannel::LastInstalledVersion(0))
+        .await
+        .unwrap();
+
+    // Run the replicator service once to last installed version.
+    replicator_svc.run_once().await.unwrap();
+
+    assert_eq!(replicator_svc.replicator.suffix.meta.prune_index, None);
+    assert_eq!(replicator_svc.replicator.suffix.messages.len(), 0);
+
+    // ** candidate message with version 399.
+    let vers_399 = 399;
+    let (_, d_399) = MockReplicatorChannelMessage::build_channel_message(vers_399, replicator_svc.replicator.suffix.meta.head, Some(0), None, &headers, None);
+
+    // Send the decision for candidate message for version 399.
+    // This is the first message to receive
+    tx_message_channel.send(d_399).await.unwrap();
+    assert_eq!(tx_message_channel.max_capacity() - tx_message_channel.capacity(), 1);
+
+    // Run the replicator service to process the decision for version 399.
+    replicator_svc.run_once().await.unwrap();
+
+    assert_eq!(replicator_svc.replicator.suffix.messages.len(), 0);
+
+    // ** candidate message with version 402.
+    let vers_402 = 402;
+    let (c_402, d_402) =
+        MockReplicatorChannelMessage::build_channel_message(vers_402, replicator_svc.replicator.suffix.meta.head, Some(0), None, &headers, None);
+
+    // Send the candidate message for version 402.
+    tx_message_channel.send(c_402).await.unwrap();
+    assert_eq!(tx_message_channel.max_capacity() - tx_message_channel.capacity(), 1);
+
+    // Run the replicator service to process the candidate for version 402.
+    replicator_svc.run_once().await.unwrap();
+    // replicator_svc.run_once().await.unwrap();
+
+    assert_eq!(replicator_svc.replicator.suffix.messages.len(), 1);
+    assert_eq!(statemaps_rx.max_capacity() - statemaps_rx.capacity(), 0);
+
+    // ** candidate message with version 400.
+    let vers_400 = 400;
+    let (_, d_400) = MockReplicatorChannelMessage::build_channel_message(vers_400, replicator_svc.replicator.suffix.meta.head, Some(0), None, &headers, None);
+
+    // Send the decision for candidate message for version 400.
+    tx_message_channel.send(d_400).await.unwrap();
+
+    // Run the replicator service to process the decision for version 400.
+    replicator_svc.run_once().await.unwrap();
+
+    assert_eq!(replicator_svc.replicator.suffix.messages.len(), 1);
+    assert_eq!(statemaps_rx.max_capacity() - statemaps_rx.capacity(), 0);
+
+    //** */
+    // Send the candidate message for version 402.
+    tx_message_channel.send(d_402).await.unwrap();
+
+    // Run the replicator service to process the decision for version 402.
+    replicator_svc.run_once().await.unwrap();
+
+    assert_eq!(replicator_svc.replicator.suffix.messages.len(), 1);
+    assert_eq!(replicator_svc.replicator.suffix.meta.head, 402);
+    assert_eq!(statemaps_rx.max_capacity() - statemaps_rx.capacity(), 1);
+}
+
 // - Test pruning.
 //      - When version received is < head -> no pruning.
 //      - When version received is == head -> pruning till head.
