@@ -59,6 +59,7 @@ else
     #cargo update napi-build@2.1.4 --precise 2.1.3
     #cargo update zerofrom@0.1.6 --precise 0.1.5
     #cargo update litemap@0.7.5 --precise 0.7.4
+    cargo update icu_normalizer_data@2.0 --precise 1.5
     npx napi build --platform --release
 fi
 
