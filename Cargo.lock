@@ -3247,10 +3247,6 @@ dependencies = [
  "deadpool-postgres",
  "env_logger",
  "futures-util",
- "icu_normalizer_data",
- "idna",
- "idna_adapter",
- "litemap",
  "log",
  "mockall",
  "rdkafka 0.34.0",
@@ -3268,8 +3264,6 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "uuid",
- "yoke",
- "zerofrom",
 ]
 
 [[package]]

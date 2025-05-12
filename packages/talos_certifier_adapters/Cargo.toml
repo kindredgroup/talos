@@ -42,14 +42,14 @@ refinery = { version = "=0.8.14", features = ["tokio-postgres"] }
 
 time = { version = "0.3.30" }
 
-# *** Start - Adding to fix napi build error on GH actions.
-idna = { version = "=1.0.3" }
-idna_adapter = { version = "=1.2.0" }
-icu_normalizer_data = { version = "=1.5.0" }
-yoke = "=0.7.5"
-zerofrom = { version = "=0.1.5" }
-litemap = { version = "=0.7.4" }
-# *** End - Adding to fix napi build error on GH actions.
+# # *** Start - Adding to fix napi build error on GH actions.
+# idna = { version = "=1.0.3" }
+# idna_adapter = { version = "=1.2.0" }
+# icu_normalizer_data = { version = "=1.5.0" }
+# yoke = "=0.7.5"
+# zerofrom = { version = "=0.1.5" }
+# litemap = { version = "=0.7.4" }
+# # *** End - Adding to fix napi build error on GH actions.
 
 # Error
 thiserror = "1.0.31"

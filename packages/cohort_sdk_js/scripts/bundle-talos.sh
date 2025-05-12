@@ -34,6 +34,7 @@ cp -r \
 
 cp \
     ../../Cargo.toml \
+    ../../Cargo.lock \
     ../../rust-toolchain.toml \
     $TARGET_DIR/
 
