@@ -3316,7 +3316,10 @@ dependencies = [
  "env_logger",
  "futures-executor",
  "futures-util",
- "indexmap 2.7.1",
+ "icu_normalizer",
+ "icu_normalizer_data",
+ "idna",
+ "idna_adapter",
  "litemap",
  "log",
  "mockall",
@@ -3335,6 +3338,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-test",
+ "yoke",
  "zerofrom",
 ]
 
