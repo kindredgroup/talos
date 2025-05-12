@@ -1,6 +1,6 @@
 [package]
 name = "talos_cohort_replicator"
-version = "0.2.47"
+version = "0.2.48-dev"
 edition = "2021"
 
 [lib]
@@ -26,9 +26,9 @@ time = { version = "0.3.17" }
 indexmap = { version = "2.0.0", features = ["rayon"] }
 ahash = "0.8.3"
 
-talos_certifier = { path = "../talos_certifier", version = "0.2.47" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.2.47" }
-talos_suffix = { path = "../talos_suffix", version = "0.2.47" }
+talos_certifier = { path = "../talos_certifier", version = "0.2.48-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.48-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.2.48-dev" }
 
 # Tracing dependencies
 #   We will move telemetry dependencies to the workspace once we adapt all projects. Currenly only SDK uses them.
