@@ -100,13 +100,13 @@ fi
 echo "You answered '$ANSWER', validating ..."
 echo ""
 
-IFS='.' read -a segments <<< "$ANSWER"
-len=${#segments[@]}
-if [ $len -ne 3 ];
-then
-  echo "Invalid version format: '${ANSWER}'. We expect exactly three segments separated by dot."
-  exit 1
-fi
+# IFS='.' read -a segments <<< "$ANSWER"
+# len=${#segments[@]}
+# if [ $len -ne 3 ];
+# then
+#   echo "Invalid version format: '${ANSWER}'. We expect exactly three segments separated by dot."
+#   exit 1
+# fi
 
 NEW_VERSION=$ANSWER
 
