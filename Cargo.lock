@@ -3317,6 +3317,9 @@ dependencies = [
  "futures-executor",
  "futures-util",
  "icu_normalizer",
+ "icu_normalizer_data",
+ "idna",
+ "idna_adapter",
  "indexmap 2.7.1",
  "litemap",
  "log",
@@ -3336,6 +3339,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-test",
+ "yoke",
  "zerofrom",
 ]
 
