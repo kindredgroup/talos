@@ -15,10 +15,11 @@ use crate::{
         otel_config::ReplicatorOtelConfig,
     },
     services::{
-        replicator_service::{replicator_service, ReplicatorServiceConfig},
+        replicator_service::{ReplicatorService, ReplicatorServiceConfig},
         statemap_installer_service::{installation_service, StatemapInstallerConfig},
-        statemap_queue_service::{statemap_queue_service, StatemapQueueServiceConfig},
+        statemap_queue_service::{StatemapQueueService, StatemapQueueServiceConfig},
     },
+    StatemapQueueChannelMessage,
 };
 
 fn create_channel<T>(channel_size: usize) -> (tokio::sync::mpsc::Sender<T>, tokio::sync::mpsc::Receiver<T>) {
@@ -65,6 +66,7 @@ pub async fn talos_cohort_replicator<M, Snap>(
     certifier_message_receiver: M,                                  //used by Replicator service
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>, // Used by Statemap queue service
     snapshot_api: Snap,                                             // Used by Statemap Installer service.
+    statemap_channel: (mpsc::Sender<StatemapQueueChannelMessage>, mpsc::Receiver<StatemapQueueChannelMessage>),
     config: CohortReplicatorConfig,
 ) -> Result<((), (), ()), ReplicatorError>
 where
@@ -98,7 +100,7 @@ where
     // ---------- Channels to communicate between threads. ----------
 
     // Replicator to Statemap queue
-    let (tx_replicator_to_statemap_queue, rx_replicator_to_statemap_queue) = create_channel(config.channel_size);
+    // let (tx_replicator_to_statemap_queue, rx_replicator_to_statemap_queue) = create_channel(config.channel_size);
     // Statemap installer feedback to replicator
     let (tx_installation_feedback_to_replicator, rx_installation_feedback_to_replicator) = create_channel(config.channel_size);
     // Statemap queue service to Statemap installer service - Statemaps to install
@@ -128,12 +130,15 @@ where
         commit_frequency_ms: config.certifier_message_receiver_commit_freq_ms,
         enable_stats: config.enable_stats,
     };
-    let replicator_handle = tokio::spawn(replicator_service(
-        tx_replicator_to_statemap_queue,
+
+    let mut replicator_service = ReplicatorService::new(
+        statemap_channel.0,
         rx_installation_feedback_to_replicator,
         replicator,
         replicator_service_configs,
-    ));
+    );
+
+    let replicator_handle = tokio::spawn(async move { replicator_service.run().await });
 
     // Statemap Queue Service
     let queue_config = StatemapQueueServiceConfig {
@@ -141,15 +146,18 @@ where
         queue_cleanup_frequency_ms: config.statemap_queue_cleanup_freq_ms,
     };
 
-    let statemap_queue_handle = tokio::spawn(statemap_queue_service(
-        rx_replicator_to_statemap_queue,
-        rx_statemaps_install_feedback,
+    let mut statemap_queue_service_ = StatemapQueueService::new(
+        statemap_channel.1,
         tx_statemaps_to_install,
+        rx_statemaps_install_feedback,
+        tx_installation_feedback_to_replicator,
         snapshot_api,
         queue_config,
         config.channel_size,
         meter,
-    ));
+    );
+
+    let statemap_queue_handle = tokio::spawn(async move { statemap_queue_service_.run().await });
 
     // Statemap Installation Service
     let installer_config = StatemapInstallerConfig {
@@ -157,7 +165,6 @@ where
     };
 
     let statemap_installer_handle = tokio::spawn(installation_service(
-        tx_installation_feedback_to_replicator,
         Arc::clone(&statemap_installer),
         rx_statemaps_to_install,
         tx_statemaps_install_feedback,

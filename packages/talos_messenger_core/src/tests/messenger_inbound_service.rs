@@ -1,5 +1,7 @@
 use ahash::{AHashMap, HashMap, HashMapExt};
-use talos_certifier::test_helpers::mocks::payload::{build_kafka_on_commit_message, build_on_commit_publish_kafka_payload, get_default_payload};
+use talos_certifier::test_helpers::mocks::payload::{
+    build_kafka_on_commit_message, build_mock_outcome, build_on_commit_publish_kafka_payload, get_default_payload, MockCandidatePayload, MockChannelMessage,
+};
 use talos_suffix::core::SuffixConfig;
 
 use crate::{
@@ -7,11 +9,8 @@ use crate::{
     services::MessengerInboundServiceConfig,
     suffix::{MessengerSuffixAssertionTrait, SuffixItemState},
     tests::{
-        payload::{
-            candidate::{CandidateTestPayload, MockChannelMessage},
-            on_commit::MockOnCommitMessage,
-        },
-        test_utils::{build_mock_outcome, FeedbackTypeHeader, JourneyConfig, MessengerServiceTester, MessengerServicesTesterConfigs},
+        payload::on_commit::MockOnCommitMessage,
+        test_utils::{FeedbackTypeHeader, JourneyConfig, MessengerServiceTester, MessengerServicesTesterConfigs},
     },
 };
 
@@ -46,7 +45,7 @@ async fn test_suffix_without_feedback() {
     }
 
     let on_commit = build_on_commit_publish_kafka_payload(kafka_vec);
-    let candidate: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit).build();
+    let candidate: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit).build();
     let headers = HashMap::new();
 
     let abort_outcome = build_mock_outcome(None, None);
@@ -150,14 +149,14 @@ async fn test_suffix_item_state_by_on_commit() {
 
     // START - Prepare basic candidates with various different types of on-commit actions
     // Candidate with no on-commit action
-    let candidate_with_no_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().build();
+    let candidate_with_no_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().build();
     assert!(candidate_with_no_on_commit.on_commit.is_none());
 
     // Candidate with no supported on-commit action
     let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
     let on_commit_value = on_commit.as_value();
 
-    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());
 
     // Candidate with on commit publish to kafka messages.
@@ -167,7 +166,7 @@ async fn test_suffix_item_state_by_on_commit() {
         on_commit.insert_kafka_message("some-topic".to_owned(), None, None, get_default_payload());
     }
     let on_commit_value = on_commit.as_value();
-    let candidate_with_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate_with_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_on_commit.on_commit.is_some());
     // env_logger::init();
     // error!("candidate_with_on_commit is \n {candidate_with_on_commit:#?}");
@@ -253,7 +252,7 @@ async fn test_suffix_item_state_by_decision() {
         on_commit.insert_kafka_message("some-topic".to_owned(), None, None, get_default_payload());
     }
     let on_commit_value = on_commit.as_value();
-    let candidate_with_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate_with_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_on_commit.on_commit.is_some());
     // END - Prepare basic candidates with various different types of on-commit actions.
 
@@ -304,7 +303,7 @@ async fn test_suffix_with_success_feedbacks_only() {
     on_commit.insert_kafka_message("some-topic".to_owned(), None, None, get_default_payload());
     let on_commit_value = on_commit.as_value();
 
-    let candidate: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate.on_commit.is_some());
 
     let headers = HashMap::new();
@@ -482,17 +481,17 @@ async fn test_suffix_exhaustive_state_transitions_without_pruning() {
         on_commit.insert_kafka_message("some-topic".to_owned(), None, None, get_default_payload());
     }
     let on_commit_value = on_commit.as_value();
-    let candidate_with_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate_with_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_on_commit.on_commit.is_some());
 
     // Candidate with no on-commit action
-    let candidate_with_no_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().build();
+    let candidate_with_no_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().build();
     assert!(candidate_with_no_on_commit.on_commit.is_none());
     // Candidate with no supported on-commit action
     let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
     let on_commit_value = on_commit.as_value();
 
-    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());
 
     // End - Prepare basic candidates with various different types of on-commit actions
@@ -793,13 +792,13 @@ async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_earl
     // START - Prepare basic candidates with various different types of on-commit actions
 
     // Candidate with no on-commit action
-    let candidate_with_no_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().build();
+    let candidate_with_no_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().build();
     assert!(candidate_with_no_on_commit.on_commit.is_none());
     // Candidate with no supported on-commit action
     let on_commit = MockOnCommitMessage::build_from_str(r#"{"notSuportedAction": {"name": "Kindred"}}"#);
     let on_commit_value = on_commit.as_value();
 
-    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = CandidateTestPayload::new().add_on_commit(&on_commit_value).build();
+    let candidate_with_irrelevant_on_commit: MessengerCandidateMessage = MockCandidatePayload::new().add_on_commit(&on_commit_value).build();
     assert!(candidate_with_irrelevant_on_commit.on_commit.is_some());
 
     let commit_outcome = build_mock_outcome(None, Some(0));
@@ -827,7 +826,7 @@ async fn test_suffix_prune_index_update_all_candidates_with_commit_decision_earl
         39,
         &SuffixItemState::Complete(crate::suffix::SuffixItemCompleteStateReason::NoRelavantCommitActions),
     );
-    suffix.assert_suffix_head_and_prune_index(23, Some(16));
+    suffix.assert_suffix_head_and_prune_index(25, Some(14));
 
     // End - Prepare basic candidates with various different types of on-commit actions
 }

@@ -29,13 +29,16 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-time = { version = "0.3.30", features = ["formatting"]}
+time = { version = "0.3.30", features = ["formatting"] }
 
 # Error
 thiserror = "1.0.31"
 
 # internal crates
 talos_suffix = { path = "../talos_suffix", version = "0.2.47-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.2.47-dev" }
+
+uuid = { version = "1.4.1", features = ["v4"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
