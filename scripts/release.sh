@@ -156,16 +156,16 @@ cd $currentDir
 git add --all
 git commit -a -m "chore(npm): Release npm $NEW_VERSION" --no-verify
 
-# # This will update version in Cargo.toml files and in dependencies, then commit
-# cargo release --workspace --no-confirm --no-tag --no-publish --no-push -x $NEW_VERSION
+# This will update version in Cargo.toml files and in dependencies, then commit
+cargo release --workspace --no-confirm --no-tag --no-publish --no-push -x $NEW_VERSION
 
 returnStatus=$(($?+0))
 
-# if [ $returnStatus -ne 0 ];
-# then
-#   echo "Exiting with build error"
-#   exit $returnStatus
-# fi
+if [ $returnStatus -ne 0 ];
+then
+  echo "Exiting with build error"
+  exit $returnStatus
+fi
 
 echo $line
 echo "Tagging repostiory"
