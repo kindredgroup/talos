@@ -3249,6 +3249,7 @@ dependencies = [
  "futures-util",
  "idna",
  "idna_adapter",
+ "litemap",
  "log",
  "mockall",
  "rdkafka 0.34.0",
@@ -3267,6 +3268,7 @@ dependencies = [
  "tokio-postgres",
  "uuid",
  "yoke",
+ "zerofrom",
 ]
 
 [[package]]
