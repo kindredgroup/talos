@@ -43,6 +43,7 @@ refinery = { version = "0.8.7", features = ["tokio-postgres"] }
 time = { version = "0.3.30" }
 
 #  Adding to fix napi build error on GH actions.
+idna = { version = "1.0.3" }
 idna_adapter = { version = "1.2.0" }
 yoke = "0.7.5"
 

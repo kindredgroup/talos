@@ -3247,6 +3247,7 @@ dependencies = [
  "deadpool-postgres",
  "env_logger",
  "futures-util",
+ "idna",
  "idna_adapter",
  "log",
  "mockall",
