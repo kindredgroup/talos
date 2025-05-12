@@ -114,13 +114,25 @@ where
     }
 
     fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Vec<&SuffixItem<T>> {
+        if self.messages.is_empty() {
+            return vec![];
+        }
+
         // let mut batch = vec![];
         let batch_size = match count {
             Some(c) => c as usize,
             None => self.messages.len(),
         };
 
-        let from_index = if let Some(index) = self.index_from_head(from) { index + 1 } else { 0 };
+        let from_index = if from > 0 {
+            if let Some(index) = self.index_from_head(from) {
+                index + 1
+            } else {
+                0
+            }
+        } else {
+            0
+        };
 
         get_nonempty_suffix_items(self.messages.range(from_index..)) // take only some items in suffix
             .take_while(|m| m.is_decided) // take items till we find a not decided item.
