@@ -42,6 +42,9 @@ refinery = { version = "0.8.7", features = ["tokio-postgres"] }
 
 time = { version = "0.3.30" }
 
+#  Adding to fix napi build error on GH actions.
+icu_normalizer = { version = "1.5.0" }
+
 # Error
 thiserror = "1.0.31"
 
