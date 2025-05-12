@@ -1,11 +1,11 @@
 [package]
 name = "examples_support"
-version = "0.2.52"
+version = "0.2.53-dev"
 edition = "2021"
 
 [dependencies]
 
-talos_metrics = { path = "../talos_metrics", version = "0.2.52" }
+talos_metrics = { path = "../talos_metrics", version = "0.2.53-dev" }
 
 # Postgres
 refinery = { version = "0.8.7", features = ["tokio-postgres"] }
