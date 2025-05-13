@@ -21,7 +21,12 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 #log = { workspace = true }
 #env_logger = { workspace = true }
 
-tracing =               { version = "0.1.41", features = [ "log" ] }
+tracing =                   { version = "0.1.41", features = [ "log" ] }
+opentelemetry_api =         { version = "0.20.0", features = ["metrics"] }
+opentelemetry =             { version = "0.28.0", default-features = false, features = ["trace"]  }
+opentelemetry_sdk =         { version = "0.28.0", default-features = false, features = ["trace", "rt-tokio"] }
+opentelemetry-otlp =        { version = "0.28.0", features = [ "trace", "grpc-tonic" ] }
+opentelemetry-stdout =      { version = "0.28.0", features = [ "trace" ] }
 
 # Test
 mockall = "0.11.0"
