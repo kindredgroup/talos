@@ -16,6 +16,8 @@ pub struct SnapshotApi {
     db: Arc<Database>,
 }
 
+const SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = ($1)::BIGINT WHERE id = $2 AND "version" < ($1)::BIGINT"#;
+
 #[async_trait]
 impl ReplicatorSnapshotProvider for SnapshotApi {
     async fn get_snapshot(&self) -> Result<u64, String> {
@@ -32,6 +34,21 @@ impl ReplicatorSnapshotProvider for SnapshotApi {
         let snapshot: i64 = snapshot_row.get("version");
 
         Ok(snapshot as u64)
+    }
+
+    async fn update_snapshot(&self, version: u64) -> Result<(), String> {
+        let client = &self.db.get().await.unwrap();
+
+        let _prepare = client
+            .prepare_cached(SNAPSHOT_UPDATE_QUERY)
+            .await
+            .map_err(|e| DatabaseError::prepare(e.to_string(), SNAPSHOT_UPDATE_QUERY.to_string()).to_string())?;
+        let _ = client
+            .execute(SNAPSHOT_UPDATE_QUERY, &[&(version as i64), &SNAPSHOT_SINGLETON_ROW_ID])
+            .await
+            .map_err(|e| e.to_string())?;
+
+        Ok(())
     }
 }
 

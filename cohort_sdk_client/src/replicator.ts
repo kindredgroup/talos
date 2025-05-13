@@ -6,7 +6,7 @@ export class Replicator {
     static async init(kafkaConfig: JsKafkaConfig, config: JsReplicatorConfig): Promise<Replicator> {
         try {
             return new Replicator(await InternalReplicator.init(kafkaConfig, config))
-        } catch(e) {
+        } catch (e) {
             const reason: string = e.message
             if (isSdkError(reason)) {
                 const rawError = JSON.parse(reason)
@@ -17,9 +17,9 @@ export class Replicator {
         }
     }
 
-    constructor(readonly impl: InternalReplicator) {}
+    constructor(readonly impl: InternalReplicator) { }
 
-    async run(snapshotProviderCallback: () => Promise<number>, statemapInstallerCallback: (data: JsStatemapAndSnapshot) => Promise<void>) {
+    async run(getSnapshotCallback: () => Promise<number>, updateSnapshotCallback: (version: number) => Promise<void>, statemapInstallerCallback: (data: JsStatemapAndSnapshot) => Promise<void>) {
         try {
             // This will hide the 'error' parameter from callback (it comes from NAPI).
             const adaptedStatemapInstallerCallback = async (error: Error | null, data: JsStatemapAndSnapshot): Promise<void> => {
@@ -34,8 +34,20 @@ export class Replicator {
                 }
             }
 
-            await this.impl.run(snapshotProviderCallback, adaptedStatemapInstallerCallback)
-        } catch(e) {
+            const adaptedUpdateSnapshotCallback = async (error: Error | null, version: number): Promise<void> => {
+                if (error) {
+                    throw new TalosSdkError(
+                        SdkErrorKind.Internal,
+                        "Call from native code into 'updateSnapshotCallback' function provided by JS has failed at the NAPI layer. See the 'cause' field for more details.",
+                        { cause: error }
+                    )
+                } else {
+                    return await updateSnapshotCallback(version)
+                }
+            }
+
+            await this.impl.run(getSnapshotCallback, adaptedUpdateSnapshotCallback, adaptedStatemapInstallerCallback)
+        } catch (e) {
             const reason: string = e.message
             if (isSdkError(reason)) {
                 const rawError = JSON.parse(reason)

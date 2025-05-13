@@ -18,8 +18,6 @@ UPDATE bank_accounts ba SET
     AND ba."version" < ($4)::BIGINT
     "#;
 
-const SNAPSHOT_UPDATE_QUERY: &str = r#"UPDATE cohort_snapshot SET "version" = ($1)::BIGINT WHERE id = $2 AND "version" < ($1)::BIGINT"#;
-
 fn is_retriable_error(error: &str) -> bool {
     // TODO: improve retriable error detection when error moves from String to enum or struct.
     error.contains("could not serialize access due to concurrent update")
@@ -40,12 +38,6 @@ impl BankStatemapInstaller {
 
         let updated_rows = tx.execute(BANK_ACCOUNTS_UPDATE_QUERY, params).await.map_err(|e| e.to_string())?;
         Ok(updated_rows)
-    }
-
-    async fn update_snapshot(tx: &Transaction<'_>, snapshot_version: u64) -> Result<u64, String> {
-        let params: &[&(dyn ToSql + Sync)] = &[&(snapshot_version as i64), &"SINGLETON"];
-
-        tx.execute(SNAPSHOT_UPDATE_QUERY, params).await.map_err(|e| e.to_string())
     }
 }
 
@@ -97,37 +89,6 @@ impl ReplicatorInstaller for BankStatemapInstaller {
                     }
                 }
             }
-
-            let result = BankStatemapInstaller::update_snapshot(&tx, snapshot_version).await;
-
-            match result {
-                Ok(updated_rows) => {
-                    if updated_rows == 0 {
-                        log::debug!(
-                            "No rows were updated when updating snapshot. Snapshot is already set to {} or higher",
-                            snapshot_version
-                        );
-                    }
-
-                    log::info!("{} rows were updated when updating snapshot to {}", updated_rows, snapshot_version);
-
-                    tx.commit()
-                        .await
-                        .map_err(|tx_error| format!("Commit error for statemap. Error: {}", tx_error))?;
-
-                    return Ok(());
-                }
-                Err(error) =>
-                //  Check if retry is allowed on the error.
-                {
-                    if is_retriable_error(&error) {
-                        tokio::time::sleep(Duration::from_millis(self.retry_wait_ms)).await;
-                        continue;
-                    } else {
-                        return Err(error);
-                    }
-                }
-            };
         }
     }
 }

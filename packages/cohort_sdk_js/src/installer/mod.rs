@@ -99,6 +99,7 @@ impl InternalReplicator {
     pub async fn run(
         &self,
         #[napi(ts_arg_type = "() => Promise<number>")] snapshot_provider_callback: ThreadsafeFunction<()>,
+        #[napi(ts_arg_type = "(error: Error | null, version: number) => Promise<void>")] update_snapshot_callback: ThreadsafeFunction<i64>,
         #[napi(ts_arg_type = "(error: Error | null, data: JsStatemapAndSnapshot) => Promise<void>")] statemap_installer_callback: ThreadsafeFunction<
             JsStatemapAndSnapshot,
         >,
@@ -139,6 +140,7 @@ impl InternalReplicator {
             }),
             SnapshotProviderDelegate {
                 callback: snapshot_provider_callback,
+                update_snapshot_callback,
             },
             (statemaps_tx, statemaps_rx),
             config,
