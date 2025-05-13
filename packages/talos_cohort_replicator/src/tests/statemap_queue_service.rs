@@ -29,6 +29,10 @@ impl ReplicatorSnapshotProvider for MockSnapshotApi {
         };
         Ok(snapshot)
     }
+
+    async fn update_snapshot(&self, _version: u64) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[tokio::test]

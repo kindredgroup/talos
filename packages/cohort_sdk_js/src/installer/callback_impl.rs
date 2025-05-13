@@ -9,6 +9,7 @@ use super::JsStatemapAndSnapshot;
 
 pub struct SnapshotProviderDelegate {
     pub(crate) callback: ThreadsafeFunction<()>,
+    pub(crate) update_snapshot_callback: ThreadsafeFunction<i64>,
 }
 
 #[async_trait]
@@ -23,6 +24,17 @@ impl ReplicatorSnapshotProvider for SnapshotProviderDelegate {
                 // Here reason is empty with NAPI 2.10.3
                 .map_err(|e| format!("Unable to retrieve snapshot. Native reason reported from JS: \"{}\"", e.reason)),
 
+            Err(e) => Err(e.to_string()),
+        }
+    }
+    async fn update_snapshot(&self, version: u64) -> Result<(), String> {
+        let result = self.update_snapshot_callback.call_async::<Promise<()>>(Ok(version as i64)).await;
+
+        match result {
+            Ok(promise) => promise
+                .await
+                .map(|_| ())
+                .map_err(|e| format!("Updating snapshot to version {version} failed with error {}", e.reason)),
             Err(e) => Err(e.to_string()),
         }
     }

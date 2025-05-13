@@ -20,14 +20,11 @@ pub struct StatemapInstallerConfig {
 async fn statemap_install_future(
     installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
-    // semaphore: Arc<Semaphore>,
     statemaps: Vec<StatemapItem>,
     version: u64,
 ) {
     debug!("[Statemap Installer Service] Received statemap batch ={statemaps:?} and version={version:?}");
     let start_installation_time = Instant::now();
-
-    // let permit = semaphore.clone().acquire_owned().await.unwrap();
 
     let meter = global::meter("sdk_replicator");
     let c_installed = meter.u64_counter("repl_install_ok").build();

@@ -8,5 +8,6 @@ pub trait ReplicatorInstaller {
 }
 #[async_trait]
 pub trait ReplicatorSnapshotProvider {
+    async fn update_snapshot(&self, version: u64) -> Result<(), String>;
     async fn get_snapshot(&self) -> Result<u64, String>;
 }

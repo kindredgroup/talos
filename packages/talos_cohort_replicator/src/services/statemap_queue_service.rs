@@ -178,7 +178,7 @@ where
         })
     }
 
-    fn update_snapshot(&mut self, snapshot_version: u64) -> Option<u64> {
+    fn update_internal_snapshot(&mut self, snapshot_version: u64) -> Option<u64> {
         if snapshot_version > self.statemap_queue.snapshot_version {
             info!("Updating snapshot version from {} to {snapshot_version}", self.statemap_queue.snapshot_version);
             self.statemap_queue.update_snapshot(snapshot_version);
@@ -293,7 +293,7 @@ where
                         info!("Fetched new snapshot version from callback. Version = {snapshot_version_from_callback}");
 
                         // Update the snapshot with the latest from callback only if it is greater than our internal snapshot tracker.
-                        if self.update_snapshot(snapshot_version_from_callback).is_some() {
+                        if self.update_internal_snapshot(snapshot_version_from_callback).is_some() {
                             // The snapshot version we updated may not be present in the queue, so we get the nearest one below this snapshot version and prune till that version
                             // If there are no versions below this one, then there is no need to prune.
                             if let Some(version) = self.get_nearest_valid_version(snapshot_version_from_callback) {
@@ -333,7 +333,13 @@ where
                         if let Some(version) = self.statemap_queue.get_last_contiguous_installed_version(){
                             // Even though we may get valid version to update, the snapshot update function below could still return None when, somewhere in between we may have updated the snapshot version but
                             // some of the items where send out on the channel to be installed, and we are receiving the feedback now.
-                            if self.update_snapshot(version).is_some() {
+                            if self.update_internal_snapshot(version).is_some() {
+                                if let Err(err) = self.snapshot_api.update_snapshot(version).await {
+                                    error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
+
+                                }else {
+                                    info!("Snapshot update callback updated snapshot_version to {version}");
+                                };
                                 // Inform replicator service to remove all versions below this.
                                 if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), TrySendWithRetryConfig::default()).await {
                                     error!("Failed to send latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
@@ -357,10 +363,15 @@ where
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
             }
             _ = self.cleanup_interval.tick() => {
-
-
                 if let Some(version) = self.statemap_queue.get_last_contiguous_installed_version(){
-                    self.update_snapshot(version);
+                    if self.update_internal_snapshot(version).is_some(){
+                        if let Err(err) = self.snapshot_api.update_snapshot(version).await {
+                            error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
+
+                        } else {
+                            info!("Snapshot update callback updated snapshot_version to {version}");
+                        };
+                    }
 
                 };
                 let result = self.statemap_queue.prune_till_version(self.statemap_queue.snapshot_version);
@@ -391,7 +402,7 @@ where
 
         //Gets snapshot initial version from db.
         let snapshot_version_from_db = self.get_latest_snapshot_from_callback().await?;
-        self.update_snapshot(snapshot_version_from_db);
+        self.update_internal_snapshot(snapshot_version_from_db);
 
         loop {
             self.run_once().await?
