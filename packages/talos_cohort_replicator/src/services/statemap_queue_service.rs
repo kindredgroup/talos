@@ -376,6 +376,13 @@ where
                 };
                 let result = self.statemap_queue.prune_till_version(self.statemap_queue.snapshot_version);
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
+                // Update the snapshot via callback
+                // if let Err(err) = self.snapshot_api.update_snapshot(self.statemap_queue.snapshot_version).await {
+                //     error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
+
+                // } else {
+                //     info!("Snapshot update callback updated snapshot_version to {}", self.statemap_queue.snapshot_version);
+                // };
                 // Inform replicator service to remove all versions below this.
                 if let Err(err) = try_send_with_retry(&self.replicator_feedback, ReplicatorChannel::LastInstalledVersion(self.statemap_queue.snapshot_version), TrySendWithRetryConfig::default()).await {
                     error!("Failed to send latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
