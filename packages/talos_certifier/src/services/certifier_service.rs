@@ -26,6 +26,7 @@ use thiserror::Error as ThisError;
 pub struct CertifierServiceConfig {
     /// Suffix config
     pub suffix_config: SuffixConfig,
+    pub otel_grpc_endpoint: Option<String>,
 }
 
 pub struct CertifierService {
@@ -89,7 +90,7 @@ impl CertifierService {
 
         let config = config.unwrap_or_default();
 
-        let _ = init_otel_metrics(Some("http://127.0.0.1:4317".into()));
+        let _ = init_otel_metrics(config.otel_grpc_endpoint.clone());
 
         let suffix = Suffix::with_config(config.suffix_config.clone());
 

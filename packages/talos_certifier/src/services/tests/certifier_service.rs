@@ -333,6 +333,7 @@ async fn test_certification_check_suffix_prune_is_ready_threshold_30pc() {
                 prune_start_threshold: Some(3),
                 min_size_after_prune: Some(2),
             },
+            otel_grpc_endpoint: None,
         }),
     );
 
@@ -566,6 +567,7 @@ async fn test_certification_check_suffix_prune_is_not_at_threshold() {
                 capacity: 5,
                 ..Default::default()
             },
+            otel_grpc_endpoint: None,
         }),
     );
 

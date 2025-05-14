@@ -47,6 +47,7 @@ async fn main() -> Result<(), impl std::error::Error> {
         app_name: None,
         commit_frequency_ms: Some(10_000),
         min_commit_threshold: Some(50_000),
+        otel_grpc_endpoint: None,
     };
 
     let talos_certifier = certifier_with_kafka_pg(TalosCertifierChannelBuffers::default(), configuration).await?;
