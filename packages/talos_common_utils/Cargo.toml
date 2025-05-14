@@ -1,6 +1,6 @@
 [package]
 name = "talos_common_utils"
-version = "0.2.53-dev"
+version = "0.2.54-beta.0"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
