@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
-use talos_suffix::core::SuffixConfig;
+use talos_suffix::core::{SuffixConfig, SuffixMetricsConfig};
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
@@ -90,9 +90,13 @@ impl CertifierService {
 
         let config = config.unwrap_or_default();
 
-        let _ = init_otel_metrics(config.otel_grpc_endpoint.clone());
-
-        let suffix = Suffix::with_config(config.suffix_config.clone());
+        let suffix = if config.otel_grpc_endpoint.is_some() {
+            let _ = init_otel_metrics(config.otel_grpc_endpoint.clone());
+            let meter = global::meter("certifier");
+            Suffix::with_config(config.suffix_config.clone(), Some((SuffixMetricsConfig { prefix: "certifier".into() }, meter)))
+        } else {
+            Suffix::with_config(config.suffix_config.clone(), None)
+        };
 
         Self {
             suffix,

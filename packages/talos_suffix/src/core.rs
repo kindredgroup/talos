@@ -1,6 +1,11 @@
 use crate::errors::SuffixError;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+pub struct SuffixMetricsConfig {
+    pub prefix: String,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct SuffixItem<T> {
     /// Data received from Kafka Consumer
     pub item: SuffixItemType<T>,

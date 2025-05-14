@@ -40,11 +40,14 @@ mod suffix_tests {
 
     #[test]
     fn test_with_config_with_all_config_values() {
-        let sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            prune_start_threshold: Some(15),
-            min_size_after_prune: Some(10),
-        });
+        let sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                prune_start_threshold: Some(15),
+                min_size_after_prune: Some(10),
+            },
+            None,
+        );
 
         assert_eq!(sfx.meta.head, 0);
         assert_eq!(sfx.meta.prune_start_threshold, Some(15));
@@ -56,20 +59,26 @@ mod suffix_tests {
     #[test]
     #[should_panic(expected = "The config min_size_after=Some(10) is greater than prune_start_threshold=None")]
     fn test_with_config_when_prune_start_threshold_is_none_but_min_size_is_some() {
-        let _sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            min_size_after_prune: Some(10),
-            ..Default::default()
-        });
+        let _sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                min_size_after_prune: Some(10),
+                ..Default::default()
+            },
+            None,
+        );
     }
 
     #[test]
     fn test_with_config_when_min_size_is_none_and_prune_start_threshold_is_some() {
-        let sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            prune_start_threshold: Some(10),
-            ..Default::default()
-        });
+        let sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                prune_start_threshold: Some(10),
+                ..Default::default()
+            },
+            None,
+        );
 
         assert_eq!(sfx.meta.prune_start_threshold, Some(10));
         assert_eq!(sfx.meta.prune_index, None);
@@ -79,19 +88,25 @@ mod suffix_tests {
     #[test]
     #[should_panic(expected = "The config min_size_after=Some(10) is greater than prune_start_threshold=Some(5)")]
     fn test_with_config_when_prune_start_threshold_is_less_than_min_size() {
-        let _sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            min_size_after_prune: Some(10),
-            prune_start_threshold: Some(5),
-        });
+        let _sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                min_size_after_prune: Some(10),
+                prune_start_threshold: Some(5),
+            },
+            None,
+        );
     }
 
     #[test]
     fn test_insert_duplicate_versions() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 5,
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 5,
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..=20 {
@@ -108,10 +123,13 @@ mod suffix_tests {
     }
     #[test]
     fn test_insert_versions_with_empty_indices() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 5,
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 5,
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..20 {
@@ -128,10 +146,13 @@ mod suffix_tests {
     }
     #[test]
     fn test_insert_versions_with_empty_indices_duplicates() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 5,
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 5,
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..20 {
@@ -153,11 +174,14 @@ mod suffix_tests {
     }
     #[test]
     fn test_insert_versions_with_empty_indices_duplicates_and_prune() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 5,
-            prune_start_threshold: Some(10),
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 5,
+                prune_start_threshold: Some(10),
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 1..=20 {
@@ -191,10 +215,13 @@ mod suffix_tests {
 
     #[test]
     fn test_is_ready_for_prune_returns_false_when_prune_start_threshold_is_not_set() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 5,
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 5,
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..=80 {
@@ -215,11 +242,14 @@ mod suffix_tests {
 
     #[test]
     fn test_is_ready_for_returns_false_when_suffix_len_less_than_prune_threshold() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(28),
-            min_size_after_prune: Some(10),
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(28),
+                min_size_after_prune: Some(10),
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..=20 {
@@ -240,11 +270,14 @@ mod suffix_tests {
 
     #[test]
     fn test_is_ready_for_prune_returns_false_when_prune_index_is_none() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(28),
-            min_size_after_prune: Some(10),
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(28),
+                min_size_after_prune: Some(10),
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..=20 {
@@ -260,11 +293,14 @@ mod suffix_tests {
 
     #[test]
     fn test_is_ready_for_prune_when_min_size_is_none() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(20),
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(20),
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         for vers in 0..30 {
@@ -296,11 +332,14 @@ mod suffix_tests {
 
     #[test]
     fn test_is_not_ready_when_prune_index_is_below_prune_start_threshold() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(20),
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(20),
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         let ignore_vec: Vec<u64> = vec![18, 22, 26, 27, 29];
@@ -325,11 +364,14 @@ mod suffix_tests {
 
     #[test]
     fn test_is_ready_when_prune_index_is_above_prune_start_threshold() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(10),
-            ..Default::default()
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(10),
+                ..Default::default()
+            },
+            None,
+        );
 
         // insert suffix items
         let ignore_vec: Vec<u64> = vec![22, 26, 27, 29];
@@ -357,11 +399,14 @@ mod suffix_tests {
     }
     #[test]
     fn test_prune_after_min_size_after_prune_check_pass() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(20),
-            min_size_after_prune: Some(15),
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(20),
+                min_size_after_prune: Some(15),
+            },
+            None,
+        );
 
         // insert suffix items
         let ignore_vec: Vec<u64> = vec![22, 26, 27, 29];
@@ -389,11 +434,14 @@ mod suffix_tests {
 
     #[test]
     fn test_no_prune_after_min_size_after_prune_check_fail() {
-        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(SuffixConfig {
-            capacity: 30,
-            prune_start_threshold: Some(23),
-            min_size_after_prune: Some(5),
-        });
+        let mut sfx: Suffix<MockSuffixItemMessage> = Suffix::with_config(
+            SuffixConfig {
+                capacity: 30,
+                prune_start_threshold: Some(23),
+                min_size_after_prune: Some(5),
+            },
+            None,
+        );
 
         // insert suffix items
         let ignore_vec: Vec<u64> = vec![22, 26, 27, 29];
@@ -420,10 +468,13 @@ mod suffix_tests {
 
     #[test]
     fn get_index_from_head() {
-        let mut sfx = Suffix::<MockSuffixItemMessage>::with_config(SuffixConfig {
-            capacity: 20,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::<MockSuffixItemMessage>::with_config(
+            SuffixConfig {
+                capacity: 20,
+                ..Default::default()
+            },
+            None,
+        );
 
         assert_eq!(sfx.index_from_head(10).unwrap(), 10);
 
@@ -433,10 +484,13 @@ mod suffix_tests {
     }
     #[test]
     fn insert_version_within_dq_len() {
-        let mut sfx = Suffix::with_config(SuffixConfig {
-            capacity: 1000,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::with_config(
+            SuffixConfig {
+                capacity: 1000,
+                ..Default::default()
+            },
+            None,
+        );
         assert_eq!(sfx.messages.len(), 0);
         // Initial insert.
         sfx.insert(33, create_mock_candidate_message(33)).unwrap();
@@ -454,10 +508,13 @@ mod suffix_tests {
     #[test]
     fn check_version_safe_to_prune_when_all_prior_is_empty() {
         let ver: u64 = 20;
-        let mut sfx = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                ..Default::default()
+            },
+            None,
+        );
         sfx.insert(ver, create_mock_candidate_message(ver)).unwrap();
 
         assert!(sfx.are_prior_items_decided(ver));
@@ -465,10 +522,13 @@ mod suffix_tests {
     #[test]
     fn check_version_safe_to_prune_when_prior_undecided() {
         let ver: u64 = 20;
-        let mut sfx = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                ..Default::default()
+            },
+            None,
+        );
         sfx.insert(10, create_mock_candidate_message(10)).unwrap();
         sfx.insert(ver, create_mock_candidate_message(ver)).unwrap();
 
@@ -476,10 +536,13 @@ mod suffix_tests {
     }
     #[test]
     fn check_version_safe_to_prune_when_prior_decided() {
-        let mut sfx = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                ..Default::default()
+            },
+            None,
+        );
         let ver_10: u64 = 10;
         sfx.insert(ver_10, create_mock_candidate_message(ver_10)).unwrap();
         let result = sfx.update_decision_suffix_item(ver_10, 23);
@@ -495,10 +558,13 @@ mod suffix_tests {
 
     #[test]
     fn update_decision_within_bounds_and_item_exists() {
-        let mut sfx = Suffix::with_config(SuffixConfig {
-            capacity: 20,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::with_config(
+            SuffixConfig {
+                capacity: 20,
+                ..Default::default()
+            },
+            None,
+        );
         let ver_10: u64 = 10;
         let decision_ver: u64 = 12;
         sfx.insert(ver_10, create_mock_candidate_message(ver_10)).unwrap();
@@ -520,10 +586,13 @@ mod suffix_tests {
 
     #[test]
     fn update_decision_when_item_not_in_suffix() {
-        let mut sfx = Suffix::<MockSuffixItemMessage>::with_config(SuffixConfig {
-            capacity: 20,
-            ..Default::default()
-        });
+        let mut sfx = Suffix::<MockSuffixItemMessage>::with_config(
+            SuffixConfig {
+                capacity: 20,
+                ..Default::default()
+            },
+            None,
+        );
         let ver_10: u64 = 10;
         let decision_ver: u64 = 23;
 

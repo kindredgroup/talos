@@ -71,8 +71,7 @@ fn test_replicator_suffix() {
     let mut suffix: Suffix<TestReplicatorSuffixItem> = Suffix {
         meta: SuffixMeta::default(),
         messages: suffix_messages,
-        g_suffix_head: None,
-        g_suffix_length: None,
+        metrics: Default::default(),
     };
 
     assert_eq!(suffix.messages.len(), 0);

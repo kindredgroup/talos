@@ -2,22 +2,52 @@
 
 use std::{collections::VecDeque, time::Instant};
 
-use opentelemetry::{global, metrics::Gauge};
+use opentelemetry::metrics::{Gauge, Meter};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
+    core::{SuffixConfig, SuffixMeta, SuffixMetricsConfig, SuffixResult, SuffixTrait},
     errors::SuffixError,
     utils::get_nonempty_suffix_items,
     SuffixItem,
 };
 
+#[derive(Debug, Clone, Default)]
+pub struct SuffixMetrics {
+    g_suffix_head: Option<Gauge<u64>>,
+    g_suffix_length: Option<Gauge<u64>>,
+}
+
+impl SuffixMetrics {
+    pub fn new_disabled() -> Self {
+        Self {
+            g_suffix_head: None,
+            g_suffix_length: None,
+        }
+    }
+
+    pub fn new(config: SuffixMetricsConfig, meter: Meter) -> Self {
+        Self {
+            g_suffix_length: Some(meter.u64_gauge(format!("{}_suffix_length", config.prefix.clone())).build()),
+            g_suffix_head: Some(meter.u64_gauge(format!("{}_suffix_head", config.prefix)).build()),
+        }
+    }
+
+    pub fn update(&self, head: u64, length: u64) {
+        if let Some(m) = self.g_suffix_head.as_ref() {
+            m.record(head, &[]);
+        }
+        if let Some(m) = self.g_suffix_length.as_ref() {
+            m.record(length, &[]);
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Suffix<T> {
     pub meta: SuffixMeta,
     pub messages: VecDeque<Option<SuffixItem<T>>>,
-    pub g_suffix_head: Option<Gauge<u64>>,
-    pub g_suffix_length: Option<Gauge<u64>>,
+    pub metrics: SuffixMetrics,
 }
 
 impl<T> Suffix<T>
@@ -34,7 +64,7 @@ where
     ///         - If `None`, no pruning will occur.
     ///         - If `Some()`, attempts to prune suffix if suffix length crosses the threshold.
     ///
-    pub fn with_config(config: SuffixConfig) -> Suffix<T> {
+    pub fn with_config(config: SuffixConfig, metric_options: Option<(SuffixMetricsConfig, Meter)>) -> Suffix<T> {
         let SuffixConfig {
             capacity,
             prune_start_threshold,
@@ -58,13 +88,13 @@ where
             min_size_after_prune,
         };
 
-        let meter = global::meter("suffix");
-        Suffix {
-            meta,
-            messages,
-            g_suffix_length: Some(meter.u64_gauge("suffix_length").build()),
-            g_suffix_head: Some(meter.u64_gauge("suffix_head").build()),
-        }
+        let metrics = if let Some((metric_config, meter)) = metric_options {
+            SuffixMetrics::new(metric_config, meter)
+        } else {
+            SuffixMetrics::new_disabled()
+        };
+
+        Suffix { meta, messages, metrics }
     }
 
     /// Resets the suffix to initial state.
@@ -76,7 +106,7 @@ where
 
         // Clear the suffix messages vecdequeue.
         self.messages.clear();
-        self.update_metrics();
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
     }
 
     pub fn index_from_head(&self, version: u64) -> Option<usize> {
@@ -267,15 +297,6 @@ where
         self.messages[index] = Some(new_sfx_item);
         Ok(())
     }
-
-    fn update_metrics(&self) {
-        if let Some(m) = self.g_suffix_length.as_ref() {
-            m.record(self.suffix_length() as u64, &[])
-        }
-        if let Some(m) = self.g_suffix_head.as_ref() {
-            m.record(self.meta.head, &[])
-        }
-    }
 }
 
 impl<T> SuffixTrait<T> for Suffix<T>
@@ -306,7 +327,7 @@ where
         // Version 0 is not a valid version in suffix and therefore will be ignored.
         if version == 0 {
             info!("Version {version} will be ignored.");
-            self.update_metrics();
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -321,7 +342,7 @@ where
                 is_decided: false,
             }));
             debug!("Inserted version {version} as the first item to suffix");
-            self.update_metrics();
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -331,7 +352,7 @@ where
                 "Skipped inserting into suffix as message version received ({}) is below the suffix head version ({})",
                 self.meta.head, version
             );
-            self.update_metrics();
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -343,7 +364,7 @@ where
         // In either case it is safe to discard this message.
         if last_inserted_version > 0 && version.le(&last_inserted_version) {
             info!("Skipped inserting into suffix as message version received ({version}) is below the suffix tail version ({last_inserted_version}).");
-            self.update_metrics();
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -377,7 +398,7 @@ where
             warn!("Failed to insert version {version} at index {index}");
         }
 
-        self.update_metrics();
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         Ok(())
     }
 
@@ -441,7 +462,7 @@ where
             updated_end_micros
         );
 
-        self.update_metrics();
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         Ok(drained_entries)
     }
 
@@ -477,7 +498,7 @@ where
 
             if let Some(s_item) = search_in_other_index {
                 error!(
-                    "Unable to prune (till version {}) as index not found by 'search from head' method. This tem is at index: {}. Current suffix: {}. This could lead to ambigious behaviour of suffix.",
+                    "Unable to prune (till version {}) as index not found by 'search from head' method. This item is at index: {}. Current suffix: {}. This could lead to ambigious behaviour of suffix.",
                     version, s_item.0, suffix_before,
                 );
             } else {
@@ -488,7 +509,7 @@ where
             }
         }
 
-        self.update_metrics();
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         prune_result
     }
 
@@ -502,7 +523,7 @@ where
             self.update_prune_index(None);
         }
 
-        self.update_metrics();
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         Ok(())
     }
 }
