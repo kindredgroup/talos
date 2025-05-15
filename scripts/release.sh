@@ -113,7 +113,7 @@ NEW_VERSION=$ANSWER
 echo $line
 echo "Provide the next version number (aka 'dev version' or 'shapshot')"
 echo "Type: 'a' or just press 'enter' for cancel and abort here."
-echo "Otherwise type the next version (witout suffix), for example, if you are releasing '2.0.0' then the next dev version will be '2.1.0'. We will add '-dev' suffix automatically"
+echo "Otherwise type the next version (without suffix), for example, if you are releasing '2.0.0' then the next dev version will be '2.1.0'. We will add '-dev' suffix automatically"
 unset ANSWER
 read ANSWER
 if [ "${ANSWER}" == "a" ] || [ "${ANSWER}" == "" ];
