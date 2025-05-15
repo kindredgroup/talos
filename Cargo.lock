@@ -3426,6 +3426,7 @@ dependencies = [
  "icu_properties_data",
  "icu_provider",
  "icu_provider_macros",
+ "litemap",
  "mockall",
  "opentelemetry 0.28.0",
  "opentelemetry-otlp",
@@ -3438,6 +3439,7 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tracing",
+ "yoke",
  "zerofrom",
  "zerovec",
 ]

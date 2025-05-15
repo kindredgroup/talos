@@ -21,7 +21,6 @@ cp -r \
     ../talos_rdkafka_utils \
     ../talos_suffix \
     ../cohort_sdk \
-    ../logger \
     $TARGET_DIR/packages/
 
 cp -r \

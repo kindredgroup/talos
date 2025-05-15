@@ -30,6 +30,8 @@ icu_locid = { version = "=1.5.0" }
 icu_collections = { version = "=1.5.0" }
 icu_provider_macros = { version = "=1.5.0" }
 icu_locid_transform_data = { version = "=1.5.0" }
+yoke = { version = "=0.7.5"}
+litemap = { version = "=0.7.4" }
 ########################################################
 
 # Logging
