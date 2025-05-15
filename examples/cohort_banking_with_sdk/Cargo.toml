@@ -1,19 +1,19 @@
 [package]
 name = "cohort_banking_with_sdk"
-version = "0.2.54-beta.0"
+version = "0.2.54-beta.1"
 edition = "2021"
 
 [dev-dependencies]
 
-banking_common =           { path = "../../packages/banking_common", version = "0.2.54-beta.0" }
-cohort_sdk =               { path = "../../packages/cohort_sdk", version = "0.2.54-beta.0" }
-cohort_banking =           { path = "../../packages/cohort_banking", version = "0.2.54-beta.0" }
-examples_support =         { path = "../../packages/examples_support", version = "0.2.54-beta.0" }
-talos_metrics =            { path = "../../packages/talos_metrics", version = "0.2.54-beta.0" }
-talos_agent =              { path = "../../packages/talos_agent", version = "0.2.54-beta.0" }
-talos_certifier =          { path = "../../packages/talos_certifier", version = "0.2.54-beta.0" }
-talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.2.54-beta.0" }
-talos_rdkafka_utils =      { path = "../../packages/talos_rdkafka_utils", version = "0.2.54-beta.0" }
+banking_common =           { path = "../../packages/banking_common", version = "0.2.54-beta.1" }
+cohort_sdk =               { path = "../../packages/cohort_sdk", version = "0.2.54-beta.1" }
+cohort_banking =           { path = "../../packages/cohort_banking", version = "0.2.54-beta.1" }
+examples_support =         { path = "../../packages/examples_support", version = "0.2.54-beta.1" }
+talos_metrics =            { path = "../../packages/talos_metrics", version = "0.2.54-beta.1" }
+talos_agent =              { path = "../../packages/talos_agent", version = "0.2.54-beta.1" }
+talos_certifier =          { path = "../../packages/talos_certifier", version = "0.2.54-beta.1" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.2.54-beta.1" }
+talos_rdkafka_utils =      { path = "../../packages/talos_rdkafka_utils", version = "0.2.54-beta.1" }
 
 async-trait = { workspace = true }
 env_logger =  { workspace = true }
