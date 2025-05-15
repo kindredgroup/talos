@@ -1,19 +1,19 @@
 [package]
 name = "cohort_banking_with_sdk"
-version = "0.2.53-dev"
+version = "0.2.53"
 edition = "2021"
 
 [dev-dependencies]
 
-banking_common =           { path = "../../packages/banking_common", version = "0.2.53-dev" }
-cohort_sdk =               { path = "../../packages/cohort_sdk", version = "0.2.53-dev" }
-cohort_banking =           { path = "../../packages/cohort_banking", version = "0.2.53-dev" }
-examples_support =         { path = "../../packages/examples_support", version = "0.2.53-dev" }
-talos_metrics =            { path = "../../packages/talos_metrics", version = "0.2.53-dev" }
-talos_agent =              { path = "../../packages/talos_agent", version = "0.2.53-dev" }
-talos_certifier =          { path = "../../packages/talos_certifier", version = "0.2.53-dev" }
-talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.2.53-dev" }
-talos_rdkafka_utils =      { path = "../../packages/talos_rdkafka_utils", version = "0.2.53-dev" }
+banking_common =           { path = "../../packages/banking_common", version = "0.2.53" }
+cohort_sdk =               { path = "../../packages/cohort_sdk", version = "0.2.53" }
+cohort_banking =           { path = "../../packages/cohort_banking", version = "0.2.53" }
+examples_support =         { path = "../../packages/examples_support", version = "0.2.53" }
+talos_metrics =            { path = "../../packages/talos_metrics", version = "0.2.53" }
+talos_agent =              { path = "../../packages/talos_agent", version = "0.2.53" }
+talos_certifier =          { path = "../../packages/talos_certifier", version = "0.2.53" }
+talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.2.53" }
+talos_rdkafka_utils =      { path = "../../packages/talos_rdkafka_utils", version = "0.2.53" }
 
 async-trait = { workspace = true }
 env_logger =  { workspace = true }
