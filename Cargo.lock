@@ -2285,6 +2285,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "potential_utf"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f2a1d6d1132e166768a82805efecd7c326eb8dc70ad4a586da697836b44eb970"
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3426,6 +3432,7 @@ dependencies = [
  "icu_properties_data",
  "icu_provider",
  "icu_provider_macros",
+ "idna_adapter",
  "litemap",
  "mockall",
  "opentelemetry 0.28.0",
@@ -3433,6 +3440,7 @@ dependencies = [
  "opentelemetry-stdout 0.28.0",
  "opentelemetry_api",
  "opentelemetry_sdk 0.28.0",
+ "potential_utf",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

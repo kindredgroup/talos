@@ -32,6 +32,8 @@ icu_provider_macros = { version = "=1.5.0" }
 icu_locid_transform_data = { version = "=1.5.0" }
 yoke = { version = "=0.7.5"}
 litemap = { version = "=0.7.4" }
+idna_adapter = { version = "=1.2.0"}
+potential_utf = { version = "=0.1.0"}
 ########################################################
 
 # Logging
