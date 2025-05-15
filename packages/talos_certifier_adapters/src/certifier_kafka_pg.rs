@@ -54,6 +54,7 @@ pub struct Configuration {
     /// If not set, defaults to `talos_certifier`.
     /// Setting this can be useful to distinguish unique deployed version of talos certifier for easier debugging.
     pub app_name: Option<String>,
+    pub otel_grpc_endpoint: Option<String>,
 }
 
 /// Talos certifier instantiated with Kafka as Abcast and Postgres as XDB.
@@ -108,6 +109,7 @@ pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffer
             system.clone(),
             Some(CertifierServiceConfig {
                 suffix_config: config.suffix_config.unwrap_or_default(),
+                otel_grpc_endpoint: config.otel_grpc_endpoint,
             }),
         )),
     };

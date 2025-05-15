@@ -265,7 +265,7 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
 
         let (tx_actions_channel, rx_actions_channel) = mpsc::channel(10);
         let (tx_feedback_channel, rx_feedback_channel) = mpsc::channel(10);
-        let suffix = Suffix::with_config(configs.suffix_configs);
+        let suffix = Suffix::with_config(configs.suffix_configs, None);
         // let mut allowed_actions = AHashMap::new();
         // allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 

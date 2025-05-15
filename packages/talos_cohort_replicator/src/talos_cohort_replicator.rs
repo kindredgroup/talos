@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use opentelemetry::global;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
-use talos_suffix::{core::SuffixConfig, Suffix};
+use talos_suffix::{
+    core::{SuffixConfig, SuffixMetricsConfig},
+    Suffix,
+};
 use tokio::{sync::mpsc, task::JoinHandle, try_join};
 
 use crate::{
@@ -116,12 +119,15 @@ where
         prune_start_threshold: config.suffix_prune_threshold,
         min_size_after_prune: config.suffix_minimum_size_on_prune,
     };
-    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
 
-    let meter = if config.otel_telemetry.enable_metrics {
-        Some(global::meter("cohort_sdk_replicator"))
+    let (meter, suffix) = if config.otel_telemetry.enable_metrics {
+        let meter = global::meter("cohort_sdk_replicator");
+        let metric_options = (SuffixMetricsConfig { prefix: "repl".into() }, meter.clone());
+        let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config, Some(metric_options));
+        (Some(meter), suffix)
     } else {
-        None
+        let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config, None);
+        (None, suffix)
     };
 
     let replicator = Replicator::new(certifier_message_receiver, suffix, meter.clone());

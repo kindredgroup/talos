@@ -131,7 +131,7 @@ async fn test_replicator_service_inserting_candidates_to_suffix() {
         prune_start_threshold: Some(10),
         min_size_after_prune: None,
     };
-    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
+    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config, None);
 
     let replicator = Replicator::new(receiver, suffix, None);
 
@@ -219,7 +219,7 @@ async fn test_replicator_service_receiving_decisions_first() {
         prune_start_threshold: Some(10),
         min_size_after_prune: None,
     };
-    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
+    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config, None);
 
     let replicator = Replicator::new(receiver, suffix, None);
 
@@ -324,7 +324,7 @@ async fn test_replicator_service_pruning_suffix() {
         prune_start_threshold: Some(10),
         min_size_after_prune: None,
     };
-    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config);
+    let suffix: Suffix<ReplicatorCandidate> = Suffix::with_config(suffix_config, None);
 
     let replicator = Replicator::new(receiver, suffix, None);
 

@@ -39,10 +39,13 @@ fn create_mock_candidate_message_with_vers(suffixer: u64) -> MockSuffixItemWithV
 
 fn bench_suffix_real(c: &mut Criterion) {
     c.bench_function("[SUFFIX REAL] insert 500,000 items", |b| {
-        let mut suffix = Suffix::<MockSuffixItemMessage>::with_config(SuffixConfig {
-            capacity: 500_000,
-            ..SuffixConfig::default()
-        });
+        let mut suffix = Suffix::<MockSuffixItemMessage>::with_config(
+            SuffixConfig {
+                capacity: 500_000,
+                ..SuffixConfig::default()
+            },
+            None,
+        );
 
         b.iter(|| {
             for i in 0..suffix.messages.len().try_into().unwrap() {
@@ -51,19 +54,25 @@ fn bench_suffix_real(c: &mut Criterion) {
         })
     });
     c.bench_function("[SUFFIX REAL] insert an item in a vec of capacity 500,000", |b| {
-        let mut suffix = Suffix::with_config(SuffixConfig {
-            capacity: 500_000,
-            ..SuffixConfig::default()
-        });
+        let mut suffix = Suffix::with_config(
+            SuffixConfig {
+                capacity: 500_000,
+                ..SuffixConfig::default()
+            },
+            None,
+        );
         b.iter(|| {
             suffix.insert(30, create_mock_candidate_message(30)).unwrap();
         })
     });
     c.bench_function("[SUFFIX REAL] get version=99999 item from 500,000 items", |b| {
-        let mut suffix = Suffix::with_config(SuffixConfig {
-            capacity: 500_000,
-            ..SuffixConfig::default()
-        });
+        let mut suffix = Suffix::with_config(
+            SuffixConfig {
+                capacity: 500_000,
+                ..SuffixConfig::default()
+            },
+            None,
+        );
 
         for i in 0..suffix.messages.len().try_into().unwrap() {
             suffix.insert(i, create_mock_candidate_message(i)).unwrap();
@@ -95,11 +104,14 @@ fn bench_suffix_real(c: &mut Criterion) {
 
 fn bench_suffix_find_prune_index(c: &mut Criterion) {
     c.bench_function("Test finding the nearest suffix item to prune", |b| {
-        let mut suffix = Suffix::with_config(SuffixConfig {
-            capacity: 500_000,
-            min_size_after_prune: Some(10_000),
-            prune_start_threshold: Some(200_000),
-        });
+        let mut suffix = Suffix::with_config(
+            SuffixConfig {
+                capacity: 500_000,
+                min_size_after_prune: Some(10_000),
+                prune_start_threshold: Some(200_000),
+            },
+            None,
+        );
 
         (0..500_000).for_each(|i| {
             suffix.insert(i, create_mock_candidate_message_with_vers(i)).unwrap();

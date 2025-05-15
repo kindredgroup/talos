@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
-use talos_suffix::core::SuffixConfig;
+use talos_suffix::core::{SuffixConfig, SuffixMetricsConfig};
 use talos_suffix::{get_nonempty_suffix_items, Suffix, SuffixTrait};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
@@ -16,11 +16,17 @@ use crate::{
     Certifier, ChannelMessage,
 };
 
+use opentelemetry::global;
+use opentelemetry_otlp::WithExportConfig;
+use strum::Display;
+use thiserror::Error as ThisError;
+
 /// Certifier service configuration
 #[derive(Debug, Clone, Default)]
 pub struct CertifierServiceConfig {
     /// Suffix config
     pub suffix_config: SuffixConfig,
+    pub otel_grpc_endpoint: Option<String>,
 }
 
 pub struct CertifierService {
@@ -31,6 +37,45 @@ pub struct CertifierService {
     pub commit_offset: Arc<AtomicI64>,
     pub decision_outbox_tx: mpsc::Sender<DecisionOutboxChannelMessage>,
     pub config: CertifierServiceConfig,
+}
+
+#[derive(Debug, ThisError)]
+#[error("Error initialising OTEL telemetry: '{kind}'.\nReason: {reason}\nCause: {cause:?}")]
+pub struct OtelInitError {
+    pub kind: InitErrorType,
+    pub reason: String,
+    pub cause: Option<String>,
+}
+
+#[derive(Debug, Display, PartialEq, Clone)]
+pub enum InitErrorType {
+    MetricError,
+}
+
+pub fn init_otel_metrics(grpc_endpoint: Option<String>) -> Result<(), OtelInitError> {
+    if let Some(grpc_endpoint) = grpc_endpoint {
+        let otel_exporter = opentelemetry_otlp::MetricExporter::builder()
+            .with_tonic()
+            .with_endpoint(grpc_endpoint)
+            .with_protocol(opentelemetry_otlp::Protocol::Grpc)
+            .build()
+            .map_err(|metric_error| OtelInitError {
+                kind: InitErrorType::MetricError,
+                reason: "Unable to initialise metrics exporter".into(),
+                cause: Some(format!("{:?}", metric_error)),
+            })?;
+
+        let provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+            .with_periodic_exporter(otel_exporter)
+            .build();
+
+        tracing::info!("OTEL metrics provider initialised");
+        global::set_meter_provider(provider);
+    }
+
+    tracing::info!("OTEL metrics initialised");
+
+    Ok(())
 }
 
 impl CertifierService {
@@ -45,7 +90,13 @@ impl CertifierService {
 
         let config = config.unwrap_or_default();
 
-        let suffix = Suffix::with_config(config.suffix_config.clone());
+        let suffix = if config.otel_grpc_endpoint.is_some() {
+            let _ = init_otel_metrics(config.otel_grpc_endpoint.clone());
+            let meter = global::meter("certifier");
+            Suffix::with_config(config.suffix_config.clone(), Some((SuffixMetricsConfig { prefix: "certifier".into() }, meter)))
+        } else {
+            Suffix::with_config(config.suffix_config.clone(), None)
+        };
 
         Self {
             suffix,

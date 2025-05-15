@@ -2,19 +2,52 @@
 
 use std::{collections::VecDeque, time::Instant};
 
+use opentelemetry::metrics::{Gauge, Meter};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    core::{SuffixConfig, SuffixMeta, SuffixResult, SuffixTrait},
+    core::{SuffixConfig, SuffixMeta, SuffixMetricsConfig, SuffixResult, SuffixTrait},
     errors::SuffixError,
     utils::get_nonempty_suffix_items,
     SuffixItem,
 };
 
+#[derive(Debug, Clone, Default)]
+pub struct SuffixMetrics {
+    g_suffix_head: Option<Gauge<u64>>,
+    g_suffix_length: Option<Gauge<u64>>,
+}
+
+impl SuffixMetrics {
+    pub fn new_disabled() -> Self {
+        Self {
+            g_suffix_head: None,
+            g_suffix_length: None,
+        }
+    }
+
+    pub fn new(config: SuffixMetricsConfig, meter: Meter) -> Self {
+        Self {
+            g_suffix_length: Some(meter.u64_gauge(format!("{}_suffix_length", config.prefix.clone())).build()),
+            g_suffix_head: Some(meter.u64_gauge(format!("{}_suffix_head", config.prefix)).build()),
+        }
+    }
+
+    pub fn update(&self, head: u64, length: u64) {
+        if let Some(m) = self.g_suffix_head.as_ref() {
+            m.record(head, &[]);
+        }
+        if let Some(m) = self.g_suffix_length.as_ref() {
+            m.record(length, &[]);
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Suffix<T> {
     pub meta: SuffixMeta,
     pub messages: VecDeque<Option<SuffixItem<T>>>,
+    pub metrics: SuffixMetrics,
 }
 
 impl<T> Suffix<T>
@@ -31,7 +64,7 @@ where
     ///         - If `None`, no pruning will occur.
     ///         - If `Some()`, attempts to prune suffix if suffix length crosses the threshold.
     ///
-    pub fn with_config(config: SuffixConfig) -> Suffix<T> {
+    pub fn with_config(config: SuffixConfig, metric_options: Option<(SuffixMetricsConfig, Meter)>) -> Suffix<T> {
         let SuffixConfig {
             capacity,
             prune_start_threshold,
@@ -55,7 +88,13 @@ where
             min_size_after_prune,
         };
 
-        Suffix { meta, messages }
+        let metrics = if let Some((metric_config, meter)) = metric_options {
+            SuffixMetrics::new(metric_config, meter)
+        } else {
+            SuffixMetrics::new_disabled()
+        };
+
+        Suffix { meta, messages, metrics }
     }
 
     /// Resets the suffix to initial state.
@@ -67,6 +106,7 @@ where
 
         // Clear the suffix messages vecdequeue.
         self.messages.clear();
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
     }
 
     pub fn index_from_head(&self, version: u64) -> Option<usize> {
@@ -287,6 +327,7 @@ where
         // Version 0 is not a valid version in suffix and therefore will be ignored.
         if version == 0 {
             info!("Version {version} will be ignored.");
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -301,6 +342,7 @@ where
                 is_decided: false,
             }));
             debug!("Inserted version {version} as the first item to suffix");
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -310,6 +352,7 @@ where
                 "Skipped inserting into suffix as message version received ({}) is below the suffix head version ({})",
                 self.meta.head, version
             );
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -321,6 +364,7 @@ where
         // In either case it is safe to discard this message.
         if last_inserted_version > 0 && version.le(&last_inserted_version) {
             info!("Skipped inserting into suffix as message version received ({version}) is below the suffix tail version ({last_inserted_version}).");
+            self.metrics.update(self.meta.head, self.suffix_length() as u64);
             return Ok(());
         }
 
@@ -354,6 +398,7 @@ where
             warn!("Failed to insert version {version} at index {index}");
         }
 
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         Ok(())
     }
 
@@ -383,18 +428,14 @@ where
     ///     2. And there is atleast one suffix item remaining, which can be the new head.
     ///        This enables to move the head to the appropiate location.
     fn prune_till_index(&mut self, index: usize) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
-        info!(
-            "Suffix message length before pruning={} and current suffix head={}",
-            self.messages.len(),
-            self.meta.head
-        );
-        let start_ms = Instant::now();
+        let suffix_before = format!("head={}, length={}", self.meta.head, self.suffix_length());
 
+        let drain_started_at = Instant::now();
         let (drained_entries, new_head) = match self.messages.range(index..).skip(1).find(|m| m.is_some()) {
             Some(Some(next_item)) => {
                 let next_version = next_item.item_ver;
                 let next_index = self.index_from_head(next_version).unwrap();
-                let drained = self.messages.drain(..next_index).collect();
+                let drained: Vec<Option<SuffixItem<T>>> = self.messages.drain(..next_index).collect();
 
                 (drained, next_version)
             }
@@ -405,40 +446,47 @@ where
             }
         };
 
-        // let drained_entries = self.messages.drain(..=index).collect();
-        let drain_end_ms = start_ms.elapsed().as_micros();
-
+        let drain_end_micros = drain_started_at.elapsed().as_micros();
+        let updated_started_at = Instant::now();
         self.update_prune_index(None);
         self.update_head(new_head);
-
-        let start_ms_2 = Instant::now();
-
+        let updated_end_micros = updated_started_at.elapsed().as_micros();
         info!(
-            "Suffix message length after pruning={} and new suffix head={} | Prune took {} microseconds and update head took {} microseconds",
-            self.messages.len(),
+            "Suffix pruned (till index {}). Old value: {}, New value: head={}, length={}. Drained items={}. Duration(micros): drain={}, update={}",
+            index,
+            suffix_before,
             self.meta.head,
-            drain_end_ms,
-            start_ms_2.elapsed().as_micros()
+            self.suffix_length(),
+            drained_entries.len(),
+            drain_end_micros,
+            updated_end_micros
         );
 
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         Ok(drained_entries)
     }
 
     fn prune_till_version(&mut self, version: u64) -> SuffixResult<Vec<Option<SuffixItem<T>>>> {
-        info!("Suffix before - prune head = {} | length = {}", self.meta.head, self.suffix_length());
-        if let Some(index) = self.index_from_head(version) {
-            info!("Index send for pruning is {index} for version={version}");
-            let prune_index = self.find_prune_till_index(index);
-            let prune_result = self.prune_till_index(prune_index);
-            info!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items().len());
-            info!("Suffix after - prune head = {} | length = {}", self.meta.head, self.suffix_length());
-            if let Ok(prune_items) = prune_result.as_ref() {
-                info!("Suffix items pruned.... {:?}", prune_items.len());
-            }
+        let suffix_before = format!("head={}, length={}", self.meta.head, self.suffix_length());
+        let mut prune_result: SuffixResult<Vec<Option<SuffixItem<T>>>> = Ok(vec![]);
 
-            return prune_result;
+        if let Some(index) = self.index_from_head(version) {
+            debug!("Index send for pruning is {index} for version={version}");
+            let prune_index = self.find_prune_till_index(index);
+            prune_result = self.prune_till_index(prune_index);
+            debug!("Items on suffix after pruning = {:#?}", self.retrieve_all_some_vec_items().len());
+            debug!("Suffix after - prune head = {} | length = {}", self.meta.head, self.suffix_length());
+            let pruned_count = if let Ok(prune_items) = prune_result.as_ref() { prune_items.len() } else { 0 };
+
+            info!(
+                "Suffix pruned (till version {}). Old value: {}, New value: head={}, length={}. Pruned items={}",
+                version,
+                suffix_before,
+                self.meta.head,
+                self.suffix_length(),
+                pruned_count,
+            );
         } else {
-            warn!("Unable to prune as index not found for version {version}.");
             let search_in_other_index: Option<(usize, u64)> = self.messages.iter().enumerate().find_map(|(p, i)| {
                 if let Some(s_item) = i {
                     if s_item.item_ver.eq(&version) {
@@ -447,18 +495,22 @@ where
                 }
                 None
             });
+
             if let Some(s_item) = search_in_other_index {
                 error!(
-                    "Version {version} was found at another index {} while it was expected at index {:?} for suffix head {}. This could lead to ambigious behaviour of suffix.",
-                    s_item.0,
-                    self.index_from_head(version),
-                    self.get_meta().head
+                    "Unable to prune (till version {}) as index not found by 'search from head' method. This item is at index: {}. Current suffix: {}. This could lead to ambigious behaviour of suffix.",
+                    version, s_item.0, suffix_before,
                 );
             } else {
-                info!("Couldn't prune till version {version} | head = {}", self.get_meta().head);
+                warn!(
+                    "Unable to prune (till version {}) as index not found. Current suffix: {}",
+                    version, suffix_before
+                );
             }
         }
-        Ok(vec![])
+
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
+        prune_result
     }
 
     fn remove(&mut self, version: u64) -> SuffixResult<()> {
@@ -471,6 +523,7 @@ where
             self.update_prune_index(None);
         }
 
+        self.metrics.update(self.meta.head, self.suffix_length() as u64);
         Ok(())
     }
 }
