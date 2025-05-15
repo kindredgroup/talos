@@ -50,6 +50,8 @@ pub enum ReplicatorChannel {
     /// The last installed version, which will be used to update the prune_index in suffix
     /// to enable suffix pruning.
     LastInstalledVersion(u64),
+    /// The last snapshot version that was updated to the persistance layer.
+    SnapshotUpdatedVersion(u64),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
