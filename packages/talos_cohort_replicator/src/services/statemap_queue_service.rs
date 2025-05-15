@@ -383,6 +383,7 @@ where
                 tokio::spawn({
                     let snapshot_api = self.snapshot_api.clone();
                     let version = self.statemap_queue.snapshot_version;
+                    let feedback_tx = self.replicator_feedback.clone();
 
                     async move {
                         if let Err(err) = snapshot_api.update_snapshot(version).await {
@@ -390,6 +391,10 @@ where
 
                         } else {
                             info!("Snapshot update callback updated snapshot_version to {version}");
+                            if let Err(tx_error) = feedback_tx.send(ReplicatorChannel::SnapshotUpdatedVersion(version)).await{
+                                error!("Error sending updated snapshot version over replicator feedback channel for version {version} with error {tx_error:?}");
+                            }
+
                         };
 
                     }
