@@ -17,7 +17,20 @@ async-trait = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
+
+######### patches for build problems with rust 75
 zerovec = { version = "=0.10.4" }
+icu_properties_data = { version = "=1.5.0" }
+icu_locid_transform = { version = "=1.5.0" }
+icu_normalizer = { version = "=1.5.0" }
+icu_properties = { version = "=1.5.1" }
+icu_provider = { version = "=1.5.0" }
+icu_locid = { version = "=1.5.0" }
+icu_collections = { version = "=1.5.0" }
+icu_provider_macros = { version = "=1.5.0" }
+icu_locid_transform_data = { version = "=1.5.0" }
+########################################################
+
 # Logging
 #log = { workspace = true }
 #env_logger = { workspace = true }
