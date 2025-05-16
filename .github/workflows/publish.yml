@@ -6,7 +6,6 @@ on:
     push:
         tags:
             - 'v[0-9]+.[0-9]+.[0-9]+'
-            - 'v[0-9]+.[0-9]+.[0-9]+-beta.*'
 env:
     REGISTRY: "https://npm.pkg.github.com"
     SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
