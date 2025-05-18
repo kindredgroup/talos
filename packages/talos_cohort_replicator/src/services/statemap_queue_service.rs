@@ -135,6 +135,7 @@ where
     replicator_feedback: mpsc::Sender<ReplicatorChannel>,
     pub statemap_queue: StatemapInstallerQueue,
     snapshot_api: Arc<S>,
+    last_callback_update_snapshot_version: u64,
     cleanup_interval: Interval,
     config: StatemapQueueServiceConfig,
     metrics: Metrics,
@@ -163,6 +164,7 @@ where
             installation_feedback_rx,
             replicator_feedback: replicator_feedback_tx,
             snapshot_api: snapshot_api.into(),
+            last_callback_update_snapshot_version: 0,
             config,
             metrics,
             statemap_queue: StatemapInstallerQueue::default(),
@@ -170,12 +172,20 @@ where
         }
     }
 
+    fn update_last_installed_snapshot_version(&mut self, version: u64) {
+        self.last_callback_update_snapshot_version = version;
+    }
+
     async fn get_latest_snapshot_from_callback(&mut self) -> Result<u64, ReplicatorError> {
-        self.snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
+        let snapshot = self.snapshot_api.get_snapshot().await.map_err(|e| ReplicatorError {
             kind: ReplicatorErrorKind::Persistence,
             reason: "Failed to get snapshot version from db".into(),
             cause: Some(e.to_string()),
-        })
+        })?;
+
+        self.update_last_installed_snapshot_version(snapshot);
+
+        Ok(snapshot)
     }
 
     fn update_internal_snapshot(&mut self, snapshot_version: u64) -> Option<u64> {
@@ -365,40 +375,35 @@ where
             _ = self.cleanup_interval.tick() => {
                 if let Some(version) = self.statemap_queue.get_last_contiguous_installed_version(){
                     self.update_internal_snapshot(version);
-                    // if self.update_internal_snapshot(version).is_some(){
-
-
-                        // if let Err(err) = self.snapshot_api.update_snapshot(version).await {
-                        //     error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
-
-                        // } else {
-                        //     info!("Snapshot update callback updated snapshot_version to {version}");
-                        // };
-                    // }
 
                 };
                 let result = self.statemap_queue.prune_till_version(self.statemap_queue.snapshot_version);
                 self.metrics.record_sizes(self.installation_tx.capacity(), self.statemap_queue.queue.len());
-                // Update the snapshot via callback
-                tokio::spawn({
-                    let snapshot_api = self.snapshot_api.clone();
-                    let version = self.statemap_queue.snapshot_version;
-                    let feedback_tx = self.replicator_feedback.clone();
 
-                    async move {
-                        if let Err(err) = snapshot_api.update_snapshot(version).await {
-                            error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", version);
+                // Update the snapshot via callback only when the snapshot version is not already send for update.
+                if self.last_callback_update_snapshot_version < self.statemap_queue.snapshot_version {
+                    let snapshot_to_update = self.statemap_queue.snapshot_version;
+                    tokio::spawn({
+                        let snapshot_api = self.snapshot_api.clone();
+                        let feedback_tx = self.replicator_feedback.clone();
+                        let version = snapshot_to_update.clone();
 
-                        } else {
-                            info!("Snapshot update callback updated snapshot_version to {version}");
-                            if let Err(tx_error) = feedback_tx.send(ReplicatorChannel::SnapshotUpdatedVersion(version)).await{
-                                error!("Error sending updated snapshot version over replicator feedback channel for version {version} with error {tx_error:?}");
-                            }
+                        async move {
+                            if let Err(err) = snapshot_api.update_snapshot(version).await {
+                                error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", version);
 
-                        };
+                            } else {
+                                info!("Snapshot update callback updated snapshot_version to {version}");
+                                if let Err(tx_error) = feedback_tx.send(ReplicatorChannel::SnapshotUpdatedVersion(version)).await{
+                                    error!("Error sending updated snapshot version over replicator feedback channel for version {version} with error {tx_error:?}");
+                                }
 
-                    }
-                });
+                            };
+
+                        }
+                    });
+                    self.update_last_installed_snapshot_version(snapshot_to_update);
+                }
                 // if let Err(err) = self.snapshot_api.update_snapshot(self.statemap_queue.snapshot_version).await {
                 //     error!("Snapshot update callback failed updating to latest snapshot_version {} with error {err:?}", self.statemap_queue.snapshot_version);
 
