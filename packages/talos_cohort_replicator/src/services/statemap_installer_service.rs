@@ -11,7 +11,7 @@ use crate::{
 use opentelemetry::global;
 use time::OffsetDateTime;
 use tokio::sync::{mpsc, Semaphore};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 pub struct StatemapInstallerConfig {
     pub thread_pool: Option<u16>,
@@ -31,6 +31,12 @@ async fn statemap_install_future(
     let c_install_failed = meter.u64_counter("repl_install_err").build();
     let h_install_latency = meter.f64_histogram("repl_install_latency").build();
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+    info!(
+        "[Version>>{version}] before calling the installer callback {:?}ms",
+        OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+    );
+
     match installer.install(statemaps, version).await {
         Ok(_) => {
             statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
@@ -55,6 +61,11 @@ async fn statemap_install_future(
         }
     };
     // drop(permit);
+
+    info!(
+        "[Version>>{version}] after calling the installer callback {:?}ms",
+        OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+    );
 }
 
 pub async fn installation_service(
@@ -74,7 +85,15 @@ pub async fn installation_service(
         let semaphore = semaphore.clone();
         let udc_items_installing_copy = udc_items_installing.clone();
         if let Some((ver, statemaps)) = installation_rx.recv().await {
+            info!(
+                "[Version>>{ver}] received in installer thread at {:?}ms",
+                OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+            );
             let permit = semaphore.acquire_owned().await.unwrap();
+            info!(
+                "[Version>>{ver}] permit acquired in installer thread at {:?}ms",
+                OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+            );
             let installer = Arc::clone(&statemap_installer);
             let statemap_installation_tx_clone = statemap_installation_tx.clone();
             udc_items_installing_copy.add(1, &[]);

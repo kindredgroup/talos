@@ -386,7 +386,7 @@ where
                     tokio::spawn({
                         let snapshot_api = self.snapshot_api.clone();
                         let feedback_tx = self.replicator_feedback.clone();
-                        let version = snapshot_to_update.clone();
+                        let version = snapshot_to_update;
 
                         async move {
                             if let Err(err) = snapshot_api.update_snapshot(version).await {

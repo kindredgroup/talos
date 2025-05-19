@@ -11,7 +11,7 @@ use crate::{
 
 use opentelemetry::{global, metrics::Gauge, trace::TraceContextExt, KeyValue};
 
-use talos_certifier::{ports::MessageReciever, ChannelMessage};
+use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_common_utils::otel::{
     metric_constants::{
         METRIC_KEY_CERT_DECISION_TYPE, METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_NAME_CERTIFICATION_OFFSET, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN,
@@ -20,6 +20,7 @@ use talos_common_utils::otel::{
     propagated_context::PropagatedSpanContextData,
 };
 
+use time::OffsetDateTime;
 use tokio::{sync::mpsc, time::Interval};
 use tracing::Instrument;
 use tracing::{debug, error, info};
@@ -108,6 +109,10 @@ where
                         // 2.1 For CM - Install messages on the version
                         ChannelMessage::Candidate(candidate) => {
                             let offset = candidate.message.version;
+                            info!(
+                                "[Version>>{offset}] candidate recieved in replicator service {:?}ms",
+                                OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+                            );
                             self.replicator.process_consumer_message(offset, candidate.message.into()).await;
 
                             self.metrics.record_consumed_offset(offset, &[
@@ -118,6 +123,14 @@ where
                         // 2.2 For DM - Update the decision with outcome + safepoint.
                         ChannelMessage::Decision(decision) => {
                             let talos_decision = decision.message.decision.to_string();
+                            let version = decision.message.get_candidate_version();
+                            let candidate_published = decision.message.metrics.candidate_published;
+                            let decision_received_in_replicator = OffsetDateTime::now_utc().unix_timestamp_nanos();
+                            info!(
+                                "[Version>>{version}] decision recieved in replicator service {:?}ms. Time diff from candidate published to receive decision in replicator = {:?}ms ",
+                                decision_received_in_replicator / 1_000_000_i128,
+                                (decision_received_in_replicator - candidate_published) / 1_000_000_i128
+                            );
                             if let Some(trace_parent) = decision.get_trace_parent() {
                                 let propagated_context = PropagatedSpanContextData::new_with_trace_parent(trace_parent);
                                 let context = global::get_text_map_propagator(|propagator| {
