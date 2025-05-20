@@ -4,6 +4,8 @@ use talos_cohort_replicator::{
     callbacks::{ReplicatorInstaller, ReplicatorSnapshotProvider},
     StatemapItem,
 };
+use tokio::time::Instant;
+use tracing::info;
 
 use super::JsStatemapAndSnapshot;
 
@@ -52,15 +54,25 @@ impl ReplicatorInstaller for StatemapInstallerDelegate {
             version: version as i64,
         };
 
+        let start = Instant::now();
         let result = self.callback.call_async::<Promise<()>>(Ok(data)).await;
+        let end_call_async = start.elapsed().as_millis();
 
-        match result {
+        let start_2 = Instant::now();
+        let result = match result {
             Ok(promise) => promise
                 .await
                 // Here reason is empty with NAPI 2.10.3
                 .map_err(|e| format!("Unable to install statemap. Native reason reported from JS: \"{}\"", e.reason)),
 
             Err(e) => Err(e.to_string()),
-        }
+        };
+
+        info!(
+            "[Version<{version}] - RUST install callback timing - Total time = {}ms | Time taken for call_async = {end_call_async}ms | Time taken for promise resolve = {}ms ",
+            start.elapsed().as_millis(),
+            start_2.elapsed().as_millis(),
+        );
+        result
     }
 }

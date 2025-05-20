@@ -29,6 +29,8 @@ uuid = { version = "1.4.1", features = ["v4", "serde"] }
 chrono = { version = "0.4.19", features = ["serde"] }
 
 tokio = { workspace = true, features = ["full"] }
+tracing = { version = "0.1.41", features = ["log"] }
+
 
 cohort_sdk = { path = "../cohort_sdk", version = "0.2.60-beta.2" }
 talos_agent = { path = "../talos_agent", version = "0.2.60-beta.2" }
