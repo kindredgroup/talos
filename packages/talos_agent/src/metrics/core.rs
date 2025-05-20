@@ -157,7 +157,7 @@ impl Metrics {
             total_count += 1;
             count_in_bucket += 1;
 
-            //log::error!("debug: {}, {}, {}, {}", tx.id, tx.candidate_publish_4.as_micros(), tx.candidate_kafka_trip_5.as_micros(), tx.decision_duration_6.as_micros());
+            //tracing::error!("debug: {}, {}, {}, {}", tx.id, tx.candidate_publish_4.as_micros(), tx.candidate_kafka_trip_5.as_micros(), tx.decision_duration_6.as_micros());
 
             if total_count % progress_frequency == 0 {
                 tracing::warn!("METRIC agent-spans(progress): {} of {}", total_count, sorted.len());
@@ -190,7 +190,7 @@ impl Metrics {
             } else {
                 // let d = sum.candidate_kafka_trip_5 + tx.candidate_kafka_trip_5;
                 // if d.as_micros() * 1000 > 18446744073709551615 {
-                //     log::error!("{} sum.candidate_kafka_trip_5: sum: {} mcs, tx: {} mcs id: {}", bucket, d.as_micros(), tx.candidate_kafka_trip_5.as_micros(), tx.id);
+                //     tracing::error!("{} sum.candidate_kafka_trip_5: sum: {} mcs, tx: {} mcs id: {}", bucket, d.as_micros(), tx.candidate_kafka_trip_5.as_micros(), tx.id);
                 // }
                 sum.outbox_1 += tx.outbox_1;
                 sum.enqueing_2 += tx.enqueing_2;

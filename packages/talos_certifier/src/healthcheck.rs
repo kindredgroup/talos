@@ -1,9 +1,9 @@
-use log::error;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{fs, thread};
 use tokio::fs::{create_dir_all, OpenOptions};
 use tokio::io::AsyncWriteExt;
+use tracing::error;
 
 //TODO it may be better to use std::env::temp_dir, although it cannot be a const then
 const HEALTH_CHECK_DIR: &str = "/tmp/healthchecks";

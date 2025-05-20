@@ -1,6 +1,5 @@
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::debug;
 use rdkafka::{
     config::{FromClientConfig, FromClientConfigAndContext},
     producer::{BaseRecord, DefaultProducerContext, ProducerContext, ThreadedProducer},
@@ -11,6 +10,7 @@ use talos_certifier::{
 };
 use talos_certifier_adapters::kafka::utils::build_kafka_headers;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
+use tracing::debug;
 
 // Kafka Producer
 pub struct KafkaProducer<C: ProducerContext + 'static = DefaultProducerContext> {

@@ -5,7 +5,7 @@ use std::sync::{
 
 use crate::{core::ServiceResult, SystemMessage};
 use futures_util::future::join_all;
-use log::{error, info};
+use tracing::{error, info};
 
 use crate::core::{System, SystemService};
 

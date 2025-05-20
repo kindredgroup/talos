@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use opentelemetry::global;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
+use talos_common_utils::otel::initialiser::{init_otel_logs_tracing, init_otel_metrics};
 use talos_suffix::{
     core::{SuffixConfig, SuffixMetricsConfig},
     Suffix,
@@ -13,10 +14,7 @@ use crate::{
     core::Replicator,
     errors::{ReplicatorError, ReplicatorErrorKind},
     models::{ReplicatorCandidate, ReplicatorCandidateMessage},
-    otel::{
-        initialiser::{init_otel_logs_tracing, init_otel_metrics},
-        otel_config::ReplicatorOtelConfig,
-    },
+    otel::otel_config::ReplicatorOtelConfig,
     services::{
         replicator_service::{ReplicatorService, ReplicatorServiceConfig},
         statemap_installer_service::{installation_service, StatemapInstallerConfig},

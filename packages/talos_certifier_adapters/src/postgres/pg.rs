@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use deadpool_postgres::{Config, ManagerConfig, Object, Pool, PoolConfig, PoolError, Runtime};
-use log::{debug, error, warn};
 use serde_json::{json, Value};
 use talos_certifier::{
     model::DecisionMessage,
@@ -12,6 +11,7 @@ use talos_certifier::{
         DecisionStore,
     },
 };
+use tracing::{debug, error, warn};
 
 use tokio_postgres::NoTls;
 

@@ -19,7 +19,4 @@ opentelemetry  =            { version = "0.20.0", features = ["metrics"] }
 serde =                     { workspace = true }
 serde_json =                { workspace = true }
 
-env_logger =                { workspace = true }
-log =                       { workspace = true }
-
 time =                      { version = "0.3.17" }

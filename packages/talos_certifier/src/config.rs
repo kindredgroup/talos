@@ -1,8 +1,8 @@
-use log::debug;
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fmt::Debug;
 use std::str::FromStr;
+use tracing::debug;
 
 trait EnvVarFromStr {
     fn from_env_var_str(name: &str, v: &str) -> Self;
@@ -73,7 +73,7 @@ impl Config {
             pg_database: var("PG_DATABASE"),
         };
 
-        log::debug!("Config loaded from environment variables: {:?}", config);
+        debug!("Config loaded from environment variables: {:?}", config);
 
         config
     }

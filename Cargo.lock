@@ -3229,9 +3229,7 @@ dependencies = [
  "async-trait",
  "cargo-husky",
  "criterion 0.4.0",
- "env_logger",
  "futures-util",
- "log",
  "opentelemetry 0.28.0",
  "opentelemetry-otlp",
  "opentelemetry-stdout 0.28.0",
@@ -3260,9 +3258,7 @@ dependencies = [
  "ahash 0.8.11",
  "async-trait",
  "deadpool-postgres",
- "env_logger",
  "futures-util",
- "log",
  "mockall",
  "rdkafka 0.34.0",
  "refinery",
@@ -3278,6 +3274,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-postgres",
+ "tracing",
  "uuid",
 ]
 
@@ -3317,9 +3314,19 @@ name = "talos_common_utils"
 version = "0.2.60-dev"
 dependencies = [
  "opentelemetry 0.28.0",
+ "opentelemetry-otlp",
+ "opentelemetry-stdout 0.28.0",
+ "opentelemetry_api",
+ "opentelemetry_sdk 0.28.0",
  "serial_test",
+ "strum 0.27.1",
+ "thiserror 2.0.11",
  "time",
  "tokio",
+ "tracing",
+ "tracing-bunyan-formatter",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3328,7 +3335,6 @@ version = "0.2.60-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
- "env_logger",
  "futures-executor",
  "futures-util",
  "icu_normalizer",
@@ -3336,8 +3342,12 @@ dependencies = [
  "idna",
  "idna_adapter",
  "litemap",
- "log",
  "mockall",
+ "opentelemetry 0.28.0",
+ "opentelemetry-otlp",
+ "opentelemetry-stdout 0.28.0",
+ "opentelemetry_api",
+ "opentelemetry_sdk 0.28.0",
  "rand 0.8.5",
  "rdkafka 0.34.0",
  "serde",
@@ -3353,6 +3363,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-test",
+ "tracing",
  "yoke",
  "zerofrom",
 ]
@@ -3363,11 +3374,9 @@ version = "0.2.60-dev"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
- "env_logger",
  "futures-executor",
  "futures-util",
  "indexmap 2.7.1",
- "log",
  "mockall",
  "rand 0.8.5",
  "rdkafka 0.34.0",
@@ -3381,6 +3390,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-test",
+ "tracing",
  "uuid",
 ]
 
@@ -3388,8 +3398,6 @@ dependencies = [
 name = "talos_metrics"
 version = "0.2.60-dev"
 dependencies = [
- "env_logger",
- "log",
  "once_cell",
  "opentelemetry 0.20.0",
  "opentelemetry-stdout 0.1.0",
@@ -3406,8 +3414,6 @@ version = "0.2.60-dev"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
- "env_logger",
- "log",
  "mockall",
  "rdkafka 0.34.0",
  "serial_test",
@@ -3415,6 +3421,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tokio-test",
+ "tracing",
 ]
 
 [[package]]

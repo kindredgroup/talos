@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};

@@ -6,7 +6,7 @@ use crate::{
 use std::time::Duration;
 
 use async_trait::async_trait;
-use log::{debug, error, info};
+use tracing::{debug, error, info};
 
 pub struct HealthCheckService {
     pub healthcheck: HealthChecks,

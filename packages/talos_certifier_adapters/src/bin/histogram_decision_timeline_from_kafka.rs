@@ -6,6 +6,7 @@ use talos_certifier::{
     ChannelMessage,
 };
 use talos_certifier_adapters::KafkaConsumer;
+use talos_common_utils::otel::initialiser::init_otel_logs_tracing;
 use talos_metrics::model::MinMax;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
@@ -13,8 +14,7 @@ use tokio::time::timeout;
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
-    env_logger::builder().format_timestamp_millis().init();
-
+    init_otel_logs_tracing("histogram-generator".into(), false, None, "info").map_err(|e| e.reason)?;
     let mut kafka_config = KafkaConfig::from_env(None);
     kafka_config.extend(
         None,
@@ -28,7 +28,7 @@ async fn main() -> Result<(), String> {
     let mut kafka_consumer = KafkaConsumer::new(&kafka_config);
     kafka_consumer.subscribe().await.unwrap();
 
-    log::warn!("Aggregating timelines...");
+    tracing::warn!("Aggregating timelines...");
     // collect min and max times of each span in the decision processing timeline
     let aggregates = aggregate_timelines(&mut kafka_consumer).await?;
     let total_decisions = aggregates.1;
@@ -45,7 +45,7 @@ async fn main() -> Result<(), String> {
 
     kafka_consumer2.subscribe().await.unwrap();
 
-    log::warn!("Computing histograms of {} decisions", total_decisions);
+    tracing::warn!("Computing histograms of {} decisions", total_decisions);
 
     let mut bukets_start_at = MinMax::default();
     bukets_start_at.add(aggregates.0.candidate_published.min);
@@ -57,7 +57,7 @@ async fn main() -> Result<(), String> {
 
     let earliest_bucket_start = bukets_start_at.min;
 
-    log::warn!(
+    tracing::warn!(
         "Earliest bucket starts at {:?}",
         OffsetDateTime::from_unix_timestamp_nanos(earliest_bucket_start)
     );
@@ -80,10 +80,10 @@ async fn main() -> Result<(), String> {
 
         if let ChannelMessage::Decision(decision) = message {
             let decision_message = decision.message;
-            // log::warn!("Decision {:?}", msg_decision);
+            // tracing::warn!("Decision {:?}", msg_decision);
             item_number += 1;
             if item_number % progress_frequency == 0 {
-                log::warn!("Progress: {} of {}", item_number, total_decisions);
+                tracing::warn!("Progress: {} of {}", item_number, total_decisions);
             }
             hist_candidate_published.include(&decision_message.metrics, decision_message.metrics.candidate_published);
             hist_candidate_received.include(&decision_message.metrics, decision_message.metrics.candidate_received);
@@ -98,7 +98,7 @@ async fn main() -> Result<(), String> {
         }
     }
 
-    log::warn!("Reading of messages ended");
+    tracing::warn!("Reading of messages ended");
     kafka_consumer2.unsubscribe().await;
 
     let mut bucket_length = MinMax::default();
@@ -109,11 +109,11 @@ async fn main() -> Result<(), String> {
     bucket_length.add(hist_db_save_started.buckets.len() as i128);
     bucket_length.add(hist_db_save_ended.buckets.len() as i128);
 
-    log::warn!("Histograms are ready, there are: {} 1 second buckets.", bucket_length.max);
+    tracing::warn!("Histograms are ready, there are: {} 1 second buckets.", bucket_length.max);
 
-    log::warn!("Headers: 'By Publish Time',,,,,,'-','By Receive Time',,,,,,'-','Processing Started',,,,,,'-','By Decision Created',,,,,,'-','By DB Save Started',,,,,,'-','By DB Save Ended',,,,,");
+    tracing::warn!("Headers: 'By Publish Time',,,,,,'-','By Receive Time',,,,,,'-','Processing Started',,,,,,'-','By Decision Created',,,,,,'-','By DB Save Started',,,,,,'-','By DB Save Ended',,,,,");
     for bucket in 1..bucket_length.max {
-        log::warn!(
+        tracing::warn!(
             "METRIC (histograms MAX): {},'-',{},'-',{},'-',{},'-',{},'-',{}",
             hist_candidate_published.to_csv_max(bucket).await,
             hist_candidate_received.to_csv_max(bucket).await,

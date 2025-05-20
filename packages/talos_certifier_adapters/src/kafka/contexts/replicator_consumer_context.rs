@@ -1,6 +1,6 @@
 use tokio::sync::mpsc;
 
-use log::{error, info};
+use tracing::{error, info};
 // use futures_executor::block_on;
 use rdkafka::{
     consumer::{ConsumerContext, Rebalance},

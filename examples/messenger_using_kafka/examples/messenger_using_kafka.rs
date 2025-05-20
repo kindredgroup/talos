@@ -40,6 +40,7 @@ async fn main() {
         channel_buffers: None,
         commit_size: Some(2_000),
         commit_frequency: None,
+        otel_grpc_endpoint: None,
     };
 
     messenger_with_kafka(config).await.unwrap();

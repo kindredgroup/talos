@@ -16,10 +16,6 @@ strum = { version = "0.24", features = ["derive"] }
 #  Ahash hashmap
 ahash = "0.8.3"
 
-# Logging
-log = { workspace = true }
-env_logger = { workspace = true }
-
 # Async
 tokio = { workspace = true }
 futures-util = "0.3.26"

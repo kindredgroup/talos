@@ -37,8 +37,6 @@ potential_utf = { version = "=0.1.0"}
 ########################################################
 
 # Logging
-#log = { workspace = true }
-#env_logger = { workspace = true }
 
 tracing =                   { version = "0.1.41", features = [ "log" ] }
 opentelemetry_api =         { version = "0.20.0", features = ["metrics"] }

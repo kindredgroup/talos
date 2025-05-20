@@ -1,9 +1,10 @@
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::debug;
+use opentelemetry::global;
 use rdkafka::producer::ProducerContext;
 use talos_certifier::ports::{errors::MessagePublishError, MessageReciever};
 use talos_certifier_adapters::KafkaConsumer;
+use talos_common_utils::otel::initialiser::{init_otel_logs_tracing, init_otel_metrics};
 use talos_messenger_core::{
     core::{MessengerPublisher, PublishActionType},
     errors::{MessengerServiceError, MessengerServiceErrorKind, MessengerServiceResult},
@@ -12,8 +13,12 @@ use talos_messenger_core::{
     talos_messenger_service::TalosMessengerService,
 };
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
-use talos_suffix::{core::SuffixConfig, Suffix};
+use talos_suffix::{
+    core::{SuffixConfig, SuffixMetricsConfig},
+    Suffix,
+};
 use tokio::sync::mpsc;
+use tracing::debug;
 
 use crate::kafka::{
     context::{MessengerProducerContext, MessengerProducerDeliveryOpaque},
@@ -110,9 +115,17 @@ pub struct Configuration {
     pub commit_size: Option<u32>,
     /// Commit issuing frequency.
     pub commit_frequency: Option<u32>,
+    pub otel_grpc_endpoint: Option<String>,
 }
 
 pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResult {
+    init_otel_logs_tracing("messenger".into(), false, config.otel_grpc_endpoint.clone(), "info").map_err(|e| MessengerServiceError {
+        kind: MessengerServiceErrorKind::System,
+        reason: e.reason,
+        data: e.cause,
+        service: "init_otel_logs_tracing".into(),
+    })?;
+
     let kafka_consumer = KafkaConsumer::new(&config.kafka_config);
 
     // Subscribe to topic.
@@ -133,8 +146,19 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
     let tx_feedback_channel_clone = tx_feedback_channel.clone();
 
     // START - Inbound service
-    let suffix: Suffix<MessengerCandidate> = Suffix::with_config(config.suffix_config.unwrap_or_default(), None);
+    let suffix: Suffix<MessengerCandidate> = if config.otel_grpc_endpoint.is_some() {
+        let _ = init_otel_metrics(config.otel_grpc_endpoint.clone());
+        let meter = global::meter("messenger");
+        Suffix::with_config(
+            config.suffix_config.unwrap_or_default(),
+            Some((SuffixMetricsConfig { prefix: "messenger".into() }, meter)),
+        )
+    } else {
+        Suffix::with_config(config.suffix_config.unwrap_or_default(), None)
+    };
+
     let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size, config.commit_frequency);
+
     let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, inbound_service_config);
     // END - Inbound service
 

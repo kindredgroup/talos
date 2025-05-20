@@ -16,9 +16,8 @@ doctest = false
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 talos_common_utils = { path = "../talos_common_utils", version = "0.2.60-dev" }
-# Logging
-log = { workspace = true }
-env_logger = { workspace = true }
+
+tracing =                   { version = "0.1.41", features = [ "log" ] }
 
 # Test
 mockall = "0.11.0"

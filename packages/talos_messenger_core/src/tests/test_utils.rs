@@ -1,6 +1,5 @@
 use ahash::HashMap;
 use async_trait::async_trait;
-use log::{debug, error};
 use strum::{Display, EnumString};
 use talos_certifier::{
     errors::SystemServiceError,
@@ -16,6 +15,7 @@ use tokio::{
     sync::mpsc::{self, Sender},
     task::JoinHandle,
 };
+use tracing::{debug, error};
 
 use crate::{
     core::{ActionService, MessengerChannelFeedback, MessengerCommitActions, MessengerPublisher, PublishActionType},
