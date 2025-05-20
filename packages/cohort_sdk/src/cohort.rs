@@ -182,7 +182,7 @@ impl Cohort {
     pub async fn certify<F, Fut, O>(
         &self,
         get_certification_candidate_callback: &F,
-        oo_installer: &O,
+        _oo_installer: &O,
         trace_parent: Option<String>,
     ) -> Result<model::CertificationResponse, ClientError>
     where
@@ -224,16 +224,16 @@ impl Cohort {
                 return Ok(response);
             }
 
-            let oooinstall_payload = OutOfOrderInstallRequest {
-                xid: response.xid.clone(),
-                version: response.version,
-                safepoint: response.safepoint.unwrap(),
-                statemaps: response.statemaps.clone().unwrap(),
-            };
+            // let oooinstall_payload = OutOfOrderInstallRequest {
+            //     xid: response.xid.clone(),
+            //     version: response.version,
+            //     safepoint: response.safepoint.unwrap(),
+            //     statemaps: response.statemaps.clone().unwrap(),
+            // };
 
             // 3. OOO install
-            let span_install = tracing::info_span!(parent: span_certify_id, "install_ooo");
-            self.install_statemaps_oo(oooinstall_payload, oo_installer).instrument(span_install).await?;
+            // let span_install = tracing::info_span!(parent: span_certify_id, "install_ooo");
+            // self.install_statemaps_oo(oooinstall_payload, oo_installer).instrument(span_install).await?;
 
             Ok(response)
         };
@@ -246,7 +246,7 @@ impl Cohort {
     }
 
     /// Installs the statemap for candidate messages with committed decisions received from talos.
-    async fn install_statemaps_oo<O>(&self, install_payload: OutOfOrderInstallRequest, oo_installer: &O) -> Result<(), ClientError>
+    async fn _install_statemaps_oo<O>(&self, install_payload: OutOfOrderInstallRequest, oo_installer: &O) -> Result<(), ClientError>
     where
         O: OutOfOrderInstaller,
     {
