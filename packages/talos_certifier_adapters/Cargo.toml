@@ -16,9 +16,6 @@ description = "Adapters used in Talos Certifier"
 serde = { workspace = true }
 serde_json = { workspace = true }
 
-# Logging
-log = { workspace = true }
-env_logger = { workspace = true }
 # Async
 tokio = { workspace = true }
 async-trait = { workspace = true }
@@ -47,6 +44,8 @@ thiserror = "1.0.31"
 
 # Test
 mockall = "0.11.0"
+
+tracing = { version = "0.1.41", features = ["log"] }
 
 # internal crates
 talos_metrics = { path = "../talos_metrics", version = "0.2.60-dev" }

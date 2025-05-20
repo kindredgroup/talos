@@ -1,8 +1,8 @@
-use log::{error, info};
 use rdkafka::{
     consumer::{ConsumerContext, Rebalance},
     ClientContext,
 };
+use tracing::{error, info};
 
 use talos_common_utils::{
     sync::{try_send_with_retry, TrySendWithRetryConfig},

@@ -109,7 +109,7 @@ impl KafkaConfig {
 
         self.setup_auth(&mut client_config, base_config);
 
-        log::debug!("p: client_config = {:?}", client_config);
+        tracing::debug!("p: client_config = {:?}", client_config);
 
         client_config
     }

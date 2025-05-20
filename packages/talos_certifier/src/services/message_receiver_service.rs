@@ -4,8 +4,8 @@ use std::{
 };
 
 use async_trait::async_trait;
-use log::{error, info, warn};
 use tokio::{sync::mpsc, time::Interval};
+use tracing::{error, info, warn};
 
 use crate::{
     core::{ServiceResult, System, SystemService},

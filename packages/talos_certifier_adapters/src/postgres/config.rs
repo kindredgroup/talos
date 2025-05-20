@@ -1,5 +1,5 @@
-use log::debug;
 use talos_common_utils::{env_var, env_var_with_defaults};
+use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct PgConfig {

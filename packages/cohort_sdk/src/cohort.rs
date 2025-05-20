@@ -3,7 +3,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use talos_common_utils::otel::propagated_context::PropagatedSpanContextData;
+use talos_common_utils::otel::{
+    initialiser::{init_otel_logs_tracing, init_otel_metrics},
+    propagated_context::PropagatedSpanContextData,
+};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use opentelemetry::global;
@@ -30,10 +33,7 @@ use talos_rdkafka_utils::kafka_config::KafkaConfig;
 
 use crate::{
     model::{internal::CertificationAttemptFailure, ClientErrorKind},
-    otel::{
-        initialiser::{init_otel_logs_tracing, init_otel_metrics},
-        meters::CohortMeters,
-    },
+    otel::meters::CohortMeters,
 };
 
 use crate::{

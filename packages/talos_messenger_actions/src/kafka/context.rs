@@ -1,8 +1,8 @@
 use futures_executor::block_on;
-use log::error;
 use rdkafka::{producer::ProducerContext, ClientContext};
 use talos_messenger_core::{core::MessengerChannelFeedback, errors::MessengerActionError};
 use tokio::sync::mpsc;
+use tracing::error;
 
 #[derive(Debug)]
 pub struct MessengerProducerDeliveryOpaque {

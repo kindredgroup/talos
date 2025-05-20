@@ -1,5 +1,4 @@
 use ahash::{HashMap, HashMapExt};
-use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fmt::Debug;
@@ -7,6 +6,7 @@ use strum::{Display, EnumString};
 use talos_certifier::model::{Decision, DecisionMessageTrait};
 use talos_suffix::{core::SuffixResult, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use tracing::{debug, warn};
 
 use crate::models::MessengerCandidateMessage;
 

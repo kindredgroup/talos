@@ -1,7 +1,6 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
 use rdkafka::{
     consumer::{Consumer, ConsumerContext, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -20,6 +19,7 @@ use talos_certifier::{
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
+use tracing::debug;
 
 use crate::{kafka::utils::get_message_headers, KafkaAdapterError};
 
