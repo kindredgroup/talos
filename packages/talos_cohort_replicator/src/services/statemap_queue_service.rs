@@ -224,6 +224,10 @@ where
         for key in items_to_install {
             // Send for installation
             if let Some(item) = self.statemap_queue.queue.get(&key) {
+                info!(
+                    "[Version>>{key}] picked from statemap queue and put into install channel at {:?}ms",
+                    OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+                );
                 match self.installation_tx.send((key, item.statemaps.clone())).await {
                     Ok(_) => {
                         self.metrics.inflight_inc();

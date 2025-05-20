@@ -32,9 +32,10 @@ async fn statemap_install_future(
     let h_install_latency = meter.f64_histogram("repl_install_latency").build();
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
+    let before_callback_execution_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
     info!(
         "[Version>>{version}] before calling the installer callback {:?}ms",
-        OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+        before_callback_execution_ns / 1_000_000_i128
     );
 
     match installer.install(statemaps, version).await {
@@ -61,10 +62,12 @@ async fn statemap_install_future(
         }
     };
     // drop(permit);
+    let after_callback_execution_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
     info!(
-        "[Version>>{version}] after calling the installer callback {:?}ms",
-        OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000_i128
+        "[Version>>{version}] after calling the installer callback {:?}ms. Total time for callback execution = {}ms",
+        after_callback_execution_ns / 1_000_000_i128,
+        (after_callback_execution_ns - before_callback_execution_ns) / 1_000_000_i128
     );
 }
 
