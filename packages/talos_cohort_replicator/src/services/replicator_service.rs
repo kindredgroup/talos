@@ -71,7 +71,7 @@ where
     pub replicator: Replicator<ReplicatorCandidate, S, M>,
     #[allow(dead_code)]
     config: ReplicatorServiceConfig,
-    interval: Interval,
+    _interval: Interval,
     metrics: ReplicatorMetrics,
 }
 
@@ -93,8 +93,8 @@ where
             replicator_rx,
             replicator,
             config,
-            interval,
             metrics,
+            _interval: interval,
         }
     }
 
@@ -155,49 +155,57 @@ where
                     }
                 }
             }
-            // Commit offsets at interval.
-            _ = self.interval.tick() => {
-                // If last item on suffix, we can commit till it's decision
-                let suffix_length = self.replicator.suffix.get_suffix_len();
-                let last_suffix_index = if suffix_length > 0 { suffix_length - 1 } else { 0 };
+            // // Commit offsets at interval.
+            // _ = self.interval.tick() => {
+            //     // If last item on suffix, we can commit till it's decision
+            //     let suffix_length = self.replicator.suffix.get_suffix_len();
+            //     let last_suffix_index = if suffix_length > 0 { suffix_length - 1 } else { 0 };
 
-                if let Some(next_commit_offset) = self.replicator.next_commit_offset {
-                    if let Some(index) = self.replicator.suffix.get_index_from_head(next_commit_offset) {
+            //     if let Some(next_commit_offset) = self.replicator.next_commit_offset {
+            //         if let Some(index) = self.replicator.suffix.get_index_from_head(next_commit_offset) {
 
-                        if index == last_suffix_index {
-                            if let Ok(Some(c)) = self.replicator.suffix.get(next_commit_offset){
-                                if let Some(decision_version) = c.decision_ver {
-                                    self.replicator.prepare_offset_for_commit(decision_version);
-                                }
-                            }
-                        }
-                    }
-                }
+            //             if index == last_suffix_index {
+            //                 if let Ok(Some(c)) = self.replicator.suffix.get(next_commit_offset){
+            //                     if let Some(decision_version) = c.decision_ver {
+            //                         self.replicator.prepare_offset_for_commit(decision_version);
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
 
-                self.replicator.commit().await;
+            //     self.replicator.commit().await;
 
-            }
+            // }
             // Receive feedback from installer.
             res = self.replicator_rx.recv() => {
-                if let Some(ReplicatorChannel::LastInstalledVersion(version)) = res {
-                    if let Some(index) = self.replicator.suffix.update_prune_index(version) {
-                        if let Err(err) = self.replicator.suffix.prune_till_index(index){
-                            let item = self.replicator.suffix.get_by_index(index);
-                            if let Some(suffix_item) = item {
-                                let ver = suffix_item.item_ver;
-                                error!("Failed to prune suffix till version {ver} and index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
+                match res {
+                    //
+                    Some(ReplicatorChannel::LastInstalledVersion(version)) => {
+
+                        if let Some(index) = self.replicator.suffix.update_prune_index(version) {
+                            if let Err(err) = self.replicator.suffix.prune_till_index(index){
+                                let item = self.replicator.suffix.get_by_index(index);
+                                if let Some(suffix_item) = item {
+                                    let ver = suffix_item.item_ver;
+                                    error!("Failed to prune suffix till version {ver} and index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
+                                } else {
+                                    error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
+                                }
                             } else {
-                                error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
+                                info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", self.replicator.suffix.get_meta().head, self.replicator.suffix.get_suffix_len());
                             }
-                        } else {
-                            self.replicator.prepare_offset_for_commit(version);
-
-                            self.replicator.commit().await;
-
-                            info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", self.replicator.suffix.get_meta().head, self.replicator.suffix.get_suffix_len());
                         }
-                    }
-                }
+                    },
+                    Some(ReplicatorChannel::SnapshotUpdatedVersion(version)) => {
+                        self.replicator.prepare_offset_for_commit(version);
+
+                        self.replicator.commit().await;
+
+                    },
+                    None => {},
+                };
+
             }
         }
 

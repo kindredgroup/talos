@@ -157,7 +157,7 @@ where
         tx_statemaps_to_install,
         rx_statemaps_install_feedback,
         tx_installation_feedback_to_replicator,
-        snapshot_api,
+        snapshot_api.into(),
         queue_config,
         config.channel_size,
         meter,

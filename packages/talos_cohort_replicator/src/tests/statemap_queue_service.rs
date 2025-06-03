@@ -1,5 +1,6 @@
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::HashSet,
+    sync::{atomic::AtomicU64, Arc},
     time::Duration,
 };
 
@@ -9,25 +10,26 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 
 use crate::{
     callbacks::ReplicatorSnapshotProvider,
+    core::StatemapInstallState,
     services::statemap_queue_service::{self, StatemapQueueServiceConfig},
     StatemapItem, StatemapQueueChannelMessage,
 };
 
 #[derive(Default)]
 pub struct MockSnapshotApi {
-    pub snapshot: u64,
-    pub next_snapshots: VecDeque<u64>,
+    pub snapshot: AtomicU64,
 }
 
 #[async_trait]
 impl ReplicatorSnapshotProvider for MockSnapshotApi {
     async fn get_snapshot(&self) -> Result<u64, String> {
-        let snapshot = if !self.next_snapshots.is_empty() {
-            *self.next_snapshots.front().unwrap()
-        } else {
-            self.snapshot
-        };
+        let snapshot = self.snapshot.load(std::sync::atomic::Ordering::Relaxed);
         Ok(snapshot)
+    }
+
+    async fn update_snapshot(&self, version: u64) -> Result<(), String> {
+        self.snapshot.store(version, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
     }
 }
 
@@ -41,17 +43,14 @@ async fn test_queue_service_snapshot_version_above_safepoint_below_snapshot() {
         queue_cleanup_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
     };
-    let snapshot_api = MockSnapshotApi {
-        snapshot: 8,
-        ..Default::default()
-    };
+    let snapshot_api = MockSnapshotApi { snapshot: 8.into() };
 
     let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
         statemaps_rx,
         installation_tx,
         statemap_installation_rx,
         replicator_feedback_tx,
-        snapshot_api,
+        snapshot_api.into(),
         config,
         0,
         None,
@@ -87,17 +86,14 @@ async fn test_queue_service_version_and_safepoint_below_snapshot() {
         queue_cleanup_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
     };
-    let snapshot_api = MockSnapshotApi {
-        snapshot: 8,
-        ..Default::default()
-    };
+    let snapshot_api = MockSnapshotApi { snapshot: 8.into() };
 
     let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
         statemaps_rx,
         installation_tx,
         statemap_installation_rx,
         replicator_feedback_tx,
-        snapshot_api,
+        snapshot_api.into(),
         config,
         0,
         None,
@@ -116,20 +112,20 @@ async fn test_queue_service_version_and_safepoint_below_snapshot() {
     assert_eq!(receive_result, Err(TryRecvError::Empty));
 }
 
-// Test covers below possible scenarios that can impact the snapshot_version or items and their states in the queue
-// - Test Receiving and inserting message to queue
-//      - when version received is less than the snapshot version.
-//      - when version received is greater than the snapshot version.
-// - Test picking of statemaps for installation
-//      - Check against `StatemapInstallState`
-//      - Check safepoint against snapshot version
-//      - Check safepoint to see which items are serialisable.
-// - Test feedback from install StatemapInstallationStatus::Success(version)
-//      - When all version below are successfully installed.
-//      - When there are some versions not installed yet.
-// - Test feedback from install StatemapInstallationStatus::Error
-//      - Check when item is moved back to `Awaiting`, how does it behave if some other version has this version as safepoint
-//      - Check when item is moved back to `Awaiting`, how does it behave if some other version doesn't have this version as safepoint
+/// Test covers below possible scenarios that can impact the snapshot_version or items and their states in the queue
+/// - Test Receiving and inserting message to queue
+///      - when version received is less than the snapshot version.
+///      - when version received is greater than the snapshot version.
+/// - Test picking of statemaps for installation
+///      - Check against `StatemapInstallState`
+///      - Check safepoint against snapshot version
+///      - Check safepoint to see which items are serialisable.
+/// - Test feedback from install StatemapInstallationStatus::Success(version)
+///      - When all version below are successfully installed.
+///      - When there are some versions not installed yet.
+/// - Test feedback from install StatemapInstallationStatus::Error
+///      - Check when item is moved back to `Awaiting`, how does it behave if some other version has this version as safepoint
+///      - Check when item is moved back to `Awaiting`, how does it behave if some other version doesn't have this version as safepoint
 #[tokio::test]
 async fn test_queue_service_insert_install_feedbacks() {
     let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
@@ -143,8 +139,7 @@ async fn test_queue_service_insert_install_feedbacks() {
 
     let initial_snapshot_version = 15;
     let snapshot_api = MockSnapshotApi {
-        snapshot: initial_snapshot_version,
-        ..Default::default()
+        snapshot: initial_snapshot_version.into(),
     };
 
     let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
@@ -152,7 +147,7 @@ async fn test_queue_service_insert_install_feedbacks() {
         installation_tx,
         installation_feedback_rx,
         replicator_feedback_tx,
-        snapshot_api,
+        snapshot_api.into(),
         config,
         0,
         None,
@@ -396,18 +391,16 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
     };
 
     let initial_snapshot_version = 10;
-    let next_snapshots: Vec<u64> = vec![19];
-    let snapshot_api = MockSnapshotApi {
-        snapshot: initial_snapshot_version,
-        next_snapshots: next_snapshots.into(),
-    };
+    let snapshot_api: Arc<MockSnapshotApi> = Arc::new(MockSnapshotApi {
+        snapshot: initial_snapshot_version.into(),
+    });
 
     let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
         statemaps_rx,
         installation_tx,
         installation_feedback_rx,
         replicator_feedback_tx,
-        snapshot_api,
+        snapshot_api.clone(),
         config,
         0,
         None,
@@ -505,17 +498,20 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
     // We have inserted 4 items so length should be 4.
     assert_eq!(queue_svc.statemap_queue.queue.len(), 4);
 
+    // Mock snapshot_api, update the snapshot to 19, simulating a scenario of some other instance must have updated the snapshot to persistance layer
+    let _ = snapshot_api.update_snapshot(19).await;
     // Get next snapshot
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 19);
     statemaps_tx.send(StatemapQueueChannelMessage::UpdateSnapshot).await.unwrap();
 
     // Run the service to update the snapshot + prune all items in queue below the snapshot_version.
     queue_svc.run_once().await.unwrap();
 
     // Only version 20 is above the snapshot, everything else can be removed.
-    assert_eq!(queue_svc.statemap_queue.queue.len(), 1);
     assert_eq!(queue_svc.statemap_queue.snapshot_version, 19);
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 1);
 
-    // The two items send for install already + version 20 is send now.
+    // The two items send for install already + version 20 is send now because snapshot has moved to 19, which is above the safepoint of 18.
     assert_eq!(installation_rx.max_capacity() - installation_rx.capacity(), 3);
 
     // Send feedback for version 13
@@ -533,4 +529,433 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
         .unwrap();
     assert_eq!(res.0, 15);
     assert_eq!(installation_rx.max_capacity() - installation_rx.capacity(), 1);
+}
+
+/// Test snapshot updates via callback.
+/// - Test feedback of installation coming in out of order and how the snapshot is updated in the persisitance layer via callback.
+#[tokio::test]
+async fn test_snapshot_updated_via_callback() {
+    let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
+    let (installation_feedback_tx, installation_feedback_rx) = mpsc::channel(50);
+    let (installation_tx, mut installation_rx) = mpsc::channel(50);
+    let (replicator_feedback_tx, _) = mpsc::channel(50);
+    let config = StatemapQueueServiceConfig {
+        queue_cleanup_frequency_ms: 30_000, // 30 mins
+        enable_stats: false,
+    };
+
+    let initial_snapshot_version = 10;
+    let snapshot_api: Arc<MockSnapshotApi> = Arc::new(MockSnapshotApi {
+        snapshot: initial_snapshot_version.into(),
+    });
+
+    let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
+        statemaps_rx,
+        installation_tx,
+        installation_feedback_rx,
+        replicator_feedback_tx,
+        snapshot_api.clone(),
+        config,
+        0,
+        None,
+    );
+
+    // Initial snapshot version is 0.
+    assert_eq!(queue_svc.statemap_queue.snapshot_version, 0);
+    // Send updatesnapshot to pick the `initial_snapshot_version`
+    statemaps_tx.send(StatemapQueueChannelMessage::UpdateSnapshot).await.unwrap();
+
+    // Run the service to update the snapshot + prune all items in queue below the snapshot_version.
+    queue_svc.run_once().await.unwrap();
+    assert_eq!(queue_svc.statemap_queue.snapshot_version, initial_snapshot_version);
+    assert_eq!(queue_svc.get_last_saved_snapshot(), initial_snapshot_version);
+
+    //*****/
+    // install version is > snapshot_version and safepoint > snapshot_version, hence it will not be picked up for installation.
+    //*****/
+    let install_vers = 12;
+    let safepoint = Some(10);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+    // Run the service to insert this into queue.
+    queue_svc.run_once().await.unwrap();
+
+    //*****/
+    // install version is > snapshot_version and safepoint > snapshot_version, hence it will not be picked up for installation.
+    //*****/
+    let install_vers = 13;
+    let safepoint = Some(10);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+    // Run the service to insert this into queue.
+    queue_svc.run_once().await.unwrap();
+
+    // There will be two items in the queue.
+    assert_eq!(installation_rx.max_capacity() - installation_rx.capacity(), 2);
+
+    let res_12 = installation_rx.try_recv().unwrap();
+    let res_13 = installation_rx.try_recv().unwrap();
+    // Send feedback for version 13
+    installation_feedback_tx
+        .send(crate::core::StatemapInstallationStatus::Success(res_13.0))
+        .await
+        .unwrap();
+
+    // Receive the feedback for version 13
+    queue_svc.run_once().await.unwrap();
+    assert_eq!(queue_svc.get_last_saved_snapshot(), initial_snapshot_version);
+
+    // Run the interval arm
+    queue_svc.handle_interval_arm().await.unwrap();
+    assert_eq!(queue_svc.get_last_saved_snapshot(), initial_snapshot_version);
+
+    // Send feedback for version 12
+    installation_feedback_tx
+        .send(crate::core::StatemapInstallationStatus::Success(res_12.0))
+        .await
+        .unwrap();
+
+    // Receive the feedback for version 12
+    queue_svc.run_once().await.unwrap();
+    assert_eq!(queue_svc.statemap_queue.snapshot_version, 13);
+
+    // Run the interval arm
+    queue_svc.handle_interval_arm().await.unwrap();
+
+    // Sleep to give time for atomics to synchronize.
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    // Assert the snapshot value has moved in the callback. Thus ensuring the persistance layer has updated the snapshot.
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 13);
+    assert_eq!(queue_svc.get_last_saved_snapshot(), 13);
+
+    //
+    // Receive version 19, 20, 23, 25
+    // ** Version 19
+    let install_vers = 19;
+    let safepoint = Some(13);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+    // Run the service to insert this into queue.
+    queue_svc.run_once().await.unwrap();
+
+    // ** Version 20
+    let install_vers = 20;
+    let safepoint = Some(13);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+    // Run the service to insert this into queue.
+    queue_svc.run_once().await.unwrap();
+
+    // ** Version 23
+    let install_vers = 23;
+    let safepoint = Some(13);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+    // Run the service to insert this into queue.
+    queue_svc.run_once().await.unwrap();
+
+    // ** Version 25
+    let install_vers = 25;
+    let safepoint = Some(13);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+    // Run the service to insert this into queue.
+    queue_svc.run_once().await.unwrap();
+    queue_svc.run_once().await.unwrap();
+    // Receive feedback for version 25, 20, 19, 23
+    let res_19 = installation_rx.try_recv().unwrap();
+    assert_eq!(res_19.0, 19);
+    let res_20 = installation_rx.try_recv().unwrap();
+    assert_eq!(res_20.0, 20);
+    let res_23 = installation_rx.try_recv().unwrap();
+    assert_eq!(res_23.0, 23);
+    let res_25 = installation_rx.try_recv().unwrap();
+    assert_eq!(res_25.0, 25);
+    // Send feedback for version 25
+    installation_feedback_tx
+        .send(crate::core::StatemapInstallationStatus::Success(res_25.0))
+        .await
+        .unwrap();
+    // Receive the feedback for version 25
+    queue_svc.run_once().await.unwrap();
+    // Send feedback for version 20
+    installation_feedback_tx
+        .send(crate::core::StatemapInstallationStatus::Success(res_20.0))
+        .await
+        .unwrap();
+    // Receive the feedback for version 20
+    queue_svc.run_once().await.unwrap();
+
+    // Run the interval arm
+    queue_svc.handle_interval_arm().await.unwrap();
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 13);
+
+    // After receiving feedback for 25 and 20. Snapshot remains the same.
+    // Sleep to give time for atomics to synchronize.
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    // Assert the snapshot value has not moved yet as we havent received feedback for 19.
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 13);
+    assert_eq!(queue_svc.get_last_saved_snapshot(), 13);
+    // Receive feedback for 19, snapshot internal snapshot moves to 20
+    // Send feedback for version 19
+    installation_feedback_tx
+        .send(crate::core::StatemapInstallationStatus::Success(res_19.0))
+        .await
+        .unwrap();
+    // Receive the feedback for version 19
+    queue_svc.run_once().await.unwrap();
+    // Run interval arm, and internal and callback snapshot will synchornize.
+    // Run the interval arm
+    queue_svc.handle_interval_arm().await.unwrap();
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 13);
+
+    // After receiving feedback 19. Snapshot remains will move to 20.
+    // Sleep to give time for atomics to synchronize.
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    // Assert the snapshot value has not moved yet as we havent received feedback for 19.
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 20);
+    assert_eq!(queue_svc.get_last_saved_snapshot(), 20);
+    //** Receive feedback 23, internal snapshot moves to 25
+
+    // Send feedback for version 23
+    installation_feedback_tx
+        .send(crate::core::StatemapInstallationStatus::Success(res_23.0))
+        .await
+        .unwrap();
+    // Receive the feedback for version 23
+    queue_svc.run_once().await.unwrap();
+    // Run interval arm, and internal and callback snapshot will synchornize.
+    // Run the interval arm
+    queue_svc.handle_interval_arm().await.unwrap();
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 20);
+
+    // Run interval arm, and internal and callback snapshot will synchornize.
+    // After receiving feedback 23. Snapshot will move to 25.
+    // Sleep to give time for atomics to synchronize.
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    // Assert the snapshot value has not moved yet as we havent received feedback for 19.
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 25);
+    assert_eq!(queue_svc.get_last_saved_snapshot(), 25);
+}
+
+// Test effects of snapshot from persistance layer differing from the internal snapshot we track in memory.
+#[tokio::test]
+async fn test_queue_service_last_installed_snapshot_against_internal_snapshot() {
+    let (statemaps_tx, statemaps_rx) = mpsc::channel(50);
+    let (_installation_feedback_tx, installation_feedback_rx) = mpsc::channel(50);
+    let (installation_tx, installation_rx) = mpsc::channel(50);
+    let (replicator_feedback_tx, _) = mpsc::channel(50);
+    let config = StatemapQueueServiceConfig {
+        queue_cleanup_frequency_ms: 30_000, // 30 mins
+        enable_stats: false,
+    };
+
+    let initial_snapshot_version = 10;
+    let snapshot_api: Arc<MockSnapshotApi> = Arc::new(MockSnapshotApi {
+        snapshot: initial_snapshot_version.into(),
+    });
+
+    let mut queue_svc = statemap_queue_service::StatemapQueueService::new(
+        statemaps_rx,
+        installation_tx,
+        installation_feedback_rx,
+        replicator_feedback_tx,
+        snapshot_api.clone(),
+        config,
+        0,
+        None,
+    );
+
+    // Initial snapshot version is 0.
+    assert_eq!(queue_svc.statemap_queue.snapshot_version, 0);
+    // Send updatesnapshot to pick the `initial_snapshot_version`
+    statemaps_tx.send(StatemapQueueChannelMessage::UpdateSnapshot).await.unwrap();
+
+    // Run the service to update the snapshot + prune all items in queue below the snapshot_version.
+    queue_svc.run_once().await.unwrap();
+    assert_eq!(queue_svc.statemap_queue.snapshot_version, initial_snapshot_version);
+    assert_eq!(queue_svc.get_last_saved_snapshot(), initial_snapshot_version);
+
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 0);
+    //***** Initial insert of versions < snapshot from persistance layer.
+    // ** Version 8
+    let install_vers = 8;
+    let safepoint = Some(0);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+
+    // handle `StatemapQueueChannelMessage` for version 8
+    queue_svc.run_once().await.unwrap();
+
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 1);
+
+    // As the version 8 is less than the snapshot version 10, it is already installed, and therefore if we receive again, this can be marked as installed, and not send for installation again.
+    assert_eq!(
+        queue_svc.statemap_queue.queue.get(&install_vers).unwrap().state,
+        StatemapInstallState::Installed
+    );
+
+    //***** Initial insert of versions == snapshot from persistance layer.
+    // ** Version 10
+    let install_vers = 10;
+    let safepoint = Some(0);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+
+    // handle `StatemapQueueChannelMessage` for version 8
+    queue_svc.run_once().await.unwrap();
+
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 2);
+
+    // As the version 10 is equal to the snapshot version 10, it is already installed, and therefore if we receive again, this can be marked as installed, and not send for installation again.
+    assert_eq!(
+        queue_svc.statemap_queue.queue.get(&install_vers).unwrap().state,
+        StatemapInstallState::Installed
+    );
+    // Nothing in the installation channel, as it is immediately marked as installed.
+    assert_eq!(installation_rx.max_capacity() - installation_rx.capacity(), 0);
+
+    //***** Insert of versions > snapshot
+    // ** Version 12
+    let install_vers = 12;
+    let safepoint = Some(0);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+
+    // handle `StatemapQueueChannelMessage` for version 12
+    queue_svc.run_once().await.unwrap();
+
+    // Item will be picked for installation and therefore
+    assert_eq!(queue_svc.statemap_queue.queue.get(&install_vers).unwrap().state, StatemapInstallState::Inflight);
+    // As the version > snapshot and there is no safepoint constraint, it will be send for installation.
+    assert_eq!(installation_rx.max_capacity() - installation_rx.capacity(), 1);
+
+    // Now we have two items in the queue, one is `installed` and the other is `inflight` for installer service to install.
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 3);
+
+    // Run the interval arm, to synchronize.
+    queue_svc.handle_interval_arm().await.unwrap();
+
+    // Version 8 and 10 are pruned as it is already installed.
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 1);
+
+    //***** Insert of versions > snapshot
+    // ** Version 14
+    let install_vers = 14;
+    let safepoint = Some(0);
+    let statemap_item = StatemapItem::new(
+        "TestAction".to_string(),
+        install_vers,
+        json!({"mockPayload": format!("some mock data {install_vers}")}),
+        safepoint,
+    );
+
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .await
+        .unwrap();
+
+    // handle `StatemapQueueChannelMessage` for version 14
+    queue_svc.run_once().await.unwrap();
+
+    // Version 12 and 14 are `inflight` hence, 2 items in queue.
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 2);
+
+    // Scenario where persistance layer was updated to snapshot 13
+    let _ = snapshot_api.update_snapshot(13).await;
+    // Assert next snapshot is 13.
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 13);
+    statemaps_tx.send(StatemapQueueChannelMessage::UpdateSnapshot).await.unwrap();
+
+    // Process the `UpdateSnapshot` message
+    queue_svc.run_once().await.unwrap();
+
+    // Irrespective of the installation feedback for version 12, we will prune it.
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 1);
+
+    // Scenario where persistance layer was updated to snapshot 14
+    let _ = snapshot_api.update_snapshot(14).await;
+    // Assert next snapshot is 14.
+    assert_eq!(snapshot_api.get_snapshot().await.unwrap(), 14);
+    statemaps_tx.send(StatemapQueueChannelMessage::UpdateSnapshot).await.unwrap();
+
+    // Process the `UpdateSnapshot` message
+    queue_svc.run_once().await.unwrap();
+
+    // Irrespective of the installation feedback for version 14, we will prune it. Therefore there are no items in the queue.
+    assert_eq!(queue_svc.statemap_queue.queue.len(), 0);
+    assert_eq!(queue_svc.statemap_queue.snapshot_version, 14)
 }
