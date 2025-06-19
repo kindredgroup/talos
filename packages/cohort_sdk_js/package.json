@@ -36,10 +36,10 @@
     "artifacts": "napi artifacts -d .",
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "postinstall": "scripts/postinstall.sh",
+    "_postinstall": "scripts/postinstall.sh",
     "universal": "napi universal",
     "version": "napi version",
-    "prepack": "scripts/bundle-talos.sh",
+    "_prepack": "scripts/bundle-talos.sh",
     "_prepublishOnly": "napi prepublish -t npm && esbuild --minify --outfile=index.js --allow-overwrite index.js"
   },
   "packageManager": "yarn@3.3.1"
