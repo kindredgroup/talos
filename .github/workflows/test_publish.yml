@@ -141,13 +141,17 @@ jobs:
               fi
             fi
           done
+          echo "Contents of ${{ env.DIR_SDK_JS }} after consolidation:"
+          ls -la ${{ env.DIR_SDK_JS }}/
+          echo "Contents of${{ env.DIR_SDK_JS }}/prebuilds/ after consolidation:"
+          ls -la ${{ env.DIR_SDK_JS }}/prebuilds/
 
       - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Read package version from package.json
-          PACKAGE_VERSION=$(node -p "require('./packages/cohort_sdk_js/package.json').version")
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
 
           # Check if the version contains a hyphen (indicating a pre-release)
           if echo "$PACKAGE_VERSION" | grep -q '-'; then
