@@ -17,21 +17,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-        arch: [x64, arm64] # macOS M1 (arm64) and Intel (x64)
-        include:
-          # Define specific target triples for Linux ARM64 if needed,
-          # though napi-rs often handles musl and gnu variations
-          # without explicit target in simple cases.
-          # For musl, you might need to install `rustup target add aarch64-unknown-linux-musl`
-          # and then use `cargo build --target aarch64-unknown-linux-musl`
-          - os: ubuntu-latest
-            arch: arm64
-            # For cross-compilation on GitHub Actions, you might need to use a QEMU setup.
-            # However, for NAPI-RS, it often provides pre-built toolchains or simplifies the process.
-            # If `napi build --platform` doesn't work out of the box for ARM64 on x64 Linux runner,
-            # you might need a dedicated ARM64 runner or more complex cross-compilation setup.
-            # NAPI-RS handles cross-compilation quite well generally.
+        # os: [ubuntu-latest, macos-latest]
+        # arch: [x64, arm64] # macOS M1 (arm64) and Intel (x64)
+        os: [macos-latest]
+        arch: [arm64] # macOS M1 (arm64) and Intel (x64)
+        # include:
+        #   # Define specific target triples for Linux ARM64 if needed,
+        #   # though napi-rs often handles musl and gnu variations
+        #   # without explicit target in simple cases.
+        #   # For musl, you might need to install `rustup target add aarch64-unknown-linux-musl`
+        #   # and then use `cargo build --target aarch64-unknown-linux-musl`
+        #   - os: ubuntu-latest
+        #     arch: arm64
+        #     # For cross-compilation on GitHub Actions, you might need to use a QEMU setup.
+        #     # However, for NAPI-RS, it often provides pre-built toolchains or simplifies the process.
+        #     # If `napi build --platform` doesn't work out of the box for ARM64 on x64 Linux runner,
+        #     # you might need a dedicated ARM64 runner or more complex cross-compilation setup.
+        #     # NAPI-RS handles cross-compilation quite well generally.
 
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +84,9 @@ jobs:
         with:
           name: prebuilt-binary-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            ${{ env.DIR_SDK_JS }}/prebuilds/ # This is where napi-rs puts the prebuilt binaries
+            ${{ env.DIR_SDK_JS }}/*.node
+            ${{ env.DIR_SDK_JS }}/index.js
+            ${{ env.DIR_SDK_JS }}/index.d.ts
 
   publish:
     name: Publish to NPM
