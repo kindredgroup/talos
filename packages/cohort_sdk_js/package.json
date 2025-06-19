@@ -29,6 +29,7 @@
     "index.d.ts",
     "index.js",
     "cohort_sdk_js*",
+    "prebuilds/",
     "scripts/postinstall.sh"
   ],
   "scripts": {
