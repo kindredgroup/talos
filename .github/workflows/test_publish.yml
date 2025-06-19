@@ -1,4 +1,4 @@
-name: Test publishing cohort_sdk_js
+name: Test publishing cohort_sdk_js pre-built
 
 on:
     push:
