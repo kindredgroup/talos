@@ -99,8 +99,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # Or your desired Node.js version
-          cache: 'npm'
+          node-version: 16 # Or your desired Node.js version
+          # cache: 'npm'
 
       - name: Install dependencies
         run: npm install
@@ -117,6 +117,7 @@ jobs:
         # into the main `prebuilds` directory of your project.
         run: |
           mkdir -p prebuilds
+          ls -la
           for dir in prebuilt-binary-*; do
             if [ -d "$dir/prebuilds" ]; then
               cp -r "$dir/prebuilds/"* prebuilds/
