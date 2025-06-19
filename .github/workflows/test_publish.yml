@@ -146,5 +146,15 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          npm publish --foreground-scripts
+          # Read package version from package.json
+          PACKAGE_VERSION=$(node -p "require('./packages/cohort_sdk_js/package.json').version")
+
+          # Check if the version contains a hyphen (indicating a pre-release)
+          if echo "$PACKAGE_VERSION" | grep -q '-'; then
+            echo "Publishing pre-release version $PACKAGE_VERSION with --tag dev"
+            npm publish --foreground-scripts --tag dev # <-- Add --tag for pre-release versions
+          else
+            echo "Publishing stable version $PACKAGE_VERSION"
+            npm publish --foreground-scripts
+          fi
         working-directory: ${{ env.DIR_SDK_JS }}
