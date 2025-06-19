@@ -119,11 +119,26 @@ jobs:
         # We need to move the contents of `prebuilds` from each artifact
         # into the main `prebuilds` directory of your project.
         run: |
-          mkdir -p prebuilds
+          mkdir -p ${{ env.DIR_SDK_JS }}/prebuilds
           ls -la
           for dir in prebuilt-binary-*; do
-            if [ -d "$dir/prebuilds" ]; then
-              cp -r "$dir/prebuilds/"* prebuilds/
+            if [ -d "$dir" ]; then
+
+              echo "Processing artifact directory: $dir"
+              ls -la
+
+              # Move .node files into the prebuilds folder within the target package
+              find "$dir" -maxdepth 1 -name "*.node" -exec mv {} ${{ env.DIR_SDK_JS }}/prebuilds/ \;
+
+              # Move index.js to the target package directory
+              if [ -f "$dir/index.js" ]; then
+                mv "$dir/index.js" ${{ env.DIR_SDK_JS }}/index.js
+              fi
+
+              # Move index.d.ts to the target package directory
+              if [ -f "$dir/index.d.ts" ]; then
+                mv "$dir/index.d.ts" ${{ env.DIR_SDK_JS }}/index.d.ts
+              fi
             fi
           done
 
@@ -133,3 +148,4 @@ jobs:
         run: |
           npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
           npm publish --foreground-scripts
+        working-directory: ${{ env.DIR_SDK_JS }}
