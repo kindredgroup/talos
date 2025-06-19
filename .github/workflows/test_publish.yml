@@ -1,0 +1,122 @@
+name: Test publishing cohort_sdk_js
+
+on:
+  workflow_dispatch: # Allows manual triggering
+env:
+    REGISTRY: "https://npm.pkg.github.com"
+    SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
+    DIR_SDK_JS: packages/cohort_sdk_js
+    DIR_SDK_JS_CLIENT: cohort_sdk_client
+jobs:
+  prebuild:
+    name: Build for ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        arch: [x64, arm64] # macOS M1 (arm64) and Intel (x64)
+        include:
+          # Define specific target triples for Linux ARM64 if needed,
+          # though napi-rs often handles musl and gnu variations
+          # without explicit target in simple cases.
+          # For musl, you might need to install `rustup target add aarch64-unknown-linux-musl`
+          # and then use `cargo build --target aarch64-unknown-linux-musl`
+          - os: ubuntu-latest
+            arch: arm64
+            # For cross-compilation on GitHub Actions, you might need to use a QEMU setup.
+            # However, for NAPI-RS, it often provides pre-built toolchains or simplifies the process.
+            # If `napi build --platform` doesn't work out of the box for ARM64 on x64 Linux runner,
+            # you might need a dedicated ARM64 runner or more complex cross-compilation setup.
+            # NAPI-RS handles cross-compilation quite well generally.
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 16
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.75
+        with:
+          toolchain: 1.75
+        #   target: ${{ matrix.rust_target }} # Use this if you need specific Rust targets
+
+      - name: Install dependencies
+        run: |-
+            currentDir=$(pwd)
+            cd $DIR_SDK_JS
+            pwd
+            ls -l
+            npm install
+
+      - name: Install NAPI-RS CLI
+        run: npm install -g @napi-rs/cli # Ensure the CLI is available globally or as a dev dependency
+
+      - name: Build NAPI-RS Binary
+        # napi build automatically detects the platform and architecture
+        # and builds the appropriate binary.
+        # It handles `npm_config_target_arch` and `npm_config_target_platform`
+        # for cross-compilation, but for GitHub Actions, the runner's
+        # architecture is usually the target.
+        # NAPI-RS CLI's `--platform` flag is crucial here.
+        # It generates the prebuilt binaries in `target/napi-build/`
+        # and places them in the correct `prebuilds` directory within your package.
+        run: |-
+            currentDir=$(pwd)
+            cd $DIR_SDK_JS
+            pwd
+            ls -l
+            napi build --platform --release
+            ls -l
+
+      - name: Archive prebuilt binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-binary-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            prebuilds/ # This is where napi-rs puts the prebuilt binaries
+
+  publish:
+    name: Publish to NPM
+    needs: prebuild # Ensure all prebuild jobs complete successfully
+    runs-on: ubuntu-latest
+    if: success() && startsWith(github.ref, 'refs/tags/v') # Only publish on successful tag pushes
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20 # Or your desired Node.js version
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Download all prebuilt binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: . # Download artifacts to the root of the workspace
+
+      - name: Move prebuilt binaries to correct location
+        # This step is crucial. The `download-artifact` action downloads each artifact
+        # into its own directory (e.g., `prebuilt-binary-macos-x64/prebuilds/`).
+        # We need to move the contents of `prebuilds` from each artifact
+        # into the main `prebuilds` directory of your project.
+        run: |
+          mkdir -p prebuilds
+          for dir in prebuilt-binary-*; do
+            if [ -d "$dir/prebuilds" ]; then
+              cp -r "$dir/prebuilds/"* prebuilds/
+            fi
+          done
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm config set //registry.npmjs.org/:_authToken $NODE_AUTH_TOKEN
+          npm publish --foreground-scripts
