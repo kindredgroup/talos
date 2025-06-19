@@ -151,19 +151,50 @@ jobs:
           echo "Contents of${{ env.DIR_SDK_JS }}/prebuilds/ after consolidation:"
           ls -la ${{ env.DIR_SDK_JS }}/prebuilds/
 
-      - name: Publish to npm
+      - name: "Extract tag name"
+        shell: bash
+        run: |-
+          echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: "Publish ${{env.DIR_SDK_JS}}to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Read package version from package.json
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          # PACKAGE_VERSION=$(node -p "require('./package.json').version")
 
           # Check if the version contains a hyphen (indicating a pre-release)
-          if echo "$PACKAGE_VERSION" | grep -q '-'; then
-            echo "Publishing pre-release version $PACKAGE_VERSION with --tag dev"
+          if echo "$VERSION_NAME" | grep -q '-'; then
+            echo "Publishing pre-release version $VERSION_NAME with --tag dev"
             npm publish --foreground-scripts --tag dev # <-- Add --tag for pre-release versions
           else
-            echo "Publishing stable version $PACKAGE_VERSION"
+            echo "Publishing stable version $VERSION_NAME"
             npm publish --foreground-scripts
           fi
         working-directory: ${{ env.DIR_SDK_JS }}
+      - name: "Publish ${{env.DIR_SDK_JS_CLIENT}}to npm"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Updating $SDK_JS_PACKAGE_NAME to $VERSION_NAME"
+          rm package-lock.json || true
+          echo "D: npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts"
+          npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts
+          ls -lah node_modules
+          echo ""
+          echo "listing node_modules/@kindredgroup"
+          ls -lah node_modules/@kindredgroup || true
+          echo ""
+          npm run build
+          npm version
+          pwd
+          ls -l
+          # Check if the version contains a hyphen (indicating a pre-release)
+          if echo "$VERSION_NAME" | grep -q '-'; then
+            echo "Publishing pre-release version $VERSION_NAME with --tag dev"
+            npm publish --foreground-scripts --tag dev # <-- Add --tag for pre-release versions
+          else
+            echo "Publishing stable version $VERSION_NAME"
+            npm publish --foreground-scripts
+          fi
+        working-directory: ${{ env.DIR_SDK_JS_CLIENT }}
