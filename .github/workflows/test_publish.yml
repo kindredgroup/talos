@@ -103,7 +103,10 @@ jobs:
           # cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        working-directory: ${{ env.DIR_SDK_JS }}
+        run: |-
+          npm install
+          ls -la
 
       - name: Download all prebuilt binaries
         uses: actions/download-artifact@v4
