@@ -56,10 +56,15 @@ jobs:
             ls -l
             npm install
 
+      - name: Install libsasl2 (Ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libsasl2-dev
+
       - name: Install NAPI-RS CLI
         run: npm install -g @napi-rs/cli # Ensure the CLI is available globally or as a dev dependency
 
       - name: Build NAPI-RS Binary
+        working-directory: ${{ env.DIR_SDK_JS }}
         # napi build automatically detects the platform and architecture
         # and builds the appropriate binary.
         # It handles `npm_config_target_arch` and `npm_config_target_platform`
@@ -69,10 +74,6 @@ jobs:
         # It generates the prebuilt binaries in `target/napi-build/`
         # and places them in the correct `prebuilds` directory within your package.
         run: |-
-            currentDir=$(pwd)
-            cd $DIR_SDK_JS
-            pwd
-            ls -l
             napi build --platform --release
             ls -l
 
@@ -81,7 +82,7 @@ jobs:
         with:
           name: prebuilt-binary-${{ matrix.os }}-${{ matrix.arch }}
           path: |
-            prebuilds/ # This is where napi-rs puts the prebuilt binaries
+            ${{ env.DIR_SDK_JS }}/prebuilds/ # This is where napi-rs puts the prebuilt binaries
 
   publish:
     name: Publish to NPM
