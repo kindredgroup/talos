@@ -12,96 +12,66 @@ env:
     DIR_SDK_JS_CLIENT: cohort_sdk_client
 jobs:
   prebuild:
-    name: Build for ${{ matrix.os }} ${{ matrix.target_arch }}
+    name: Build for ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
-        target_arch: [x64, arm64] # Architecture for the *native module*
-        libc_type: [gnu] # Default to glibc, will override for musl below
-        exclude:
-          # Exclude regular Ubuntu gnu builds - only want Alpine (musl)
-          - os: ubuntu-latest
-            libc_type: gnu
         include:
-          # macOS Intel
-          - os: macos-latest
+          # macOS Intel (native build)
+          - name: macOS-x64
+            os: macos-latest
             target_arch: x64
-            libc_type: gnu # macOS uses Darwin's equivalent of glibc
             rust_target: x86_64-apple-darwin
-            npm_target_platform: darwin-x64 # NAPI-RS specific platform identifier
+            npm_target_platform: darwin-x64
+            use_docker: false
 
-          # macOS ARM64 (M1/Apple Silicon)
-          - os: macos-latest
+          # macOS ARM64 (native build)
+          - name: macOS-arm64
+            os: macos-latest
             target_arch: arm64
-            libc_type: gnu
             rust_target: aarch64-apple-darwin
             npm_target_platform: darwin-arm64
+            use_docker: false
 
-          # # Linux x64 (glibc - standard Ubuntu)
-          # - os: ubuntu-latest
-          #   target_arch: x64
-          #   libc_type: gnu
-          #   rust_target: x86_64-unknown-linux-gnu
-          #   npm_target_platform: linux-x64
-
-          # # Linux ARM64 (glibc - Cross-compile from x64 Ubuntu)
-          # - os: ubuntu-latest
-          #   target_arch: arm64
-          #   libc_type: gnu
-          #   rust_target: aarch64-unknown-linux-gnu
-          #   npm_target_platform: linux-arm64
-
-          # --- Alpine Linux (musl) Targets ---
-          # Linux x64 (musl - Alpine compatible, cross-compile from x64 Ubuntu)
-          - os: ubuntu-latest
+          # Alpine x64 (Docker build)
+          - name: alpine-x64
+            os: ubuntu-latest
             target_arch: x64
-            libc_type: musl # Explicitly mark for musl
             rust_target: x86_64-unknown-linux-musl
-            npm_target_platform: linux-x64-musl # NAPI-RS specific platform identifier for Alpine x64
+            npm_target_platform: linux-x64-musl
+            use_docker: true
+            docker_platform: linux/amd64
 
-          # Linux ARM64 (musl - Alpine compatible, cross-compile from x64 Ubuntu)
-          - os: ubuntu-latest
+          # Alpine ARM64 (Docker build)
+          - name: alpine-arm64
+            os: ubuntu-latest
             target_arch: arm64
-            libc_type: musl # Explicitly mark for musl
             rust_target: aarch64-unknown-linux-musl
-            npm_target_platform: linux-arm64-musl # NAPI-RS specific platform identifier for Alpine ARM64
-
-        # # os: [ubuntu-latest, macos-latest]
-        # # arch: [x64, arm64] # macOS M1 (arm64) and Intel (x64)
-        # os: [macos-latest]
-        # arch: [arm64] # macOS M1 (arm64) and Intel (x64)
-        # # include:
-        # #   # Define specific target triples for Linux ARM64 if needed,
-        # #   # though napi-rs often handles musl and gnu variations
-        # #   # without explicit target in simple cases.
-        # #   # For musl, you might need to install `rustup target add aarch64-unknown-linux-musl`
-        # #   # and then use `cargo build --target aarch64-unknown-linux-musl`
-        # #   - os: ubuntu-latest
-        # #     arch: arm64
-        # #     # For cross-compilation on GitHub Actions, you might need to use a QEMU setup.
-        # #     # However, for NAPI-RS, it often provides pre-built toolchains or simplifies the process.
-        # #     # If `napi build --platform` doesn't work out of the box for ARM64 on x64 Linux runner,
-        # #     # you might need a dedicated ARM64 runner or more complex cross-compilation setup.
-        # #     # NAPI-RS handles cross-compilation quite well generally.
+            npm_target_platform: linux-arm64-musl
+            use_docker: true
+            docker_platform: linux/arm64
 
     steps:
       - uses: actions/checkout@v4
-      - name: Setup Node.js
+
+      # ===== macOS Native Builds =====
+      - name: Setup Node.js (macOS)
+        if: ${{ !matrix.use_docker }}
         uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 22
           check-latest: true
           registry-url: "https://npm.pkg.github.com"
 
-      - name: Install Rust toolchain
+      - name: Install Rust toolchain (macOS)
+        if: ${{ !matrix.use_docker }}
         uses: dtolnay/rust-toolchain@1.75
         with:
-          # toolchain: 1.75
-          target: ${{ matrix.rust_target }} # Use this if you need specific Rust targets
+          target: ${{ matrix.rust_target }}
 
-      - name: Install dependencies
+      - name: Install dependencies (macOS)
+        if: ${{ !matrix.use_docker }}
         run: |-
             currentDir=$(pwd)
             cd $DIR_SDK_JS
@@ -109,56 +79,70 @@ jobs:
             ls -l
             npm install
 
-      - name: Install musl-tools (for musl targets)
-        if: ${{ matrix.libc_type == 'musl' }}
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Install NAPI-RS CLI (macOS)
+        if: ${{ !matrix.use_docker }}
+        run: npm install -g @napi-rs/cli
 
-      - name: Add Rust musl target
-        if: ${{ matrix.libc_type == 'musl' }}
-        run: rustup target add ${{ matrix.rust_target }}
-      - name: Install libsasl2 (Ubuntu only)
-        if: ${{ matrix.os == 'ubuntu-latest' && matrix.libc_type == 'gnu' }}
-        run: sudo apt-get update && sudo apt-get install -y libsasl2-dev
-
-      - name: Install NAPI-RS CLI
-        run: npm install -g @napi-rs/cli # Ensure the CLI is available globally or as a dev dependency
-
-      - name: Build NAPI-RS Binary
+      - name: Build NAPI-RS Binary (macOS)
+        if: ${{ !matrix.use_docker }}
         working-directory: ${{ env.DIR_SDK_JS }}
         run: |-
-            # These environment variables will be available to 'cargo build'
-            # and specifically to the 'build.rs' scripts of rdkafka-sys and sasl2-sys.
-            # The '*' wildcard will be expanded by the shell at runtime, finding the correct hash-named directory.
-
-            # Path where sasl2-sys places its built libraries and headers.
-            # The 'build' subdirectory is unusual, but directly from your error log.
-            # Assuming it's in target/<rust_target>/release/build/sasl2-sys-<hash>/out/install/build
-            export SASL2_INSTALL_LIB_DIR="${{ github.workspace }}/target/${{ matrix.rust_target }}/release/build/sasl2-sys-*/out/install/build"
-            export SASL2_INSTALL_INCLUDE_DIR="${{ github.workspace }}/target/${{ matrix.rust_target }}/release/build/sasl2-sys-*/out/install/include"
-
-            # PKG_CONFIG_PATH: Guides configure scripts to find .pc files for static libraries
-            export PKG_CONFIG_PATH="$SASL2_INSTALL_LIB_DIR/pkgconfig:$PKG_CONFIG_PATH" # Assuming pkgconfig might be in build/pkgconfig
-
-            # LDFLAGS/CFLAGS: Common variables for C/C++ build systems for linker/compiler flags
-            export LDFLAGS="-L$SASL2_INSTALL_LIB_DIR -lsasl2"
-            export CFLAGS="-I$SASL2_INSTALL_INCLUDE_DIR"
-
-            # --- Attempt to force static linking for librdkafka's SASL dependency ---
-            # These are variables librdkafka's configure script might check
-            # to prioritize static linking or use a specific SASL version.
-            export SASL_LIB_STATIC="yes" # Generic static lib hint
-            export SASL_LIB_DIR="$SASL2_INSTALL_LIB_DIR"
-            export SASL_INCLUDE_DIR="$SASL2_INSTALL_INCLUDE_DIR"
-            export WITH_SASL_CYRUS_STATIC="1" # Specific to librdkafka's build logic for Cyrus SASL
-
-            # Set npm_config_target_platform env var for napi build
-            npm_config_target_platform=${{ matrix.npm_target_platform }} napi build --platform --release
+            napi build --platform --release
             ls -l
+
+      # ===== Alpine Docker Builds =====
+      - name: Set up Docker Buildx
+        if: ${{ matrix.use_docker }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build in Alpine Docker
+        if: ${{ matrix.use_docker }}
+        run: |
+          docker run --rm \
+            --platform ${{ matrix.docker_platform }} \
+            -v ${{ github.workspace }}:/workspace \
+            -w /workspace/${{ env.DIR_SDK_JS }} \
+            node:22-alpine \
+            sh -c "
+              echo 'Installing Alpine packages...'
+              apk add --no-cache \
+                rust cargo \
+                python3 make g++ \
+                cmake pkgconfig \
+                cyrus-sasl-dev \
+                openssl-dev \
+                musl-dev \
+                linux-headers
+
+              echo 'Checking Rust version...'
+              rustc --version
+
+              echo 'Installing specific Rust version 1.75...'
+              # Install rustup and set Rust 1.75
+              curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.75.0
+              source ~/.cargo/env
+              rustup target add ${{ matrix.rust_target }}
+
+              echo 'Verifying Rust version...'
+              rustc --version
+
+              echo 'Installing npm dependencies...'
+              npm install
+
+              echo 'Installing NAPI-RS CLI...'
+              npm install -g @napi-rs/cli
+
+              echo 'Building native module...'
+              napi build --platform --release --target ${{ matrix.rust_target }}
+
+              echo 'Build complete, listing files...'
+              ls -la
+            "
 
       - name: Archive prebuilt binaries
         uses: actions/upload-artifact@v4
         with:
-          name: prebuilt-binary-${{ matrix.os }}-${{ matrix.target_arch }}
+          name: prebuilt-binary-${{ matrix.name }}
           path: |
             ${{ env.DIR_SDK_JS }}/*.node
             ${{ env.DIR_SDK_JS }}/index.js
@@ -178,8 +162,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 16 # Or your desired Node.js version
-          # cache: 'npm'
+          node-version: 22 # Updated to Node 22
           check-latest: true
           registry-url: "https://npm.pkg.github.com"
 
@@ -195,17 +178,13 @@ jobs:
           path: . # Download artifacts to the root of the workspace
 
       - name: Move prebuilt binaries to correct location
-        # This step is crucial. The `download-artifact` action downloads each artifact
-        # into its own directory (e.g., `prebuilt-binary-macos-x64/prebuilds/`).
-        # We need to move the contents of `prebuilds` from each artifact
-        # into the main `prebuilds` directory of your project.
         run: |
           ls -la
           for dir in prebuilt-binary-*; do
             if [ -d "$dir" ]; then
 
               echo "Processing artifact directory: $dir"
-              ls -la
+              ls -la "$dir"
 
               # Move .node files into the folder within the target package
               find "$dir" -maxdepth 1 -name "*.node" -exec mv {} ${{ env.DIR_SDK_JS }}/ \;
@@ -233,18 +212,16 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Read package version from package.json
-          # PACKAGE_VERSION=$(node -p "require('./package.json').version")
-
           # Check if the version contains a hyphen (indicating a pre-release)
           if echo "$VERSION_NAME" | grep -q '-'; then
             echo "Publishing pre-release version $VERSION_NAME with --tag dev"
-            npm publish --foreground-scripts --tag dev # <-- Add --tag for pre-release versions
+            npm publish --foreground-scripts --tag dev
           else
             echo "Publishing stable version $VERSION_NAME"
             npm publish --foreground-scripts
           fi
         working-directory: ${{ env.DIR_SDK_JS }}
+
       - name: "Publish ${{env.DIR_SDK_JS_CLIENT}} to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -265,7 +242,7 @@ jobs:
           # Check if the version contains a hyphen (indicating a pre-release)
           if echo "$VERSION_NAME" | grep -q '-'; then
             echo "Publishing pre-release version $VERSION_NAME with --tag dev"
-            npm publish --foreground-scripts --tag dev # <-- Add --tag for pre-release versions
+            npm publish --foreground-scripts --tag dev
           else
             echo "Publishing stable version $VERSION_NAME"
             npm publish --foreground-scripts

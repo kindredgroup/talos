@@ -30,7 +30,7 @@ opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
 opentelemetry = { version = "0.20.0", features = ["metrics"] }
 rand = { version = "0.8.5" }
 
-rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 
 
 rust_decimal = { version = "1.30.0", features = [

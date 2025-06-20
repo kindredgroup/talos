@@ -25,7 +25,7 @@ async-trait = { workspace = true }
 # Futures
 futures-util = "0.3.26"
 # Kafka
-rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 
 #  Ahash hashmap
 ahash = "0.8.3"

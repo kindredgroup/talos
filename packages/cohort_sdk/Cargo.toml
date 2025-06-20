@@ -40,7 +40,7 @@ thiserror = { version = "2.0.11" }
 
 rand = { version = "0.9.0" }
 
-rdkafka = { version = "0.37.0", features = ["sasl", "gssapi-vendored"] }
+rdkafka = { version = "0.37.0", features = ["sasl"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }

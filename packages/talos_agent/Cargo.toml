@@ -7,7 +7,7 @@ edition = "2021"
 
 async-trait = { workspace = true }
 multimap = { version = "0.10.0" }
-rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 strum = { version = "0.27.1", features = ["derive"] }
