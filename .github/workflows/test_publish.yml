@@ -124,7 +124,6 @@ jobs:
         # We need to move the contents of `prebuilds` from each artifact
         # into the main `prebuilds` directory of your project.
         run: |
-          mkdir -p ${{ env.DIR_SDK_JS }}/prebuilds
           ls -la
           for dir in prebuilt-binary-*; do
             if [ -d "$dir" ]; then
@@ -132,8 +131,8 @@ jobs:
               echo "Processing artifact directory: $dir"
               ls -la
 
-              # Move .node files into the prebuilds folder within the target package
-              find "$dir" -maxdepth 1 -name "*.node" -exec mv {} ${{ env.DIR_SDK_JS }}/prebuilds/ \;
+              # Move .node files into the folder within the target package
+              find "$dir" -maxdepth 1 -name "*.node" -exec mv {} ${{ env.DIR_SDK_JS }}/ \;
 
               # Move index.js to the target package directory
               if [ -f "$dir/index.js" ]; then
@@ -148,8 +147,6 @@ jobs:
           done
           echo "Contents of ${{ env.DIR_SDK_JS }} after consolidation:"
           ls -la ${{ env.DIR_SDK_JS }}/
-          echo "Contents of${{ env.DIR_SDK_JS }}/prebuilds/ after consolidation:"
-          ls -la ${{ env.DIR_SDK_JS }}/prebuilds/
 
       - name: "Extract tag name"
         shell: bash
