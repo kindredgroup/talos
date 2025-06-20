@@ -33,7 +33,7 @@ futures-executor = "0.3.28"
 thiserror = { version = "1.0.31" }
 
 # Kafka
-rdkafka = { version = "0.34.0", features = ["sasl"] }
+rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
 
 # Time
 time = { version = "0.3.30" }

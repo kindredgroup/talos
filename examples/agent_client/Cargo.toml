@@ -5,22 +5,22 @@ edition = "2021"
 
 [dev-dependencies]
 
-talos_agent =         { path = "../../packages/talos_agent", version = "0.3.1-dev" }
+talos_agent = { path = "../../packages/talos_agent", version = "0.3.1-dev" }
 talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.3.1-dev" }
-examples_support =    { path = "../../packages/examples_support", version = "0.3.1-dev" }
+examples_support = { path = "../../packages/examples_support", version = "0.3.1-dev" }
 
 async-channel = { version = "1.8.0" }
-async-trait =   { workspace = true }
-env_logger =    { workspace = true }
-log =           { workspace = true }
-rand =          { version = "0.8.5" }
+async-trait = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+rand = { version = "0.8.5" }
 
-rdkafka = { version = "0.34.0", features = ["sasl"]  }
+rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
 
 
-serde =         { workspace = true }
-serde_json =    { workspace = true }
-strum =         { version = "0.25", features = ["derive"] }
-tokio =         { workspace = true, features = ["full"] }
-uuid =          { version = "1.4.1", features = ["v4"] }
-time =          { version = "0.3.17" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+strum = { version = "0.25", features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
+uuid = { version = "1.4.1", features = ["v4"] }
+time = { version = "0.3.17" }

@@ -18,7 +18,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 # Kafka
-rdkafka = { version = "0.34.0", features = ["sasl"] }
+rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
 
 # ahash
 ahash = "0.8.3"

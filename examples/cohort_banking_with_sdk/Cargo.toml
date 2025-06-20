@@ -5,35 +5,41 @@ edition = "2021"
 
 [dev-dependencies]
 
-banking_common =           { path = "../../packages/banking_common", version = "0.3.1-dev" }
-cohort_sdk =               { path = "../../packages/cohort_sdk", version = "0.3.1-dev" }
-cohort_banking =           { path = "../../packages/cohort_banking", version = "0.3.1-dev" }
-examples_support =         { path = "../../packages/examples_support", version = "0.3.1-dev" }
-talos_metrics =            { path = "../../packages/talos_metrics", version = "0.3.1-dev" }
-talos_agent =              { path = "../../packages/talos_agent", version = "0.3.1-dev" }
-talos_certifier =          { path = "../../packages/talos_certifier", version = "0.3.1-dev" }
+banking_common = { path = "../../packages/banking_common", version = "0.3.1-dev" }
+cohort_sdk = { path = "../../packages/cohort_sdk", version = "0.3.1-dev" }
+cohort_banking = { path = "../../packages/cohort_banking", version = "0.3.1-dev" }
+examples_support = { path = "../../packages/examples_support", version = "0.3.1-dev" }
+talos_metrics = { path = "../../packages/talos_metrics", version = "0.3.1-dev" }
+talos_agent = { path = "../../packages/talos_agent", version = "0.3.1-dev" }
+talos_certifier = { path = "../../packages/talos_certifier", version = "0.3.1-dev" }
 talos_certifier_adapters = { path = "../../packages/talos_certifier_adapters", version = "0.3.1-dev" }
-talos_rdkafka_utils =      { path = "../../packages/talos_rdkafka_utils", version = "0.3.1-dev" }
+talos_rdkafka_utils = { path = "../../packages/talos_rdkafka_utils", version = "0.3.1-dev" }
 
 async-trait = { workspace = true }
-env_logger =  { workspace = true }
-log =         { workspace = true }
-serde =       { workspace = true }
-serde_json =  { workspace = true }
-tokio =       { workspace = true, features = ["full"] }
+env_logger = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 
-async-channel =             { version = "1.8.0" }
-deadpool-postgres =         { version = "0.11.0" }
-opentelemetry_api =         { version = "0.20.0", features = ["metrics"] }
-opentelemetry-stdout =      { version = "0.1.0", features = ["metrics"] }
-opentelemetry_sdk =         { version = "0.20.0", features = ["metrics", "rt-tokio"] }
-opentelemetry  =            { version = "0.20.0", features = ["metrics"] }
-rand =                      { version = "0.8.5" }
+async-channel = { version = "1.8.0" }
+deadpool-postgres = { version = "0.11.0" }
+opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
+opentelemetry-stdout = { version = "0.1.0", features = ["metrics"] }
+opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
+opentelemetry = { version = "0.20.0", features = ["metrics"] }
+rand = { version = "0.8.5" }
 
-rdkafka = { version = "0.34.0", features = ["sasl"]  }
+rdkafka = { version = "0.34.0", features = ["sasl", "gssapi-vendored"] }
 
 
-rust_decimal =              { version = "1.30.0", features = ["db-tokio-postgres", "serde-with-float"] }
-time =                      { version = "0.3.17" }
-tokio-postgres =            { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
-uuid =                      { version = "1.4.1", features = ["v4"] }
+rust_decimal = { version = "1.30.0", features = [
+    "db-tokio-postgres",
+    "serde-with-float",
+] }
+time = { version = "0.3.17" }
+tokio-postgres = { version = "0.7", features = [
+    "with-uuid-1",
+    "with-serde_json-1",
+] }
+uuid = { version = "1.4.1", features = ["v4"] }
