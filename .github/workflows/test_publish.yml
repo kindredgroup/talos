@@ -110,7 +110,7 @@ jobs:
             sh -c "
               echo 'Installing Alpine packages...'
               apk add --no-cache \
-                rust cargo \
+                curl \
                 python3 make g++ \
                 cmake pkgconfig \
                 cyrus-sasl-dev \
@@ -118,13 +118,13 @@ jobs:
                 musl-dev \
                 linux-headers
 
-              echo 'Checking Rust version...'
-              rustc --version
+              echo 'Installing Rust 1.75 via rustup...'
+              # Remove system rust first if present
+              apk del rust cargo || true
 
-              echo 'Installing specific Rust version 1.75...'
               # Install rustup and set Rust 1.75
               curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.75.0
-              source ~/.cargo/env
+              . ~/.cargo/env
               rustup target add ${{ matrix.rust_target }}
 
               echo 'Verifying Rust version...'
