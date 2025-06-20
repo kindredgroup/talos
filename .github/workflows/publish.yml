@@ -1,132 +1,318 @@
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # Publishes tagged version to crates.io and to GitHub Packages NPM
+#
+# npm packages with rust dependencies and prebuild for following architectures
+#   - macOs x86
+#   - macOs arm64
+#   - linux alpine x86
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-name: Publish tagged crates and NPMs
-on:
-    push:
-        tags:
-            - 'v[0-9]+.[0-9]+.[0-9]+'
-env:
-    REGISTRY: "https://npm.pkg.github.com"
-    SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
-    DIR_SDK_JS: packages/cohort_sdk_js
-    DIR_SDK_JS_CLIENT: cohort_sdk_client
-jobs:
+  name: Publish tagged crates and NPMs
+
+  on:
+      push:
+          tags:
+              - 'v[0-9]+.[0-9]+.[0-9]+'
+  env:
+      REGISTRY: "https://npm.pkg.github.com"
+      SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
+      DIR_SDK_JS: packages/cohort_sdk_js
+      DIR_SDK_JS_CLIENT: cohort_sdk_client
+  jobs:
+    prebuild:
+      name: Build for ${{ matrix.name }}
+      runs-on: ${{ matrix.os }}
+      strategy:
+        fail-fast: false
+        matrix:
+          include:
+            # macOS Intel (native build)
+            - name: macOS-x64
+              os: macos-latest
+              target_arch: x64
+              rust_target: x86_64-apple-darwin
+              npm_target_platform: darwin-x64
+              use_docker: false
+
+            # macOS ARM64 (native build)
+            - name: macOS-arm64
+              os: macos-latest
+              target_arch: arm64
+              rust_target: aarch64-apple-darwin
+              npm_target_platform: darwin-arm64
+              use_docker: false
+
+            # Alpine x64 (Docker build)
+            - name: alpine-x64
+              os: ubuntu-latest
+              target_arch: x64
+              rust_target: x86_64-unknown-linux-musl
+              npm_target_platform: linux-x64-musl
+              use_docker: true
+              docker_platform: linux/amd64
+
+            # Alpine ARM64 (Docker build)
+            # - name: alpine-arm64
+            #   os: ubuntu-latest
+            #   target_arch: arm64
+            #   rust_target: aarch64-unknown-linux-musl
+            #   npm_target_platform: linux-arm64-musl
+            #   use_docker: true
+            #   docker_platform: linux/arm64
+
+      steps:
+        - uses: actions/checkout@v4
+
+        # ===== macOS Native Builds =====
+        - name: Setup Node.js (macOS)
+          if: ${{ !matrix.use_docker }}
+          uses: actions/setup-node@v4
+          with:
+            node-version: 22
+            check-latest: true
+            registry-url: "https://npm.pkg.github.com"
+
+        - name: Install Rust toolchain (macOS)
+          if: ${{ !matrix.use_docker }}
+          uses: dtolnay/rust-toolchain@1.75
+          with:
+            target: ${{ matrix.rust_target }}
+
+        - name: Install dependencies (macOS)
+          if: ${{ !matrix.use_docker }}
+          run: |-
+              currentDir=$(pwd)
+              cd $DIR_SDK_JS
+              pwd
+              ls -l
+              npm install
+
+        - name: Install NAPI-RS CLI (macOS)
+          if: ${{ !matrix.use_docker }}
+          run: npm install -g @napi-rs/cli
+
+        - name: Build NAPI-RS Binary (macOS)
+          if: ${{ !matrix.use_docker }}
+          working-directory: ${{ env.DIR_SDK_JS }}
+          run: |-
+              napi build --platform --release
+              ls -l
+
+        # ===== Alpine Docker Builds =====
+        - name: Set up QEMU for multi-platform builds
+          if: ${{ matrix.use_docker }}
+          uses: docker/setup-qemu-action@v3
+
+        - name: Set up Docker Buildx
+          if: ${{ matrix.use_docker }}
+          uses: docker/setup-buildx-action@v3
+
+        - name: Build in Alpine Docker
+          if: ${{ matrix.use_docker }}
+          run: |
+            docker run --rm \
+              --platform ${{ matrix.docker_platform }} \
+              -v ${{ github.workspace }}:/workspace \
+              -w /workspace/${{ env.DIR_SDK_JS }} \
+              node:22-alpine \
+              sh -c "
+                echo 'Installing Alpine packages...'
+                set -e && \
+                apk add --no-cache \
+                  bash \
+                  curl \
+                  python3 make g++ \
+                  cmake pkgconfig \
+                  cyrus-sasl-dev \
+                  openssl-dev \
+                  musl-dev \
+                  linux-headers
+
+                echo 'Installing Rust 1.75 via rustup...'
+                # Remove system rust first if present
+                apk del rust cargo || true
+
+                # Install rustup and set Rust 1.75
+                curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.75.0
+                . ~/.cargo/env
+                rustup target add ${{ matrix.rust_target }}
+
+                echo 'Verifying Rust version...'
+                rustc --version
+
+                echo 'Installing npm dependencies...'
+                npm install
+
+                echo 'Installing NAPI-RS CLI...'
+                npm install -g @napi-rs/cli
+
+                echo 'Building native module...'
+                napi build --platform --release --target ${{ matrix.rust_target }}
+
+                echo 'Build complete, listing files...'
+                ls -la
+              "
+
+        - name: Archive prebuilt binaries
+          uses: actions/upload-artifact@v4
+          with:
+            name: prebuilt-binary-${{ matrix.name }}
+            path: |
+              ${{ env.DIR_SDK_JS }}/*.node
+              ${{ env.DIR_SDK_JS }}/index.js
+              ${{ env.DIR_SDK_JS }}/index.d.ts
+
     publish:
-        name: Publish crates
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v3
-            - uses: dtolnay/rust-toolchain@1.75.0
-              with:
-                  toolchain: 1.75.0
-            - run: scripts/ubuntu-setup.sh
-            - run: rustup component add rustfmt clippy
-            - name: Setup node
-              uses: actions/setup-node@v3
-              with:
-                node-version: 16
-                check-latest: true
-                registry-url: "https://npm.pkg.github.com"
+      name: Publish to NPM
+      needs: prebuild # Ensure all prebuild jobs complete successfully
+      runs-on: ubuntu-latest
+      if: success() && startsWith(github.ref, 'refs/tags/v') # Only publish on successful tag pushes
+      permissions:
+        contents: read
+        packages: write # Crucial for publishing to GitHub Packages
 
-            - name: "Extract tag name"
-              shell: bash
-              run: |-
-                echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      steps:
+        - uses: actions/checkout@v4
+        - name: Setup Node.js
+          uses: actions/setup-node@v4
+          with:
+            node-version: 22 # Updated to Node 22
+            check-latest: true
+            registry-url: "https://npm.pkg.github.com"
 
-            - name: "Publish ${{ env.DIR_SDK_JS }} NPM"
-              shell: bash
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |-
-                currentDir=$(pwd)
-                cd $DIR_SDK_JS
-                pwd
-                ls -l
-                echo "Current version is"
-                npm version
-                npm publish --foreground-scripts
-                echo ""
+        - name: Install dependencies
+          working-directory: ${{ env.DIR_SDK_JS }}
+          run: |-
+            npm install
+            ls -la
 
-            - name: "Publish ${{ env.DIR_SDK_JS_CLIENT }} NPM"
-              shell: bash
-              env:
-                  NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |-
-                currentDir=$(pwd)
-                cd $DIR_SDK_JS_CLIENT
-                pwd
-                ls -l
-                echo "Current version is"
-                echo "Updating $SDK_JS_PACKAGE_NAME to $VERSION_NAME"
-                rm package-lock.json || true
-                echo "D: npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts"
-                npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts
-                ls -lah node_modules
-                echo ""
-                echo "listing node_modules/@kindredgroup"
-                ls -lah node_modules/@kindredgroup || true
-                echo ""
-                npm run build
-                npm version
-                pwd
-                ls -l
-                npm publish --foreground-scripts
-                echo ""
-                cd $currentDir
+        - name: Download all prebuilt binaries
+          uses: actions/download-artifact@v4
+          with:
+            path: . # Download artifacts to the root of the workspace
 
-            - name: Publish talos_metrics@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_metrics
+        - name: Move prebuilt binaries to correct location
+          run: |
+            ls -la
+            for dir in prebuilt-binary-*; do
+              if [ -d "$dir" ]; then
 
-            - name: Publish talos_suffix@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_suffix
+                echo "Processing artifact directory: $dir"
+                ls -la "$dir"
 
-            - name: Publish talos_common_utils@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_common_utils
+                # Move .node files into the folder within the target package
+                find "$dir" -maxdepth 1 -name "*.node" -exec mv {} ${{ env.DIR_SDK_JS }}/ \;
 
-            - name: Publish talos_certifier@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_certifier
+                # Move index.js to the target package directory
+                if [ -f "$dir/index.js" ]; then
+                  mv "$dir/index.js" ${{ env.DIR_SDK_JS }}/index.js
+                fi
 
-            - name: Publish talos_rdkafka_utils@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_rdkafka_utils
+                # Move index.d.ts to the target package directory
+                if [ -f "$dir/index.d.ts" ]; then
+                  mv "$dir/index.d.ts" ${{ env.DIR_SDK_JS }}/index.d.ts
+                fi
+              fi
+            done
+            echo "Contents of ${{ env.DIR_SDK_JS }} after consolidation:"
+            ls -la ${{ env.DIR_SDK_JS }}/
 
-            - name: Publish talos_certifier_adapters@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_certifier_adapters
-          # Talos messenger core
-            - name: Publish talos_messenger_core@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_messenger_core
-          # Talos messenger actions
-            - name: Publish talos_messenger_actions@ ${{ env.VERSION_NAME }} crate
-              shell: bash
-              env:
-                  CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
-              run: |-
-                cargo publish -v -p talos_messenger_actions
+        - name: "Extract tag name"
+          shell: bash
+          run: |-
+            echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+        - name: "Publish ${{env.DIR_SDK_JS}} to npm"
+          env:
+            NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          run: |
+            # Check if the version contains a hyphen (indicating a pre-release)
+            if echo "$VERSION_NAME" | grep -q '-'; then
+              echo "Publishing pre-release version $VERSION_NAME with --tag dev"
+              npm publish --foreground-scripts --tag dev
+            else
+              echo "Publishing stable version $VERSION_NAME"
+              npm publish --foreground-scripts
+            fi
+          working-directory: ${{ env.DIR_SDK_JS }}
+
+        - name: "Publish ${{env.DIR_SDK_JS_CLIENT}} to npm"
+          env:
+            NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          run: |
+            echo "Updating $SDK_JS_PACKAGE_NAME to $VERSION_NAME"
+            rm package-lock.json || true
+            echo "D: npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts"
+            npm install $SDK_JS_PACKAGE_NAME@$VERSION_NAME --foreground-scripts
+            ls -lah node_modules
+            echo ""
+            echo "listing node_modules/@kindredgroup"
+            ls -lah node_modules/@kindredgroup || true
+            echo ""
+            npm run build
+            npm version
+            pwd
+            ls -l
+            # Check if the version contains a hyphen (indicating a pre-release)
+            if echo "$VERSION_NAME" | grep -q '-'; then
+              echo "Publishing pre-release version $VERSION_NAME with --tag dev"
+              npm publish --foreground-scripts --tag dev
+            else
+              echo "Publishing stable version $VERSION_NAME"
+              npm publish --foreground-scripts
+            fi
+          working-directory: ${{ env.DIR_SDK_JS_CLIENT }}
+        - name: Publish talos_metrics@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_metrics
+
+        - name: Publish talos_suffix@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_suffix
+
+        - name: Publish talos_common_utils@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_common_utils
+
+        - name: Publish talos_certifier@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_certifier
+
+        - name: Publish talos_rdkafka_utils@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_rdkafka_utils
+
+        - name: Publish talos_certifier_adapters@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_certifier_adapters
+      # Talos messenger core
+        - name: Publish talos_messenger_core@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_messenger_core
+      # Talos messenger actions
+        - name: Publish talos_messenger_actions@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_messenger_actions
