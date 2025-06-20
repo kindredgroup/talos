@@ -91,6 +91,10 @@ jobs:
             ls -l
 
       # ===== Alpine Docker Builds =====
+      - name: Set up QEMU for multi-platform builds
+        if: ${{ matrix.use_docker }}
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         if: ${{ matrix.use_docker }}
         uses: docker/setup-buildx-action@v3
