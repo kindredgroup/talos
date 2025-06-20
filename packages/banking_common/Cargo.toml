@@ -1,6 +1,6 @@
 [package]
 name = "banking_common"
-version = "0.3.2"
+version = "0.3.3-dev"
 edition = "2021"
 
 [dependencies]
@@ -19,4 +19,4 @@ tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_j
 deadpool =          { version = "0.10.0" }
 deadpool-postgres = { version = "0.11.0" }
 
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.2" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.3-dev" }
