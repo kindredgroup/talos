@@ -17,23 +17,71 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # os: [ubuntu-latest, macos-latest]
-        # arch: [x64, arm64] # macOS M1 (arm64) and Intel (x64)
-        os: [macos-latest]
-        arch: [arm64] # macOS M1 (arm64) and Intel (x64)
-        # include:
-        #   # Define specific target triples for Linux ARM64 if needed,
-        #   # though napi-rs often handles musl and gnu variations
-        #   # without explicit target in simple cases.
-        #   # For musl, you might need to install `rustup target add aarch64-unknown-linux-musl`
-        #   # and then use `cargo build --target aarch64-unknown-linux-musl`
-        #   - os: ubuntu-latest
-        #     arch: arm64
-        #     # For cross-compilation on GitHub Actions, you might need to use a QEMU setup.
-        #     # However, for NAPI-RS, it often provides pre-built toolchains or simplifies the process.
-        #     # If `napi build --platform` doesn't work out of the box for ARM64 on x64 Linux runner,
-        #     # you might need a dedicated ARM64 runner or more complex cross-compilation setup.
-        #     # NAPI-RS handles cross-compilation quite well generally.
+        os: [macos-latest, ubuntu-latest]
+        target_arch: [x64, arm64] # Architecture for the *native module*
+        libc_type: [gnu] # Default to glibc, will override for musl below
+
+        include:
+          # macOS Intel
+          - os: macos-latest
+            target_arch: x64
+            libc_type: gnu # macOS uses Darwin's equivalent of glibc
+            rust_target: x86_64-apple-darwin
+            npm_target_platform: darwin-x64 # NAPI-RS specific platform identifier
+
+          # macOS ARM64 (M1/Apple Silicon)
+          - os: macos-latest
+            target_arch: arm64
+            libc_type: gnu
+            rust_target: aarch64-apple-darwin
+            npm_target_platform: darwin-arm64
+
+          # # Linux x64 (glibc - standard Ubuntu)
+          # - os: ubuntu-latest
+          #   target_arch: x64
+          #   libc_type: gnu
+          #   rust_target: x86_64-unknown-linux-gnu
+          #   npm_target_platform: linux-x64
+
+          # # Linux ARM64 (glibc - Cross-compile from x64 Ubuntu)
+          # - os: ubuntu-latest
+          #   target_arch: arm64
+          #   libc_type: gnu
+          #   rust_target: aarch64-unknown-linux-gnu
+          #   npm_target_platform: linux-arm64
+
+          # --- Alpine Linux (musl) Targets ---
+          # Linux x64 (musl - Alpine compatible, cross-compile from x64 Ubuntu)
+          - os: ubuntu-latest
+            target_arch: x64
+            libc_type: musl # Explicitly mark for musl
+            rust_target: x86_64-unknown-linux-musl
+            npm_target_platform: linux-x64-musl # NAPI-RS specific platform identifier for Alpine x64
+
+          # Linux ARM64 (musl - Alpine compatible, cross-compile from x64 Ubuntu)
+          - os: ubuntu-latest
+            target_arch: arm64
+            libc_type: musl # Explicitly mark for musl
+            rust_target: aarch64-unknown-linux-musl
+            npm_target_platform: linux-arm64-musl # NAPI-RS specific platform identifier for Alpine ARM64
+
+        # # os: [ubuntu-latest, macos-latest]
+        # # arch: [x64, arm64] # macOS M1 (arm64) and Intel (x64)
+        # os: [macos-latest]
+        # arch: [arm64] # macOS M1 (arm64) and Intel (x64)
+        # # include:
+        # #   # Define specific target triples for Linux ARM64 if needed,
+        # #   # though napi-rs often handles musl and gnu variations
+        # #   # without explicit target in simple cases.
+        # #   # For musl, you might need to install `rustup target add aarch64-unknown-linux-musl`
+        # #   # and then use `cargo build --target aarch64-unknown-linux-musl`
+        # #   - os: ubuntu-latest
+        # #     arch: arm64
+        # #     # For cross-compilation on GitHub Actions, you might need to use a QEMU setup.
+        # #     # However, for NAPI-RS, it often provides pre-built toolchains or simplifies the process.
+        # #     # If `napi build --platform` doesn't work out of the box for ARM64 on x64 Linux runner,
+        # #     # you might need a dedicated ARM64 runner or more complex cross-compilation setup.
+        # #     # NAPI-RS handles cross-compilation quite well generally.
 
     steps:
       - uses: actions/checkout@v4
@@ -47,8 +95,8 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.75
         with:
-          toolchain: 1.75
-        #   target: ${{ matrix.rust_target }} # Use this if you need specific Rust targets
+          # toolchain: 1.75
+          target: ${{ matrix.rust_target }} # Use this if you need specific Rust targets
 
       - name: Install dependencies
         run: |-
@@ -58,8 +106,15 @@ jobs:
             ls -l
             npm install
 
+      - name: Install musl-tools (for musl targets)
+        if: ${{ matrix.libc_type == 'musl' }}
+        run: sudo apt-get update && sudo apt-get install -y musl-tools libsasl2-dev
+
+      - name: Add Rust musl target
+        if: ${{ matrix.libc_type == 'musl' }}
+        run: rustup target add ${{ matrix.rust_target }}
       - name: Install libsasl2 (Ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.libc_type == 'gnu' }}
         run: sudo apt-get update && sudo apt-get install -y libsasl2-dev
 
       - name: Install NAPI-RS CLI
@@ -76,13 +131,17 @@ jobs:
         # It generates the prebuilt binaries in `target/napi-build/`
         # and places them in the correct `prebuilds` directory within your package.
         run: |-
-            napi build --platform --release
+            if [ "${{ matrix.libc_type }}" == "musl" ]; then
+              napi build --platform --release --target ${{ matrix.rust_target }}
+            else
+              napi build --platform --release
+            fi
             ls -l
 
       - name: Archive prebuilt binaries
         uses: actions/upload-artifact@v4
         with:
-          name: prebuilt-binary-${{ matrix.os }}-${{ matrix.arch }}
+          name: prebuilt-binary-${{ matrix.os }}-${{ matrix.target_arch }}
           path: |
             ${{ env.DIR_SDK_JS }}/*.node
             ${{ env.DIR_SDK_JS }}/index.js
