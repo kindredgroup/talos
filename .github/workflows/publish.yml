@@ -161,7 +161,7 @@
               ${{ env.DIR_SDK_JS }}/index.js
               ${{ env.DIR_SDK_JS }}/index.d.ts
 
-    publish:
+    publish-npm:
       name: Publish to NPM
       needs: prebuild # Ensure all prebuild jobs complete successfully
       runs-on: ubuntu-latest
@@ -261,6 +261,23 @@
               npm publish --foreground-scripts
             fi
           working-directory: ${{ env.DIR_SDK_JS_CLIENT }}
+
+
+    publish-crates:
+      name: Publish to Crates.io
+      needs: publish-npm # Ensure all npm packages are published
+      runs-on: ubuntu-latest
+      if: success() && startsWith(github.ref, 'refs/tags/v') # Only publish on successful tag pushes
+      steps:
+        - uses: actions/checkout@v4
+        - uses: dtolnay/rust-toolchain@1.75.0
+        - run: scripts/ubuntu-setup.sh
+        - run: rustup component add rustfmt clippy
+        - name: "Extract tag name"
+          shell: bash
+          run: |-
+            echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
         - name: Publish talos_metrics@ ${{ env.VERSION_NAME }} crate
           shell: bash
           env:
