@@ -109,7 +109,9 @@ jobs:
             node:22-alpine \
             sh -c "
               echo 'Installing Alpine packages...'
+              set -e && \
               apk add --no-cache \
+                bash \
                 curl \
                 python3 make g++ \
                 cmake pkgconfig \
