@@ -126,31 +126,30 @@ jobs:
       - name: Build NAPI-RS Binary
         working-directory: ${{ env.DIR_SDK_JS }}
         run: |-
-            # Find the actual build output directory for sasl2-sys for the current run.
-            # This path contains the statically built libsasl2 from gssapi-vendored.
-            # Use `github.workspace` to ensure absolute path search within the runner.
-            SASL2_SYS_BUILD_ROOT=$(find ${{ github.workspace }}/target/ -maxdepth 5 -type d -name "sasl2-sys-*" -path "*/build/sasl2-sys-*/out" | head -n 1)
+            # These environment variables will be available to 'cargo build'
+            # and specifically to the 'build.rs' scripts of rdkafka-sys and sasl2-sys.
+            # The '*' wildcard will be expanded by the shell at runtime, finding the correct hash-named directory.
 
-            if [ -z "$SASL2_SYS_BUILD_ROOT" ]; then
-                echo "Error: Could not find sasl2-sys build directory. This is critical for librdkafka SASL."
-                exit 1 # Fail the job if we can't find the vendored SASL
-            fi
+            # Path where sasl2-sys places its built libraries and headers.
+            # The 'build' subdirectory is unusual, but directly from your error log.
+            # Assuming it's in target/<rust_target>/release/build/sasl2-sys-<hash>/out/install/build
+            export SASL2_INSTALL_LIB_DIR="${{ github.workspace }}/target/${{ matrix.rust_target }}/release/build/sasl2-sys-*/out/install/build"
+            export SASL2_INSTALL_INCLUDE_DIR="${{ github.workspace }}/target/${{ matrix.rust_target }}/release/build/sasl2-sys-*/out/install/include"
 
-            SASL2_SYS_INSTALL_DIR="$SASL2_SYS_BUILD_ROOT/install"
+            # PKG_CONFIG_PATH: Guides configure scripts to find .pc files for static libraries
+            export PKG_CONFIG_PATH="$SASL2_INSTALL_LIB_DIR/pkgconfig:$PKG_CONFIG_PATH" # Assuming pkgconfig might be in build/pkgconfig
 
-            echo "Found sasl2-sys install directory: $SASL2_SYS_INSTALL_DIR"
+            # LDFLAGS/CFLAGS: Common variables for C/C++ build systems for linker/compiler flags
+            export LDFLAGS="-L$SASL2_INSTALL_LIB_DIR -lsasl2"
+            export CFLAGS="-I$SASL2_INSTALL_INCLUDE_DIR"
 
-            # --- CRITICAL ENVIRONMENT VARIABLES FOR LIBRDKAFKA'S CONFIGURE ---
-            # These variables tell librdkafka's configure script where to find
-            # the statically built libsasl2 and its headers.
-
-            # PKG_CONFIG_PATH: Helps configure find .pc files for static libs
-            export PKG_CONFIG_PATH="$SASL2_SYS_INSTALL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
-
-            # LDFLAGS/CFLAGS: Used by many build systems for linker/compiler flags
-            # -L for library path, -l for library name
-            export LDFLAGS="-L$SASL2_SYS_INSTALL_DIR/lib -lsasl2"
-            export CFLAGS="-I$SASL2_SYS_INSTALL_DIR/include"
+            # --- Attempt to force static linking for librdkafka's SASL dependency ---
+            # These are variables librdkafka's configure script might check
+            # to prioritize static linking or use a specific SASL version.
+            export SASL_LIB_STATIC="yes" # Generic static lib hint
+            export SASL_LIB_DIR="$SASL2_INSTALL_LIB_DIR"
+            export SASL_INCLUDE_DIR="$SASL2_INSTALL_INCLUDE_DIR"
+            export WITH_SASL_CYRUS_STATIC="1" # Specific to librdkafka's build logic for Cyrus SASL
 
             # Set npm_config_target_platform env var for napi build
             npm_config_target_platform=${{ matrix.npm_target_platform }} napi build --platform --release
