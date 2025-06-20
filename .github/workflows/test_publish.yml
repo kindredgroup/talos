@@ -1,10 +1,17 @@
-name: Test publishing cohort_sdk_js pre-built
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Publishes tagged version to crates.io and to GitHub Packages NPM
+#
+# npm packages with rust dependencies and prebuild for following architectures
+#   - macOs x86
+#   - macOs arm64
+#   - linux alpine x86
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+name: Publish tagged crates and NPMs
 
 on:
     push:
         tags:
-            - 'v[0-9]+.[0-9]+.[0-9]+-gk.*'
-    workflow_dispatch: # Allows manual triggering
+            - 'v[0-9]+.[0-9]+.[0-9]+'
 env:
     REGISTRY: "https://npm.pkg.github.com"
     SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
@@ -254,3 +261,58 @@ jobs:
             npm publish --foreground-scripts
           fi
         working-directory: ${{ env.DIR_SDK_JS_CLIENT }}
+      - name: Publish talos_metrics@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_metrics
+
+      - name: Publish talos_suffix@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_suffix
+
+      - name: Publish talos_common_utils@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_common_utils
+
+      - name: Publish talos_certifier@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_certifier
+
+      - name: Publish talos_rdkafka_utils@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_rdkafka_utils
+
+      - name: Publish talos_certifier_adapters@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_certifier_adapters
+    # Talos messenger core
+      - name: Publish talos_messenger_core@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_messenger_core
+    # Talos messenger actions
+      - name: Publish talos_messenger_actions@ ${{ env.VERSION_NAME }} crate
+        shell: bash
+        env:
+            CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+        run: |-
+          cargo publish -v -p talos_messenger_actions
