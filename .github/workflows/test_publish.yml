@@ -20,7 +20,10 @@ jobs:
         os: [macos-latest, ubuntu-latest]
         target_arch: [x64, arm64] # Architecture for the *native module*
         libc_type: [gnu] # Default to glibc, will override for musl below
-
+        exclude:
+          # Exclude regular Ubuntu gnu builds - only want Alpine (musl)
+          - os: ubuntu-latest
+            libc_type: gnu
         include:
           # macOS Intel
           - os: macos-latest
@@ -123,7 +126,34 @@ jobs:
       - name: Build NAPI-RS Binary
         working-directory: ${{ env.DIR_SDK_JS }}
         run: |-
-            napi build --platform --release
+            # Find the actual build output directory for sasl2-sys for the current run.
+            # This path contains the statically built libsasl2 from gssapi-vendored.
+            # Use `github.workspace` to ensure absolute path search within the runner.
+            SASL2_SYS_BUILD_ROOT=$(find ${{ github.workspace }}/target/ -maxdepth 5 -type d -name "sasl2-sys-*" -path "*/build/sasl2-sys-*/out" | head -n 1)
+
+            if [ -z "$SASL2_SYS_BUILD_ROOT" ]; then
+                echo "Error: Could not find sasl2-sys build directory. This is critical for librdkafka SASL."
+                exit 1 # Fail the job if we can't find the vendored SASL
+            fi
+
+            SASL2_SYS_INSTALL_DIR="$SASL2_SYS_BUILD_ROOT/install"
+
+            echo "Found sasl2-sys install directory: $SASL2_SYS_INSTALL_DIR"
+
+            # --- CRITICAL ENVIRONMENT VARIABLES FOR LIBRDKAFKA'S CONFIGURE ---
+            # These variables tell librdkafka's configure script where to find
+            # the statically built libsasl2 and its headers.
+
+            # PKG_CONFIG_PATH: Helps configure find .pc files for static libs
+            export PKG_CONFIG_PATH="$SASL2_SYS_INSTALL_DIR/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+            # LDFLAGS/CFLAGS: Used by many build systems for linker/compiler flags
+            # -L for library path, -l for library name
+            export LDFLAGS="-L$SASL2_SYS_INSTALL_DIR/lib -lsasl2"
+            export CFLAGS="-I$SASL2_SYS_INSTALL_DIR/include"
+
+            # Set npm_config_target_platform env var for napi build
+            npm_config_target_platform=${{ matrix.npm_target_platform }} napi build --platform --release
             ls -l
 
       - name: Archive prebuilt binaries
