@@ -12,7 +12,7 @@ env:
     DIR_SDK_JS_CLIENT: cohort_sdk_client
 jobs:
   prebuild:
-    name: Build for ${{ matrix.os }} ${{ matrix.arch }}
+    name: Build for ${{ matrix.os }} ${{ matrix.target_arch }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -36,19 +36,19 @@ jobs:
             rust_target: aarch64-apple-darwin
             npm_target_platform: darwin-arm64
 
-          # # Linux x64 (glibc - standard Ubuntu)
-          # - os: ubuntu-latest
-          #   target_arch: x64
-          #   libc_type: gnu
-          #   rust_target: x86_64-unknown-linux-gnu
-          #   npm_target_platform: linux-x64
+          # Linux x64 (glibc - standard Ubuntu)
+          - os: ubuntu-latest
+            target_arch: x64
+            libc_type: gnu
+            rust_target: x86_64-unknown-linux-gnu
+            npm_target_platform: linux-x64
 
-          # # Linux ARM64 (glibc - Cross-compile from x64 Ubuntu)
-          # - os: ubuntu-latest
-          #   target_arch: arm64
-          #   libc_type: gnu
-          #   rust_target: aarch64-unknown-linux-gnu
-          #   npm_target_platform: linux-arm64
+          # Linux ARM64 (glibc - Cross-compile from x64 Ubuntu)
+          - os: ubuntu-latest
+            target_arch: arm64
+            libc_type: gnu
+            rust_target: aarch64-unknown-linux-gnu
+            npm_target_platform: linux-arm64
 
           # --- Alpine Linux (musl) Targets ---
           # Linux x64 (musl - Alpine compatible, cross-compile from x64 Ubuntu)
@@ -108,7 +108,7 @@ jobs:
 
       - name: Install musl-tools (for musl targets)
         if: ${{ matrix.libc_type == 'musl' }}
-        run: sudo apt-get update && sudo apt-get install -y musl-tools libsasl2-dev
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Add Rust musl target
         if: ${{ matrix.libc_type == 'musl' }}
@@ -122,20 +122,8 @@ jobs:
 
       - name: Build NAPI-RS Binary
         working-directory: ${{ env.DIR_SDK_JS }}
-        # napi build automatically detects the platform and architecture
-        # and builds the appropriate binary.
-        # It handles `npm_config_target_arch` and `npm_config_target_platform`
-        # for cross-compilation, but for GitHub Actions, the runner's
-        # architecture is usually the target.
-        # NAPI-RS CLI's `--platform` flag is crucial here.
-        # It generates the prebuilt binaries in `target/napi-build/`
-        # and places them in the correct `prebuilds` directory within your package.
         run: |-
-            if [ "${{ matrix.libc_type }}" == "musl" ]; then
-              napi build --platform --release --target ${{ matrix.rust_target }}
-            else
-              napi build --platform --release
-            fi
+            napi build --platform --release
             ls -l
 
       - name: Archive prebuilt binaries
@@ -212,7 +200,7 @@ jobs:
         run: |-
           echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
-      - name: "Publish ${{env.DIR_SDK_JS}}to npm"
+      - name: "Publish ${{env.DIR_SDK_JS}} to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -228,7 +216,7 @@ jobs:
             npm publish --foreground-scripts
           fi
         working-directory: ${{ env.DIR_SDK_JS }}
-      - name: "Publish ${{env.DIR_SDK_JS_CLIENT}}to npm"
+      - name: "Publish ${{env.DIR_SDK_JS_CLIENT}} to npm"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
