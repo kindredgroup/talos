@@ -5,6 +5,7 @@ mod models;
 pub mod otel;
 mod services;
 mod suffix;
+pub mod suffix_check;
 mod talos_cohort_replicator;
 pub mod utils;
 
