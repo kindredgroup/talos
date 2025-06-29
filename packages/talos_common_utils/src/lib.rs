@@ -1,3 +1,4 @@
+pub mod backpressure;
 pub mod env;
 pub mod otel;
 pub mod sync;

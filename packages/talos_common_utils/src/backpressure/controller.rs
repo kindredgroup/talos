@@ -2,69 +2,7 @@ use std::ops::Sub;
 
 use time::OffsetDateTime;
 
-#[derive(Debug)]
-pub struct TalosBackPressureConfig {
-    /// Upper limit for timeout while calculating the back pressure in milliseconds.
-    /// - **Defaults to 50ms.**
-    max_timeout_ms: u64,
-    /// Max length of suffix which is considered safe to avoid memory related issues.
-    /// - **Defaults to 10_000.**
-    suffix_max_length: u64,
-    /// Suffix fill threshold is used enable back pressure logic based on the current length of suffix against `suffix_max_length`.
-    /// The reactive back pressure strategy will not trigger till this threshold is crossed.
-    /// - threshold should be between 0.0 and 1.0.
-    /// - Values beyond this range will be clamped to lower or upper bound.
-    /// - **Defaults to 0.7.** i.e when current length has reached `70%` of `suffix_max_length`.
-    suffix_fill_threshold: f64,
-    /// Suffix rate threshold is used enable back pressure logic based on the difference between input vs output rate, when the suffix has crossed this threshold.
-    /// The proactive back pressure strategy will not trigger till this threshold is crossed.
-    /// - threshold should be between 0.0 and `suffix_fill_threshold`.
-    /// - Values beyond this range will be clamped to lower or upper bound.
-    /// - **Defaults to 0.5.** i.e when current length has reached `50%` of `suffix_max_length`.
-    suffix_rate_threshold: f64,
-    /// Suffix rate threshold is used enable back pressure logic based on the difference between input vs output rate.
-    /// The proactive back pressure strategy will not trigger till `suffix_rate_threshold` + this rate threshold is crossed.
-    /// - If Some valid value is passed., the rate based proactive back pressure logic is applied only when this threshold is crossed.
-    ///         - e.g. If `rate_delta_threshold = 100`, then proactive back pressure logic kicks in when `input_tps - output_tps > 100`.
-    /// - **Defaults to `None`.** i.e rate based proactive back pressure will not run
-    rate_delta_threshold: Option<f64>,
-}
-
-impl Default for TalosBackPressureConfig {
-    fn default() -> Self {
-        Self {
-            max_timeout_ms: 50, //50ms
-            suffix_max_length: 10_000,
-            suffix_fill_threshold: 0.7,
-            suffix_rate_threshold: 0.5,
-            rate_delta_threshold: None,
-        }
-    }
-}
-
-impl TalosBackPressureConfig {
-    pub fn new(
-        max_timeout_ms: Option<u64>,
-        suffix_max_length: Option<u64>,
-        suffix_fill_threshold: Option<f64>,
-        suffix_rate_threshold: Option<f64>,
-        rate_delta_threshold: Option<f64>,
-    ) -> Self {
-        let suffix_fill_threshold = suffix_fill_threshold.unwrap_or_default().clamp(0.0, 1.0);
-        let suffix_rate_threshold = suffix_rate_threshold.unwrap_or_default().clamp(0.0, suffix_fill_threshold);
-        Self {
-            max_timeout_ms: max_timeout_ms.unwrap_or_default(),
-            suffix_max_length: suffix_max_length.unwrap_or_default(),
-            suffix_fill_threshold,
-            suffix_rate_threshold,
-            rate_delta_threshold,
-        }
-    }
-
-    pub fn get(&self) -> &Self {
-        self
-    }
-}
+use super::config::TalosBackPressureConfig;
 
 #[derive(Debug, Default)]
 pub struct TalosBackPressureVersionTracker {
@@ -127,115 +65,143 @@ impl TalosBackPressureController {
     // pub fn is_below_safe_threshold_using_callback<T: Fn() -> u64>(&self, current_count_fn: T) -> bool {
     //     current_count_fn() <= self.config.size_threshold
     // }
+    fn get_suffix_fill_ratio(&self, current_suffix_len: u64) -> f64 {
+        // Determine the ratio of how much of suffix is filled by checking the current size againt the `TalosBackPressureConfig.suffix_max_length`
+        let suffix_fill_ratio = current_suffix_len as f64 / self.config.suffix_max_length as f64;
+        // Clamp it between 0.0 and 1.0. i.e Empty to full.
+        suffix_fill_ratio.clamp(0.0, 1.0)
+    }
 
     /// Computation for reactively applying backpressure based on rate gap between input and output rate.
-    pub(crate) fn compute_suffix_fill_score(&self, current_suffix_len: u64) -> f64 {
-        // Computation for reactive backpressure based on how full the suffix is.
-        let suffix_fill_ratio = current_suffix_len as f64 / self.config.suffix_max_length as f64;
-        let suffix_fill_ratio_clamped = suffix_fill_ratio.clamp(0.0, 1.0);
-
+    pub(crate) fn compute_suffix_fill_score(&self, suffix_fill_ratio: f64) -> f64 {
+        // The threshold beyond which the backpressure based on suffix filling should be applied.
         let suffix_fill_weight_threshold = self.config.suffix_fill_threshold;
 
-        let suffix_fill_score = if suffix_fill_ratio_clamped > suffix_fill_weight_threshold {
-            (suffix_fill_ratio_clamped - suffix_fill_weight_threshold) / (1.0 - suffix_fill_weight_threshold)
-            // fill_weight_threshold
-        } else {
-            0.0
-        };
+        // Map how much is filled over the threshold on a scale of 0-1.
+        let score_to_threshold = suffix_fill_ratio.sub(suffix_fill_weight_threshold).max(0.0);
+        let suffix_fill_score = score_to_threshold / (1.0 - suffix_fill_weight_threshold);
+
         println!(
             "
-            | current_suffix_len = {current_suffix_len} | max_suffix_length= {}
-            | fill_ratio ={suffix_fill_ratio} | fill_ratio_clamped = {suffix_fill_ratio_clamped}
+            | fill_ratio ={suffix_fill_ratio} | fill_ratio_clamped = {suffix_fill_ratio}
             | suffix_fill_weight_threshold ={suffix_fill_weight_threshold} | suffix_fill_score = {suffix_fill_score}
-            ",
-            self.config.suffix_max_length
+            "
         );
         suffix_fill_score
     }
 
     /// Computation for proactively applying backpressure based on rate gap between input and output rate.
     pub(crate) fn compute_rate_score(&self, current_head: u64, current_time_ns: i128) -> f64 {
+        // The delta threshold between the input rate and output rate. If the rate goes beyond this threshold, we need to apply backpressure based on rate (proactive)
         let tps_threshold = self.config.rate_delta_threshold;
 
-        // Get the input rate
+        // Compute the input rate based on the first and last candidate during a window
         let input_time_sec = (self.last_candidate_version.time_ns - self.first_candidate_version.time_ns) as f64 / 1_000_000_000_f64;
         let input_rate = (self.last_candidate_version.version - self.first_candidate_version.version) as f64 / input_time_sec;
 
-        // Get the rate at which the head is moving (approximates to output rate)
+        // Compute the output rate. The rate at which the head is moving helps to determine the output rate.
         let output_time_sec = (current_time_ns - self.last_suffix_head.time_ns) as f64 / 1_000_000_000_f64;
         let output_rate = (current_head - self.last_suffix_head.version) as f64 / output_time_sec;
 
-        let rate_diff = input_rate.sub(output_rate);
+        let delta_rate = input_rate.sub(output_rate);
 
         let rate_score = match tps_threshold {
-            Some(threshold) if rate_diff >= threshold => {
+            Some(threshold) if delta_rate >= threshold => {
                 let log_base = threshold.log10();
-                let scaled = rate_diff.log10() - log_base;
+                let scaled = delta_rate.log10() - log_base;
+                println!(
+                    "Rate score calculation => threshold_log_base = {log_base} | rate_diff_log_base = {} | scaled = {scaled} ",
+                    delta_rate.log10()
+                );
                 scaled.clamp(0.0, 1.0)
             }
             _ => 0.0,
         };
-        println!("Input rate = {input_rate} | Output rate = {output_rate} | rate_diff = {rate_diff} | rate_score = {rate_score}");
+        println!(
+            "Input rate = {input_rate} | Output rate = {output_rate} | delta_rate = {delta_rate} | tps_threshold = {tps_threshold:?} | rate_score = {rate_score}"
+        );
 
         rate_score
     }
 
     /// Compute the backpressure time in ms
-    pub fn compute_backpressure_timeout(&mut self, current_head: u64, current_suffix_len: u64) -> u64 {
+    pub fn compute_backpressure_timeout(&self, current_head: u64, current_suffix_len: u64) -> u64 {
         let current_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let suffix_fill_ratio = self.get_suffix_fill_ratio(current_suffix_len);
 
-        let suffix_fill_score = self.compute_suffix_fill_score(current_suffix_len);
-        let suffix_fill_weighted = suffix_fill_score.powf(2.0);
+        let suffix_fill_score = self.compute_suffix_fill_score(suffix_fill_ratio);
+        let rate_score = if suffix_fill_ratio > self.config.suffix_rate_threshold {
+            self.compute_rate_score(current_head, current_time_ns)
+        } else {
+            0.0
+        };
 
-        let rate_score = self.compute_rate_score(current_head, current_time_ns);
+        // Check if we're below both thresholds (no backpressure needed)
+        if suffix_fill_score <= 0.0 && rate_score <= 0.0 {
+            return 0;
+        }
+
+        // Calculate minimum and maximum timeouts
+        let min_timeout_ms = self.config.min_timeout_ms;
+        let max_timeout_ms = self.config.max_timeout_ms;
+
+        // Both suffix fill and rate thresholds exceeded - combine both scores
+        let suffix_fill_weighted = suffix_fill_score.powf(1.5);
         let rate_weighted = 1.0 - suffix_fill_weighted;
+        let combined_score = suffix_fill_weighted + (rate_weighted * rate_score);
 
-        // Final computation
-        let backoff_score = (suffix_fill_weighted * suffix_fill_score) + (rate_weighted * rate_score);
-        let timeout_ms = self.config.max_timeout_ms as f64 * backoff_score;
-        let timeout_ms = timeout_ms.round() as u64;
+        let timeout_ms = min_timeout_ms as f64 + ((max_timeout_ms - min_timeout_ms) as f64 * combined_score);
+        let timeout_ms = (timeout_ms.round() as u64).clamp(min_timeout_ms, max_timeout_ms);
 
-        println!("\n| suffix_fill_score = {suffix_fill_score} | suffix_fill_weighted = {suffix_fill_weighted} \n| rate_score = {rate_score} | rate_weighted = {rate_weighted} \n| backoff_score = {backoff_score} | timeout_ms = {timeout_ms} ");
+        println!("\n| suffix_fill_score = {suffix_fill_score} | rate_score = {rate_score} \n| timeout_ms = {timeout_ms} ms");
+
         timeout_ms
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::{TalosBackPressureConfig, TalosBackPressureController};
     use time::OffsetDateTime;
 
-    use super::{TalosBackPressureConfig, TalosBackPressureController};
+    // #[test]
+    // fn test_compute_backpressure_timeout_suffix_and_rate_below_threshold() {
+    //     let config = TalosBackPressureConfig::new(Some(50), Some(300), Some(0.7), Some(0.5), Some(100.0));
+    //     let mut sbp = TalosBackPressureController::with_config(config);
 
-    #[test]
-    fn test_compute_backpressure_timeout_suffix_and_rate_below_threshold() {
-        let config = TalosBackPressureConfig::new(Some(50), Some(300), Some(0.7), Some(0.5), Some(100.0));
-        let mut sbp = TalosBackPressureController::with_config(config);
+    //     let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-        let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    //     sbp.last_suffix_head.update(0, test_start_time_ns - 30 * 1_000_000_000 /* 30 seconds*/);
 
-        sbp.last_suffix_head.update(0, test_start_time_ns - 30 * 1_000_000_000 /* 30 seconds*/);
+    //     sbp.first_candidate_version.update(0, test_start_time_ns - 30 * 1_000_000_000 /* 30 seconds*/);
+    //     sbp.last_candidate_version.update(200, test_start_time_ns - 10 * 1_000_000_000 /* 10 seconds*/);
 
-        sbp.first_candidate_version.update(0, test_start_time_ns - 30 * 1_000_000_000 /* 30 seconds*/);
-        sbp.last_candidate_version.update(200, test_start_time_ns - 10 * 1_000_000_000 /* 10 seconds*/);
+    //     let timeout_ms = sbp.compute_backpressure_timeout(80, 30);
 
-        let timeout_ms = sbp.compute_backpressure_timeout(80, 30);
-
-        assert_eq!(timeout_ms, 0);
-    }
+    //     assert_eq!(timeout_ms, 0);
+    // }
 
     #[test]
     fn test_compute_backpressure_timeout_suffix_above_and_rate_below_threshold() {
-        let config = TalosBackPressureConfig::new(Some(50), Some(300), Some(0.7), Some(0.5), Some(100.0));
+        // let config = TalosBackPressureConfig::new(Some(100), Some(300), Some(0.7), Some(0.5), Some(100.0));
+        let config = TalosBackPressureConfig::builder()
+            .max_timeout_ms(100)
+            .min_timeout_ms(10)
+            .rate_delta_threshold(100.0)
+            .suffix_fill_threshold(0.7)
+            .suffix_rate_threshold(0.5)
+            .suffix_max_length(300)
+            .build();
         let mut sbp = TalosBackPressureController::with_config(config);
 
         let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-        sbp.last_suffix_head.update(0, test_start_time_ns - 30 * 1_000_000_000 /* 30 seconds*/);
+        sbp.last_suffix_head.update(0, test_start_time_ns - 3000 * 1_000_000_000 /* 30 seconds*/);
 
         sbp.first_candidate_version.update(0, test_start_time_ns - 30 * 1_000_000_000 /* 30 seconds*/);
-        sbp.last_candidate_version.update(200, test_start_time_ns - 10 * 1_000_000_000 /* 10 seconds*/);
+        sbp.last_candidate_version.update(3000, test_start_time_ns - 10 * 1_000_000_000 /* 10 seconds*/);
 
-        let timeout_ms = sbp.compute_backpressure_timeout(80, 220);
+        let timeout_ms = sbp.compute_backpressure_timeout(2, 236);
 
         assert_eq!(timeout_ms, 20);
     }

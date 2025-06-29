@@ -73,6 +73,7 @@ where
     config: ReplicatorServiceConfig,
     _interval: Interval,
     metrics: ReplicatorMetrics,
+    // suffix_back_pressure: SuffixBackPressure,
 }
 
 impl<S, M> ReplicatorService<S, M>
@@ -94,11 +95,25 @@ where
             replicator,
             config,
             metrics,
+            // suffix_back_pressure: SuffixBackPressure {
+            //     config: SuffixBackPressureConfig {
+            //         max_timeout_ms: todo!(),
+            //         max_suffix_length: todo!(),
+            //     },
+            //     last_suffix_head: todo!(),
+            //     first_candidate_version: todo!(),
+            //     last_candidate_version: todo!(),
+            // },
             _interval: interval,
         }
     }
 
     pub async fn run_once(&mut self) -> Result<(), ReplicatorError> {
+        // let enable_back_pressure = self.suffix_back_pressure.is_prune_happening(self.replicator.suffix.get_meta().head)
+        //     && self
+        //         .suffix_back_pressure
+        //         .is_below_safe_threshold_using_callback(|| self.replicator.suffix.get_suffix_len() as u64);
+
         tokio::select! {
             // 1. Consume message.
             res = self.replicator.receiver.consume_message() => {
