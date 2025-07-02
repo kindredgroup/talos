@@ -16,7 +16,7 @@ pub trait MessageReciever: SharedPortTraits {
     type Message;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
-    async fn consume_message_with_timeout(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
+    async fn consume_message_with_backpressure(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
         if let BackPressureTimeout::Timeout(time_ms) = timeout {
             tokio::time::sleep(Duration::from_millis(time_ms)).await;
         } else {

@@ -59,6 +59,8 @@ pub struct BackPressureController {
     pub first_candidate_received: BackPressureVersionTracker,
     /// last candidate received during the check window.
     pub last_candidate_received: BackPressureVersionTracker,
+    /// the number of continuous iteration where the timeout was max_timeout_ms.
+    pub max_timeout_iter_count: u64,
 }
 
 impl BackPressureController {
@@ -146,7 +148,7 @@ impl BackPressureController {
     }
 
     /// Compute the backpressure time in ms
-    pub fn compute_backpressure_timeout(&self, current_suffix_len: u64) -> u64 {
+    pub fn calculate_timeout(&self, current_suffix_len: u64) -> u64 {
         let suffix_fill_ratio = self.get_suffix_fill_ratio(current_suffix_len);
 
         let suffix_fill_score = self.compute_suffix_fill_score(suffix_fill_ratio);
@@ -184,10 +186,45 @@ impl BackPressureController {
 
     pub fn get_timeout_ms(&mut self, current_suffix_len: u64) -> u64 {
         // Compute the timeout
-        let timeout_ms = self.compute_backpressure_timeout(current_suffix_len);
+        let timeout_ms = self.calculate_timeout(current_suffix_len);
 
         // reset the trackers
         self.reset_version_trackers();
         timeout_ms
+    }
+
+    pub fn compute_stepdown_timeout(&self, timeout_ms: u64) -> u64 {
+        ((timeout_ms as f64 * self.config.timeout_stepdown_rate).round() as u64).max(self.config.min_timeout_ms)
+    }
+
+    pub fn compute_backpressure(&mut self, current_suffix_len: u64) -> BackPressureTimeout {
+        // calculate the timeout to apply for backpressure.
+        let timeout_ms = self.calculate_timeout(current_suffix_len);
+
+        // reset the version trackers
+        self.reset_version_trackers();
+
+        // Max timeout
+        if timeout_ms == self.config.max_timeout_ms {
+            if self.max_timeout_iter_count < self.config.max_timeout_iter_upper_limit {
+                self.max_timeout_iter_count += 1;
+                return BackPressureTimeout::MaxTimeout(timeout_ms, self.max_timeout_iter_count);
+            } else {
+                self.max_timeout_iter_count = 0;
+
+                let new_timeout_ms = self.compute_stepdown_timeout(timeout_ms);
+                return BackPressureTimeout::Timeout(new_timeout_ms);
+            }
+        }
+
+        self.max_timeout_iter_count = 0;
+
+        // No timeout
+        if timeout_ms == 0 {
+            BackPressureTimeout::NoTimeout
+        } else {
+            // Timeout between min and max
+            BackPressureTimeout::Timeout(timeout_ms)
+        }
     }
 }

@@ -26,7 +26,7 @@ use talos_common_utils::{
     },
 };
 
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::OffsetDateTime;
 use tokio::{sync::mpsc, time::Interval};
 use tracing::{debug, error, info};
 use tracing::{warn, Instrument};
@@ -73,18 +73,25 @@ where
     S: ReplicatorSuffixTrait<ReplicatorCandidate> + Debug,
     M: MessageReciever<Message = ChannelMessage<ReplicatorCandidateMessage>> + Send + Sync,
 {
+    /// Sender for the channel that sends the statemaps to the Statemap Queue Service
     statemaps_tx: mpsc::Sender<StatemapQueueChannelMessage>,
+    /// Receiver for the channel to receive feedback messages to update the suffix and other housekeeping of this thread.
     replicator_rx: mpsc::Receiver<ReplicatorChannel>,
     pub replicator: Replicator<ReplicatorCandidate, S, M>,
     #[allow(dead_code)]
     config: ReplicatorServiceConfig,
     _interval: Interval,
+    /// Otel metrics for replicator.
     metrics: ReplicatorMetrics,
+    /// Backpressure controller to determine if a backpressure should be applied.
     backpressure_controller: BackPressureController,
-    next_backpressure_check_ns: i128,
-    max_allowed: u64,
-    last_consume_timeout_type: BackPressureTimeout,
-    current_iter_at_max: u64,
+    /// Next check for backpressure using `BackPressureController`
+    next_backpressure_check_time_ns: i128,
+    /// Tracking the previous `BackPressureTimeout`.
+    /// This helps in scenarios where we need to do any special handling of the timeout between the last and the next check for backpressure.
+    /// eg. We may want to stepdown the timeout between each iteration of the `ReplicatorService` loop between checks, so that the backpressure can
+    /// be eased to get a better balance between latency and suffix blowing out.
+    last_backpressure_timeout: BackPressureTimeout,
 }
 
 impl<S, M> ReplicatorService<S, M>
@@ -101,7 +108,6 @@ where
         let metrics = ReplicatorMetrics::new();
         let interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
 
-        // TODO: GK - maybe use number of items for install as the criteria to determine the suffix size?
         let backpressure_config = BackPressureConfig::from_env();
         let backpressure_controller = BackPressureController::with_config(backpressure_config);
 
@@ -112,10 +118,8 @@ where
             config,
             metrics,
             backpressure_controller,
-            next_backpressure_check_ns: 0,
-            max_allowed: 5,
-            current_iter_at_max: 0,
-            last_consume_timeout_type: BackPressureTimeout::NoTimeout,
+            next_backpressure_check_time_ns: 0,
+            last_backpressure_timeout: BackPressureTimeout::NoTimeout,
             _interval: interval,
         }
     }
@@ -123,63 +127,28 @@ where
     pub async fn run_once(&mut self) -> Result<(), ReplicatorError> {
         let current_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-        // TODO: GK - Refactor this, and move some of the logic into the backpressue controller code.
-        let backpressure_consume_timeout_type = if current_time_ns >= self.next_backpressure_check_ns {
+        let backpressure_consume_timeout_type = if current_time_ns >= self.next_backpressure_check_time_ns {
             warn!("[replicator_service] Starting to compute dynamic back pressure");
 
             let current_suffix_length = self.replicator.suffix.get_suffix_len() as u64;
-            let backpressure_timeout_ms = self.backpressure_controller.compute_backpressure_timeout(current_suffix_length);
+            let backpressure_timeout_type = self.backpressure_controller.compute_backpressure(current_suffix_length);
+            self.next_backpressure_check_time_ns = current_time_ns + (self.backpressure_controller.config.check_window_ms * 1_000_000) as i128;
 
-            if backpressure_timeout_ms > 0 {
-                warn!("[replicator_service] backpressure_timeout_ms = {backpressure_timeout_ms} | current_suffix_length = {current_suffix_length} | current_suffix_head = {}", self.replicator.suffix.get_meta().head);
-                self.backpressure_controller.reset_version_trackers();
-            }
-            // Set the number of times the timeout is at max.
-            if backpressure_timeout_ms >= self.backpressure_controller.config.max_timeout_ms {
-                self.current_iter_at_max += 1;
-            } else {
-                self.current_iter_at_max = 0;
-            }
-
-            let mut backpressure_timeout_type: BackPressureTimeout = BackPressureTimeout::NoTimeout;
-            // Check current against max
-            if self.current_iter_at_max >= self.max_allowed && self.current_iter_at_max < (self.max_allowed + 3) {
-                warn!(
-                    "[replicator_service] At max timeout for back pressure current_iter_at_max = {} | max_allowed = {} ",
-                    self.current_iter_at_max, self.max_allowed
-                );
-                backpressure_timeout_type = BackPressureTimeout::MaxTimeout(backpressure_timeout_ms, self.current_iter_at_max);
-            } else {
-                if backpressure_timeout_ms > 0 {
-                    backpressure_timeout_type = BackPressureTimeout::Timeout(backpressure_timeout_ms);
-                    self.current_iter_at_max = 0;
-                }
-            }
-            self.next_backpressure_check_ns = current_time_ns + (10 * 1_000_000) as i128;
-
-            self.last_consume_timeout_type = backpressure_timeout_type.clone();
+            self.last_backpressure_timeout = backpressure_timeout_type.clone();
             backpressure_timeout_type
         } else {
-            let dt = OffsetDateTime::UNIX_EPOCH + Duration::from_nanos(self.next_backpressure_check_ns as u64);
-            let timestamp = dt.format(&Rfc3339).unwrap();
-            warn!(
-                "[replicator_service] Else block - Not computing dynamic pressure, next compute is only at {:?}",
-                timestamp
-            );
-            if let BackPressureTimeout::Timeout(time_ms) = self.last_consume_timeout_type {
-                let decay_rate = 0.8; // 20% from last.
-                let new_time_ms = ((time_ms as f64 * decay_rate).round() as u64).max(self.backpressure_controller.config.min_timeout_ms);
+            if let BackPressureTimeout::Timeout(time_ms) = self.last_backpressure_timeout {
+                let new_time_ms = self.backpressure_controller.compute_stepdown_timeout(time_ms);
 
-                self.last_consume_timeout_type = BackPressureTimeout::Timeout(new_time_ms);
+                self.last_backpressure_timeout = BackPressureTimeout::Timeout(new_time_ms);
             }
 
-            self.last_consume_timeout_type.clone()
+            self.last_backpressure_timeout.clone()
         };
-        // let backpressure_timeout_ms = 0;
 
         tokio::select! {
-            // 1. Consume message.
-            res = self.replicator.receiver.consume_message_with_timeout(backpressure_consume_timeout_type) => {
+            // 1. Consume message from abcast
+            res = self.replicator.receiver.consume_message_with_backpressure(backpressure_consume_timeout_type) => {
                 if let Ok(Some(msg)) = res {
                     // 2. Add/update to suffix.
                     match msg {

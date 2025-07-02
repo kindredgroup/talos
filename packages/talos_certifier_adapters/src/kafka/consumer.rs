@@ -100,13 +100,17 @@ where
 {
     type Message = ChannelMessage<M>;
 
-    async fn consume_message_with_timeout(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
+    async fn consume_message_with_backpressure(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
         match timeout {
             BackPressureTimeout::Timeout(time_ms) => {
                 if self.is_paused {
                     tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
-                    //  TODO: GK - Handle unwrap.
-                    let _ = self.consumer.resume(&self.tpl).unwrap();
+                    self.consumer.resume(&self.tpl).map_err(|e| MessageReceiverError {
+                        kind: MessageReceiverErrorKind::PauseResume,
+                        version: None,
+                        reason: e.to_string(),
+                        data: Some(self.topic.clone()),
+                    })?;
                     self.is_paused = false;
                 }
                 if time_ms > 0 {
@@ -115,41 +119,36 @@ where
                 }
                 self.consume_message().await
             }
-            BackPressureTimeout::MaxTimeout(_max_time_ms, _count) => {
-                if !self.is_paused {
+            BackPressureTimeout::MaxTimeout(max_time_ms, count) => {
+                if !self.is_paused && count > 1 {
                     tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being on constant max timeout");
-                    //  TODO: GK - Handle unwrap.
-                    let _ = self.consumer.pause(&self.tpl).unwrap();
+                    self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
+                        kind: MessageReceiverErrorKind::PauseResume,
+                        version: None,
+                        reason: e.to_string(),
+                        data: Some(self.topic.clone()),
+                    })?;
                     self.is_paused = true;
+
+                    tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
                 }
                 Ok(None)
             }
             BackPressureTimeout::NoTimeout => {
                 if self.is_paused {
                     tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
-                    //  TODO: GK - Handle unwrap.
-                    let _ = self.consumer.resume(&self.tpl).unwrap();
+                    self.consumer.resume(&self.tpl).map_err(|e| MessageReceiverError {
+                        kind: MessageReceiverErrorKind::PauseResume,
+                        version: None,
+                        reason: e.to_string(),
+                        data: Some(self.topic.clone()),
+                    })?;
                     self.is_paused = false;
                 }
                 tracing::warn!("[kafka consumer timeout] No timeout, consuming message immediately");
                 self.consume_message().await
             }
         }
-        // if timeout_ms > 0 {
-        //     // If very high timeout, then it is better to pause the consumer to avoid filling the internal queue.
-        //     //  TODO: GK - Make this configurable.
-        //     if timeout_ms > 80 {
-        //         tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to high timeout {timeout_ms}ms");
-        //         // let _ = self.consumer.pause(&self.tpl).unwrap();
-        //         // let _ = self.consumer.resume(&self.tpl).unwrap();
-        //     } else {
-        //         tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
-        //     }
-        //     tracing::warn!("[kafka consumer timeout] Finished sleeping for {timeout_ms}ms. Going to consume the message now");
-        // }
-        // else {
-        //     tracing::warn!("[kafka consumer timeout] No timeout timeout_ms = {timeout_ms}");
-        // }
     }
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {

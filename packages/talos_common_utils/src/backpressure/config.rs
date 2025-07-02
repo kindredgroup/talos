@@ -34,6 +34,20 @@ pub struct BackPressureConfig {
     ///         - e.g. If `rate_delta_threshold = 100`, then proactive back pressure logic kicks in when `input_tps - output_tps > 100`.
     /// - **Defaults to `None`.** i.e rate based proactive back pressure will not run
     pub rate_delta_threshold: Option<f64>,
+    /// The maximum continous iteration of backpressure check where we allow the timeout to be max_timeout_ms.
+    /// There could be scenario, `BackPressureTimeout::MaxTimeout` goes to aggressive back-off strategy. But we do not want to keep that strategy for long, this is just buying the suffix and output flow some breather.
+    ///
+    /// We do not want to use it for a prolonged period due to two reasons:
+    ///  - The suffix should get the `Decision` messages to pick and act on the candidates. So although we want to stop accepting `Candidates`, they are both coming from the same abcast
+    /// and therefore we need to slowly ease things after a threshold.
+    ///  - Being on the aggressive back-off strategy for too long can have huge impacts on latency. So we need to balance it out.
+    ///
+    /// **Defaults to `5`.
+    pub max_timeout_iter_upper_limit: u64,
+    /// Used to reduce the timeout computed. If the timeout has plataued at a specific milliseconds between iterations, this could be use to stepdown the timeout between iterations.
+    ///
+    /// **NOTE** - This will be hardcoded to 0.8, i.e reduce timeout by 20%. Can be configured later if required.
+    pub timeout_stepdown_rate: f64,
 }
 
 impl Default for BackPressureConfig {
@@ -46,6 +60,8 @@ impl Default for BackPressureConfig {
             suffix_fill_threshold: 0.7, // 70% of suffix
             suffix_rate_threshold: 0.5, // 50% of suffix
             rate_delta_threshold: None,
+            max_timeout_iter_upper_limit: 5,
+            timeout_stepdown_rate: 0.8,
         }
     }
 }
@@ -61,6 +77,8 @@ impl BackPressureConfig {
             suffix_fill_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_FILL_THRESHOLD", f64, 0.7),
             suffix_rate_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_RATE_THRESHOLD", f64, 0.5),
             rate_delta_threshold: env_var_with_defaults!("BACKPRESSURE_RATE_DELTA_THRESHOLD", Option::<f64>, 50.0),
+            max_timeout_iter_upper_limit: env_var_with_defaults!("BACKPRESSURE_MAX_TIMEOUT_ITER_UPPER_LIMIT", u64, 5),
+            timeout_stepdown_rate: Self::default().timeout_stepdown_rate,
         };
 
         warn!("Backpressure config {config:#?}");
@@ -80,6 +98,7 @@ pub struct BackPressureConfigBuilder {
     suffix_fill_threshold: Option<f64>,
     suffix_rate_threshold: Option<f64>,
     rate_delta_threshold: Option<f64>,
+    max_timeout_iter_upper_limit: Option<u64>,
 }
 
 impl BackPressureConfigBuilder {
@@ -116,6 +135,10 @@ impl BackPressureConfigBuilder {
         self.rate_delta_threshold = Some(threshold);
         self
     }
+    pub fn max_timeout_iter_upper_limit(mut self, limit: u64) -> Self {
+        self.max_timeout_iter_upper_limit = Some(limit);
+        self
+    }
 
     pub fn build(self) -> BackPressureConfig {
         let defaults = BackPressureConfig::default();
@@ -135,6 +158,8 @@ impl BackPressureConfigBuilder {
             suffix_fill_threshold,
             suffix_rate_threshold,
             rate_delta_threshold: self.rate_delta_threshold.or(defaults.rate_delta_threshold),
+            max_timeout_iter_upper_limit: self.max_timeout_iter_upper_limit.unwrap_or(defaults.max_timeout_iter_upper_limit),
+            timeout_stepdown_rate: defaults.timeout_stepdown_rate,
         }
     }
 }

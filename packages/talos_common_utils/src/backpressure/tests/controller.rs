@@ -77,46 +77,46 @@ fn test_backpressure_suffix_size_based() {
         .build();
     let bp_controller = BackPressureController::with_config(config);
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(20);
+    let timeout_ms = bp_controller.calculate_timeout(20);
     assert_eq!(timeout_ms, 0);
     // suffix_fill_threshold is 0.7, therefore at 70% threshold of suffix_max_length = 300 is 210.
     // min_timeout_ms is 10.
-    let timeout_ms = bp_controller.compute_backpressure_timeout(210);
+    let timeout_ms = bp_controller.calculate_timeout(210);
     assert_eq!(timeout_ms, 0);
 
     // suffix_fill_threshold is 0.7, therefore at 71% threshold of suffix_max_length = 300 is 213.
     // min_timeout_ms is 10., so the timeout_ms should be around 11ms, considering the timeout is only coming from the suffix fill size
-    let timeout_ms = bp_controller.compute_backpressure_timeout(213);
+    let timeout_ms = bp_controller.calculate_timeout(213);
     assert_eq!(timeout_ms, 11);
     // At 75% threshold of suffix_max_length = 300 is 225.
     // min_timeout_ms is 10., so the timeout_ms should be around 16ms, considering the timeout is only coming from the suffix fill size
-    let timeout_ms = bp_controller.compute_backpressure_timeout(225);
+    let timeout_ms = bp_controller.calculate_timeout(225);
     assert_eq!(timeout_ms, 16);
     // At 80% threshold of suffix_max_length = 300 is 240.
     // min_timeout_ms is 10., so the timeout_ms should be around 27ms
-    let timeout_ms = bp_controller.compute_backpressure_timeout(240);
+    let timeout_ms = bp_controller.calculate_timeout(240);
     assert_eq!(timeout_ms, 27);
     // At 85% threshold of suffix_max_length = 300 is 255.
     // min_timeout_ms is 10., so the timeout_ms should be around 42ms
-    let timeout_ms = bp_controller.compute_backpressure_timeout(255);
+    let timeout_ms = bp_controller.calculate_timeout(255);
     assert_eq!(timeout_ms, 42);
     // At 90% threshold of suffix_max_length = 300 is 270.
     // min_timeout_ms is 10., so the timeout_ms should be around 59ms
-    let timeout_ms = bp_controller.compute_backpressure_timeout(270);
+    let timeout_ms = bp_controller.calculate_timeout(270);
     assert_eq!(timeout_ms, 59);
     // At 95% threshold of suffix_max_length = 300 is 285.
     // min_timeout_ms is 10., so the timeout_ms should be around 79ms
-    let timeout_ms = bp_controller.compute_backpressure_timeout(285);
+    let timeout_ms = bp_controller.calculate_timeout(285);
     assert_eq!(timeout_ms, 78);
     // At 98% threshold of suffix_max_length = 300 is 294.
     // min_timeout_ms is 10., so the timeout_ms should be around 59ms
-    let timeout_ms = bp_controller.compute_backpressure_timeout(294);
+    let timeout_ms = bp_controller.calculate_timeout(294);
     assert_eq!(timeout_ms, 91);
     // At 100% threshold of suffix_max_length, max_timeout_ms is applied.
-    let timeout_ms = bp_controller.compute_backpressure_timeout(300);
+    let timeout_ms = bp_controller.calculate_timeout(300);
     assert_eq!(timeout_ms, 100);
     // At >100% threshold of suffix_max_length, max_timeout_ms is applied.
-    let timeout_ms = bp_controller.compute_backpressure_timeout(300);
+    let timeout_ms = bp_controller.calculate_timeout(300);
     assert_eq!(timeout_ms, 100);
 }
 
@@ -138,7 +138,7 @@ fn test_backpressure_delta_rate_based() {
     let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
     let current_suffix_size_50pc = 150;
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     assert_eq!(timeout_ms, 0);
     // First versions
     bp_controller.update_suffix_head_trackers(BackPressureVersionTracker {
@@ -151,7 +151,7 @@ fn test_backpressure_delta_rate_based() {
     });
 
     // Check after just the initial suffix_head and candidate_received was recorded.
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     //timout_ms will be 0 delta_rate is 0 although we have crossed the 50% suffix_size.
     assert_eq!(timeout_ms, 0);
 
@@ -165,7 +165,7 @@ fn test_backpressure_delta_rate_based() {
         time_ns: diff_seconds(test_start_time_ns, 280),
     });
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     // At 50% suffix size/fill related score is not applied, but only rate related
     // Also at exact 50% the backpressure will not be applied
     assert_eq!(timeout_ms, 0);
@@ -180,7 +180,7 @@ fn test_backpressure_delta_rate_based() {
         time_ns: diff_seconds(test_start_time_ns, 280),
     });
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     // At 51% suffix size/fill related score is not applied.
     // Only backpressure from rates is applied. From the delta_rate, min and max timeout, we can calculate the timeout to be 11ms.
     assert_eq!(timeout_ms, 11);
@@ -195,7 +195,7 @@ fn test_backpressure_delta_rate_based() {
         time_ns: diff_seconds(test_start_time_ns, 280),
     });
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     // At 55% suffix size/fill related score is not applied.
     // Only backpressure from rates is applied. From the delta_rate, min and max timeout, we can calculate the timeout to be 14ms.
     assert_eq!(timeout_ms, 14);
@@ -210,7 +210,7 @@ fn test_backpressure_delta_rate_based() {
         time_ns: diff_seconds(test_start_time_ns, 280),
     });
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     // At 50% suffix size/fill related score is not applied.
     // Only backpressure from rates is applied. From the delta_rate, min and max timeout, we can calculate the timeout to be 20ms.
     assert_eq!(timeout_ms, 20);
@@ -225,7 +225,7 @@ fn test_backpressure_delta_rate_based() {
         time_ns: diff_seconds(test_start_time_ns, 280),
     });
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     // At 50% suffix size/fill related score is not applied.
     // Only backpressure from rates is applied. From the delta_rate, min and max timeout, we can calculate the timeout to be 23ms.
     assert_eq!(timeout_ms, 23);
@@ -242,7 +242,7 @@ fn test_backpressure_delta_rate_based() {
     });
 
     let current_suffix_size_71pc = 213;
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_71pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_71pc);
     // At 71% suffix size/fill related score and delta_rate related scores will be applied
     // Therefore combined timeout = min + ((max-min) * (fill_weighted + (rate_weighted * rate_score))
     // ==>                        = 10 + (90 * ( 0.006085806195 + ( 0.999 * 0.0.146)  ) )
@@ -258,7 +258,7 @@ fn test_backpressure_delta_rate_based() {
         time_ns: diff_seconds(test_start_time_ns, 280),
     });
 
-    let timeout_ms = bp_controller.compute_backpressure_timeout(current_suffix_size_50pc);
+    let timeout_ms = bp_controller.calculate_timeout(current_suffix_size_50pc);
     // At 50% suffix size/fill related score is not applied.
     // Only backpressure from rates is applied. From the delta_rate, min and max timeout, we can calculate the timeout to be 80ms.
     assert_eq!(timeout_ms, 80);
