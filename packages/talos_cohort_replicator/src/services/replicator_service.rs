@@ -11,14 +11,11 @@ use crate::{
 
 use opentelemetry::{global, metrics::Gauge, trace::TraceContextExt, KeyValue};
 
-use talos_certifier::{
-    ports::{ConsumeMessageTimeoutType, MessageReciever},
-    ChannelMessage,
-};
+use talos_certifier::{ports::MessageReciever, ChannelMessage};
 use talos_common_utils::{
     backpressure::{
         config::BackPressureConfig,
-        controller::{BackPressureController, BackPressureVersionTracker},
+        controller::{BackPressureController, BackPressureTimeout, BackPressureVersionTracker},
     },
     otel::{
         metric_constants::{
@@ -86,7 +83,7 @@ where
     backpressure_controller: BackPressureController,
     next_backpressure_check_ns: i128,
     max_allowed: u64,
-    last_consume_timeout_type: ConsumeMessageTimeoutType,
+    last_consume_timeout_type: BackPressureTimeout,
     current_iter_at_max: u64,
 }
 
@@ -118,7 +115,7 @@ where
             next_backpressure_check_ns: 0,
             max_allowed: 5,
             current_iter_at_max: 0,
-            last_consume_timeout_type: ConsumeMessageTimeoutType::NoTimeout,
+            last_consume_timeout_type: BackPressureTimeout::NoTimeout,
             _interval: interval,
         }
     }
@@ -144,17 +141,17 @@ where
                 self.current_iter_at_max = 0;
             }
 
-            let mut backpressure_timeout_type: ConsumeMessageTimeoutType = ConsumeMessageTimeoutType::NoTimeout;
+            let mut backpressure_timeout_type: BackPressureTimeout = BackPressureTimeout::NoTimeout;
             // Check current against max
             if self.current_iter_at_max >= self.max_allowed && self.current_iter_at_max < (self.max_allowed + 3) {
                 warn!(
                     "[replicator_service] At max timeout for back pressure current_iter_at_max = {} | max_allowed = {} ",
                     self.current_iter_at_max, self.max_allowed
                 );
-                backpressure_timeout_type = ConsumeMessageTimeoutType::SteadyAtMax(self.current_iter_at_max);
+                backpressure_timeout_type = BackPressureTimeout::MaxTimeout(backpressure_timeout_ms, self.current_iter_at_max);
             } else {
                 if backpressure_timeout_ms > 0 {
-                    backpressure_timeout_type = ConsumeMessageTimeoutType::Timeout(backpressure_timeout_ms);
+                    backpressure_timeout_type = BackPressureTimeout::Timeout(backpressure_timeout_ms);
                     self.current_iter_at_max = 0;
                 }
             }
@@ -169,16 +166,12 @@ where
                 "[replicator_service] Else block - Not computing dynamic pressure, next compute is only at {:?}",
                 timestamp
             );
-            let decay_rate = 0.8; // 20% from last.
-            let new_consume_timeout_type = match self.last_consume_timeout_type {
-                ConsumeMessageTimeoutType::NoTimeout => ConsumeMessageTimeoutType::NoTimeout,
-                ConsumeMessageTimeoutType::Timeout(time_ms) => {
-                    let new_time_ms = ((time_ms as f64 * decay_rate).round() as u64).max(self.backpressure_controller.config.min_timeout_ms);
-                    ConsumeMessageTimeoutType::Timeout(new_time_ms)
-                }
-                ConsumeMessageTimeoutType::SteadyAtMax(k) => ConsumeMessageTimeoutType::SteadyAtMax(k),
-            };
-            self.last_consume_timeout_type = new_consume_timeout_type;
+            if let BackPressureTimeout::Timeout(time_ms) = self.last_consume_timeout_type {
+                let decay_rate = 0.8; // 20% from last.
+                let new_time_ms = ((time_ms as f64 * decay_rate).round() as u64).max(self.backpressure_controller.config.min_timeout_ms);
+
+                self.last_consume_timeout_type = BackPressureTimeout::Timeout(new_time_ms);
+            }
 
             self.last_consume_timeout_type.clone()
         };

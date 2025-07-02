@@ -4,6 +4,17 @@ use tracing::warn;
 
 use super::config::BackPressureConfig;
 
+#[derive(Debug, Clone)]
+pub enum BackPressureTimeout {
+    /// No timeout to be applied.
+    NoTimeout,
+    /// General timeout. With timeout in milliseconds
+    Timeout(u64),
+    /// Max timeout with (timeout in milliseconds, number of continuos times at max).
+    /// This high marker could help in switching to very aggressive backoff strategy
+    MaxTimeout(u64, u64),
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct BackPressureVersionTracker {
     pub version: u64,

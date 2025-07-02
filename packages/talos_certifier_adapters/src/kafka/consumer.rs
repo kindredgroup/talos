@@ -13,10 +13,11 @@ use talos_certifier::{
     ports::{
         common::SharedPortTraits,
         errors::{MessageReceiverError, MessageReceiverErrorKind},
-        ConsumeMessageTimeoutType, MessageReciever,
+        MessageReciever,
     },
     ChannelMessage,
 };
+use talos_common_utils::backpressure::controller::BackPressureTimeout;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
@@ -99,9 +100,9 @@ where
 {
     type Message = ChannelMessage<M>;
 
-    async fn consume_message_with_timeout(&mut self, timeout: ConsumeMessageTimeoutType) -> Result<Option<Self::Message>, MessageReceiverError> {
+    async fn consume_message_with_timeout(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
         match timeout {
-            ConsumeMessageTimeoutType::Timeout(time_ms) => {
+            BackPressureTimeout::Timeout(time_ms) => {
                 if self.is_paused {
                     tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
                     //  TODO: GK - Handle unwrap.
@@ -114,7 +115,7 @@ where
                 }
                 self.consume_message().await
             }
-            ConsumeMessageTimeoutType::SteadyAtMax(count) => {
+            BackPressureTimeout::MaxTimeout(_max_time_ms, _count) => {
                 if !self.is_paused {
                     tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being on constant max timeout");
                     //  TODO: GK - Handle unwrap.
@@ -123,7 +124,7 @@ where
                 }
                 Ok(None)
             }
-            ConsumeMessageTimeoutType::NoTimeout => {
+            BackPressureTimeout::NoTimeout => {
                 if self.is_paused {
                     tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
                     //  TODO: GK - Handle unwrap.

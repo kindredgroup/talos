@@ -5,7 +5,7 @@ pub mod common;
 pub mod errors;
 
 pub use decision_store::DecisionStore;
-pub use message::{ConsumeMessageTimeoutType, MessagePublisher, MessageReciever};
+pub use message::{MessagePublisher, MessageReciever};
 
 // #[cfg(test)]
 // mod tests;
