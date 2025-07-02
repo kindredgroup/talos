@@ -19,6 +19,7 @@ serde_json = { workspace = true }
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
+tracing = { version = "0.1.41", features = ["log"] }
 # Async
 tokio = { workspace = true }
 async-trait = { workspace = true }

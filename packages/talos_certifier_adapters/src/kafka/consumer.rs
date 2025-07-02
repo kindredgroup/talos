@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::debug;
+use log::{debug, warn};
 use rdkafka::{
     consumer::{Consumer, ConsumerContext, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -13,7 +13,7 @@ use talos_certifier::{
     ports::{
         common::SharedPortTraits,
         errors::{MessageReceiverError, MessageReceiverErrorKind},
-        MessageReciever,
+        ConsumeMessageTimeoutType, MessageReciever,
     },
     ChannelMessage,
 };
@@ -34,6 +34,8 @@ where
     pub consumer: Arc<StreamConsumer<C>>,
     pub topic: String,
     pub tpl: TopicPartitionList,
+    /// If consumer is paused for tpl
+    is_paused: bool,
     _phantom: PhantomData<M>,
 }
 
@@ -57,6 +59,7 @@ where
             consumer: Arc::new(consumer),
             topic,
             tpl: TopicPartitionList::new(),
+            is_paused: false,
             _phantom: PhantomData,
         }
     }
@@ -95,6 +98,58 @@ where
     C: ConsumerContext + 'static,
 {
     type Message = ChannelMessage<M>;
+
+    async fn consume_message_with_timeout(&mut self, timeout: ConsumeMessageTimeoutType) -> Result<Option<Self::Message>, MessageReceiverError> {
+        match timeout {
+            ConsumeMessageTimeoutType::Timeout(time_ms) => {
+                if self.is_paused {
+                    tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
+                    //  TODO: GK - Handle unwrap.
+                    let _ = self.consumer.resume(&self.tpl).unwrap();
+                    self.is_paused = false;
+                }
+                if time_ms > 0 {
+                    tracing::warn!("[kafka consumer timeout] Sleeping for {time_ms}ms, before consuming the message");
+                    tokio::time::sleep(Duration::from_millis(time_ms)).await;
+                }
+                self.consume_message().await
+            }
+            ConsumeMessageTimeoutType::SteadyAtMax(count) => {
+                if !self.is_paused {
+                    tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being on constant max timeout");
+                    //  TODO: GK - Handle unwrap.
+                    let _ = self.consumer.pause(&self.tpl).unwrap();
+                    self.is_paused = true;
+                }
+                Ok(None)
+            }
+            ConsumeMessageTimeoutType::NoTimeout => {
+                if self.is_paused {
+                    tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
+                    //  TODO: GK - Handle unwrap.
+                    let _ = self.consumer.resume(&self.tpl).unwrap();
+                    self.is_paused = false;
+                }
+                tracing::warn!("[kafka consumer timeout] No timeout, consuming message immediately");
+                self.consume_message().await
+            }
+        }
+        // if timeout_ms > 0 {
+        //     // If very high timeout, then it is better to pause the consumer to avoid filling the internal queue.
+        //     //  TODO: GK - Make this configurable.
+        //     if timeout_ms > 80 {
+        //         tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to high timeout {timeout_ms}ms");
+        //         // let _ = self.consumer.pause(&self.tpl).unwrap();
+        //         // let _ = self.consumer.resume(&self.tpl).unwrap();
+        //     } else {
+        //         tokio::time::sleep(Duration::from_millis(timeout_ms)).await;
+        //     }
+        //     tracing::warn!("[kafka consumer timeout] Finished sleeping for {timeout_ms}ms. Going to consume the message now");
+        // }
+        // else {
+        //     tracing::warn!("[kafka consumer timeout] No timeout timeout_ms = {timeout_ms}");
+        // }
+    }
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let message_received = self.consumer.recv().await.map_err(|e| MessageReceiverError {

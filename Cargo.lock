@@ -3278,6 +3278,7 @@ dependencies = [
  "time",
  "tokio",
  "tokio-postgres",
+ "tracing",
  "uuid",
 ]
 
@@ -3320,6 +3321,7 @@ dependencies = [
  "serial_test",
  "time",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

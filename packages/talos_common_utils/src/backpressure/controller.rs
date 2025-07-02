@@ -1,5 +1,7 @@
 use std::ops::Sub;
 
+use tracing::warn;
+
 use super::config::BackPressureConfig;
 
 #[derive(Debug, Default, Clone)]
@@ -53,7 +55,7 @@ impl BackPressureController {
         Self { config, ..Default::default() }
     }
 
-    fn reset_version_trackers(&mut self) {
+    pub fn reset_version_trackers(&mut self) {
         self.first_suffix_head.reset();
         self.last_suffix_head.reset();
         self.first_candidate_received.reset();
@@ -90,12 +92,12 @@ impl BackPressureController {
         let score_to_threshold = suffix_fill_ratio.sub(suffix_fill_weight_threshold).max(0.0);
         let suffix_fill_score = score_to_threshold / (1.0 - suffix_fill_weight_threshold);
 
-        println!(
-            "
-            | fill_ratio ={suffix_fill_ratio} | fill_ratio_clamped = {suffix_fill_ratio}
-            | suffix_fill_weight_threshold ={suffix_fill_weight_threshold} | suffix_fill_score = {suffix_fill_score}
-            "
-        );
+        // println!(
+        //     "
+        //     | fill_ratio ={suffix_fill_ratio} | fill_ratio_clamped = {suffix_fill_ratio}
+        //     | suffix_fill_weight_threshold ={suffix_fill_weight_threshold} | suffix_fill_score = {suffix_fill_score}
+        //     "
+        // );
         suffix_fill_score
     }
 
@@ -113,31 +115,31 @@ impl BackPressureController {
         let output_rate = (self.last_suffix_head.version - self.first_suffix_head.version) as f64 / output_time_sec;
 
         let delta_rate = input_rate.sub(output_rate);
-        println!("Input rate = {input_rate} | Output rate = {output_rate} | delta_rate = {delta_rate}");
+        warn!("[compute_rate_score] Input rate = {input_rate} | Output rate = {output_rate} | delta_rate = {delta_rate}");
 
         let rate_score = match tps_threshold {
             Some(threshold) if delta_rate > threshold => {
                 let log_base = threshold.log10();
                 let scaled = delta_rate.log10() - log_base;
-                println!(
-                    "Rate score calculation => threshold_log_base = {log_base} | rate_diff_log_base = {} | scaled = {scaled} ",
-                    delta_rate.log10()
-                );
+                // println!(
+                //     "Rate score calculation => threshold_log_base = {log_base} | rate_diff_log_base = {} | scaled = {scaled} ",
+                //     delta_rate.log10()
+                // );
                 scaled.clamp(0.0, 1.0)
             }
             _ => 0.0,
         };
-        println!("| tps_threshold = {tps_threshold:?} | rate_score = {rate_score}");
+        // println!("| tps_threshold = {tps_threshold:?} | rate_score = {rate_score}");
 
         rate_score
     }
 
     /// Compute the backpressure time in ms
-    pub(crate) fn compute_backpressure_timeout(&self, current_suffix_len: u64) -> u64 {
+    pub fn compute_backpressure_timeout(&self, current_suffix_len: u64) -> u64 {
         let suffix_fill_ratio = self.get_suffix_fill_ratio(current_suffix_len);
 
         let suffix_fill_score = self.compute_suffix_fill_score(suffix_fill_ratio);
-        println!(" >>>> suffix_fill_ratio = {suffix_fill_ratio} | suffix_fill_score = {suffix_fill_score}");
+        // println!(" >>>> suffix_fill_ratio = {suffix_fill_ratio} | suffix_fill_score = {suffix_fill_score}");
         let rate_score = if suffix_fill_ratio >= self.config.suffix_rate_threshold {
             self.compute_rate_score()
         } else {
@@ -161,8 +163,10 @@ impl BackPressureController {
         let timeout_ms = min_timeout_ms as f64 + ((max_timeout_ms - min_timeout_ms) as f64 * combined_score);
         let timeout_ms = (timeout_ms.round() as u64).clamp(min_timeout_ms, max_timeout_ms);
 
-        println!("\n| suffix_fill_weighted = {suffix_fill_weighted} | rate_score = {rate_score} \n| rate_weighted = {rate_weighted} | combined_score = {combined_score}");
-        println!("\n| suffix_fill_score = {suffix_fill_score} | rate_score = {rate_score} \n| timeout_ms = {timeout_ms} ms");
+        if timeout_ms > 0 {
+            warn!("| suffix_fill_weighted = {suffix_fill_weighted} | rate_weighted = {rate_weighted} ");
+            warn!("| suffix_fill_score = {suffix_fill_score} | rate_score = {rate_score} | combined_score = {combined_score} | timeout_ms = {timeout_ms} ms");
+        }
 
         timeout_ms
     }

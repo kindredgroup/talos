@@ -11,18 +11,28 @@ use crate::{
 
 use opentelemetry::{global, metrics::Gauge, trace::TraceContextExt, KeyValue};
 
-use talos_certifier::{ports::MessageReciever, ChannelMessage};
-use talos_common_utils::otel::{
-    metric_constants::{
-        METRIC_KEY_CERT_DECISION_TYPE, METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_NAME_CERTIFICATION_OFFSET, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN,
-        METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION,
+use talos_certifier::{
+    ports::{ConsumeMessageTimeoutType, MessageReciever},
+    ChannelMessage,
+};
+use talos_common_utils::{
+    backpressure::{
+        config::BackPressureConfig,
+        controller::{BackPressureController, BackPressureVersionTracker},
     },
-    propagated_context::PropagatedSpanContextData,
+    otel::{
+        metric_constants::{
+            METRIC_KEY_CERT_DECISION_TYPE, METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_NAME_CERTIFICATION_OFFSET, METRIC_VALUE_CERT_DECISION_TYPE_UNKNOWN,
+            METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE, METRIC_VALUE_CERT_MESSAGE_TYPE_DECISION,
+        },
+        propagated_context::PropagatedSpanContextData,
+    },
 };
 
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::{sync::mpsc, time::Interval};
-use tracing::Instrument;
 use tracing::{debug, error, info};
+use tracing::{warn, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub struct ReplicatorServiceConfig {
@@ -73,7 +83,11 @@ where
     config: ReplicatorServiceConfig,
     _interval: Interval,
     metrics: ReplicatorMetrics,
-    // suffix_back_pressure: SuffixBackPressure,
+    backpressure_controller: BackPressureController,
+    next_backpressure_check_ns: i128,
+    max_allowed: u64,
+    last_consume_timeout_type: ConsumeMessageTimeoutType,
+    current_iter_at_max: u64,
 }
 
 impl<S, M> ReplicatorService<S, M>
@@ -89,34 +103,90 @@ where
     ) -> Self {
         let metrics = ReplicatorMetrics::new();
         let interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
+
+        // TODO: GK - maybe use number of items for install as the criteria to determine the suffix size?
+        let backpressure_config = BackPressureConfig::from_env();
+        let backpressure_controller = BackPressureController::with_config(backpressure_config);
+
         Self {
             statemaps_tx,
             replicator_rx,
             replicator,
             config,
             metrics,
-            // suffix_back_pressure: SuffixBackPressure {
-            //     config: SuffixBackPressureConfig {
-            //         max_timeout_ms: todo!(),
-            //         max_suffix_length: todo!(),
-            //     },
-            //     last_suffix_head: todo!(),
-            //     first_candidate_version: todo!(),
-            //     last_candidate_version: todo!(),
-            // },
+            backpressure_controller,
+            next_backpressure_check_ns: 0,
+            max_allowed: 5,
+            current_iter_at_max: 0,
+            last_consume_timeout_type: ConsumeMessageTimeoutType::NoTimeout,
             _interval: interval,
         }
     }
 
     pub async fn run_once(&mut self) -> Result<(), ReplicatorError> {
-        // let enable_back_pressure = self.suffix_back_pressure.is_prune_happening(self.replicator.suffix.get_meta().head)
-        //     && self
-        //         .suffix_back_pressure
-        //         .is_below_safe_threshold_using_callback(|| self.replicator.suffix.get_suffix_len() as u64);
+        let current_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+        // TODO: GK - Refactor this, and move some of the logic into the backpressue controller code.
+        let backpressure_consume_timeout_type = if current_time_ns >= self.next_backpressure_check_ns {
+            warn!("[replicator_service] Starting to compute dynamic back pressure");
+
+            let current_suffix_length = self.replicator.suffix.get_suffix_len() as u64;
+            let backpressure_timeout_ms = self.backpressure_controller.compute_backpressure_timeout(current_suffix_length);
+
+            if backpressure_timeout_ms > 0 {
+                warn!("[replicator_service] backpressure_timeout_ms = {backpressure_timeout_ms} | current_suffix_length = {current_suffix_length} | current_suffix_head = {}", self.replicator.suffix.get_meta().head);
+                self.backpressure_controller.reset_version_trackers();
+            }
+            // Set the number of times the timeout is at max.
+            if backpressure_timeout_ms >= self.backpressure_controller.config.max_timeout_ms {
+                self.current_iter_at_max += 1;
+            } else {
+                self.current_iter_at_max = 0;
+            }
+
+            let mut backpressure_timeout_type: ConsumeMessageTimeoutType = ConsumeMessageTimeoutType::NoTimeout;
+            // Check current against max
+            if self.current_iter_at_max >= self.max_allowed && self.current_iter_at_max < (self.max_allowed + 3) {
+                warn!(
+                    "[replicator_service] At max timeout for back pressure current_iter_at_max = {} | max_allowed = {} ",
+                    self.current_iter_at_max, self.max_allowed
+                );
+                backpressure_timeout_type = ConsumeMessageTimeoutType::SteadyAtMax(self.current_iter_at_max);
+            } else {
+                if backpressure_timeout_ms > 0 {
+                    backpressure_timeout_type = ConsumeMessageTimeoutType::Timeout(backpressure_timeout_ms);
+                    self.current_iter_at_max = 0;
+                }
+            }
+            self.next_backpressure_check_ns = current_time_ns + (10 * 1_000_000) as i128;
+
+            self.last_consume_timeout_type = backpressure_timeout_type.clone();
+            backpressure_timeout_type
+        } else {
+            let dt = OffsetDateTime::UNIX_EPOCH + Duration::from_nanos(self.next_backpressure_check_ns as u64);
+            let timestamp = dt.format(&Rfc3339).unwrap();
+            warn!(
+                "[replicator_service] Else block - Not computing dynamic pressure, next compute is only at {:?}",
+                timestamp
+            );
+            let decay_rate = 0.8; // 20% from last.
+            let new_consume_timeout_type = match self.last_consume_timeout_type {
+                ConsumeMessageTimeoutType::NoTimeout => ConsumeMessageTimeoutType::NoTimeout,
+                ConsumeMessageTimeoutType::Timeout(time_ms) => {
+                    let new_time_ms = ((time_ms as f64 * decay_rate).round() as u64).max(self.backpressure_controller.config.min_timeout_ms);
+                    ConsumeMessageTimeoutType::Timeout(new_time_ms)
+                }
+                ConsumeMessageTimeoutType::SteadyAtMax(k) => ConsumeMessageTimeoutType::SteadyAtMax(k),
+            };
+            self.last_consume_timeout_type = new_consume_timeout_type;
+
+            self.last_consume_timeout_type.clone()
+        };
+        // let backpressure_timeout_ms = 0;
 
         tokio::select! {
             // 1. Consume message.
-            res = self.replicator.receiver.consume_message() => {
+            res = self.replicator.receiver.consume_message_with_timeout(backpressure_consume_timeout_type) => {
                 if let Ok(Some(msg)) = res {
                     // 2. Add/update to suffix.
                     match msg {
@@ -124,6 +194,8 @@ where
                         ChannelMessage::Candidate(candidate) => {
                             let offset = candidate.message.version;
                             self.replicator.process_consumer_message(offset, candidate.message.into()).await;
+
+                            self.backpressure_controller.update_candidate_received_tracker(BackPressureVersionTracker{version: offset, time_ns: OffsetDateTime::now_utc().unix_timestamp_nanos()});
 
                             self.metrics.record_consumed_offset(offset, &[
                                 KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE),
@@ -208,6 +280,7 @@ where
                                     error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
                                 }
                             } else {
+                                self.backpressure_controller.update_suffix_head_trackers(BackPressureVersionTracker { version: self.replicator.suffix.get_meta().head, time_ns: OffsetDateTime::now_utc().unix_timestamp_nanos() });
                                 info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", self.replicator.suffix.get_meta().head, self.replicator.suffix.get_suffix_len());
                             }
                         }
@@ -229,6 +302,7 @@ where
 
     pub async fn run(&mut self) -> Result<(), ReplicatorError> {
         info!("Starting Replicator Service.... ");
+        info!("Backpressure (early test) mode ");
 
         loop {
             self.run_once().await?;

@@ -20,6 +20,7 @@ opentelemetry = { version = "0.28.0", default-features = false, features = [
 tokio = { workspace = true, features = ["full"] }
 # Time
 time = { version = "0.3.17" }
+tracing = { version = "0.1.41", features = ["log"] }
 
 [dev-dependencies]
 serial_test = "2.0.0"

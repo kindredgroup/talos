@@ -1,3 +1,7 @@
+use tracing::warn;
+
+use crate::env_var_with_defaults;
+
 #[derive(Debug)]
 pub struct BackPressureConfig {
     /// The window/interval used to check if backpressure should be applied.
@@ -47,6 +51,21 @@ impl Default for BackPressureConfig {
 }
 
 impl BackPressureConfig {
+    /// Build the config using env. variables with defaults applied.
+    pub fn from_env() -> Self {
+        let config = Self {
+            check_window_ms: env_var_with_defaults!("BACKPRESSURE_CHECK_WINDOW_MS", u64, 10),
+            max_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MAX_TIMEOUT_MS", u64, 80),
+            min_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MIN_TIMEOUT_MS", u64, 10),
+            suffix_max_size: env_var_with_defaults!("BACKPRESSURE_SUFFIX_MAX_SIZE", u64, 10_000),
+            suffix_fill_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_FILL_THRESHOLD", f64, 0.7),
+            suffix_rate_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_RATE_THRESHOLD", f64, 0.5),
+            rate_delta_threshold: env_var_with_defaults!("BACKPRESSURE_RATE_DELTA_THRESHOLD", Option::<f64>, 50.0),
+        };
+
+        warn!("Backpressure config {config:#?}");
+        config
+    }
     pub fn builder() -> BackPressureConfigBuilder {
         BackPressureConfigBuilder::default()
     }
