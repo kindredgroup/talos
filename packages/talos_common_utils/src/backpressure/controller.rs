@@ -1,7 +1,7 @@
 use std::ops::Sub;
 
 use time::OffsetDateTime;
-use tracing::warn;
+use tracing::debug;
 
 use super::config::BackPressureConfig;
 
@@ -11,11 +11,8 @@ pub enum BackPressureTimeout {
     NoTimeout,
     /// General timeout. With timeout in milliseconds
     Timeout(u64),
-    // / Max timeout with (timeout in milliseconds, number of continuos times at max).
-    // / This high marker could help in switching to very aggressive backoff strategy
-    // MaxTimeout(u64, u64),
     /// Critical scenario to completely stop incoming messages. Along with max_timeout.
-    CompleteStop(u64),
+    CriticalStop(u64),
 }
 
 #[derive(Debug, Default, Clone)]
@@ -62,10 +59,9 @@ pub struct BackPressureController {
     pub first_candidate_received: BackPressureVersionTracker,
     /// last candidate received during the check window.
     pub last_candidate_received: BackPressureVersionTracker,
-    /// the number of continuous iteration where the timeout was max_timeout_ms.
-    pub max_timeout_iter_count: u64,
-
+    /// An internal tracker which is updated any time the head tracker is updated.
     ///
+    /// **NOTE** - This should not be reset.
     last_head_updated_ns: i128,
 }
 
@@ -74,6 +70,7 @@ impl BackPressureController {
         Self { config, ..Default::default() }
     }
 
+    /// Reset the version trackers used to calculate the input and output rate.
     pub fn reset_version_trackers(&mut self) {
         self.first_suffix_head.reset();
         self.last_suffix_head.reset();
@@ -81,9 +78,10 @@ impl BackPressureController {
         self.last_candidate_received.reset();
     }
 
-    fn get_suffix_fill_ratio(&self, current_suffix_len: u64) -> f64 {
+    /// Calculate the suffix fill ratio using the current suffix size against `config.suffix_max_size`
+    fn get_suffix_fill_ratio(&self, current_suffix_size: u64) -> f64 {
         // Determine the ratio of how much of suffix is filled by checking the current size againt the `TalosBackPressureConfig.suffix_max_length`
-        let suffix_fill_ratio = current_suffix_len as f64 / self.config.suffix_max_size as f64;
+        let suffix_fill_ratio = current_suffix_size as f64 / self.config.suffix_max_size as f64;
         // Clamp it between 0.0 and 1.0. i.e Empty to full.
         suffix_fill_ratio.clamp(0.0, 1.0)
     }
@@ -111,6 +109,7 @@ impl BackPressureController {
         // Map how much is filled over the threshold on a scale of 0-1.
         let score_to_threshold = suffix_fill_ratio.sub(suffix_fill_weight_threshold).max(0.0);
         let suffix_fill_score = score_to_threshold / (1.0 - suffix_fill_weight_threshold);
+        debug!("Backpressure fill score compute - suffix_fill_ratio = {suffix_fill_ratio} | suffix_fill_weight_threshold = {suffix_fill_weight_threshold} | suffix_fill_score = {suffix_fill_score}");
 
         suffix_fill_score
     }
@@ -129,28 +128,31 @@ impl BackPressureController {
         let output_rate = (self.last_suffix_head.version - self.first_suffix_head.version) as f64 / output_time_sec;
 
         let delta_rate = input_rate.sub(output_rate);
-        warn!("[compute_rate_score] Input rate = {input_rate} | Output rate = {output_rate} | delta_rate = {delta_rate}");
 
         let rate_score = match tps_threshold {
             Some(threshold) if delta_rate > threshold => {
                 let log_base = threshold.log10();
                 let scaled = delta_rate.log10() - log_base;
-                // println!(
-                //     "Rate score calculation => threshold_log_base = {log_base} | rate_diff_log_base = {} | scaled = {scaled} ",
-                //     delta_rate.log10()
-                // );
+
                 scaled.clamp(0.0, 1.0)
             }
             _ => 0.0,
         };
-        // println!("| tps_threshold = {tps_threshold:?} | rate_score = {rate_score}");
+        debug!(
+            "Backpressure rate score compute - Input rate = {input_rate} | Output rate = {output_rate} | delta_rate = {delta_rate} | rate_score = {rate_score}"
+        );
 
         rate_score
     }
 
-    /// Compute the backpressure time in ms
-    pub fn calculate_timeout(&self, current_suffix_len: u64) -> u64 {
-        let suffix_fill_ratio = self.get_suffix_fill_ratio(current_suffix_len);
+    /// Calculates the timeout in milliseconds.
+    ///
+    /// - Uses a `fill_score` to determine if the suffix size should be considered for the timeout calculation.
+    /// - Uses a `rate_score` to determine if the output rate is not keeping up with the input rate.
+    /// - Both the scores are used to determine the timeout to be applied, which will be between
+    /// [`BackPressureConfig::min_timeout_ms`] and [`BackPressureConfig::max_timeout_ms`]
+    pub fn calculate_timeout(&self, current_suffix_size: u64) -> u64 {
+        let suffix_fill_ratio = self.get_suffix_fill_ratio(current_suffix_size);
 
         let suffix_fill_score = self.compute_suffix_fill_score(suffix_fill_ratio);
         let rate_score = if suffix_fill_ratio >= self.config.suffix_rate_threshold {
@@ -177,77 +179,42 @@ impl BackPressureController {
         let timeout_ms = (timeout_ms.round() as u64).clamp(min_timeout_ms, max_timeout_ms);
 
         if timeout_ms > 0 {
-            warn!("| suffix_fill_weighted = {suffix_fill_weighted} | rate_weighted = {rate_weighted} ");
-            warn!("| suffix_fill_score = {suffix_fill_score} | rate_score = {rate_score} | combined_score = {combined_score} | timeout_ms = {timeout_ms} ms");
+            debug!("Backpressure timeout calculation -  suffix_fill_weighted = {suffix_fill_weighted} | rate_weighted = {rate_weighted} | rate_score = {rate_score} | timeout_ms = {timeout_ms}");
         }
 
         timeout_ms
     }
 
-    pub fn get_timeout_ms(&mut self, current_suffix_len: u64) -> u64 {
-        // Compute the timeout
-        let timeout_ms = self.calculate_timeout(current_suffix_len);
-
-        // reset the trackers
-        self.reset_version_trackers();
-        timeout_ms
-    }
-
+    /// Using the provided timeout, compute a new timeout value which will be stepped down using [`BackPressureConfig::timeout_stepdown_rate`]
+    /// and ensures the value is not below the [`BackPressureConfig::min_timeout_ms`]
     pub fn compute_stepdown_timeout(&self, timeout_ms: u64) -> u64 {
         ((timeout_ms as f64 * self.config.timeout_stepdown_rate).round() as u64).max(self.config.min_timeout_ms)
     }
 
+    /// Compute the backpressure
+    ///
+    /// - Calculate the timeout in milliseconds using [`Self::calculate_timeout`].
+    /// - Reset the trackers. As the rates are calculated for a particular time window.
+    /// - Return [`BackPressureTimeout`], based on the whether timeout needs to be applied, and/or if the head is stale for long,
+    /// return [`BackPressureTimeout::CompleteStop`]
     pub fn compute_backpressure(&mut self, current_suffix_len: u64) -> BackPressureTimeout {
-        let fill_ratio = self.get_suffix_fill_ratio(current_suffix_len);
-
-        warn!("Current suffix length = {current_suffix_len} | fill_ratio = {fill_ratio} ");
-        // Critical level of suffix, and stop completely.
-        // TODO: GK - use config instead of 0.95
-        // if fill_ratio >= 0.95 {
-        //     self.max_timeout_iter_count += 1;
-        //     self.reset_version_trackers();
-
-        //     let stale_head_time_ms = (OffsetDateTime::now_utc().unix_timestamp_nanos() - self.last_head_updated_ns) / 1_000_000;
-        //     if self.max_timeout_iter_count > 20 && (stale_head_time_ms as u64) < self.config.max_head_stale_timeout_ms {
-        //         self.max_timeout_iter_count = 0;
-        //         return BackPressureTimeout::Timeout(self.config.max_timeout_ms);
-        //     }
-        //     return BackPressureTimeout::CompleteStop(self.config.max_timeout_ms);
-        // }
-
         // calculate the timeout to apply for backpressure.
         let timeout_ms = self.calculate_timeout(current_suffix_len);
 
         // reset the version trackers
         self.reset_version_trackers();
 
-        // // Max timeout
-        // if timeout_ms == self.config.max_timeout_ms {
-        //     if self.max_timeout_iter_count < self.config.max_timeout_iter_upper_limit {
-        //         self.max_timeout_iter_count += 1;
-        //         return BackPressureTimeout::MaxTimeout(timeout_ms, self.max_timeout_iter_count);
-        //     } else {
-        //         self.max_timeout_iter_count = 0;
-
-        //         let new_timeout_ms = self.compute_stepdown_timeout(timeout_ms);
-        //         return BackPressureTimeout::Timeout(new_timeout_ms);
-        //     }
-        // }
-
-        self.max_timeout_iter_count = 0;
-
-        // head is not moving for a long time, then we stop proceeding
-        if timeout_ms == self.config.max_timeout_ms {
-            let stale_head_time_ms = (OffsetDateTime::now_utc().unix_timestamp_nanos() - self.last_head_updated_ns) / 1_000_000;
-            if (stale_head_time_ms as u64) > self.config.max_head_stale_timeout_ms {
-                return BackPressureTimeout::CompleteStop(self.config.max_timeout_ms);
-            }
-        }
-
         // No timeout
         if timeout_ms == 0 {
             BackPressureTimeout::NoTimeout
         } else {
+            // head is not moving for a long time, then we stop proceeding
+            if timeout_ms == self.config.max_timeout_ms {
+                let stale_head_time_ms = (OffsetDateTime::now_utc().unix_timestamp_nanos() - self.last_head_updated_ns) / 1_000_000;
+                if (stale_head_time_ms as u64) > self.config.max_head_stale_timeout_ms {
+                    return BackPressureTimeout::CriticalStop(self.config.max_timeout_ms);
+                }
+            }
             // Timeout between min and max
             BackPressureTimeout::Timeout(timeout_ms)
         }

@@ -1,7 +1,7 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use log::{debug, warn};
+use log::debug;
 use rdkafka::{
     consumer::{Consumer, ConsumerContext, DefaultConsumerContext, StreamConsumer},
     Message, TopicPartitionList,
@@ -90,6 +90,35 @@ where
 
         Ok(())
     }
+
+    fn pause(&mut self) -> Result<(), MessageReceiverError> {
+        if !self.is_paused {
+            tracing::warn!(
+                "Too many candidates pending to process and backpressure at critical level. Pausing consumption of new messages until system can cope up."
+            );
+            self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
+                kind: MessageReceiverErrorKind::PauseResume,
+                version: None,
+                reason: e.to_string(),
+                data: Some(self.topic.clone()),
+            })?;
+            self.is_paused = true;
+        }
+        Ok(())
+    }
+    fn resume(&mut self) -> Result<(), MessageReceiverError> {
+        if self.is_paused {
+            tracing::debug!("Kafka consumer backpressure eased and resuming consumption of new message");
+            self.consumer.resume(&self.tpl).map_err(|e| MessageReceiverError {
+                kind: MessageReceiverErrorKind::PauseResume,
+                version: None,
+                reason: e.to_string(),
+                data: Some(self.topic.clone()),
+            })?;
+            self.is_paused = false;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -103,62 +132,29 @@ where
     async fn consume_message_with_backpressure(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
         match timeout {
             BackPressureTimeout::Timeout(time_ms) => {
-                if self.is_paused {
-                    tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
-                    self.consumer.resume(&self.tpl).map_err(|e| MessageReceiverError {
-                        kind: MessageReceiverErrorKind::PauseResume,
-                        version: None,
-                        reason: e.to_string(),
-                        data: Some(self.topic.clone()),
-                    })?;
-                    self.is_paused = false;
-                }
+                if let Err(e) = self.resume() {
+                    tracing::error!("Failed to resume consumption of topic {} with error {e:?}", self.topic.clone());
+                    return Err(e);
+                };
                 if time_ms > 0 {
-                    tracing::warn!("[kafka consumer timeout] Sleeping for {time_ms}ms, before consuming the message");
+                    tracing::debug!("Sleeping for {time_ms}ms, before consuming the next message");
                     tokio::time::sleep(Duration::from_millis(time_ms)).await;
                 }
                 self.consume_message().await
             }
-            BackPressureTimeout::CompleteStop(max_time_ms) => {
-                if !self.is_paused {
-                    tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being");
-                    self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
-                        kind: MessageReceiverErrorKind::PauseResume,
-                        version: None,
-                        reason: e.to_string(),
-                        data: Some(self.topic.clone()),
-                    })?;
-                    self.is_paused = true;
-                    tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
-                }
+            BackPressureTimeout::CriticalStop(max_time_ms) => {
+                if let Err(e) = self.pause() {
+                    tracing::error!("Failed to pause consumption of topic {} with error {e:?}", self.topic.clone());
+                    return Err(e);
+                };
+                tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
                 Ok(None)
             }
-            // BackPressureTimeout::MaxTimeout(max_time_ms, count) => {
-            //     if !self.is_paused && count > 1 {
-            //         tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being on constant max timeout");
-            //         self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
-            //             kind: MessageReceiverErrorKind::PauseResume,
-            //             version: None,
-            //             reason: e.to_string(),
-            //             data: Some(self.topic.clone()),
-            //         })?;
-            //         self.is_paused = true;
-
-            //         tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
-            //     }
-            //     Ok(None)
-            // }
             BackPressureTimeout::NoTimeout => {
-                if self.is_paused {
-                    tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
-                    self.consumer.resume(&self.tpl).map_err(|e| MessageReceiverError {
-                        kind: MessageReceiverErrorKind::PauseResume,
-                        version: None,
-                        reason: e.to_string(),
-                        data: Some(self.topic.clone()),
-                    })?;
-                    self.is_paused = false;
-                }
+                if let Err(e) = self.resume() {
+                    tracing::error!("Failed to resume consumption of topic {} with error {e:?}", self.topic.clone());
+                    return Err(e);
+                };
                 self.consume_message().await
             }
         }
