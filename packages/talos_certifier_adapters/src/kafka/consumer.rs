@@ -119,9 +119,9 @@ where
                 }
                 self.consume_message().await
             }
-            BackPressureTimeout::MaxTimeout(max_time_ms, count) => {
-                if !self.is_paused && count > 1 {
-                    tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being on constant max timeout");
+            BackPressureTimeout::CompleteStop(max_time_ms) => {
+                if !self.is_paused {
+                    tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being");
                     self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
                         kind: MessageReceiverErrorKind::PauseResume,
                         version: None,
@@ -129,11 +129,25 @@ where
                         data: Some(self.topic.clone()),
                     })?;
                     self.is_paused = true;
-
                     tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
                 }
                 Ok(None)
             }
+            // BackPressureTimeout::MaxTimeout(max_time_ms, count) => {
+            //     if !self.is_paused && count > 1 {
+            //         tracing::warn!("[kafka consumer timeout] Pausing consumption of new message due to being on constant max timeout");
+            //         self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
+            //             kind: MessageReceiverErrorKind::PauseResume,
+            //             version: None,
+            //             reason: e.to_string(),
+            //             data: Some(self.topic.clone()),
+            //         })?;
+            //         self.is_paused = true;
+
+            //         tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
+            //     }
+            //     Ok(None)
+            // }
             BackPressureTimeout::NoTimeout => {
                 if self.is_paused {
                     tracing::warn!("[kafka consumer timeout] Resuming consumption of new message");
@@ -145,7 +159,6 @@ where
                     })?;
                     self.is_paused = false;
                 }
-                tracing::warn!("[kafka consumer timeout] No timeout, consuming message immediately");
                 self.consume_message().await
             }
         }
