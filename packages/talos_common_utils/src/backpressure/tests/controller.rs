@@ -1,6 +1,6 @@
 use crate::backpressure::{
     config::BackPressureConfig,
-    controller::{BackPressureController, BackPressureVersionTracker},
+    controller::{BackPressureController, BackPressureTimeout, BackPressureVersionTracker},
 };
 
 use time::OffsetDateTime;
@@ -264,108 +264,145 @@ fn test_backpressure_delta_rate_based() {
     assert_eq!(timeout_ms, 80);
 }
 
-// #[test]
-// fn test_compute_backpressure_timeout_suffix_above_and_rate_below_threshold() {
-//     let config = BackPressureConfig::builder()
-//         .max_timeout_ms(100)
-//         .min_timeout_ms(10)
-//         .rate_delta_threshold(100.0)
-//         .suffix_fill_threshold(0.7)
-//         .suffix_rate_threshold(0.5)
-//         .suffix_max_size(300)
-//         .build();
-//     let mut bp_controller = BackPressureController::with_config(config);
+#[test]
+fn test_backpressure_timeouts_no_timeout_scenarios() {
+    let config = BackPressureConfig::builder()
+        .max_timeout_ms(100)
+        .min_timeout_ms(10)
+        .suffix_fill_threshold(0.7)
+        .suffix_max_size(300)
+        // When 50% of suffix_max_size has reached, we consider the rate_score for threshold.
+        .suffix_rate_threshold(0.5)
+        // When diff between input rate to output rate is more than 50, we consider the rate_score for threshold.
+        .rate_delta_threshold(50.0)
+        .build();
+    let mut bp_controller = BackPressureController::with_config(config);
 
-//     let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-//     // Update the suffix head trackers
-//     bp_controller.update_suffix_head_trackers(BackPressureVersionTracker {
-//         version: 1,
-//         time_ns: diff_seconds(test_start_time_ns, 3_000),
-//     });
-//     bp_controller.update_suffix_head_trackers(BackPressureVersionTracker {
-//         version: 20,
-//         time_ns: diff_seconds(test_start_time_ns, 10),
-//     });
-//     // Update the candidates trackers
-//     bp_controller.update_candidate_received_tracker(BackPressureVersionTracker {
-//         version: 1,
-//         time_ns: diff_seconds(test_start_time_ns, 20),
-//     });
-//     bp_controller.update_candidate_received_tracker(BackPressureVersionTracker {
-//         version: 4005,
-//         time_ns: diff_seconds(test_start_time_ns, 10),
-//     });
+    // ****************************************************************************************
+    //                              NO TIMEOUT SCENARIOS
+    // ****************************************************************************************
+    // AS01. Since this is initial call, with the head and inputs not tracked, there should be no timeout.
+    let timeout = bp_controller.compute_backpressure(20);
+    assert_eq!(timeout, BackPressureTimeout::NoTimeout);
 
-//     assert_eq!(bp_controller.first_suffix_head.version, 1);
-//     assert_eq!(bp_controller.first_candidate_received.version, 1);
+    // AS02. When rate is very high, but suffix and rate thresholds haven't crossed. There should be no timeout.
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(10, diff_seconds(test_start_time_ns, 200)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(10, diff_seconds(test_start_time_ns, 200)));
 
-//     let timeout_ms = bp_controller.get_timeout_ms(236);
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(20, diff_seconds(test_start_time_ns, 100)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(10_000, diff_seconds(test_start_time_ns, 100)));
+    let timeout = bp_controller.compute_backpressure(20);
+    assert_eq!(timeout, BackPressureTimeout::NoTimeout);
 
-//     // Greater than 50 ms
-//     assert!(timeout_ms > 50);
-//     assert_eq!(bp_controller.first_suffix_head.version, 0);
-//     assert_eq!(bp_controller.first_candidate_received.version, 0);
+    // AS02. When suffix is above the rate threshold but below the suffix threshold,
+    //       but rate is below the delta rate threshold.
+    //       There should be no timeout.
+    // From below trackers, the delta_rate is around 80tps, this is below the required `delta_rate_threshold`.
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(
+        1,
+        diff_seconds(test_start_time_ns, 2 * 1_000_000_000 /*2 seconds */),
+    ));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 2 * 1_000_000_000)));
 
-//     // 2. Next check window -
-//     // We update the candidate and head first received, but no further updates for both, and the suffix length is still > the threshold.
-//     // Under this scenario, the because the delta_rate would not have any impact on the timeout_ms, but only the suffix_fill related part will have impact.
-//     //  - 236/300 is around 78%. That means we need to control for the remaining 22% from filling quickly.
-//     //  - min_timeout_ms is 10ms and max_timeout_ms is 100ms for our test. Therefore, the timeout needed to be applied by running through the formulaes is around 25ms
-//     let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(
+        921,
+        diff_seconds(test_start_time_ns, 1_000_000_000 /*2 seconds */),
+    ));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(
+        1_001,
+        diff_seconds(test_start_time_ns, 1_000_000_000 /*2 seconds */),
+    ));
+    // 60% of max_suffix_size. This is above the threshold of rate and suffix fill score
+    let current_suffix_size = 180;
+    let timeout = bp_controller.compute_backpressure(current_suffix_size);
+    assert_eq!(timeout, BackPressureTimeout::NoTimeout);
+}
 
-//     bp_controller.update_suffix_head_trackers(BackPressureVersionTracker {
-//         version: 40,
-//         time_ns: diff_seconds(test_start_time_ns, 10),
-//     });
-//     // Update the candidates trackers
-//     bp_controller.update_candidate_received_tracker(BackPressureVersionTracker {
-//         version: 8000,
-//         time_ns: diff_seconds(test_start_time_ns, 20),
-//     });
-//     let timeout_ms = bp_controller.get_timeout_ms(236);
+#[test]
+fn test_backpressure_timeouts_valid_timeout_scenarios() {
+    let config = BackPressureConfig::builder()
+        .max_timeout_ms(100)
+        .min_timeout_ms(10)
+        .suffix_fill_threshold(0.7)
+        .suffix_max_size(300)
+        // When 50% of suffix_max_size has reached, we consider the rate_score for threshold.
+        .suffix_rate_threshold(0.5)
+        // When diff between input rate to output rate is more than 50, we consider the rate_score for threshold.
+        .rate_delta_threshold(50.0)
+        // Override the default of 30ms to 2 seconds.
+        .max_head_stale_timeout_ms(2 * 1_000)
+        .build();
+    let mut bp_controller = BackPressureController::with_config(config);
 
-//     // We don't need a precise value, some timeout value within the acceptable range is good for the test to pass. The calculations are very complex to write out the exact value here.
-//     assert!(timeout_ms > 22 && timeout_ms < 27);
+    let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
-//     // 3. Next check window -
-//     // We update the candidate and head first received, then the head moves by just 10 while the incomings candidates moves a lot, creating a scenario of very high input rate, while output rate is very low, and the suffix length is still > the threshold.
-//     // Under this scenario, the because the delta_rate > the rate_threshold delta_rate will have an impact on the timeout_ms calculation for back pressure.
-//     //  - 250/300 is around 83%. That means we need to control for the remaining 17% from filling quickly.
-//     //  - min_timeout_ms is 10ms and max_timeout_ms is 100ms for our test.
-//     // fill_score = 0.296 | rate_weighted = 1 - 0.296 = 0.703 | rate_score = 0.476 | Therefore timeout_ms = 10 + ((100 - 10) * (0.296 + (0.703 * 0.476)) =~ 66.75ms  rounded to 67ms
+    // ****************************************************************************************
+    //                               TIMEOUT SCENARIOS
+    // ****************************************************************************************
+    // AS01. Valid timeout when rate is low, but the suffix size is above threshold.
+    // 80% of max_suffix_size. This is above the threshold `suffix_fill_threshold
+    let current_suffix_size = 240;
+    let timeout = bp_controller.compute_backpressure(current_suffix_size);
+    assert!(matches!(timeout, BackPressureTimeout::Timeout(..)));
 
-//     let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    // AS02. Valid timeout when rate is high and suffix size is above the `suffix_rate_threshold`, but below the `suffix_fill_threshold`.
 
-//     bp_controller.update_suffix_head_trackers(BackPressureVersionTracker {
-//         version: 50,
-//         time_ns: diff_seconds(test_start_time_ns, 20),
-//     });
-//     // Update the candidates trackers
-//     bp_controller.update_candidate_received_tracker(BackPressureVersionTracker {
-//         version: 9000,
-//         time_ns: diff_seconds(test_start_time_ns, 20),
-//     });
+    // From below trackers, the delta_rate is around 70tps, which is above the `delta_rate_threshold`
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 300)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 300)));
 
-//     //*** */
-//     bp_controller.update_suffix_head_trackers(BackPressureVersionTracker {
-//         version: 60,
-//         time_ns: diff_seconds(test_start_time_ns, 2),
-//     });
-//     // Update the candidates trackers
-//     bp_controller.update_candidate_received_tracker(BackPressureVersionTracker {
-//         version: 15000,
-//         time_ns: diff_seconds(test_start_time_ns, 0),
-//     });
-//     let timeout_ms = bp_controller.get_timeout_ms(250);
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(21, diff_seconds(test_start_time_ns, 280 /*2 seconds */)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1421, diff_seconds(test_start_time_ns, 280 /*2 seconds */)));
+    // 60% of max_suffix_size. This is above the threshold of rate but below the threshold for suffix fill score
+    let current_suffix_size = 180;
+    let timeout = bp_controller.compute_backpressure(current_suffix_size);
+    assert!(matches!(timeout, BackPressureTimeout::Timeout(..)));
 
-//     // We don't need a precise value, some timeout value within the acceptable range is good for the test to pass. The calculations are very complex to write out the exact value here.
-//     assert!(timeout_ms > 60 && timeout_ms < 70);
-// }
+    // AS03. Valid timeout when rate is high and suffix size is above the `suffix_rate_threshold` and the `suffix_fill_threshold`.
+    // From below trackers, the delta_rate is around 70tps, which is above the `delta_rate_threshold`
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 300)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 300)));
 
-// // #[test]
-// // /// Test backpressure for various combination of delta_rates and suffix size
-// // fn test_backpressure_delta_rate_and_suffix_size_combination() {
-// //     // Add tests for various combinations of rate and suffix size
-// //     assert_eq!(0, 1); // Will fail. Just a placeholder till tests are in place
-// // }
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(21, diff_seconds(test_start_time_ns, 280 /*2 seconds */)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1421, diff_seconds(test_start_time_ns, 280 /*2 seconds */)));
+    // 96% of max_suffix_size. This is above the threshold rate but below the threshold for suffix fill score
+    let current_suffix_size = 290;
+    let timeout = bp_controller.compute_backpressure(current_suffix_size);
+    assert!(matches!(timeout, BackPressureTimeout::Timeout(..)));
+}
+
+#[test]
+fn test_backpressure_timeouts_critical_timeout_scenarios() {
+    let config = BackPressureConfig::builder()
+        .max_timeout_ms(100)
+        .min_timeout_ms(10)
+        .suffix_fill_threshold(0.7)
+        .suffix_max_size(300)
+        // When 50% of suffix_max_size has reached, we consider the rate_score for threshold.
+        .suffix_rate_threshold(0.5)
+        // When diff between input rate to output rate is more than 50, we consider the rate_score for threshold.
+        .rate_delta_threshold(50.0)
+        // Override the default of 30ms to 1 ms.
+        .max_head_stale_timeout_ms(1)
+        .build();
+    let mut bp_controller = BackPressureController::with_config(config);
+
+    let test_start_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
+
+    // ****************************************************************************************
+    //                               CRITICAL SCENARIOS
+    // ****************************************************************************************
+    // AS04. Critical when the suffix head has been stale for too long
+    // From below trackers, the delta_rate is around 70tps, which is above the `delta_rate_threshold`
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 300)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1, diff_seconds(test_start_time_ns, 300)));
+
+    bp_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(21, diff_seconds(test_start_time_ns, 280)));
+    bp_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(1421, diff_seconds(test_start_time_ns, 280)));
+    // 100% of max_suffix_size. This is above the threshold rate but below the threshold for suffix fill score
+    let current_suffix_size = 300;
+    let timeout = bp_controller.compute_backpressure(current_suffix_size);
+    assert!(matches!(timeout, BackPressureTimeout::CriticalStop(..)));
+}

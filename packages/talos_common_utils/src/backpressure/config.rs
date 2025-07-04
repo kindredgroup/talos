@@ -63,16 +63,17 @@ impl Default for BackPressureConfig {
 impl BackPressureConfig {
     /// Build the config using env. variables with defaults applied.
     pub fn from_env() -> Self {
+        let max_timeout_ms = env_var_with_defaults!("BACKPRESSURE_MAX_TIMEOUT_MS", u64, 80);
         let config = Self {
             check_window_ms: env_var_with_defaults!("BACKPRESSURE_CHECK_WINDOW_MS", u64, 10),
-            max_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MAX_TIMEOUT_MS", u64, 80),
-            min_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MIN_TIMEOUT_MS", u64, 10),
+            max_timeout_ms,
+            min_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MIN_TIMEOUT_MS", u64, 10).min(max_timeout_ms),
             suffix_max_size: env_var_with_defaults!("BACKPRESSURE_SUFFIX_MAX_SIZE", u64, 10_000),
-            suffix_fill_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_FILL_THRESHOLD", f64, 0.7),
-            suffix_rate_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_RATE_THRESHOLD", f64, 0.5),
-            rate_delta_threshold: env_var_with_defaults!("BACKPRESSURE_RATE_DELTA_THRESHOLD", Option::<f64>, 50.0),
+            suffix_fill_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_FILL_THRESHOLD", f64, 0.7).clamp(0.0, 1.0),
+            suffix_rate_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_RATE_THRESHOLD", f64, 0.5).clamp(0.0, 1.0),
+            rate_delta_threshold: env_var_with_defaults!("BACKPRESSURE_RATE_DELTA_THRESHOLD", Option::<f64>, 100.0),
             max_head_stale_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MAX_HEAD_STALE_TIME_MS", u64, 30),
-            timeout_stepdown_rate: Self::default().timeout_stepdown_rate,
+            timeout_stepdown_rate: env_var_with_defaults!("BACKPRESSURE_TIMEOUT_STEPDOWN_RATE", f64, 0.8).clamp(0.0, 1.0),
         };
 
         debug!("Backpressure config {config:#?}");
@@ -92,7 +93,7 @@ pub struct BackPressureConfigBuilder {
     suffix_fill_threshold: Option<f64>,
     suffix_rate_threshold: Option<f64>,
     rate_delta_threshold: Option<f64>,
-    max_timeout_iter_upper_limit: Option<u64>,
+    max_head_stale_timeout_ms: Option<u64>,
 }
 
 impl BackPressureConfigBuilder {
@@ -110,8 +111,8 @@ impl BackPressureConfigBuilder {
         self
     }
 
-    pub fn suffix_max_size(mut self, length: u64) -> Self {
-        self.suffix_max_size = Some(length);
+    pub fn suffix_max_size(mut self, size: u64) -> Self {
+        self.suffix_max_size = Some(size);
         self
     }
 
@@ -129,8 +130,8 @@ impl BackPressureConfigBuilder {
         self.rate_delta_threshold = Some(threshold);
         self
     }
-    pub fn max_timeout_iter_upper_limit(mut self, limit: u64) -> Self {
-        self.max_timeout_iter_upper_limit = Some(limit);
+    pub fn max_head_stale_timeout_ms(mut self, timeout: u64) -> Self {
+        self.max_head_stale_timeout_ms = Some(timeout);
         self
     }
 
@@ -144,18 +145,21 @@ impl BackPressureConfigBuilder {
             .unwrap_or(defaults.suffix_rate_threshold)
             .clamp(0.0, suffix_fill_threshold);
 
+        let max_timeout_ms = self.max_timeout_ms.unwrap_or(defaults.max_timeout_ms);
+        let min_timeout_ms = self.min_timeout_ms.unwrap_or(defaults.min_timeout_ms).min(max_timeout_ms);
+
         BackPressureConfig {
-            check_window_ms: self.check_window_ms.unwrap_or(defaults.check_window_ms),
-            max_timeout_ms: self.max_timeout_ms.unwrap_or(defaults.max_timeout_ms),
-            min_timeout_ms: self.min_timeout_ms.unwrap_or(defaults.min_timeout_ms),
-            suffix_max_size: self.suffix_max_size.unwrap_or(defaults.suffix_max_size),
+            max_timeout_ms,
+            min_timeout_ms,
             suffix_fill_threshold,
             suffix_rate_threshold,
+            check_window_ms: self.check_window_ms.unwrap_or(defaults.check_window_ms),
+            suffix_max_size: self.suffix_max_size.unwrap_or(defaults.suffix_max_size),
             rate_delta_threshold: self.rate_delta_threshold.or(defaults.rate_delta_threshold),
+            max_head_stale_timeout_ms: self.max_head_stale_timeout_ms.unwrap_or(defaults.max_head_stale_timeout_ms),
 
             //TODO: GK - expose these later via builder to override defaults, if required. For now the defaults should suffice?
             timeout_stepdown_rate: defaults.timeout_stepdown_rate,
-            max_head_stale_timeout_ms: defaults.max_head_stale_timeout_ms,
         }
     }
 }

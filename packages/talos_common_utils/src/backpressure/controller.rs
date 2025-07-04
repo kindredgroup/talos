@@ -5,7 +5,7 @@ use tracing::debug;
 
 use super::config::BackPressureConfig;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BackPressureTimeout {
     /// No timeout to be applied.
     NoTimeout,
@@ -22,6 +22,10 @@ pub struct BackPressureVersionTracker {
 }
 
 impl BackPressureVersionTracker {
+    pub fn new(version: u64, time_ns: i128) -> Self {
+        Self { version, time_ns }
+    }
+
     pub fn update(&mut self, version: u64, time_ns: i128) {
         self.version = version;
         self.time_ns = time_ns;
