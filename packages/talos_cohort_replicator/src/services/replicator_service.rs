@@ -158,7 +158,7 @@ where
                             let offset = candidate.message.version;
                             self.replicator.process_consumer_message(offset, candidate.message.into()).await;
 
-                            self.backpressure_controller.update_candidate_received_tracker(BackPressureVersionTracker{version: offset, time_ns: OffsetDateTime::now_utc().unix_timestamp_nanos()});
+                            self.backpressure_controller.update_candidate_received_tracker(BackPressureVersionTracker::new(offset, OffsetDateTime::now_utc().unix_timestamp_nanos()));
 
                             self.metrics.record_consumed_offset(offset, &[
                                 KeyValue::new(METRIC_KEY_CERT_MESSAGE_TYPE, METRIC_VALUE_CERT_MESSAGE_TYPE_CANDIDATE),
@@ -221,7 +221,7 @@ where
                                     error!("Failed to prune suffix till index {index}. Suffix head is at {}. Error {:?}", self.replicator.suffix.get_meta().head, err);
                                 }
                             } else {
-                                self.backpressure_controller.update_suffix_head_trackers(BackPressureVersionTracker { version: self.replicator.suffix.get_meta().head, time_ns: OffsetDateTime::now_utc().unix_timestamp_nanos() });
+                                self.backpressure_controller.update_suffix_head_trackers(BackPressureVersionTracker::new(self.replicator.suffix.get_meta().head, OffsetDateTime::now_utc().unix_timestamp_nanos()));
                                 info!("Completed pruning suffix. New head = {} | Last installed version received = {version} | Remaining items on suffix = {:?} ", self.replicator.suffix.get_meta().head, self.replicator.suffix.get_suffix_len());
                             }
                         }
