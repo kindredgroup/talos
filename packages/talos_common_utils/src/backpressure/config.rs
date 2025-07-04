@@ -5,13 +5,13 @@ use crate::env_var_with_defaults;
 #[derive(Debug, Clone)]
 pub struct BackPressureConfig {
     /// The window/interval used to check if backpressure should be applied.
-    /// - **Defaults to 100ms.**
+    /// - **Defaults to 30ms.**
     pub check_window_ms: u64,
     /// Max timeout in ms while calculating the back pressure in milliseconds.
-    /// - **Defaults to 50ms.**
+    /// - **Defaults to 100ms.**
     pub max_timeout_ms: u64,
     /// Min timeout in ms while calculating the back pressure in milliseconds.
-    /// - **Defaults to 5ms.**
+    /// - **Defaults to 10ms.**
     pub min_timeout_ms: u64,
     /// Max length of suffix which is considered safe to avoid memory related issues.
     /// - **Defaults to 10_000.**
@@ -32,7 +32,7 @@ pub struct BackPressureConfig {
     /// The proactive back pressure strategy will not trigger till `suffix_rate_threshold` + this rate threshold is crossed.
     /// - If Some valid value is passed., the rate based proactive back pressure logic is applied only when this threshold is crossed.
     ///         - e.g. If `rate_delta_threshold = 100`, then proactive back pressure logic kicks in when `input_tps - output_tps > 100`.
-    /// - **Defaults to `None`.** i.e rate based proactive back pressure will not run
+    /// - **Defaults to Some(100)**
     pub rate_delta_threshold: Option<f64>,
     /// Used to reduce the timeout computed. If the timeout has plataued at a specific milliseconds between iterations, this could be use to stepdown the timeout between iterations.
     ///
@@ -40,7 +40,7 @@ pub struct BackPressureConfig {
     pub timeout_stepdown_rate: f64,
     /// Max time the head is allowed to be stale in ms.
     ///
-    /// **Defaults to `30`ms**
+    /// **Defaults to `200`ms**
     pub max_head_stale_timeout_ms: u64,
 }
 
