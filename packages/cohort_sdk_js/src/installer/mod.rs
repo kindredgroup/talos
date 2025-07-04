@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use napi::threadsafe_function::ThreadsafeFunction;
 use napi_derive::napi;
+use talos_common_utils::backpressure::config::BackPressureConfig;
 use tokio::sync::mpsc;
 
 use crate::{
@@ -53,6 +54,10 @@ impl From<JsReplicatorConfig> for CohortReplicatorConfig {
                 // The endpoint to OTEL collector
                 grpc_endpoint: val.otel_telemetry.grpc_endpoint.clone(),
             },
+
+            // For now use defaults + env variables combo to set the backpressure.
+            // Incase in future, there is a need to update it from JS end, open this to be configured from JS world.
+            backpressure: BackPressureConfig::from_env(),
         }
     }
 }

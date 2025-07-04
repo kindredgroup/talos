@@ -2,7 +2,7 @@ use tracing::debug;
 
 use crate::env_var_with_defaults;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BackPressureConfig {
     /// The window/interval used to check if backpressure should be applied.
     /// - **Defaults to 100ms.**
@@ -47,15 +47,15 @@ pub struct BackPressureConfig {
 impl Default for BackPressureConfig {
     fn default() -> Self {
         Self {
-            check_window_ms: 100, // 100ms
-            max_timeout_ms: 50,   // 50ms
-            min_timeout_ms: 5,    // 50ms
+            check_window_ms: 30, // 30ms
+            max_timeout_ms: 100, // 100ms
+            min_timeout_ms: 10,  // 10ms
             suffix_max_size: 10_000,
             suffix_fill_threshold: 0.7, // 70% of suffix
             suffix_rate_threshold: 0.5, // 50% of suffix
-            rate_delta_threshold: None,
+            rate_delta_threshold: Some(100.0),
             timeout_stepdown_rate: 0.8,
-            max_head_stale_timeout_ms: 30,
+            max_head_stale_timeout_ms: 200,
         }
     }
 }
@@ -63,17 +63,19 @@ impl Default for BackPressureConfig {
 impl BackPressureConfig {
     /// Build the config using env. variables with defaults applied.
     pub fn from_env() -> Self {
-        let max_timeout_ms = env_var_with_defaults!("BACKPRESSURE_MAX_TIMEOUT_MS", u64, 80);
+        let defaults = BackPressureConfig::default();
+
+        let max_timeout_ms = env_var_with_defaults!("BACKPRESSURE_MAX_TIMEOUT_MS", u64, defaults.max_timeout_ms);
         let config = Self {
-            check_window_ms: env_var_with_defaults!("BACKPRESSURE_CHECK_WINDOW_MS", u64, 10),
+            check_window_ms: env_var_with_defaults!("BACKPRESSURE_CHECK_WINDOW_MS", u64, defaults.check_window_ms),
             max_timeout_ms,
-            min_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MIN_TIMEOUT_MS", u64, 10).min(max_timeout_ms),
-            suffix_max_size: env_var_with_defaults!("BACKPRESSURE_SUFFIX_MAX_SIZE", u64, 10_000),
-            suffix_fill_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_FILL_THRESHOLD", f64, 0.7).clamp(0.0, 1.0),
-            suffix_rate_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_RATE_THRESHOLD", f64, 0.5).clamp(0.0, 1.0),
-            rate_delta_threshold: env_var_with_defaults!("BACKPRESSURE_RATE_DELTA_THRESHOLD", Option::<f64>, 100.0),
-            max_head_stale_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MAX_HEAD_STALE_TIME_MS", u64, 30),
-            timeout_stepdown_rate: env_var_with_defaults!("BACKPRESSURE_TIMEOUT_STEPDOWN_RATE", f64, 0.8).clamp(0.0, 1.0),
+            min_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MIN_TIMEOUT_MS", u64, defaults.min_timeout_ms).min(max_timeout_ms),
+            suffix_max_size: env_var_with_defaults!("BACKPRESSURE_SUFFIX_MAX_SIZE", u64, defaults.suffix_max_size),
+            suffix_fill_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_FILL_THRESHOLD", f64, defaults.suffix_fill_threshold).clamp(0.0, 1.0),
+            suffix_rate_threshold: env_var_with_defaults!("BACKPRESSURE_SUFFIX_RATE_THRESHOLD", f64, defaults.suffix_rate_threshold).clamp(0.0, 1.0),
+            rate_delta_threshold: env_var_with_defaults!("BACKPRESSURE_RATE_DELTA_THRESHOLD", Option::<f64>, defaults.rate_delta_threshold.unwrap()),
+            max_head_stale_timeout_ms: env_var_with_defaults!("BACKPRESSURE_MAX_HEAD_STALE_TIME_MS", u64, defaults.max_head_stale_timeout_ms),
+            timeout_stepdown_rate: env_var_with_defaults!("BACKPRESSURE_TIMEOUT_STEPDOWN_RATE", f64, defaults.timeout_stepdown_rate).clamp(0.0, 1.0),
         };
 
         debug!("Backpressure config {config:#?}");

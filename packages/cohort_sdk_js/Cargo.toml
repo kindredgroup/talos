@@ -36,5 +36,6 @@ talos_cohort_replicator = { path = "../talos_cohort_replicator", version = "0.3.
 talos_certifier = { path = "../talos_certifier", version = "0.3.4-dev" }
 talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.3.4-dev" }
 talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.4-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.4-dev" }
 
 async-trait = "0.1.72"

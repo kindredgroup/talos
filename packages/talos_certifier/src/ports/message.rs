@@ -17,11 +17,15 @@ pub trait MessageReciever: SharedPortTraits {
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
     async fn consume_message_with_backpressure(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
-        if let BackPressureTimeout::Timeout(time_ms) = timeout {
-            tokio::time::sleep(Duration::from_millis(time_ms)).await;
-        } else {
-            unimplemented!();
-        }
+        match timeout {
+            BackPressureTimeout::NoTimeout => {}
+            BackPressureTimeout::Timeout(time_ms) => {
+                tokio::time::sleep(Duration::from_millis(time_ms)).await;
+            }
+            BackPressureTimeout::CriticalStop(_max_time_ms) => {
+                unimplemented!()
+            }
+        };
 
         self.consume_message().await
     }

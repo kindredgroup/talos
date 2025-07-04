@@ -37,6 +37,8 @@ pub struct ReplicatorServiceConfig {
     pub commit_frequency_ms: u64,
     /// Enable internal stats
     pub enable_stats: bool,
+    /// Backpressure related configs, used by the [`BackPressureController`]
+    pub backpressure: BackPressureConfig,
 }
 
 struct ReplicatorMetrics {
@@ -108,8 +110,7 @@ where
         let metrics = ReplicatorMetrics::new();
         let interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms));
 
-        let backpressure_config = BackPressureConfig::from_env();
-        let backpressure_controller = BackPressureController::with_config(backpressure_config);
+        let backpressure_controller = BackPressureController::with_config(config.backpressure.clone());
 
         Self {
             statemaps_tx,
@@ -204,28 +205,6 @@ where
                     }
                 }
             }
-            // // Commit offsets at interval.
-            // _ = self.interval.tick() => {
-            //     // If last item on suffix, we can commit till it's decision
-            //     let suffix_length = self.replicator.suffix.get_suffix_len();
-            //     let last_suffix_index = if suffix_length > 0 { suffix_length - 1 } else { 0 };
-
-            //     if let Some(next_commit_offset) = self.replicator.next_commit_offset {
-            //         if let Some(index) = self.replicator.suffix.get_index_from_head(next_commit_offset) {
-
-            //             if index == last_suffix_index {
-            //                 if let Ok(Some(c)) = self.replicator.suffix.get(next_commit_offset){
-            //                     if let Some(decision_version) = c.decision_ver {
-            //                         self.replicator.prepare_offset_for_commit(decision_version);
-            //                     }
-            //                 }
-            //             }
-            //         }
-            //     }
-
-            //     self.replicator.commit().await;
-
-            // }
             // Receive feedback from installer.
             res = self.replicator_rx.recv() => {
                 match res {

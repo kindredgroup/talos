@@ -11,6 +11,7 @@ use talos_certifier::{
     test_helpers::mocks::payload::{build_mock_outcome, MockCandidatePayload, MockChannelMessage},
     ChannelMessage,
 };
+use talos_common_utils::backpressure::config::BackPressureConfig;
 use talos_suffix::{core::SuffixConfig, Suffix};
 use tokio::{sync::mpsc, task::JoinHandle};
 
@@ -124,6 +125,7 @@ async fn test_replicator_service_inserting_candidates_to_suffix() {
     let config = ReplicatorServiceConfig {
         commit_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
+        backpressure: BackPressureConfig::default(),
     };
 
     let suffix_config = SuffixConfig {
@@ -212,6 +214,7 @@ async fn test_replicator_service_receiving_decisions_first() {
     let config = ReplicatorServiceConfig {
         commit_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
+        backpressure: BackPressureConfig::default(),
     };
 
     let suffix_config = SuffixConfig {
@@ -317,6 +320,7 @@ async fn test_replicator_service_pruning_suffix() {
     let config = ReplicatorServiceConfig {
         commit_frequency_ms: 60_000, // 1 hour
         enable_stats: false,
+        backpressure: BackPressureConfig::default(),
     };
 
     let suffix_config = SuffixConfig {
