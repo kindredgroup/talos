@@ -28,8 +28,7 @@ use talos_common_utils::{
 
 use time::OffsetDateTime;
 use tokio::{sync::mpsc, time::Interval};
-use tracing::{debug, error, info};
-use tracing::{warn, Instrument};
+use tracing::{debug, error, info, Instrument};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub struct ReplicatorServiceConfig {
@@ -129,13 +128,12 @@ where
         let current_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
         let backpressure_consume_timeout_type = if current_time_ns >= self.next_backpressure_check_time_ns {
-            warn!("[replicator_service] Starting to compute dynamic back pressure");
-
             let current_suffix_length = self.replicator.suffix.get_suffix_len() as u64;
             let backpressure_timeout_type = self.backpressure_controller.compute_backpressure(current_suffix_length);
             self.next_backpressure_check_time_ns = current_time_ns + (self.backpressure_controller.config.check_window_ms * 1_000_000) as i128;
 
             self.last_backpressure_timeout = backpressure_timeout_type.clone();
+            debug!("New computed backpressure = {backpressure_timeout_type:?}");
             backpressure_timeout_type
         } else {
             if let BackPressureTimeout::Timeout(time_ms) = self.last_backpressure_timeout {
