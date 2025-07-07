@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use opentelemetry::global;
 use talos_certifier::{ports::MessageReciever, ChannelMessage};
+use talos_common_utils::backpressure::config::BackPressureConfig;
 use talos_suffix::{
     core::{SuffixConfig, SuffixMetricsConfig},
     Suffix,
@@ -48,6 +49,9 @@ pub struct CohortReplicatorConfig {
     pub statemap_installer_threadpool: u64,
 
     pub otel_telemetry: ReplicatorOtelConfig,
+
+    /// Backpressure related configs, used by the [`BackPressureController`]
+    pub backpressure: BackPressureConfig,
 }
 
 async fn flatten_service_result<T>(handle: JoinHandle<Result<T, ReplicatorError>>) -> Result<T, ReplicatorError> {
@@ -135,6 +139,7 @@ where
     let replicator_service_configs = ReplicatorServiceConfig {
         commit_frequency_ms: config.certifier_message_receiver_commit_freq_ms,
         enable_stats: config.enable_stats,
+        backpressure: config.backpressure,
     };
 
     let mut replicator_service = ReplicatorService::new(

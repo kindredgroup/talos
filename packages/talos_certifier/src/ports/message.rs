@@ -1,5 +1,8 @@
+use std::time::Duration;
+
 use ahash::HashMap;
 use async_trait::async_trait;
+use talos_common_utils::backpressure::controller::BackPressureTimeout;
 use tokio::task::JoinHandle;
 
 use crate::errors::SystemServiceError;
@@ -13,6 +16,19 @@ pub trait MessageReciever: SharedPortTraits {
     type Message;
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError>;
+    async fn consume_message_with_backpressure(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
+        match timeout {
+            BackPressureTimeout::NoTimeout => {}
+            BackPressureTimeout::Timeout(time_ms) => {
+                tokio::time::sleep(Duration::from_millis(time_ms)).await;
+            }
+            BackPressureTimeout::CriticalStop(_max_time_ms) => {
+                unimplemented!()
+            }
+        };
+
+        self.consume_message().await
+    }
     async fn subscribe(&self) -> Result<(), SystemServiceError>;
     fn commit(&self) -> Result<(), Box<SystemServiceError>>;
     fn commit_async(&self) -> Option<JoinHandle<Result<(), SystemServiceError>>>;

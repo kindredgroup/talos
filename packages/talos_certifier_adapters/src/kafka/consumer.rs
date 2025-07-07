@@ -17,6 +17,7 @@ use talos_certifier::{
     },
     ChannelMessage,
 };
+use talos_common_utils::backpressure::controller::BackPressureTimeout;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use time::OffsetDateTime;
 use tokio::task::JoinHandle;
@@ -34,6 +35,8 @@ where
     pub consumer: Arc<StreamConsumer<C>>,
     pub topic: String,
     pub tpl: TopicPartitionList,
+    /// If consumer is paused for tpl
+    is_paused: bool,
     _phantom: PhantomData<M>,
 }
 
@@ -57,6 +60,7 @@ where
             consumer: Arc::new(consumer),
             topic,
             tpl: TopicPartitionList::new(),
+            is_paused: false,
             _phantom: PhantomData,
         }
     }
@@ -86,6 +90,35 @@ where
 
         Ok(())
     }
+
+    fn pause(&mut self) -> Result<(), MessageReceiverError> {
+        if !self.is_paused {
+            tracing::warn!(
+                "Too many candidates pending to process and backpressure at critical level. Pausing consumption of new messages until system can cope up."
+            );
+            self.consumer.pause(&self.tpl).map_err(|e| MessageReceiverError {
+                kind: MessageReceiverErrorKind::PauseResume,
+                version: None,
+                reason: e.to_string(),
+                data: Some(self.topic.clone()),
+            })?;
+            self.is_paused = true;
+        }
+        Ok(())
+    }
+    fn resume(&mut self) -> Result<(), MessageReceiverError> {
+        if self.is_paused {
+            tracing::debug!("Kafka consumer backpressure eased and resuming consumption of new message");
+            self.consumer.resume(&self.tpl).map_err(|e| MessageReceiverError {
+                kind: MessageReceiverErrorKind::PauseResume,
+                version: None,
+                reason: e.to_string(),
+                data: Some(self.topic.clone()),
+            })?;
+            self.is_paused = false;
+        }
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -95,6 +128,37 @@ where
     C: ConsumerContext + 'static,
 {
     type Message = ChannelMessage<M>;
+
+    async fn consume_message_with_backpressure(&mut self, timeout: BackPressureTimeout) -> Result<Option<Self::Message>, MessageReceiverError> {
+        match timeout {
+            BackPressureTimeout::Timeout(time_ms) => {
+                if let Err(e) = self.resume() {
+                    tracing::error!("Failed to resume consumption of topic {} with error {e:?}", self.topic.clone());
+                    return Err(e);
+                };
+                if time_ms > 0 {
+                    tracing::debug!("Sleeping for {time_ms}ms, before consuming the next message");
+                    tokio::time::sleep(Duration::from_millis(time_ms)).await;
+                }
+                self.consume_message().await
+            }
+            BackPressureTimeout::CriticalStop(max_time_ms) => {
+                if let Err(e) = self.pause() {
+                    tracing::error!("Failed to pause consumption of topic {} with error {e:?}", self.topic.clone());
+                    return Err(e);
+                };
+                tokio::time::sleep(Duration::from_millis(max_time_ms)).await;
+                Ok(None)
+            }
+            BackPressureTimeout::NoTimeout => {
+                if let Err(e) = self.resume() {
+                    tracing::error!("Failed to resume consumption of topic {} with error {e:?}", self.topic.clone());
+                    return Err(e);
+                };
+                self.consume_message().await
+            }
+        }
+    }
 
     async fn consume_message(&mut self) -> Result<Option<Self::Message>, MessageReceiverError> {
         let message_received = self.consumer.recv().await.map_err(|e| MessageReceiverError {

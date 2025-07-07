@@ -1,0 +1,131 @@
+<mxfile host="Electron" modified="2025-07-06T23:12:04.651Z" agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.8.2 Chrome/114.0.5735.289 Electron/25.8.1 Safari/537.36" etag="hd0QPAhunCdmaz7C77q9" version="21.8.2" type="device">
+  <diagram name="Page-1" id="tAE-cPwc15kO6dDDMqvA">
+    <mxGraphModel dx="2554" dy="-2386" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="R-dFO9PfzjRHCKzVX55h-59" value="" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="2336" y="4171" width="598" height="616" as="geometry" />
+        </mxCell>
+        <mxCell id="R-dFO9PfzjRHCKzVX55h-60" value="Kafka consumer" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#6d8764;fontColor=#ffffff;strokeColor=#3A5431;" parent="1" vertex="1">
+          <mxGeometry x="2336" y="4111" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="R-dFO9PfzjRHCKzVX55h-64" value="" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="729" y="3953" width="1238" height="967" as="geometry" />
+        </mxCell>
+        <mxCell id="R-dFO9PfzjRHCKzVX55h-65" value="Replicator Service" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#647687;fontColor=#ffffff;strokeColor=#314354;" parent="1" vertex="1">
+          <mxGeometry x="731" y="3893" width="300" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-4" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="R-dFO9PfzjRHCKzVX55h-66" target="tLa9vOW-6CeD3Q_6qola-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="R-dFO9PfzjRHCKzVX55h-66" value="get the current time in ns&lt;br&gt;&lt;span style=&quot;background-color: rgb(0, 102, 51);&quot;&gt;current_time_ns&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="1197" y="3987" width="233" height="69" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-2" value="" style="verticalLabelPosition=bottom;html=1;verticalAlign=top;strokeWidth=7;shape=mxgraph.lean_mapping.physical_pull;pointerEvents=1;rotation=90;fillColor=#006633;strokeColor=#006633;" vertex="1" parent="1">
+          <mxGeometry x="699" y="3933" width="63" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-6" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-3" target="tLa9vOW-6CeD3Q_6qola-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-3" target="tLa9vOW-6CeD3Q_6qola-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-3" value="Is current_time_ns &amp;gt;= self.next_backpressure_check_time_ns?" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1174.5" y="4103" width="278" height="189" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-5" target="tLa9vOW-6CeD3Q_6qola-13">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-5" value="Call BackPressureController::compute_backpressure&lt;br&gt;with the current suffix size" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="762" y="4284.25" width="296" height="80.75" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-9" target="tLa9vOW-6CeD3Q_6qola-11">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-9" value="Did the last check have a timeout?" style="rhombus;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1590" y="4238" width="169.5" height="152.5" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-11" value="Call &lt;span style=&quot;background-color: rgb(234, 107, 102);&quot;&gt;BackPressureController::compute_stepdown_timeout&lt;/span&gt;&lt;br&gt;for decaying timeout" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="1489" y="4516.75" width="373" height="82.25" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-18" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-13" target="tLa9vOW-6CeD3Q_6qola-17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-13" value="Update self.next_backpressure_check_time_ns to&amp;nbsp;&lt;br&gt;current_time_ns + &lt;span style=&quot;background-color: rgb(234, 107, 102);&quot;&gt;BackPressureConfig::check_window_ms&lt;/span&gt;&lt;br&gt;to determin when do the next check" style="whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="764" y="4455.38" width="291" height="96.62" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-23" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeWidth=3;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-17" target="tLa9vOW-6CeD3Q_6qola-24">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2287" y="4284" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="2100" y="4802" />
+              <mxPoint x="2100" y="4218" />
+              <mxPoint x="2375" y="4218" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-17" value="Pass BackPressureTimeout to Kafka Consumer" style="whiteSpace=wrap;html=1;fillColor=#004C99;" vertex="1" parent="1">
+          <mxGeometry x="1187" y="4773" width="159" height="58" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-19" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-11" target="tLa9vOW-6CeD3Q_6qola-17">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="920" y="4562" as="sourcePoint" />
+            <mxPoint x="1266" y="4766" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="1676" y="4663" />
+              <mxPoint x="1267" y="4663" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-20" value="Yes" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1065" y="4160" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-21" value="No" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="1473" y="4164" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-26" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-24" target="tLa9vOW-6CeD3Q_6qola-25">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-24" value="KafkaConsumer::consume_message_with_backpressure" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#004C99;" vertex="1" parent="1">
+          <mxGeometry x="2438" y="4182" width="316" height="73" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-28" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-25" target="tLa9vOW-6CeD3Q_6qola-27">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-30" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-25" target="tLa9vOW-6CeD3Q_6qola-29">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-32" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-25" target="tLa9vOW-6CeD3Q_6qola-31">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-25" value="BackPressureTimeout" style="rhombus;whiteSpace=wrap;html=1;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="2508" y="4323" width="177" height="105" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-27" value="Call&lt;br&gt;KafkaConsumer::consume_message&lt;br&gt;to receive the message" style="whiteSpace=wrap;html=1;rounded=0;fillColor=#004C99;" vertex="1" parent="1">
+          <mxGeometry x="2436.5" y="4651" width="320" height="75" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-39" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="tLa9vOW-6CeD3Q_6qola-29" target="tLa9vOW-6CeD3Q_6qola-27">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="2430" y="4614" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-29" value="Apply backpressure timeout in ms" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="2370" y="4444" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-31" value="Pause consumer" style="whiteSpace=wrap;html=1;rounded=0;fillColor=#990000;" vertex="1" parent="1">
+          <mxGeometry x="2777" y="4437" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-33" value="BackPressureTimeout::Timeout" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="2404" y="4338" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-34" value="BackPressureTimeout::NoTimeout" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="2659" y="4520" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="tLa9vOW-6CeD3Q_6qola-37" value="BackPressureTimeout::CriticalStop" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="2740" y="4338" width="60" height="30" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
