@@ -12,6 +12,7 @@
       push:
           tags:
               - 'v[0-9]+.[0-9]+.[0-9]+'
+              - 'v[0-9]+.[0-9]+.[0-9]+-beta.*'
   env:
       REGISTRY: "https://npm.pkg.github.com"
       SDK_JS_PACKAGE_NAME: "@kindredgroup/cohort_sdk_js"
@@ -333,3 +334,10 @@
               CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
           run: |-
             cargo publish -v -p talos_messenger_actions
+      # Talos replicator
+        - name: Publish talos_cohort_replicator@ ${{ env.VERSION_NAME }} crate
+          shell: bash
+          env:
+              CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN_TALOS }}
+          run: |-
+            cargo publish -v -p talos_cohort_replicator
