@@ -2,6 +2,12 @@
 name = "talos_cohort_replicator"
 version = "0.3.4-dev"
 edition = "2021"
+keywords = ["talos", "cohort", "replicator"]
+license = "MIT"
+homepage = "https://github.com/kindredgroup/talos"
+repository = "https://github.com/kindredgroup/talos"
+readme = "README.md"
+description = "Talos Replicator for serial installation of statemaps and updating snapshot of cohort db."
 
 [lib]
 doctest = false

@@ -140,7 +140,7 @@ fi
 
 echo """
 Bumping versions of all crates to $NEW_VERSION
-  
+
 Bumping versions of the following NPMs:
   - cohort_sdk_client         $NEW_VERSION
   - packages/cohort_sdk_js    $NEW_VERSION
