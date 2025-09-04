@@ -8,7 +8,7 @@ use time::OffsetDateTime;
 use tracing::{debug, warn};
 
 use crate::{
-    events::{EventTimingsMap, ReplicatorEvents},
+    events::{EventTimingsMap, ReplicatorCandidateEvent},
     models::ReplicatorCandidateMessage,
 };
 
@@ -178,7 +178,7 @@ where
             if let Some(suffix_item) = self.suffix.get_mut(version) {
                 suffix_item
                     .item
-                    .set_timing_for_event(ReplicatorEvents::CandidateReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+                    .record_event(ReplicatorCandidateEvent::ReplicatorCandidateReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
             }
         } else {
             warn!("Version 0 will not be inserted into suffix.")
@@ -199,7 +199,7 @@ where
         if let Some(suffix_item) = self.suffix.get_mut(version) {
             suffix_item
                 .item
-                .set_timing_for_event(ReplicatorEvents::DecisionReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+                .record_event(ReplicatorCandidateEvent::ReplicatorDecisionReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
         }
 
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)

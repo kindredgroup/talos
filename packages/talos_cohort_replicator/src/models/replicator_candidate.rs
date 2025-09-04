@@ -2,11 +2,10 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use time::OffsetDateTime;
 
 use crate::{
     core::CandidateDecisionOutcome,
-    events::{EventTimingsMap, EventTimingsTrait, ReplicatorEvents},
+    events::{EventTimingsMap, EventTimingsTrait, ReplicatorCandidateEvent},
     suffix::ReplicatorSuffixItemTrait,
 };
 
@@ -63,13 +62,13 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
 }
 
 impl EventTimingsTrait for ReplicatorCandidate {
-    fn set_timing_for_event(&mut self, event: ReplicatorEvents, ts: i128) {
-        self.event_timings.insert(event, ts);
+    fn record_event(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128) {
+        self.event_timings.insert(event, ts_ns);
     }
-    fn get_timing_by_event(&self, event: ReplicatorEvents) -> Option<i128> {
+    fn get_event_timestamp(&self, event: ReplicatorCandidateEvent) -> Option<i128> {
         self.event_timings.get(&event).copied()
     }
-    fn get_event_timings(&self) -> EventTimingsMap {
+    fn get_all_timings(&self) -> EventTimingsMap {
         self.event_timings.clone()
     }
 }

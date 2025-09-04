@@ -15,7 +15,7 @@ use crate::{
     callbacks::ReplicatorSnapshotProvider,
     core::{ReplicatorChannel, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
     errors::{ReplicatorError, ReplicatorErrorKind},
-    events::{EventTimingsMap, ReplicatorEvents},
+    events::{EventTimingsMap, ReplicatorCandidateEvent},
     models::StatemapInstallerQueue,
 };
 
@@ -293,10 +293,7 @@ where
                 };
 
                 // Record event when the item was received in queue service
-                event_timings.insert(
-                    ReplicatorEvents::StatemapReceivedAtQueueService,
-                    OffsetDateTime::now_utc().unix_timestamp_nanos(),
-                );
+                event_timings.insert(ReplicatorCandidateEvent::QueueStatemapReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
 
                 self.statemap_queue.insert_queue_item(
                     &version,

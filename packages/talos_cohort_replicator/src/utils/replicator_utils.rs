@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 
 use crate::{
     core::StatemapItem,
-    events::{EventTimingsMap, ReplicatorEvents},
+    events::{EventTimingsMap, ReplicatorCandidateEvent},
     suffix::ReplicatorSuffixItemTrait,
 };
 
@@ -22,8 +22,8 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
 ) -> Vec<(u64, Vec<StatemapItem>, EventTimingsMap)> {
     messages.into_iter().fold(vec![], |mut acc, m| {
         // Record the time when the statemap item is picked.
-        let mut event_timings = m.item.get_event_timings();
-        event_timings.insert(ReplicatorEvents::StatemapPicked, OffsetDateTime::now_utc().unix_timestamp_nanos());
+        let mut event_timings = m.item.get_all_timings();
+        event_timings.insert(ReplicatorCandidateEvent::ReplicatorStatemapPicked, OffsetDateTime::now_utc().unix_timestamp_nanos());
         //  aborts
         if m.item.get_safepoint().is_none() {
             acc.push((m.item_ver, vec![], event_timings));

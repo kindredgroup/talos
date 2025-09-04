@@ -6,7 +6,7 @@ use tracing::{debug, info};
 
 use crate::{
     core::{StatemapInstallState, StatemapInstallerHashmap},
-    events::ReplicatorEvents,
+    events::ReplicatorCandidateEvent,
     utils::installer_utils::{is_queue_item_above_version, is_queue_item_serializable, is_queue_item_state_match},
 };
 
@@ -48,7 +48,7 @@ impl StatemapInstallerQueue {
     pub fn update_queue_item_state(&mut self, version: &u64, state: StatemapInstallState) -> Option<i128> {
         let item = self.queue.get_mut(version)?;
         item.state = state;
-        item.event_timings.get(&ReplicatorEvents::StatemapReceivedAtQueueService).copied()
+        item.event_timings.get(&ReplicatorCandidateEvent::QueueStatemapReceived).copied()
     }
 
     pub fn prune_till_version(&mut self, version: u64) -> Option<u64> {

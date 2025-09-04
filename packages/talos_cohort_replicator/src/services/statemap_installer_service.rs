@@ -6,7 +6,7 @@ use crate::{
     callbacks::ReplicatorInstaller,
     core::{StatemapInstallationStatus, StatemapItem},
     errors::ReplicatorError,
-    events::{EventTimingsMap, ReplicatorEvents},
+    events::{EventTimingsMap, ReplicatorCandidateEvent},
 };
 
 use opentelemetry::global;
@@ -44,11 +44,11 @@ async fn statemap_install_future(
             let latency_ms = (current_time_ns - started_at) as f64 / 1_000_000_f64;
             h_install_latency.record(latency_ms, &[]);
             // Record latency from the time the candidate was received to when the statemaps were installed
-            if let Some(candidate_received_at_ns) = event_timings.get(&ReplicatorEvents::CandidateReceived).copied() {
+            if let Some(candidate_received_at_ns) = event_timings.get(&ReplicatorCandidateEvent::ReplicatorCandidateReceived).copied() {
                 h_candidate_to_install_latency.record((current_time_ns - candidate_received_at_ns) as f64 / 1_000_000_f64, &[])
             }
             // Record latency from the time the decision was received to when the statemaps were installed
-            if let Some(decision_received_at_ns) = event_timings.get(&ReplicatorEvents::DecisionReceived).copied() {
+            if let Some(decision_received_at_ns) = event_timings.get(&ReplicatorCandidateEvent::ReplicatorDecisionReceived).copied() {
                 h_decision_to_install_latency.record((current_time_ns - decision_received_at_ns) as f64 / 1_000_000_f64, &[])
             }
         }
@@ -88,16 +88,15 @@ pub async fn installation_service(
         let semaphore = semaphore.clone();
         let udc_items_installing_copy = udc_items_installing.clone();
         if let Some((ver, statemaps, mut event_timings)) = installation_rx.recv().await {
+            // Capture the time when the statemaps arrived at the installer thread
+            event_timings.insert(
+                ReplicatorCandidateEvent::InstallerStatemapReceived,
+                OffsetDateTime::now_utc().unix_timestamp_nanos(),
+            );
             let permit = semaphore.acquire_owned().await.unwrap();
             let installer = Arc::clone(&statemap_installer);
             let statemap_installation_tx_clone = statemap_installation_tx.clone();
             udc_items_installing_copy.add(1, &[]);
-
-            // Capture the time when the statemaps arrived at the installer thread
-            event_timings.insert(
-                ReplicatorEvents::StatmapReceivedAtInstallService,
-                OffsetDateTime::now_utc().unix_timestamp_nanos(),
-            );
 
             tokio::spawn(async move {
                 statemap_install_future(installer, statemap_installation_tx_clone, statemaps, event_timings, ver).await;
