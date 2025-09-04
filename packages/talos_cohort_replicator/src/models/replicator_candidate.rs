@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::{
     core::CandidateDecisionOutcome,
-    events::{EventTimingsMap, EventTimingsTrait, ReplicatorCandidateEvent},
+    events::{EventTimingsMap, ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait},
     suffix::ReplicatorSuffixItemTrait,
 };
 
@@ -60,7 +60,7 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
     }
 }
 
-impl EventTimingsTrait for ReplicatorCandidate {
+impl ReplicatorCandidateEventTimingsTrait for ReplicatorCandidate {
     fn record_event(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128) {
         self.event_timings.insert(event, ts_ns);
     }

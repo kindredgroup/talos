@@ -31,7 +31,7 @@ pub enum ReplicatorCandidateEvent {
     InstallerStatemapInstalled,
 }
 
-pub trait EventTimingsTrait {
+pub trait ReplicatorCandidateEventTimingsTrait {
     /// Record the time in nanosecond precision for an event.
     fn record_event(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128);
     /// Get the time for an event.
@@ -39,3 +39,41 @@ pub trait EventTimingsTrait {
     /// Get all the events with their time
     fn get_all_timings(&self) -> EventTimingsMap;
 }
+
+// Below are some of the global events which could be exposed in future.
+// Some help for diagnosis and some can be used for Otel metrics - Counters and Gauges.
+// We already collect and publish metrics for some of these, but they are from done from within the library.
+// We may want to expose it out to the consumer of the library to help build their own metrics or diagnosis of the library at a given time.
+//
+// - In Replicator Service
+//  - Suffix size
+//  - Suffix head
+//  - Last candidate version received
+//  - Last decision version received
+//  - Total candidates received
+//  - Total decision received
+//  - Last commit version
+//  - Last version whose statemap was sent for Queue service
+//
+// - In Queue Service
+//  - Last version whose statemap was received
+//  - Channel depth
+//  - Queue size
+//  - Queue head
+//  - Last version whose statemap was sent to installer
+//  - Last snapshot version while calling the update snapshot
+//  - Last snapshot tracked internally
+//
+// - In Installer Service
+//  - Last version whose statemap was received
+//  - Channel depth
+//  - No. of items currently being installed
+//
+// - Backpressure
+//  - Backpressure max applied
+//  - Backpressure total applied
+//  - Number of times backpressure was applied
+//
+// - Errors
+//  - Statemap Installation total Error count
+//  - Snapshot update total Error count

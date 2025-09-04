@@ -9,7 +9,7 @@ use talos_suffix::SuffixItem;
 
 use crate::{
     core::CandidateDecisionOutcome,
-    events::{EventTimingsMap, EventTimingsTrait},
+    events::{EventTimingsMap, ReplicatorCandidateEventTimingsTrait},
     suffix::ReplicatorSuffixItemTrait,
 };
 
@@ -113,7 +113,7 @@ impl ReplicatorSuffixItemTrait for BankStatemapTestCandidate {
     }
 }
 
-impl EventTimingsTrait for BankStatemapTestCandidate {
+impl ReplicatorCandidateEventTimingsTrait for BankStatemapTestCandidate {
     fn record_event(&mut self, event: crate::events::ReplicatorCandidateEvent, ts_ns: i128) {
         self.event_timings.insert(event, ts_ns);
     }
