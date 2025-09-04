@@ -4,9 +4,13 @@ use serde_json::Value;
 use std::marker::PhantomData;
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_common_utils::ResetVariantTrait;
+use time::OffsetDateTime;
 use tracing::{debug, warn};
 
-use crate::models::ReplicatorCandidateMessage;
+use crate::{
+    events::{EventTimingsMap, ReplicatorEvents},
+    models::ReplicatorCandidateMessage,
+};
 
 use super::{
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
@@ -15,7 +19,7 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatemapQueueChannelMessage {
-    Message((u64, Vec<StatemapItem>)),
+    Message((u64, Vec<StatemapItem>, EventTimingsMap)),
     UpdateSnapshot,
 }
 
@@ -32,11 +36,12 @@ pub enum StatemapInstallState {
 #[derive(Debug, Clone)]
 pub struct StatemapInstallerHashmap {
     // enqueued at
-    pub timestamp: i128, // nanos
+    // pub timestamp: i128, // nanos
     pub statemaps: Vec<StatemapItem>,
     pub version: u64,
     pub safepoint: Option<u64>,
     pub state: StatemapInstallState,
+    pub event_timings: EventTimingsMap,
 }
 
 #[derive(Debug)]
@@ -62,6 +67,11 @@ pub enum CandidateDecisionOutcome {
     Undecided,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
+pub struct StatemapItemWithEventTimings {
+    pub statemap: StatemapItem,
+    pub event_timings: EventTimingsMap,
+}
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct StatemapItem {
     pub action: String,
@@ -165,6 +175,11 @@ where
         if version > 0 {
             self.suffix.insert(version, message).unwrap();
             self.metrics.add_candidate();
+            if let Some(suffix_item) = self.suffix.get_mut(version) {
+                suffix_item
+                    .item
+                    .set_timing_for_event(ReplicatorEvents::CandidateReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+            }
         } else {
             warn!("Version 0 will not be inserted into suffix.")
         }
@@ -181,6 +196,12 @@ where
         self.suffix.set_decision_outcome(version, Some(decision_outcome.clone()));
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
+        if let Some(suffix_item) = self.suffix.get_mut(version) {
+            suffix_item
+                .item
+                .set_timing_for_event(ReplicatorEvents::DecisionReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+        }
+
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)
         if decision_message.is_duplicate() {
             self.suffix.set_item_installed(version);
@@ -190,7 +211,7 @@ where
     }
 
     // TODO: Instrument with span
-    pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>)> {
+    pub(crate) fn generate_statemap_batch(&mut self) -> Vec<(u64, Vec<StatemapItem>, EventTimingsMap)> {
         // get batch of items from suffix to install.
         let items = self.suffix.get_message_batch_from_version(self.last_installing, None);
 
