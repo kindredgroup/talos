@@ -293,7 +293,10 @@ where
                 };
 
                 // Record event when the item was received in queue service
-                event_timings.insert(ReplicatorCandidateEvent::QueueStatemapReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+                event_timings.insert(
+                    ReplicatorCandidateEvent::QueueStatemapReceived,
+                    OffsetDateTime::now_utc().unix_timestamp_nanos(),
+                );
 
                 self.statemap_queue.insert_queue_item(
                     &version,

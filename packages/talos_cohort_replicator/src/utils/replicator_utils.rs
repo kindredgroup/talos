@@ -23,7 +23,10 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
     messages.into_iter().fold(vec![], |mut acc, m| {
         // Record the time when the statemap item is picked.
         let mut event_timings = m.item.get_all_timings();
-        event_timings.insert(ReplicatorCandidateEvent::ReplicatorStatemapPicked, OffsetDateTime::now_utc().unix_timestamp_nanos());
+        event_timings.insert(
+            ReplicatorCandidateEvent::ReplicatorStatemapPicked,
+            OffsetDateTime::now_utc().unix_timestamp_nanos(),
+        );
         //  aborts
         if m.item.get_safepoint().is_none() {
             acc.push((m.item_ver, vec![], event_timings));

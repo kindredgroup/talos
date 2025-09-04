@@ -24,7 +24,6 @@ pub struct ReplicatorCandidate {
     #[serde(skip_deserializing)]
     pub is_installed: bool,
 
-    // pub event_timings: ReplicatorCandidateTimings,
     pub event_timings: EventTimingsMap,
 }
 

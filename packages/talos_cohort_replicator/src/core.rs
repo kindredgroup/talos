@@ -176,9 +176,10 @@ where
             self.suffix.insert(version, message).unwrap();
             self.metrics.add_candidate();
             if let Some(suffix_item) = self.suffix.get_mut(version) {
-                suffix_item
-                    .item
-                    .record_event(ReplicatorCandidateEvent::ReplicatorCandidateReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+                suffix_item.item.record_event(
+                    ReplicatorCandidateEvent::ReplicatorCandidateReceived,
+                    OffsetDateTime::now_utc().unix_timestamp_nanos(),
+                );
             }
         } else {
             warn!("Version 0 will not be inserted into suffix.")
@@ -197,9 +198,10 @@ where
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
         if let Some(suffix_item) = self.suffix.get_mut(version) {
-            suffix_item
-                .item
-                .record_event(ReplicatorCandidateEvent::ReplicatorDecisionReceived, OffsetDateTime::now_utc().unix_timestamp_nanos());
+            suffix_item.item.record_event(
+                ReplicatorCandidateEvent::ReplicatorDecisionReceived,
+                OffsetDateTime::now_utc().unix_timestamp_nanos(),
+            );
         }
 
         // If this is a duplicate, we mark it as installed (assuming the original version always comes first and therefore that will be installed.)

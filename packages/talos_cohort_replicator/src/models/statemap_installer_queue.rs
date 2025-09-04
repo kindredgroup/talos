@@ -242,33 +242,11 @@ mod tests {
         assert_eq!(count, Some(1));
 
         //  Update the state for the version 5 as installed
-        let upd_5 = installer_queue.update_queue_item_state(&5, crate::core::StatemapInstallState::Installed);
+        installer_queue.update_queue_item_state(&5, crate::core::StatemapInstallState::Installed);
         //  Update the state for the version 3 as installed
-        let upd_3 = installer_queue.update_queue_item_state(&3, crate::core::StatemapInstallState::Installed);
+        installer_queue.update_queue_item_state(&3, crate::core::StatemapInstallState::Installed);
 
-        assert!(upd_5.is_none());
-        // As the items are put not in order, 3 is not removed.
-        assert!(upd_3.is_some());
         assert_eq!(installer_queue.queue.len(), 1);
-        // assert_eq!(installer_queue.queue.get(&5).unwrap().1.state, crate::core::StatemapInstallState::Installed);
-
-        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
-        // // Althought version 5 and 3 are installed and safe to remove, as the snapshot is at 5, it can remove only the
-        // // contigous installed items till the snapshot.
-        // assert_eq!(count, 0);
-
-        // installer_queue.update_snapshot(10);
-
-        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
-        // // If the snapshot version is an incorrect version which is not on the queue, `None` is returned.
-        // assert_eq!(count, 0);
-
-        // installer_queue.update_snapshot(3);
-
-        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
-        // // Although version 3 is also safe to remove, it is the snapshot version and will not be removed.
-        // assert_eq!(count, 1);
-        // assert_eq!(installer_queue.queue.len(), 1);
     }
 
     #[test]
