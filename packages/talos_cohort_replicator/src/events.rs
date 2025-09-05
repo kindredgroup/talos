@@ -4,6 +4,31 @@ use serde::{Deserialize, Serialize};
 
 pub type EventTimingsMap = HashMap<ReplicatorCandidateEvent, i128>;
 
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct StatemapEvents {
+    timings: EventTimingsMap,
+}
+
+impl StatemapEvents {
+    pub fn with_timings(event_timings: EventTimingsMap) -> Self {
+        Self { timings: event_timings }
+    }
+}
+
+impl ReplicatorCandidateEventTimingsTrait for StatemapEvents {
+    fn record_event_timestamp(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128) {
+        self.timings.insert(event, ts_ns);
+    }
+
+    fn get_event_timestamp(&self, event: ReplicatorCandidateEvent) -> Option<i128> {
+        self.timings.get(&event).copied()
+    }
+
+    fn get_all_timings(&self) -> EventTimingsMap {
+        self.timings.clone()
+    }
+}
+
 /// Capture the various events from the time a candidate arrived in replicator to when it's statemaps where installed.
 /// The various events can be used to capture the time taken in the journey between various events.
 ///
@@ -33,7 +58,7 @@ pub enum ReplicatorCandidateEvent {
 
 pub trait ReplicatorCandidateEventTimingsTrait {
     /// Record the time in nanosecond precision for an event.
-    fn record_event(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128);
+    fn record_event_timestamp(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128);
     /// Get the time for an event.
     fn get_event_timestamp(&self, event: ReplicatorCandidateEvent) -> Option<i128>;
     /// Get all the events with their time

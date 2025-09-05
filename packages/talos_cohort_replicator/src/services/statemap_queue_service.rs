@@ -15,7 +15,7 @@ use crate::{
     callbacks::ReplicatorSnapshotProvider,
     core::{ReplicatorChannel, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
     errors::{ReplicatorError, ReplicatorErrorKind},
-    events::{EventTimingsMap, ReplicatorCandidateEvent},
+    events::{ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait, StatemapEvents},
     models::StatemapInstallerQueue,
 };
 
@@ -134,7 +134,7 @@ where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
     statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
-    installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>, EventTimingsMap)>,
+    installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>, StatemapEvents)>,
     installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
     replicator_feedback: mpsc::Sender<ReplicatorChannel>,
     pub statemap_queue: StatemapInstallerQueue,
@@ -152,7 +152,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
-        installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>, EventTimingsMap)>,
+        installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>, StatemapEvents)>,
         installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
         replicator_feedback_tx: mpsc::Sender<ReplicatorChannel>,
         snapshot_api: Arc<S>,
@@ -229,7 +229,7 @@ where
         for key in items_to_install {
             // Send for installation
             if let Some(item) = self.statemap_queue.queue.get(&key) {
-                match self.installation_tx.send((key, item.statemaps.clone(), item.event_timings.clone())).await {
+                match self.installation_tx.send((key, item.statemaps.clone(), item.events.clone())).await {
                     Ok(_) => {
                         self.metrics.inflight_inc();
                         self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
@@ -293,7 +293,7 @@ where
                 };
 
                 // Record event when the item was received in queue service
-                event_timings.insert(
+                event_timings.record_event_timestamp(
                     ReplicatorCandidateEvent::QueueStatemapReceived,
                     OffsetDateTime::now_utc().unix_timestamp_nanos(),
                 );
@@ -306,7 +306,7 @@ where
                         version,
                         safepoint,
                         state,
-                        event_timings,
+                        events: event_timings,
                     },
                 );
             }

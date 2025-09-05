@@ -4,6 +4,7 @@ use std::{fmt::Debug, time::Duration};
 use crate::{
     core::{Replicator, ReplicatorChannel},
     errors::ReplicatorError,
+    events::StatemapEvents,
     models::{ReplicatorCandidate, ReplicatorCandidateMessage},
     suffix::ReplicatorSuffixTrait,
     StatemapQueueChannelMessage,
@@ -193,7 +194,7 @@ where
 
                             // Send statemaps batch to
                             for (ver, statemap_vec, event_timings) in statemaps_batch {
-                                self.statemaps_tx.send(StatemapQueueChannelMessage::Message((ver, statemap_vec, event_timings))).await.unwrap();
+                                self.statemaps_tx.send(StatemapQueueChannelMessage::Message((ver, statemap_vec, StatemapEvents::with_timings(event_timings)))).await.unwrap();
                             }
 
                         },

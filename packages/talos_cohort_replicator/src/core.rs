@@ -8,7 +8,7 @@ use time::OffsetDateTime;
 use tracing::{debug, warn};
 
 use crate::{
-    events::{EventTimingsMap, ReplicatorCandidateEvent},
+    events::{EventTimingsMap, ReplicatorCandidateEvent, StatemapEvents},
     models::ReplicatorCandidateMessage,
 };
 
@@ -19,7 +19,7 @@ use super::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatemapQueueChannelMessage {
-    Message((u64, Vec<StatemapItem>, EventTimingsMap)),
+    Message((u64, Vec<StatemapItem>, StatemapEvents)),
     UpdateSnapshot,
 }
 
@@ -41,7 +41,7 @@ pub struct StatemapInstallerHashmap {
     pub version: u64,
     pub safepoint: Option<u64>,
     pub state: StatemapInstallState,
-    pub event_timings: EventTimingsMap,
+    pub events: StatemapEvents,
 }
 
 #[derive(Debug)]
@@ -176,7 +176,7 @@ where
             self.suffix.insert(version, message).unwrap();
             self.metrics.add_candidate();
             if let Some(suffix_item) = self.suffix.get_mut(version) {
-                suffix_item.item.record_event(
+                suffix_item.item.record_event_timestamp(
                     ReplicatorCandidateEvent::ReplicatorCandidateReceived,
                     OffsetDateTime::now_utc().unix_timestamp_nanos(),
                 );
@@ -198,7 +198,7 @@ where
         self.suffix.set_safepoint(version, decision_message.get_safepoint());
 
         if let Some(suffix_item) = self.suffix.get_mut(version) {
-            suffix_item.item.record_event(
+            suffix_item.item.record_event_timestamp(
                 ReplicatorCandidateEvent::ReplicatorDecisionReceived,
                 OffsetDateTime::now_utc().unix_timestamp_nanos(),
             );

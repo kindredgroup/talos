@@ -114,7 +114,7 @@ impl ReplicatorSuffixItemTrait for BankStatemapTestCandidate {
 }
 
 impl ReplicatorCandidateEventTimingsTrait for BankStatemapTestCandidate {
-    fn record_event(&mut self, event: crate::events::ReplicatorCandidateEvent, ts_ns: i128) {
+    fn record_event_timestamp(&mut self, event: crate::events::ReplicatorCandidateEvent, ts_ns: i128) {
         self.event_timings.insert(event, ts_ns);
     }
 

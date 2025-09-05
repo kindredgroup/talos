@@ -61,7 +61,7 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
 }
 
 impl ReplicatorCandidateEventTimingsTrait for ReplicatorCandidate {
-    fn record_event(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128) {
+    fn record_event_timestamp(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128) {
         self.event_timings.insert(event, ts_ns);
     }
     fn get_event_timestamp(&self, event: ReplicatorCandidateEvent) -> Option<i128> {

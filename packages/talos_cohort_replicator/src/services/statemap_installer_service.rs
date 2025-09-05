@@ -6,7 +6,7 @@ use crate::{
     callbacks::ReplicatorInstaller,
     core::{StatemapInstallationStatus, StatemapItem},
     errors::ReplicatorError,
-    events::{EventTimingsMap, ReplicatorCandidateEvent},
+    events::{ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait, StatemapEvents},
 };
 
 use opentelemetry::global;
@@ -22,7 +22,7 @@ async fn statemap_install_future(
     installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
     statemaps: Vec<StatemapItem>,
-    event_timings: EventTimingsMap,
+    event_timings: StatemapEvents,
     version: u64,
 ) {
     debug!("[Statemap Installer Service] Received statemap batch ={statemaps:?} and version={version:?}");
@@ -44,11 +44,11 @@ async fn statemap_install_future(
             let latency_ms = (current_time_ns - started_at) as f64 / 1_000_000_f64;
             h_install_latency.record(latency_ms, &[]);
             // Record latency from the time the candidate was received to when the statemaps were installed
-            if let Some(candidate_received_at_ns) = event_timings.get(&ReplicatorCandidateEvent::ReplicatorCandidateReceived).copied() {
+            if let Some(candidate_received_at_ns) = event_timings.get_event_timestamp(ReplicatorCandidateEvent::ReplicatorCandidateReceived) {
                 h_candidate_to_install_latency.record((current_time_ns - candidate_received_at_ns) as f64 / 1_000_000_f64, &[])
             }
             // Record latency from the time the decision was received to when the statemaps were installed
-            if let Some(decision_received_at_ns) = event_timings.get(&ReplicatorCandidateEvent::ReplicatorDecisionReceived).copied() {
+            if let Some(decision_received_at_ns) = event_timings.get_event_timestamp(ReplicatorCandidateEvent::ReplicatorDecisionReceived) {
                 h_decision_to_install_latency.record((current_time_ns - decision_received_at_ns) as f64 / 1_000_000_f64, &[])
             }
         }
@@ -73,7 +73,7 @@ async fn statemap_install_future(
 
 pub async fn installation_service(
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
-    mut installation_rx: mpsc::Receiver<(u64, Vec<StatemapItem>, EventTimingsMap)>,
+    mut installation_rx: mpsc::Receiver<(u64, Vec<StatemapItem>, StatemapEvents)>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
     config: StatemapInstallerConfig,
 ) -> Result<(), ReplicatorError> {
@@ -89,7 +89,7 @@ pub async fn installation_service(
         let udc_items_installing_copy = udc_items_installing.clone();
         if let Some((ver, statemaps, mut event_timings)) = installation_rx.recv().await {
             // Capture the time when the statemaps arrived at the installer thread
-            event_timings.insert(
+            event_timings.record_event_timestamp(
                 ReplicatorCandidateEvent::InstallerStatemapReceived,
                 OffsetDateTime::now_utc().unix_timestamp_nanos(),
             );

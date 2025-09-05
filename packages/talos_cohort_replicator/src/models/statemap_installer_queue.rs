@@ -6,7 +6,7 @@ use tracing::{debug, info};
 
 use crate::{
     core::{StatemapInstallState, StatemapInstallerHashmap},
-    events::ReplicatorCandidateEvent,
+    events::{ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait},
     utils::installer_utils::{is_queue_item_above_version, is_queue_item_serializable, is_queue_item_state_match},
 };
 
@@ -48,7 +48,7 @@ impl StatemapInstallerQueue {
     pub fn update_queue_item_state(&mut self, version: &u64, state: StatemapInstallState) -> Option<i128> {
         let item = self.queue.get_mut(version)?;
         item.state = state;
-        item.event_timings.get(&ReplicatorCandidateEvent::QueueStatemapReceived).copied()
+        item.events.get_event_timestamp(ReplicatorCandidateEvent::QueueStatemapReceived)
     }
 
     pub fn prune_till_version(&mut self, version: u64) -> Option<u64> {
@@ -183,9 +183,8 @@ impl StatemapInstallerQueue {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
-    use crate::core::StatemapInstallerHashmap;
+    use crate::{core::StatemapInstallerHashmap, events::StatemapEvents};
 
     use super::StatemapInstallerQueue;
 
@@ -195,7 +194,7 @@ mod tests {
             version: *version,
             safepoint,
             state: crate::core::StatemapInstallState::Awaiting,
-            event_timings: HashMap::new(),
+            events: StatemapEvents::default(),
         }
     }
 
@@ -213,7 +212,7 @@ mod tests {
                 safepoint: None,
                 state: crate::core::StatemapInstallState::Awaiting,
                 statemaps: vec![],
-                event_timings: HashMap::new(),
+                events: StatemapEvents::default(),
             },
         );
         let version = 3;
@@ -224,7 +223,7 @@ mod tests {
                 safepoint: None,
                 state: crate::core::StatemapInstallState::Awaiting,
                 statemaps: vec![],
-                event_timings: HashMap::new(),
+                events: StatemapEvents::default(),
             },
         );
 
