@@ -52,8 +52,10 @@ pub enum ReplicatorCandidateEvent {
     // ** Events captured for statemaps associated with the candidate on the Statemap Installer thread.
     /// When statemap is received by installer.
     InstallerStatemapReceived,
+    /// When statemap installation is going to be called in the installer service.
+    InstallerStatemapInstallionBegin,
     /// When statemap installation completed in the installer service.
-    InstallerStatemapInstalled,
+    InstallerStatemapInstallionComplete,
 }
 
 pub trait ReplicatorCandidateEventTimingsTrait {
@@ -67,7 +69,7 @@ pub trait ReplicatorCandidateEventTimingsTrait {
 
 // Below are some of the global events which could be exposed in future.
 // Some help for diagnosis and some can be used for Otel metrics - Counters and Gauges.
-// We already collect and publish metrics for some of these, but they are from done from within the library.
+// We already collect and publish metrics for some of these, but they are done from within each thread.
 // We may want to expose it out to the consumer of the library to help build their own metrics or diagnosis of the library at a given time.
 //
 // - In Replicator Service

@@ -18,37 +18,44 @@ pub struct StatemapInstallerConfig {
     pub thread_pool: Option<u16>,
 }
 
-async fn statemap_install_future(
+pub async fn statemap_install_future(
     installer: Arc<dyn ReplicatorInstaller + Send + Sync>,
     statemap_installation_tx: mpsc::Sender<StatemapInstallationStatus>,
     statemaps: Vec<StatemapItem>,
-    event_timings: StatemapEvents,
+    statemap_events: &mut StatemapEvents,
     version: u64,
 ) {
     debug!("[Statemap Installer Service] Received statemap batch ={statemaps:?} and version={version:?}");
     let start_installation_time = Instant::now();
 
+    // Otel meter and metrics
     let meter = global::meter("sdk_replicator");
     let c_installed = meter.u64_counter("repl_install_ok").build();
     let c_install_failed = meter.u64_counter("repl_install_err").build();
     let h_install_latency = meter.f64_histogram("repl_install_latency").build();
     let h_candidate_to_install_latency = meter.f64_histogram("repl_candidate_to_install_latency").build();
     let h_decision_to_install_latency = meter.f64_histogram("repl_decision_to_install_latency").build();
+
     let started_at = OffsetDateTime::now_utc().unix_timestamp_nanos();
+    statemap_events.record_event_timestamp(ReplicatorCandidateEvent::InstallerStatemapInstallionBegin, started_at);
+
     match installer.install(statemaps, version).await {
         Ok(_) => {
             statemap_installation_tx.send(StatemapInstallationStatus::Success(version)).await.unwrap();
             c_installed.add(1, &[]);
             let current_time_ns = OffsetDateTime::now_utc().unix_timestamp_nanos();
 
+            // Record the otel metric for installation latency
             let latency_ms = (current_time_ns - started_at) as f64 / 1_000_000_f64;
             h_install_latency.record(latency_ms, &[]);
+
+            statemap_events.record_event_timestamp(ReplicatorCandidateEvent::InstallerStatemapInstallionComplete, current_time_ns);
             // Record latency from the time the candidate was received to when the statemaps were installed
-            if let Some(candidate_received_at_ns) = event_timings.get_event_timestamp(ReplicatorCandidateEvent::ReplicatorCandidateReceived) {
+            if let Some(candidate_received_at_ns) = statemap_events.get_event_timestamp(ReplicatorCandidateEvent::ReplicatorCandidateReceived) {
                 h_candidate_to_install_latency.record((current_time_ns - candidate_received_at_ns) as f64 / 1_000_000_f64, &[])
             }
             // Record latency from the time the decision was received to when the statemaps were installed
-            if let Some(decision_received_at_ns) = event_timings.get_event_timestamp(ReplicatorCandidateEvent::ReplicatorDecisionReceived) {
+            if let Some(decision_received_at_ns) = statemap_events.get_event_timestamp(ReplicatorCandidateEvent::ReplicatorDecisionReceived) {
                 h_decision_to_install_latency.record((current_time_ns - decision_received_at_ns) as f64 / 1_000_000_f64, &[])
             }
         }
@@ -98,10 +105,12 @@ pub async fn installation_service(
             let statemap_installation_tx_clone = statemap_installation_tx.clone();
             udc_items_installing_copy.add(1, &[]);
 
-            tokio::spawn(async move {
-                statemap_install_future(installer, statemap_installation_tx_clone, statemaps, event_timings, ver).await;
-                drop(permit);
-                udc_items_installing_copy.add(-1, &[]);
+            tokio::spawn({
+                async move {
+                    statemap_install_future(installer, statemap_installation_tx_clone, statemaps, &mut event_timings, ver).await;
+                    drop(permit);
+                    udc_items_installing_copy.add(-1, &[]);
+                }
             });
         }
     }
