@@ -35,8 +35,6 @@ pub enum StatemapInstallState {
 }
 #[derive(Debug, Clone)]
 pub struct StatemapInstallerHashmap {
-    // enqueued at
-    // pub timestamp: i128, // nanos
     pub statemaps: Vec<StatemapItem>,
     pub version: u64,
     pub safepoint: Option<u64>,

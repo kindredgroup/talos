@@ -301,7 +301,6 @@ where
                 self.statemap_queue.insert_queue_item(
                     &version,
                     StatemapInstallerHashmap {
-                        // timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos(),
                         statemaps,
                         version,
                         safepoint,
