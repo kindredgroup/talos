@@ -1,6 +1,6 @@
 [package]
 name = "talos_rdkafka_utils"
-version = "0.3.6-dev"
+version = "0.3.6"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -15,7 +15,7 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.6-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.6" }
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
