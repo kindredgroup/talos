@@ -7,7 +7,11 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use talos_suffix::SuffixItem;
 
-use crate::{core::CandidateDecisionOutcome, suffix::ReplicatorSuffixItemTrait};
+use crate::{
+    core::CandidateDecisionOutcome,
+    events::{EventTimingsMap, ReplicatorCandidateEventTimingsTrait},
+    suffix::ReplicatorSuffixItemTrait,
+};
 
 fn generate_bank_transfer_statemap_value() -> Value {
     let accounts_vec = (0..10).collect::<Vec<u32>>();
@@ -54,6 +58,7 @@ pub(crate) struct BankStatemapTestCandidate {
     pub decision_outcome: Option<CandidateDecisionOutcome>,
     pub statemap: Option<Vec<HashMap<String, Value>>>,
     pub is_installed: bool,
+    pub event_timings: EventTimingsMap,
 }
 
 impl BankStatemapTestCandidate {
@@ -63,6 +68,7 @@ impl BankStatemapTestCandidate {
             decision_outcome: Default::default(),
             statemap: Default::default(),
             is_installed: false,
+            event_timings: HashMap::new(),
         };
 
         item.generate_bank_transfers_statemap(statemap_count)
@@ -104,6 +110,20 @@ impl ReplicatorSuffixItemTrait for BankStatemapTestCandidate {
 
     fn is_installed(&self) -> bool {
         self.is_installed
+    }
+}
+
+impl ReplicatorCandidateEventTimingsTrait for BankStatemapTestCandidate {
+    fn record_event_timestamp(&mut self, event: crate::events::ReplicatorCandidateEvent, ts_ns: i128) {
+        self.event_timings.insert(event, ts_ns);
+    }
+
+    fn get_event_timestamp(&self, event: crate::events::ReplicatorCandidateEvent) -> Option<i128> {
+        self.event_timings.get(&event).copied()
+    }
+
+    fn get_all_timings(&self) -> EventTimingsMap {
+        self.event_timings.clone()
     }
 }
 

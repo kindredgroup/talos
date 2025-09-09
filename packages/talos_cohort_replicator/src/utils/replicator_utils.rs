@@ -1,6 +1,11 @@
 use talos_suffix::SuffixItem;
+use time::OffsetDateTime;
 
-use crate::{core::StatemapItem, suffix::ReplicatorSuffixItemTrait};
+use crate::{
+    core::StatemapItem,
+    events::{EventTimingsMap, ReplicatorCandidateEvent},
+    suffix::ReplicatorSuffixItemTrait,
+};
 
 /// Get all contiguous items decided irrespective of committed or aborted.
 pub fn get_filtered_batch<'a, T: ReplicatorSuffixItemTrait + 'a>(messages: impl Iterator<Item = &'a SuffixItem<T>>) -> impl Iterator<Item = &'a SuffixItem<T>> {
@@ -14,11 +19,17 @@ pub fn get_filtered_batch<'a, T: ReplicatorSuffixItemTrait + 'a>(messages: impl 
 // TODO: Instrument with span
 pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
     messages: impl Iterator<Item = &'a SuffixItem<T>>,
-) -> Vec<(u64, Vec<StatemapItem>)> {
+) -> Vec<(u64, Vec<StatemapItem>, EventTimingsMap)> {
     messages.into_iter().fold(vec![], |mut acc, m| {
+        // Record the time when the statemap item is picked.
+        let mut event_timings = m.item.get_all_timings();
+        event_timings.insert(
+            ReplicatorCandidateEvent::ReplicatorStatemapPicked,
+            OffsetDateTime::now_utc().unix_timestamp_nanos(),
+        );
         //  aborts
         if m.item.get_safepoint().is_none() {
-            acc.push((m.item_ver, vec![]));
+            acc.push((m.item_ver, vec![], event_timings));
             return acc;
         }
 
@@ -29,7 +40,6 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
                 let state_maps_to_append = sm_items.iter().map(|sm| {
                     let key = sm.keys().next().unwrap().to_string();
                     let payload = sm.get(&key).unwrap().clone();
-
                     StatemapItem {
                         action: key,
                         payload,
@@ -37,13 +47,13 @@ pub fn get_statemap_from_suffix_items<'a, T: ReplicatorSuffixItemTrait + 'a>(
                         safepoint: *m.item.get_safepoint(),
                     }
                 });
-                acc.push((m.item_ver, state_maps_to_append.collect::<Vec<StatemapItem>>()));
+                acc.push((m.item_ver, state_maps_to_append.collect::<Vec<StatemapItem>>(), event_timings));
                 acc
             }
             // when there is no statemap
             None => {
                 // Empty statemap items are send for installs anyways to update the snapshot
-                acc.push((m.item_ver, vec![]));
+                acc.push((m.item_ver, vec![], event_timings));
                 acc
             }
         }

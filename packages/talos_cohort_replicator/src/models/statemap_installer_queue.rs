@@ -6,6 +6,7 @@ use tracing::{debug, info};
 
 use crate::{
     core::{StatemapInstallState, StatemapInstallerHashmap},
+    events::{ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait},
     utils::installer_utils::{is_queue_item_above_version, is_queue_item_serializable, is_queue_item_state_match},
 };
 
@@ -47,7 +48,7 @@ impl StatemapInstallerQueue {
     pub fn update_queue_item_state(&mut self, version: &u64, state: StatemapInstallState) -> Option<i128> {
         let item = self.queue.get_mut(version)?;
         item.state = state;
-        Some(item.timestamp)
+        item.events.get_event_timestamp(ReplicatorCandidateEvent::QueueStatemapReceived)
     }
 
     pub fn prune_till_version(&mut self, version: u64) -> Option<u64> {
@@ -182,17 +183,18 @@ impl StatemapInstallerQueue {
 
 #[cfg(test)]
 mod tests {
-    use crate::core::StatemapInstallerHashmap;
+
+    use crate::{core::StatemapInstallerHashmap, events::StatemapEvents};
 
     use super::StatemapInstallerQueue;
 
     fn create_initial_test_installer_data(version: &u64, safepoint: Option<u64>) -> StatemapInstallerHashmap {
         StatemapInstallerHashmap {
-            timestamp: 0,
             statemaps: vec![],
             version: *version,
             safepoint,
             state: crate::core::StatemapInstallState::Awaiting,
+            events: StatemapEvents::default(),
         }
     }
 
@@ -206,22 +208,22 @@ mod tests {
         installer_queue.insert_queue_item(
             &version,
             StatemapInstallerHashmap {
-                timestamp: 0,
                 version,
                 safepoint: None,
                 state: crate::core::StatemapInstallState::Awaiting,
                 statemaps: vec![],
+                events: StatemapEvents::default(),
             },
         );
         let version = 3;
         installer_queue.insert_queue_item(
             &version,
             StatemapInstallerHashmap {
-                timestamp: 0,
                 version,
                 safepoint: None,
                 state: crate::core::StatemapInstallState::Awaiting,
                 statemaps: vec![],
+                events: StatemapEvents::default(),
             },
         );
 
@@ -239,33 +241,11 @@ mod tests {
         assert_eq!(count, Some(1));
 
         //  Update the state for the version 5 as installed
-        let upd_5 = installer_queue.update_queue_item_state(&5, crate::core::StatemapInstallState::Installed);
+        installer_queue.update_queue_item_state(&5, crate::core::StatemapInstallState::Installed);
         //  Update the state for the version 3 as installed
-        let upd_3 = installer_queue.update_queue_item_state(&3, crate::core::StatemapInstallState::Installed);
+        installer_queue.update_queue_item_state(&3, crate::core::StatemapInstallState::Installed);
 
-        assert!(upd_5.is_none());
-        // As the items are put not in order, 3 is not removed.
-        assert!(upd_3.is_some());
         assert_eq!(installer_queue.queue.len(), 1);
-        // assert_eq!(installer_queue.queue.get(&5).unwrap().1.state, crate::core::StatemapInstallState::Installed);
-
-        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
-        // // Althought version 5 and 3 are installed and safe to remove, as the snapshot is at 5, it can remove only the
-        // // contigous installed items till the snapshot.
-        // assert_eq!(count, 0);
-
-        // installer_queue.update_snapshot(10);
-
-        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
-        // // If the snapshot version is an incorrect version which is not on the queue, `None` is returned.
-        // assert_eq!(count, 0);
-
-        // installer_queue.update_snapshot(3);
-
-        // let count = installer_queue.prune_till_version(installer_queue.snapshot_version);
-        // // Although version 3 is also safe to remove, it is the snapshot version and will not be removed.
-        // assert_eq!(count, 1);
-        // assert_eq!(installer_queue.queue.len(), 1);
     }
 
     #[test]

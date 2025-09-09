@@ -1,6 +1,7 @@
 pub mod callbacks;
 mod core;
 pub mod errors;
+pub mod events;
 mod models;
 pub mod otel;
 mod services;

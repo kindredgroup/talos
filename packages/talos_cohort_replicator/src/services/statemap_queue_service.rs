@@ -15,6 +15,7 @@ use crate::{
     callbacks::ReplicatorSnapshotProvider,
     core::{ReplicatorChannel, StatemapInstallState, StatemapInstallationStatus, StatemapInstallerHashmap, StatemapItem, StatemapQueueChannelMessage},
     errors::{ReplicatorError, ReplicatorErrorKind},
+    events::{ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait, StatemapEvents},
     models::StatemapInstallerQueue,
 };
 
@@ -133,7 +134,7 @@ where
     S: ReplicatorSnapshotProvider + Send + Sync,
 {
     statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
-    installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+    installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>, StatemapEvents)>,
     installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
     replicator_feedback: mpsc::Sender<ReplicatorChannel>,
     pub statemap_queue: StatemapInstallerQueue,
@@ -151,7 +152,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         statemaps_rx: mpsc::Receiver<StatemapQueueChannelMessage>,
-        installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>)>,
+        installation_tx: mpsc::Sender<(u64, Vec<StatemapItem>, StatemapEvents)>,
         installation_feedback_rx: mpsc::Receiver<StatemapInstallationStatus>,
         replicator_feedback_tx: mpsc::Sender<ReplicatorChannel>,
         snapshot_api: Arc<S>,
@@ -228,7 +229,7 @@ where
         for key in items_to_install {
             // Send for installation
             if let Some(item) = self.statemap_queue.queue.get(&key) {
-                match self.installation_tx.send((key, item.statemaps.clone())).await {
+                match self.installation_tx.send((key, item.statemaps.clone(), item.events.clone())).await {
                     Ok(_) => {
                         self.metrics.inflight_inc();
                         self.statemap_queue.update_queue_item_state(&key, StatemapInstallState::Inflight);
@@ -274,7 +275,7 @@ where
         // Insert messages into the internal queue and set the status to `StatemapInstallState::Awaiting`
         // Pick statemaps eligible to be installed and send to `statemap_installer_service`, and set their state to `StatemapInstallState::Inflight`.
         match channel_message {
-            Some(StatemapQueueChannelMessage::Message((version, statemaps))) => {
+            Some(StatemapQueueChannelMessage::Message((version, statemaps, mut event_timings))) => {
                 // Inserts the statemaps to the map
 
                 // Get the safepoint.
@@ -291,14 +292,20 @@ where
                     StatemapInstallState::Awaiting
                 };
 
+                // Record event when the item was received in queue service
+                event_timings.record_event_timestamp(
+                    ReplicatorCandidateEvent::QueueStatemapReceived,
+                    OffsetDateTime::now_utc().unix_timestamp_nanos(),
+                );
+
                 self.statemap_queue.insert_queue_item(
                     &version,
                     StatemapInstallerHashmap {
-                        timestamp: OffsetDateTime::now_utc().unix_timestamp_nanos(),
                         statemaps,
                         version,
                         safepoint,
                         state,
+                        events: event_timings,
                     },
                 );
             }

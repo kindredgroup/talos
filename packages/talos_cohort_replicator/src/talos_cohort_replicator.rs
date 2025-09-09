@@ -92,16 +92,20 @@ where
             reason: "Unable to initialise OTEL logs and traces for replicator".into(),
             cause: Some(format!("{:?}", e)),
         })?;
-
-        if config.otel_telemetry.enable_metrics {
-            init_otel_metrics(config.otel_telemetry.grpc_endpoint).map_err(|e| ReplicatorError {
-                kind: ReplicatorErrorKind::Internal,
-                reason: "Unable to initialise OTEL metrics for replicator".into(),
-                cause: Some(format!("{:?}", e)),
-            })?;
-        }
     } else {
-        tracing::warn!("OTEL will not be initialised for this replicator instance, it may still be used if another module initialises it.")
+        tracing::warn!("Otel traces will not be initialised from within the replicator.");
+        tracing::warn!("If traces are required, either initialise from the calling app, or enable the flag otel_telemetry.enable_metrics to enable from within the library")
+    }
+
+    if config.otel_telemetry.enable_metrics {
+        init_otel_metrics(config.otel_telemetry.grpc_endpoint).map_err(|e| ReplicatorError {
+            kind: ReplicatorErrorKind::Internal,
+            reason: "Unable to initialise OTEL metrics for replicator".into(),
+            cause: Some(format!("{:?}", e)),
+        })?;
+    } else {
+        tracing::warn!("Otel metrics will not be initialised from within the replicator.");
+        tracing::warn!("If metrics are required, either initialise from the calling app, or enable the flag otel_telemetry.enable_metrics to enable from within the library")
     }
 
     // ---------- Channels to communicate between threads. ----------

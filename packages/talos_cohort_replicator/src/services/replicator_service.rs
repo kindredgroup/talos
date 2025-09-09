@@ -4,6 +4,7 @@ use std::{fmt::Debug, time::Duration};
 use crate::{
     core::{Replicator, ReplicatorChannel},
     errors::ReplicatorError,
+    events::StatemapEvents,
     models::{ReplicatorCandidate, ReplicatorCandidateMessage},
     suffix::ReplicatorSuffixTrait,
     StatemapQueueChannelMessage,
@@ -192,8 +193,8 @@ where
                             self.metrics.record_statemap_tx_count((self.statemaps_tx.max_capacity() - self.statemaps_tx.capacity()) as u64);
 
                             // Send statemaps batch to
-                            for (ver, statemap_vec) in statemaps_batch {
-                                self.statemaps_tx.send(StatemapQueueChannelMessage::Message((ver, statemap_vec))).await.unwrap();
+                            for (ver, statemap_vec, event_timings) in statemaps_batch {
+                                self.statemaps_tx.send(StatemapQueueChannelMessage::Message((ver, statemap_vec, StatemapEvents::with_timings(event_timings)))).await.unwrap();
                             }
 
                         },

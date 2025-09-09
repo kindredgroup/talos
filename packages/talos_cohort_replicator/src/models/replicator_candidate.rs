@@ -3,7 +3,11 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{core::CandidateDecisionOutcome, suffix::ReplicatorSuffixItemTrait};
+use crate::{
+    core::CandidateDecisionOutcome,
+    events::{EventTimingsMap, ReplicatorCandidateEvent, ReplicatorCandidateEventTimingsTrait},
+    suffix::ReplicatorSuffixItemTrait,
+};
 
 use super::candidate_message::ReplicatorCandidateMessage;
 
@@ -19,6 +23,8 @@ pub struct ReplicatorCandidate {
 
     #[serde(skip_deserializing)]
     pub is_installed: bool,
+
+    pub event_timings: EventTimingsMap,
 }
 
 impl From<ReplicatorCandidateMessage> for ReplicatorCandidate {
@@ -28,6 +34,7 @@ impl From<ReplicatorCandidateMessage> for ReplicatorCandidate {
             safepoint: None,
             decision_outcome: None,
             is_installed: false,
+            event_timings: HashMap::new(),
         }
     }
 }
@@ -50,5 +57,17 @@ impl ReplicatorSuffixItemTrait for ReplicatorCandidate {
     }
     fn is_installed(&self) -> bool {
         self.is_installed
+    }
+}
+
+impl ReplicatorCandidateEventTimingsTrait for ReplicatorCandidate {
+    fn record_event_timestamp(&mut self, event: ReplicatorCandidateEvent, ts_ns: i128) {
+        self.event_timings.insert(event, ts_ns);
+    }
+    fn get_event_timestamp(&self, event: ReplicatorCandidateEvent) -> Option<i128> {
+        self.event_timings.get(&event).copied()
+    }
+    fn get_all_timings(&self) -> EventTimingsMap {
+        self.event_timings.clone()
     }
 }

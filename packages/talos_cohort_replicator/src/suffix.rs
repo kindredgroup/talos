@@ -7,9 +7,11 @@ use talos_suffix::{
 };
 use tracing::{debug, warn};
 
+use crate::events::ReplicatorCandidateEventTimingsTrait;
+
 use super::core::CandidateDecisionOutcome;
 
-pub trait ReplicatorSuffixItemTrait {
+pub trait ReplicatorSuffixItemTrait: ReplicatorCandidateEventTimingsTrait {
     fn get_safepoint(&self) -> &Option<u64>;
     fn get_statemap(&self) -> &Option<Vec<HashMap<String, Value>>>;
     fn set_safepoint(&mut self, safepoint: Option<u64>);

@@ -5,6 +5,7 @@ use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 
 use crate::{
     core::CandidateDecisionOutcome,
+    events::{EventTimingsMap, ReplicatorCandidateEventTimingsTrait},
     suffix::{ReplicatorSuffixItemTrait, ReplicatorSuffixTrait},
 };
 
@@ -14,6 +15,7 @@ struct TestReplicatorSuffixItem {
     decision: Option<CandidateDecisionOutcome>,
     statemap: Option<Vec<std::collections::HashMap<String, serde_json::Value>>>,
     is_installed: bool,
+    event_timings: EventTimingsMap,
 }
 
 impl ReplicatorSuffixItemTrait for TestReplicatorSuffixItem {
@@ -38,6 +40,20 @@ impl ReplicatorSuffixItemTrait for TestReplicatorSuffixItem {
 
     fn is_installed(&self) -> bool {
         self.is_installed
+    }
+}
+
+impl ReplicatorCandidateEventTimingsTrait for TestReplicatorSuffixItem {
+    fn record_event_timestamp(&mut self, event: crate::events::ReplicatorCandidateEvent, ts_ns: i128) {
+        self.event_timings.insert(event, ts_ns);
+    }
+
+    fn get_event_timestamp(&self, event: crate::events::ReplicatorCandidateEvent) -> Option<i128> {
+        self.event_timings.get(&event).copied()
+    }
+
+    fn get_all_timings(&self) -> EventTimingsMap {
+        self.event_timings.clone()
     }
 }
 

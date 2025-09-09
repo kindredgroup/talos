@@ -11,6 +11,7 @@ use tokio::sync::mpsc::{self, error::TryRecvError};
 use crate::{
     callbacks::ReplicatorSnapshotProvider,
     core::StatemapInstallState,
+    events::StatemapEvents,
     services::statemap_queue_service::{self, StatemapQueueServiceConfig},
     StatemapItem, StatemapQueueChannelMessage,
 };
@@ -62,7 +63,7 @@ async fn test_queue_service_snapshot_version_above_safepoint_below_snapshot() {
 
     let statemap_item = StatemapItem::new("TestAction".to_string(), 10, json!({"version": 10}), Some(7));
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((10, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((10, vec![statemap_item], StatemapEvents::default())))
         .await
         .unwrap();
 
@@ -104,7 +105,10 @@ async fn test_queue_service_version_and_safepoint_below_snapshot() {
     });
 
     let statemap_item = StatemapItem::new("TestAction".to_string(), 7, json!({"version": 7}), Some(5));
-    statemaps_tx.send(StatemapQueueChannelMessage::Message((7, vec![statemap_item]))).await.unwrap();
+    statemaps_tx
+        .send(StatemapQueueChannelMessage::Message((7, vec![statemap_item], StatemapEvents::default())))
+        .await
+        .unwrap();
 
     tokio::time::sleep(Duration::from_millis(10)).await;
 
@@ -167,7 +171,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -182,7 +190,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -209,7 +221,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -225,7 +241,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -241,7 +261,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -257,7 +281,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -328,7 +356,11 @@ async fn test_queue_service_insert_install_feedbacks() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -421,7 +453,11 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -438,7 +474,11 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -455,7 +495,11 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -488,7 +532,11 @@ async fn test_queue_service_effects_of_resetting_snapshot() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -582,7 +630,11 @@ async fn test_snapshot_updated_via_callback() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -600,7 +652,11 @@ async fn test_snapshot_updated_via_callback() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -656,7 +712,11 @@ async fn test_snapshot_updated_via_callback() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -672,7 +732,11 @@ async fn test_snapshot_updated_via_callback() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -688,7 +752,11 @@ async fn test_snapshot_updated_via_callback() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -704,7 +772,11 @@ async fn test_snapshot_updated_via_callback() {
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
     // Run the service to insert this into queue.
@@ -836,7 +908,11 @@ async fn test_queue_service_last_installed_snapshot_against_internal_snapshot() 
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -862,7 +938,11 @@ async fn test_queue_service_last_installed_snapshot_against_internal_snapshot() 
         safepoint,
     );
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -891,7 +971,11 @@ async fn test_queue_service_last_installed_snapshot_against_internal_snapshot() 
     );
 
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
@@ -924,7 +1008,11 @@ async fn test_queue_service_last_installed_snapshot_against_internal_snapshot() 
     );
 
     statemaps_tx
-        .send(StatemapQueueChannelMessage::Message((install_vers, vec![statemap_item])))
+        .send(StatemapQueueChannelMessage::Message((
+            install_vers,
+            vec![statemap_item],
+            StatemapEvents::default(),
+        )))
         .await
         .unwrap();
 
