@@ -88,7 +88,7 @@
 
         - name: Install NAPI-RS CLI (macOS)
           if: ${{ !matrix.use_docker }}
-          run: npm install -g @napi-rs/cli
+          run: npm install -g @napi-rs/cli@2.16.0 # Pinning to version 2 of napi-rs as version 3 has breaking changes with cli and threadedfunction
 
         - name: Build NAPI-RS Binary (macOS)
           if: ${{ !matrix.use_docker }}
