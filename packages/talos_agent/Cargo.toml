@@ -1,6 +1,6 @@
 [package]
 name = "talos_agent"
-version = "0.3.9-beta.3"
+version = "0.3.9"
 edition = "2021"
 
 [dependencies]
@@ -26,8 +26,8 @@ time = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 uuid = { version = "1.4.1", features = ["v4"] }
 
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.9-beta.3" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.9-beta.3" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.9" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.9" }
 
 [dev-dependencies]
 mockall = { version = "0.11.3" }
