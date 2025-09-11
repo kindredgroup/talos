@@ -1,6 +1,6 @@
 [package]
 name = "talos_certifier"
-version = "0.3.9-beta.1"
+version = "0.3.9-beta.2"
 edition = "2021"
 keywords = ["talos"]
 license = "MIT"
@@ -46,8 +46,8 @@ tracing-bunyan-formatter =  { version = "0.3.10" }
 tracing-subscriber =        { version = "0.3.19", features = [ "fmt", "ansi", "json", "registry", "env-filter" ] }
 
 # internal crates
-talos_suffix = { path = "../talos_suffix", version = "0.3.9-beta.1" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.9-beta.1" }
+talos_suffix = { path = "../talos_suffix", version = "0.3.9-beta.2" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.9-beta.2" }
 
 uuid = { version = "1.4.1", features = ["v4"] }
 
