@@ -1,6 +1,6 @@
 {
   "name": "cohort_sdk_js-linux-x64",
-  "version": "0.3.9",
+  "version": "0.3.10-dev",
   "os": [
     "linux"
   ],
