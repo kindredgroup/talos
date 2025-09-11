@@ -29,7 +29,7 @@ thiserror = { version = "1.0.31" }
 time = { workspace = true }
 
 #  indexmap
-indexmap = { version = "2.0.0", features = ["rayon"] }
+indexmap = { version = "2.0.0" }
 ahash = "0.8.3"
 
 talos_certifier = { path = "../talos_certifier", version = "0.3.9-beta.2" }

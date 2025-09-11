@@ -39,7 +39,6 @@ rdkafka = { version = "0.34.0", features = ["sasl"] }
 time = { version = "0.3.30" }
 
 #  indexmap
-indexmap = { version = "2.0.0", features = ["rayon"] }
 ahash = "0.8.3"
 
 talos_certifier = { path = "../talos_certifier", version = "0.3.9-beta.2" }
