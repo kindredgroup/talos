@@ -19,7 +19,7 @@ checksum = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627"
 
 [[package]]
 name = "agent_client"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -249,7 +249,7 @@ dependencies = [
 
 [[package]]
 name = "banking_common"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "deadpool",
@@ -266,7 +266,7 @@ dependencies = [
 
 [[package]]
 name = "banking_replicator"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "banking_common",
@@ -419,7 +419,7 @@ dependencies = [
 
 [[package]]
 name = "certifier_kafka_pg"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "cargo-husky",
  "env_logger",
@@ -535,7 +535,7 @@ checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 
 [[package]]
 name = "cohort_banking"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_banking_with_sdk"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -599,7 +599,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_replicator_kafka_pg"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "banking_common",
@@ -624,7 +624,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_sdk"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "axum",
@@ -658,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "cohort_sdk_js"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -884,9 +884,9 @@ dependencies = [
 
 [[package]]
 name = "deranged"
-version = "0.3.11"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
+checksum = "9c9e6a11ca8224451684bc0d7d5a7adbf8f2fd6887261a1cfc3c0432f9d4068e"
 dependencies = [
  "powerfmt",
 ]
@@ -980,7 +980,7 @@ checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
 name = "examples_support"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -1561,7 +1561,6 @@ checksum = "8c9c992b02b5b4c94ea26e32fe5bccb7aa7d9f390ab5c1221ff895bc7ea8b652"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.2",
- "rayon",
 ]
 
 [[package]]
@@ -1699,7 +1698,7 @@ checksum = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3"
 
 [[package]]
 name = "messenger_using_kafka"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3201,7 +3200,7 @@ dependencies = [
 
 [[package]]
 name = "talos_agent"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "mockall",
@@ -3224,7 +3223,7 @@ dependencies = [
 
 [[package]]
 name = "talos_certifier"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3256,7 +3255,7 @@ dependencies = [
 
 [[package]]
 name = "talos_certifier_adapters"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3285,7 +3284,7 @@ dependencies = [
 
 [[package]]
 name = "talos_cohort_replicator"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3316,7 +3315,7 @@ dependencies = [
 
 [[package]]
 name = "talos_common_utils"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "opentelemetry 0.28.0",
  "serial_test",
@@ -3327,7 +3326,7 @@ dependencies = [
 
 [[package]]
 name = "talos_messenger_actions"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
@@ -3362,14 +3361,13 @@ dependencies = [
 
 [[package]]
 name = "talos_messenger_core"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "ahash 0.8.11",
  "async-trait",
  "env_logger",
  "futures-executor",
  "futures-util",
- "indexmap 2.7.1",
  "log",
  "mockall",
  "rand 0.8.5",
@@ -3389,7 +3387,7 @@ dependencies = [
 
 [[package]]
 name = "talos_metrics"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "env_logger",
  "log",
@@ -3405,7 +3403,7 @@ dependencies = [
 
 [[package]]
 name = "talos_rdkafka_utils"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "criterion 0.5.1",
@@ -3422,7 +3420,7 @@ dependencies = [
 
 [[package]]
 name = "talos_suffix"
-version = "0.3.8-dev"
+version = "0.3.9-beta.3"
 dependencies = [
  "async-trait",
  "criterion 0.4.0",
@@ -3534,9 +3532,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.37"
+version = "0.3.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35e7868883861bd0e56d9ac6efcaaca0d6d5d82a2a7ec8209ff492c07cf37b21"
+checksum = "8a7619e19bc266e0f9c5e6686659d394bc57973859340060a69221e57dbc0c40"
 dependencies = [
  "deranged",
  "itoa",
@@ -3549,15 +3547,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.2"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
+checksum = "c9e9a38711f559d9e3ce1cdb06dd7c5b8ea546bc90052da6d06bb76da74bb07c"
 
 [[package]]
 name = "time-macros"
-version = "0.2.19"
+version = "0.2.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2834e6017e3e5e4b9834939793b282bc03b37a3336245fa820e35e233e2a85de"
+checksum = "3526739392ec93fd8b359c8e98514cb3e8e021beb4e5f597b00a0221f8ed8a49"
 dependencies = [
  "num-conv",
  "time-core",

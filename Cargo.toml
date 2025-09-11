@@ -23,6 +23,10 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["full", "test-util"] }
 async-trait = "0.1"
 
+# time
+# TODO:GK pinned to 0.3.41 which is the last version that supports MSRV 1.75. When we move our rust version to 1.81 or higher, we should relax this pin.
+time = { version = "=0.3.41" }
+
 [workspace.metadata.release]
 shared-version = true
 pre-release-commit-message = "chore(crate): Release {{version}}"
