@@ -19,7 +19,7 @@ opentelemetry = { version = "0.28.0", default-features = false, features = [
 
 tokio = { workspace = true, features = ["full"] }
 # Time
-time = { version = "0.3.17" }
+time = { workspace = true }
 tracing = { version = "0.1.41", features = ["log"] }
 
 [dev-dependencies]
