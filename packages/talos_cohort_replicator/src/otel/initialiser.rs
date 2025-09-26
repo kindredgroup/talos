@@ -52,7 +52,6 @@ pub fn init_log_and_otel_tracing_layers(
  */
 
 pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint: Option<String>, default_level: &'static str) -> Result<(), OtelInitError> {
-    tracing::info!("Enable tracing {enable_tracing} and grpc_endpoint {grpc_endpoint:?}");
     if let Ok(tracing_layers) = init_log_and_otel_tracing_layers(name, enable_tracing, grpc_endpoint, default_level) {
         if let Err(error) = tracing_subscriber::registry().with(tracing_layers).try_init() {
             tracing::debug!(
@@ -68,7 +67,6 @@ pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint:
 }
 
 pub fn init_otel_metrics(grpc_endpoint: Option<String>) -> Result<(), OtelInitError> {
-    info_span!("init_otel_metrics method");
     if let Some(grpc_endpoint) = grpc_endpoint {
         let otel_exporter = opentelemetry_otlp::MetricExporter::builder()
             .with_tonic()
