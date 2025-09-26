@@ -4,7 +4,6 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use strum::Display;
 use thiserror::Error as ThisError;
-use tracing::info_span;
 use tracing::subscriber::SetGlobalDefaultError;
 use tracing_bunyan_formatter::BunyanFormattingLayer;
 use tracing_subscriber::layer::SubscriberExt;
