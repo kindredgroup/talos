@@ -4,30 +4,26 @@ use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
 use strum::Display;
 use thiserror::Error as ThisError;
-use tracing::subscriber::{set_global_default, SetGlobalDefaultError};
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
+use tracing::subscriber::SetGlobalDefaultError;
+use tracing_bunyan_formatter::BunyanFormattingLayer;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{fmt, EnvFilter, Layer};
 
-/**
- * This module is intentional duplicate with packages/cohort_sdk/otel.
- * We will externalise them into re-usable commons when we apply OTEL to full Talos ecosystem.
- */
-
-pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint: Option<String>, default_level: &'static str) -> Result<(), OtelInitError> {
+/// Provide the tracing layers to be used for replicator
+pub fn init_log_and_otel_tracing_layers(
+    name: String,
+    enable_tracing: bool,
+    grpc_endpoint: Option<String>,
+    default_level: &'static str,
+) -> Result<Box<dyn Layer<tracing_subscriber::Registry> + Send + Sync>, OtelInitError> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
 
     let layer_fmt = fmt::Layer::new().json();
 
     if !enable_tracing {
-        // setup only logging
-        let subscriber = tracing_subscriber::registry().with(layer_fmt).with(env_filter);
-
-        set_global_default(subscriber).map_err(OtelInitError::from_global_subscriber_error)?;
-        return Ok(());
+        return Ok(Box::new(env_filter.and_then(layer_fmt)));
     }
-
-    opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
     if let Some(grpc_endpoint) = grpc_endpoint.clone() {
         let otel_exporter = opentelemetry_otlp::SpanExporter::builder()
@@ -42,17 +38,29 @@ pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint:
             .build();
 
         let otlp_layer = tracing_opentelemetry::layer().with_tracer(otlp_trace_provider.tracer(name.clone()));
-        let subscriber = tracing_subscriber::registry().with(layer_fmt).with(env_filter).with(otlp_layer);
-
-        set_global_default(subscriber).map_err(OtelInitError::from_global_subscriber_error)?;
+        Ok(Box::new(env_filter.and_then(layer_fmt).and_then(otlp_layer)))
     } else {
         let layer_fmt = BunyanFormattingLayer::new(name.clone(), std::io::stdout);
-        let subscriber = tracing_subscriber::registry().with(env_filter).with(JsonStorageLayer).with(layer_fmt);
-
-        set_global_default(subscriber).map_err(OtelInitError::from_global_subscriber_error)?;
+        Ok(Box::new(env_filter.and_then(layer_fmt).boxed()))
     }
+}
 
-    tracing::info!("OTEL logging and tracing initialised");
+/**
+ * This module is intentional duplicate with packages/cohort_sdk/otel.
+ * We will externalise them into re-usable commons when we apply OTEL to full Talos ecosystem.
+ */
+
+pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint: Option<String>, default_level: &'static str) -> Result<(), OtelInitError> {
+    if let Ok(tracing_layers) = init_log_and_otel_tracing_layers(name, enable_tracing, grpc_endpoint, default_level) {
+        if let Err(error) = tracing_subscriber::registry().with(tracing_layers).try_init() {
+            tracing::debug!(
+                "OTEL logging and tracing not instantiated from the library as there is already an instance of tracing_subscriber. Error = {error:?}"
+            )
+        } else {
+            opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
+            tracing::info!("OTEL logging and tracing initialised");
+        }
+    }
 
     Ok(())
 }
