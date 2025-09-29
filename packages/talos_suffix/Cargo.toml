@@ -1,6 +1,6 @@
 [package]
 name = "talos_suffix"
-version = "0.3.11-dev"
+version = "0.3.13-dev"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -20,7 +20,7 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 
 ######### patches for build problems with rust 75
 zerovec = { version = "=0.10.4" }
-zerofrom= { version = "=0.1.5" }
+zerofrom = { version = "=0.1.5" }
 icu_properties_data = { version = "=1.5.0" }
 icu_locid_transform = { version = "=1.5.0" }
 icu_normalizer = { version = "=1.5.0" }
@@ -30,22 +30,27 @@ icu_locid = { version = "=1.5.0" }
 icu_collections = { version = "=1.5.0" }
 icu_provider_macros = { version = "=1.5.0" }
 icu_locid_transform_data = { version = "=1.5.0" }
-yoke = { version = "=0.7.5"}
+yoke = { version = "=0.7.5" }
 litemap = { version = "=0.7.4" }
-idna_adapter = { version = "=1.2.0"}
-potential_utf = { version = "=0.1.0"}
+idna_adapter = { version = "=1.2.0" }
+potential_utf = { version = "=0.1.0" }
 ########################################################
 
 # Logging
 #log = { workspace = true }
 #env_logger = { workspace = true }
 
-tracing =                   { version = "0.1.41", features = [ "log" ] }
-opentelemetry_api =         { version = "0.20.0", features = ["metrics"] }
-opentelemetry =             { version = "0.28.0", default-features = false, features = ["trace"]  }
-opentelemetry_sdk =         { version = "0.28.0", default-features = false, features = ["trace", "rt-tokio"] }
-opentelemetry-otlp =        { version = "0.28.0", features = [ "trace", "grpc-tonic" ] }
-opentelemetry-stdout =      { version = "0.28.0", features = [ "trace" ] }
+tracing = { version = "0.1.41", features = ["log"] }
+opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
+opentelemetry = { version = "0.28.0", default-features = false, features = [
+    "trace",
+] }
+opentelemetry_sdk = { version = "0.28.0", default-features = false, features = [
+    "trace",
+    "rt-tokio",
+] }
+opentelemetry-otlp = { version = "0.28.0", features = ["trace", "grpc-tonic"] }
+opentelemetry-stdout = { version = "0.28.0", features = ["trace"] }
 
 # Test
 mockall = "0.11.0"
@@ -56,6 +61,9 @@ thiserror = "1.0.31"
 [dev-dependencies]
 tokio-test = "0.4"
 criterion = "0.4"
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+rayon = { workspace = true }
+rayon-core = { workspace = true }
 
 [[bench]]
 name = "suffix"

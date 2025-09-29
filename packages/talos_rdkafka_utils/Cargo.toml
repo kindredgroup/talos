@@ -1,6 +1,6 @@
 [package]
 name = "talos_rdkafka_utils"
-version = "0.3.11-dev"
+version = "0.3.13-dev"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -15,7 +15,7 @@ doctest = false
 [dependencies]
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.11-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.13-dev" }
 # Logging
 log = { workspace = true }
 env_logger = { workspace = true }
@@ -26,9 +26,21 @@ mockall = "0.11.0"
 # Error
 thiserror = "1.0.31"
 
-rdkafka = { version = "0.34.0", features = ["sasl"]  }
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+toml = { workspace = true }
+toml_edit = { workspace = true }
+toml_datetime = { workspace = true }
+toml_parser = { workspace = true }
+toml_writer = { workspace = true }
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+half = { version = "=2.4.1" }
+
+rdkafka = { version = "0.34.0", features = ["sasl"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
-criterion = "0.5.1"
+criterion = "0.4"
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+rayon = { workspace = true }
+rayon-core = { workspace = true }
 serial_test = "2.0.0"

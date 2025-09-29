@@ -26,6 +26,14 @@ async-trait = "0.1"
 # time
 # TODO:GK pinned to 0.3.41 which is the last version that supports MSRV 1.75. When we move our rust version to 1.81 or higher, we should relax this pin.
 time = { version = "=0.3.41" }
+# TODO:GK pinned the last version that supports MSRV 1.75. When we move our rust version to 1.81 or higher, we should relax this pin.
+toml = { version = "=0.8" }
+toml_edit = { version = "=0.23.5" }
+toml_datetime = { version = "=0.7.1" }
+toml_parser = { version = "=1.0.2" }
+toml_writer = { version = "=1.0.2" }
+rayon = { version = "=1.10.0" }
+rayon-core = { version = "=1.12.1" }
 
 [workspace.metadata.release]
 shared-version = true
