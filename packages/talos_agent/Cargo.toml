@@ -1,6 +1,6 @@
 [package]
 name = "talos_agent"
-version = "0.3.13-dev"
+version = "0.3.13"
 edition = "2021"
 
 [dependencies]
@@ -33,8 +33,8 @@ toml_datetime = { workspace = true }
 toml_parser = { workspace = true }
 toml_writer = { workspace = true }
 
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.13-dev" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.13-dev" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.13" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.13" }
 
 [dev-dependencies]
 mockall = { version = "0.11.3" }
