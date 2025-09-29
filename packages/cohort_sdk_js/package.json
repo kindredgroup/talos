@@ -1,6 +1,6 @@
 {
   "name": "@kindredgroup/cohort_sdk_js",
-  "version": "0.3.13",
+  "version": "0.3.14-dev",
   "author": "Kindredgroup",
   "license": "MIT",
   "main": "index.js",
