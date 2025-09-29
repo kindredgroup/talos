@@ -9,6 +9,8 @@ talos_metrics = { path = "../talos_metrics", version = "0.3.11-dev" }
 
 # Postgres
 refinery = { version = "0.8.7", features = ["tokio-postgres"] }
+# TODO:GK pinned to version that supports MSRV 1.75. When we move our rust version to 1.81 or higher, remove this transient dependency pinned.
+postgres-protocol = { version = "=0.6.8" }
 # TODO:GK pinned to version that supports MSRV 1.75. When we move our rust version to 1.81 or higher, we should relax this pin.
 tokio-postgres = { version = "=0.7.13", features = [
     "with-uuid-1",
