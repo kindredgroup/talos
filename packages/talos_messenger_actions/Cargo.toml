@@ -1,6 +1,6 @@
 [package]
 name = "talos_messenger_actions"
-version = "0.3.13"
+version = "0.3.14-dev"
 edition = "2021"
 license = "MIT"
 homepage = "https://github.com/kindredgroup/talos"
@@ -56,12 +56,12 @@ toml_parser = { workspace = true }
 toml_writer = { workspace = true }
 # *** End - Adding to fix napi build error on GH actions.
 
-talos_certifier = { path = "../talos_certifier", version = "0.3.13" }
-talos_suffix = { path = "../talos_suffix", version = "0.3.13" }
-talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.3.13" }
-talos_common_utils = { path = "../talos_common_utils", version = "0.3.13" }
-talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.13" }
-talos_messenger_core = { path = "../talos_messenger_core", version = "0.3.13" }
+talos_certifier = { path = "../talos_certifier", version = "0.3.14-dev" }
+talos_suffix = { path = "../talos_suffix", version = "0.3.14-dev" }
+talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.3.14-dev" }
+talos_common_utils = { path = "../talos_common_utils", version = "0.3.14-dev" }
+talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.14-dev" }
+talos_messenger_core = { path = "../talos_messenger_core", version = "0.3.14-dev" }
 
 
 [dev-dependencies]
