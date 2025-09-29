@@ -38,6 +38,13 @@ rdkafka = { version = "0.34.0", features = ["sasl"] }
 # Time
 time = { version = "0.3.30" }
 
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+toml = { workspace = true }
+toml_edit = { workspace = true }
+toml_datetime = { workspace = true }
+toml_parser = { workspace = true }
+toml_writer = { workspace = true }
+
 #  indexmap
 ahash = "0.8.3"
 

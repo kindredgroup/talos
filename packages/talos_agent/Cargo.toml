@@ -26,6 +26,13 @@ time = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
 uuid = { version = "1.4.1", features = ["v4"] }
 
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+toml = { workspace = true }
+toml_edit = { workspace = true }
+toml_datetime = { workspace = true }
+toml_parser = { workspace = true }
+toml_writer = { workspace = true }
+
 talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.11-dev" }
 talos_common_utils = { path = "../talos_common_utils", version = "0.3.11-dev" }
 

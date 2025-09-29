@@ -23,6 +23,13 @@ rdkafka = { version = "0.34.0", features = ["sasl"] }
 # ahash
 ahash = "0.8.3"
 
+# TODO: GK - temporary pinning of transient packages for MSRB 1.75
+toml = { workspace = true }
+toml_edit = { workspace = true }
+toml_datetime = { workspace = true }
+toml_parser = { workspace = true }
+toml_writer = { workspace = true }
+
 # internal crates
 talos_certifier = { path = "../../packages/talos_certifier", version = "0.3.11-dev" }
 talos_suffix = { path = "../../packages/talos_suffix", version = "0.3.11-dev" }

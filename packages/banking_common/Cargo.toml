@@ -4,19 +4,26 @@ version = "0.3.11-dev"
 edition = "2021"
 
 [dependencies]
-async-trait =       { workspace = true }
-env_logger =        { workspace = true }
-log =               { workspace = true }
+async-trait = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
 
-serde =             { workspace = true }
-serde_json =        { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
-rust_decimal =      { version = "1.30.0", features = ["db-tokio-postgres", "serde-with-float"] }
-strum =             { version = "0.25", features = ["derive"] }
+rust_decimal = { version = "1.30.0", features = [
+    "db-tokio-postgres",
+    "serde-with-float",
+] }
+strum = { version = "0.25", features = ["derive"] }
 
 # Postgres
-tokio-postgres =    { version = "0.7", features = [ "with-uuid-1", "with-serde_json-1" ] }
-deadpool =          { version = "0.10.0" }
+# TODO:GK pinned to version that supports MSRV 1.75. When we move our rust version to 1.81 or higher, we should relax this pin.
+tokio-postgres = { version = "=0.7.13", features = [
+    "with-uuid-1",
+    "with-serde_json-1",
+] }
+deadpool = { version = "0.10.0" }
 deadpool-postgres = { version = "0.11.0" }
 
 talos_common_utils = { path = "../talos_common_utils", version = "0.3.11-dev" }
