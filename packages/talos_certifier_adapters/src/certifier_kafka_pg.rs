@@ -5,6 +5,7 @@ use crate::{self as Adapters, KafkaConsumer};
 use std::sync::{atomic::AtomicI64, Arc};
 use talos_certifier::core::SystemService;
 use talos_certifier::model::{CandidateMessage, DecisionMessage};
+use talos_certifier::otel::init_otel_metrics;
 use talos_certifier::ports::DecisionStore;
 
 use talos_certifier::services::{CertifierServiceConfig, MessageReceiverServiceConfig};
@@ -67,6 +68,9 @@ pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffer
         name: config.app_name.unwrap_or("talos_certifier".to_string()),
     };
 
+    // Otel initialisation
+    let _ = init_otel_metrics(config.otel_grpc_endpoint);
+
     let (tx, rx) = mpsc::channel(channel_buffer.message_receiver);
 
     /* START - Kafka consumer service  */
@@ -109,7 +113,6 @@ pub async fn certifier_with_kafka_pg(channel_buffer: TalosCertifierChannelBuffer
             system.clone(),
             Some(CertifierServiceConfig {
                 suffix_config: config.suffix_config.unwrap_or_default(),
-                otel_grpc_endpoint: config.otel_grpc_endpoint,
             }),
         )),
     };
