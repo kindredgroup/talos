@@ -11,12 +11,14 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct DbgQueueFilterSummary<T> {
     pub filter_enter_count: usize,
     pub filter_exit_count: usize,
     pub filter_reject_items: Vec<T>,
 }
 #[derive(Debug, Default)]
+#[allow(dead_code)]
 pub struct DbgQueueInstallItemsSummary<T> {
     pub installable_items: Vec<T>,
     pub filter_steps_insights: Vec<DbgQueueFilterSummary<T>>,
@@ -164,11 +166,7 @@ impl StatemapInstallerQueue {
         }
 
         // If queue is not empty and the snapshot version is below this version, then we find the last_contiguous installed version.
-        let start = if let Some(version_index) = self.queue.get_index_of(&self.snapshot_version) {
-            version_index
-        } else {
-            0
-        };
+        let start = self.queue.get_index_of(&self.snapshot_version).unwrap_or_default();
 
         let (last_installed_version, _) = self
             .queue

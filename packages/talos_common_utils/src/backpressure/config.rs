@@ -31,7 +31,7 @@ pub struct BackPressureConfig {
     /// Suffix rate threshold is used enable back pressure logic based on the difference between input vs output rate.
     /// The proactive back pressure strategy will not trigger till `suffix_rate_threshold` + this rate threshold is crossed.
     /// - If Some valid value is passed., the rate based proactive back pressure logic is applied only when this threshold is crossed.
-    ///         - e.g. If `rate_delta_threshold = 100`, then proactive back pressure logic kicks in when `input_tps - output_tps > 100`.
+    ///   - e.g. If `rate_delta_threshold = 100`, then proactive back pressure logic kicks in when `input_tps - output_tps > 100`.
     /// - **Defaults to Some(100)**
     pub rate_delta_threshold: Option<f64>,
     /// Used to reduce the timeout computed. If the timeout has plataued at a specific milliseconds between iterations, this could be use to stepdown the timeout between iterations.

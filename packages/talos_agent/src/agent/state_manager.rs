@@ -242,6 +242,7 @@ impl<TSignalTx: Sender<Data = Signal> + 'static> StateManager<TSignalTx> {
 
 // $coverage:ignore-start
 #[cfg(test)]
+#[allow(clippy::result_large_err)]
 mod tests_waiting_client {
     use super::*;
     use crate::messaging::api::Decision::Committed;
@@ -302,6 +303,7 @@ mod tests_waiting_client {
 }
 
 #[cfg(test)]
+#[allow(clippy::result_large_err)]
 mod tests {
     use super::*;
     use crate::api::{CandidateData, CertificationRequest};
@@ -586,6 +588,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::result_large_err)]
     async fn handle_decision_should_emit_metrics() {
         // env_logger::builder().format_timestamp_millis().init();
 
@@ -686,7 +689,7 @@ mod tests {
         };
 
         let copy = cancel_req.clone();
-        format!("debug and clone coverage: {:?}", copy);
+        let _ = format!("debug and clone coverage: {:?}", copy);
 
         StateManager::<MockNoopMetricsSender>::handle_cancellation(Some(cancel_req), &mut state);
 

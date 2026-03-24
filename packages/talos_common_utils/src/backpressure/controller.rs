@@ -154,7 +154,7 @@ impl BackPressureController {
     /// - Uses a `fill_score` to determine if the suffix size should be considered for the timeout calculation.
     /// - Uses a `rate_score` to determine if the output rate is not keeping up with the input rate.
     /// - Both the scores are used to determine the timeout to be applied, which will be between
-    /// [`BackPressureConfig::min_timeout_ms`] and [`BackPressureConfig::max_timeout_ms`]
+    ///   [`BackPressureConfig::min_timeout_ms`] and [`BackPressureConfig::max_timeout_ms`]
     pub fn calculate_timeout(&self, current_suffix_size: u64) -> u64 {
         let suffix_fill_ratio = self.get_suffix_fill_ratio(current_suffix_size);
 
@@ -200,7 +200,7 @@ impl BackPressureController {
     /// - Calculate the timeout in milliseconds using [`Self::calculate_timeout`].
     /// - Reset the trackers. As the rates are calculated for a particular time window.
     /// - Return [`BackPressureTimeout`], based on the whether timeout needs to be applied, and/or if the head is stale for long,
-    /// return [`BackPressureTimeout::CompleteStop`]
+    ///   return [`BackPressureTimeout::CompleteStop`]
     pub fn compute_backpressure(&mut self, current_suffix_len: u64) -> BackPressureTimeout {
         // calculate the timeout to apply for backpressure.
         let timeout_ms = self.calculate_timeout(current_suffix_len);

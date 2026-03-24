@@ -79,6 +79,7 @@ enum ReaderError {
 
 // $coverage:ignore-start
 #[cfg(test)]
+#[allow(clippy::result_large_err)]
 mod tests {
     use std::collections::HashMap;
 

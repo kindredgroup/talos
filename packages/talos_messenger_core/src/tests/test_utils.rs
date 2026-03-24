@@ -163,6 +163,7 @@ pub enum FeedbackTypeHeader {
 pub struct MockActionService {
     pub publisher: MockProducer,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
+    #[allow(dead_code)]
     pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
 }
 

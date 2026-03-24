@@ -20,7 +20,7 @@ pub struct SuffixConfig {
     /// Initial capacity of the suffix
     pub capacity: usize,
     /// - The suffix prune threshold from when we start checking if the suffix
-    /// should prune.
+    ///   should prune.
     /// - Set to None if pruning is not required.
     /// - Defaults to None.
     pub prune_start_threshold: Option<usize>,
