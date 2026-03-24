@@ -59,13 +59,13 @@ impl CertifierProcessingTimelineMetrics {
     }
 
     pub fn record_processing_metrics(&self, process_times: &TxProcessingTimeline, publish_end: i128) {
-        self.talos_candidate_received_to_decision_created.record(
+        self.talos_initiator_to_candidate_received.record(
             Self::convert_ns_to_ms(process_times.candidate_processing_started, process_times.candidate_received),
             &[],
         );
         self.talos_candidate_received_to_decision_created
             .record(Self::convert_ns_to_ms(process_times.candidate_received, process_times.decision_created_at), &[]);
-        self.talos_candidate_received_to_decision_created
+        self.talos_candidate_received_to_decision_published
             .record(Self::convert_ns_to_ms(process_times.candidate_received, publish_end), &[]);
         self.talos_initiator_to_decision_created.record(
             Self::convert_ns_to_ms(process_times.candidate_processing_started, process_times.decision_created_at),
