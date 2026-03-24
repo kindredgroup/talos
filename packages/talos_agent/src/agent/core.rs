@@ -175,6 +175,7 @@ where
 }
 
 // $coverage:ignore-start
+#[allow(clippy::result_large_err)]
 #[cfg(test)]
 mod tests {
     use super::*;

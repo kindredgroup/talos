@@ -68,7 +68,6 @@ async fn flatten_service_result<T>(handle: JoinHandle<Result<T, ReplicatorError>
 
 /// Entry point to replicator and statemap installer
 ///
-
 pub async fn talos_cohort_replicator<M, Snap>(
     certifier_message_receiver: M,                                  //used by Replicator service
     statemap_installer: Arc<dyn ReplicatorInstaller + Send + Sync>, // Used by Statemap queue service

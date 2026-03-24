@@ -35,7 +35,6 @@ pub struct Certifier {
  * R3. Otherwise, if there exists an earlier transaction in the suffix that overlaps with Tk, is not among Tk's read versions, and Tk has an antidependency directed upon it, then abort Tk. I.e., if ∃ Tj : snapshot(Tk) < j < k ∧ j ∉ readvers(Tk) ∧ writeset(Tj) ∩ readset(Tk) ≠ ∅, then abort Tk.
  * R4. Otherwise, try to commit Tk.
  */
-
 impl Certifier {
     pub fn new() -> Certifier {
         Certifier {

@@ -36,6 +36,7 @@ pub struct ReplicatorServiceConfig {
     /// Frequency in milliseconds
     pub commit_frequency_ms: u64,
     /// Enable internal stats
+    #[allow(dead_code)]
     pub enable_stats: bool,
     /// Backpressure related configs, used by the [`BackPressureController`]
     pub backpressure: BackPressureConfig,

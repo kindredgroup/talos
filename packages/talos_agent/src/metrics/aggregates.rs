@@ -62,7 +62,7 @@ pub struct Percentile {
 }
 
 impl Percentile {
-    fn compute(data_set: &Vec<Timeline>, percentage: u32, unit: &str, get: &impl Fn(&Timeline) -> f32) -> Percentile {
+    fn compute(data_set: &[Timeline], percentage: u32, unit: &str, get: &impl Fn(&Timeline) -> f32) -> Percentile {
         if data_set.is_empty() {
             Percentile {
                 percentage,

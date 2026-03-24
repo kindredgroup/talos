@@ -159,7 +159,7 @@ impl Metrics {
 
             //log::error!("debug: {}, {}, {}, {}", tx.id, tx.candidate_publish_4.as_micros(), tx.candidate_kafka_trip_5.as_micros(), tx.decision_duration_6.as_micros());
 
-            if total_count % progress_frequency == 0 {
+            if total_count.is_multiple_of(progress_frequency) {
                 tracing::warn!("METRIC agent-spans(progress): {} of {}", total_count, sorted.len());
             }
             if earliest_time == 0 {

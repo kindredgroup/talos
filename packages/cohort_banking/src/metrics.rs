@@ -226,7 +226,7 @@ impl Stats {
         report
     }
 
-    pub fn compute_percentiles<T: Ord + Clone>(p_list: &Vec<u8>, values: &mut Vec<T>) -> HashMap<u8, T> {
+    pub fn compute_percentiles<T: Ord + Clone>(p_list: &Vec<u8>, values: &mut [T]) -> HashMap<u8, T> {
         let mut result = HashMap::<u8, T>::new();
         values.sort();
         let count = values.len() as f32;
