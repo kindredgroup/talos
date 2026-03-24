@@ -74,7 +74,7 @@ jobs:
 
             - name: Install Rust toolchain (macOS)
               if: ${{ !matrix.use_docker }}
-              uses: dtolnay/rust-toolchain@1.75
+              uses: dtolnay/rust-toolchain@1.94
               with:
                   target: ${{ matrix.rust_target }}
 
@@ -128,12 +128,12 @@ jobs:
                         musl-dev \
                         linux-headers
 
-                      echo 'Installing Rust 1.75 via rustup...'
+                      echo 'Installing Rust 1.94 via rustup...'
                       # Remove system rust first if present
                       apk del rust cargo || true
 
-                      # Install rustup and set Rust 1.75
-                      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.75.0
+                      # Install rustup and set Rust 1.94
+                      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.94.0
                       . ~/.cargo/env
                       rustup target add ${{ matrix.rust_target }}
 
@@ -270,7 +270,7 @@ jobs:
         if: success() && startsWith(github.ref, 'refs/tags/v') # Only publish on successful tag pushes
         steps:
             - uses: actions/checkout@v4
-            - uses: dtolnay/rust-toolchain@1.75.0
+            - uses: dtolnay/rust-toolchain@1.94.0
             - run: scripts/ubuntu-setup.sh
             - run: rustup component add rustfmt clippy
             - name: "Extract tag name"
