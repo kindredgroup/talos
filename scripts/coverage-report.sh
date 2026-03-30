@@ -14,13 +14,15 @@ export CARGO_INCREMENTAL="0"
 export RUSTFLAGS="-C instrument-coverage"
 export LLVM_PROFILE_FILE="$(pwd)/target/coverage/talos-%p-%m.profraw"
 
+NIGHTLY="nightly-2026-03-01"
+
 echo "Cleaning old data..."
 rm -rf target/coverage coverage lcov.info 2>/dev/null || true
 mkdir -p target/coverage
 trap 'rm -rf target/coverage/' EXIT
 
 echo "Compiling and Testing $app_name..."
-cargo test --tests --workspace --exclude ${excludes}
+cargo +${NIGHTLY} test --tests --workspace --exclude ${excludes}
 
 echo "Generating HTML report..."
 grcov ./target/coverage/ \
@@ -46,10 +48,8 @@ grcov ./target/coverage/ \
     --excl-stop "\$coverage:ignore-end" \
     -o lcov.info
 
-NIGHTLY_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')
-
 echo "Generating JSON test report..."
-cargo +${NIGHTLY_TOOLCHAIN} test --tests --workspace --exclude ${excludes} -- \
+cargo +${NIGHTLY} test --tests --workspace --exclude ${excludes} -- \
     -Z unstable-options --format json --report-time > coverage/test-report.json
 
 if [ "$1" == "--open" ]; then
