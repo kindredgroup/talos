@@ -46,8 +46,10 @@ grcov ./target/coverage/ \
     --excl-stop "\$coverage:ignore-end" \
     -o lcov.info
 
+NIGHTLY_TOOLCHAIN=$(rustup show active-toolchain | awk '{print $1}')
+
 echo "Generating JSON test report..."
-cargo test --tests --workspace --exclude ${excludes} -- \
+cargo +${NIGHTLY_TOOLCHAIN} test --tests --workspace --exclude ${excludes} -- \
     -Z unstable-options --format json --report-time > coverage/test-report.json
 
 if [ "$1" == "--open" ]; then

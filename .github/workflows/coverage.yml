@@ -13,7 +13,7 @@ jobs:
               uses: dtolnay/rust-toolchain@master
               with:
                   toolchain: nightly-2026-03-01
-                  components: llvm-tools-preview
+                  components: llvm-tools
 
             - name: Setup System Dependencies
               run: scripts/ubuntu-setup.sh
