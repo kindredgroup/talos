@@ -31,6 +31,14 @@ jobs:
               env:
                   CARGO_TERM_COLOR: always
 
+            - name: Check token exists
+              run: |
+                  if [ -z "${{ secrets.CODECOV_TOKEN }}" ]; then
+                    echo "CODECOV_TOKEN is NOT set"
+                  else
+                    echo "CODECOV_TOKEN is set"
+                  fi
+
             - name: Upload to Codecov
               uses: codecov/codecov-action@v5
               with:
