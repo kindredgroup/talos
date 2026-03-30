@@ -1,54 +1,70 @@
 #!/bin/bash
 set -e
 
-type rustup >/dev/null 2>&1 || { echo >&2 "rustup is not installed; aborting."; exit 1; }
+# Basic dependency checks
 type cargo >/dev/null 2>&1 || { echo >&2 "cargo is not installed; aborting."; exit 1; }
 type grcov >/dev/null 2>&1 || { echo >&2 "grcov is not installed; aborting."; exit 1; }
-type zip >/dev/null 2>&1 || { echo >&2 "zip is not installed; aborting."; exit 1; }
 
+# Navigate to project root
 base_dir="$(dirname "$0")"
-cd ${base_dir}/..
+cd "${base_dir}/.."
 
 app_name=talos
-export CARGO_INCREMENTAL="0"
-export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"
-
 excludes="cohort_sdk_js"
 
-echo "Compiling $app_name"
-cargo build
+# --- 1. SET MODERN COVERAGE FLAGS ---
+export CARGO_INCREMENTAL="0"
+export RUSTFLAGS="-C instrument-coverage"
+# This pattern ensures each process gets its own profile file
+export LLVM_PROFILE_FILE="talos-%p-%m.profraw"
 
-echo "Testing $app_name"
-export LLVM_PROFILE_FILE="${app_name}-%p-%m.profraw"
-cargo test --tests --workspace --exclude ${excludes} # don't run doctests
+echo "Cleaning old data..."
+rm *.profraw 2> /dev/null || true
+rm -rf coverage lcov.info 2> /dev/null || true
 
-rm ccov.zip 2> /dev/null || true
-zip -0 ccov.zip `find . \( -name "*.gc*" \) -print | grep -v ${excludes}`
+# --- 2. RUN TESTS ---
+echo "Compiling and Testing $app_name..."
+# We use 'cargo' directly so it uses the toolchain provided by the Github Action
+cargo test --tests --workspace --exclude ${excludes}
 
-echo "Generating HTML coverage report for $app_name"
-rm -rf coverage 2> /dev/null || true
-mkdir coverage
-grcov ccov.zip --branch -s . --llvm --ignore-not-existing --ignore "/*" --excl-start "\\\$coverage:ignore-start" --excl-stop "\\\$coverage:ignore-end" --excl-line "(//!|///|$coverage:ignore|unreachable!())" -t html -o coverage
+# --- 3. GENERATE REPORTS VIA GRCOV ---
+echo "Generating HTML report..."
+grcov . \
+    --binary-path ./target/debug/ \
+    -s . \
+    -t html \
+    --branch \
+    --ignore-not-existing \
+    --ignore "/*" \
+    --excl-start "\$coverage:ignore-start" \
+    --excl-stop "\$coverage:ignore-end" \
+    -o ./coverage
 
-echo "Generating LCOV coverage report for $app_name"
-rm lcov.info 2> /dev/null || true
-grcov ccov.zip -s . --llvm  --ignore-not-existing --ignore "/*" --excl-start "\\\$coverage:ignore-start" --excl-stop "\\\$coverage:ignore-end" --excl-line "(//!|///|$coverage:ignore|unreachable!())" -t lcov -o lcov.info
+echo "Generating LCOV report for Codecov..."
+grcov . \
+    --binary-path ./target/debug/ \
+    -s . \
+    -t lcov \
+    --branch \
+    --ignore-not-existing \
+    --ignore "/*" \
+    --excl-start "\$coverage:ignore-start" \
+    --excl-stop "\$coverage:ignore-end" \
+    -o lcov.info
 
-# Clean up
-rm ccov.zip
+# --- 4. OPTIONAL: JSON TEST REPORT ---
+# Only runs if we are on a nightly toolchain (required for -Z flags)
+if rustc --version | grep -q "nightly"; then
+    echo "Generating JSON test report..."
+    cargo test --tests --workspace --exclude ${excludes} -- -Z unstable-options --format json --report-time > coverage/test-report.json
+fi
 
-# Re-run tests with JSON output
-cargo test --tests --workspace --exclude ${excludes} -- -Z unstable-options --format json --report-time > coverage/test-report.json
+# Cleanup raw profile files to keep the workspace tidy
+rm *.profraw
 
 if [ "$1" == "--open" ]; then
-  index="file://$(pwd)/${base_dir}/../coverage/index.html"
-
-  if command -v xdg-open &> /dev/null; then
-    xdg-open $index
-  elif command -v open &> /dev/null; then
-    open $index
-  else
-    echo >&2 "neither xdg-open nor open are installed"
-    exit 1
-  fi
+  index="file://$(pwd)/coverage/index.html"
+  command -v xdg-open &> /dev/null && xdg-open "$index" || \
+  command -v open &> /dev/null && open "$index" || \
+  echo "Report generated at: $index"
 fi
