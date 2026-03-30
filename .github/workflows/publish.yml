@@ -222,6 +222,14 @@ jobs:
               run: |-
                   echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
+            - name: Bump npm version (beta only)
+              run: |
+                  if [[ $VERSION_NAME =~ -beta\.[0-9]+$ ]]; then
+                     # Publish SDK JS
+                     npm version $VERSION_NAME --no-git-tag-version --prefix ${{ env.DIR_SDK_JS }}
+                     # Publish SDK JS CLIENT
+                     npm version $VERSION_NAME --no-git-tag-version --prefix ${{ env.DIR_SDK_JS_CLIENT }}
+                  fi
             - name: "Publish ${{env.DIR_SDK_JS}} to npm"
               env:
                   NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -277,6 +285,12 @@ jobs:
               shell: bash
               run: |-
                   echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+            - name: Bump Cargo version (beta only)
+              run: |
+                  if [[ $VERSION_NAME =~ -beta\.[0-9]+$ ]]; then
+                      cargo release version $VERSION_NAME --workspace --no-confirm --no-tag --no-publish --no-push --no-commit --execute
+                  fi
 
             - name: Publish talos_metrics@ ${{ env.VERSION_NAME }} crate
               shell: bash
