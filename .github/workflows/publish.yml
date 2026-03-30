@@ -286,6 +286,11 @@ jobs:
               run: |-
                   echo "VERSION_NAME=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
+            - name: Install cargo-binstall
+              uses: cargo-bins/cargo-binstall@main
+            - name: Install cargo-release
+              run: cargo binstall cargo-release --no-confirm
+
             - name: Bump Cargo version (beta only)
               run: |
                   if [[ $VERSION_NAME =~ -beta\.[0-9]+$ ]]; then
