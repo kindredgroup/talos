@@ -38,6 +38,8 @@ jobs:
                   else
                     echo "CODECOV_TOKEN is set"
                   fi
+              env:
+                  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
             - name: Upload to Codecov
               uses: codecov/codecov-action@v5
