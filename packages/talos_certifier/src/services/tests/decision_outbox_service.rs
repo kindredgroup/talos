@@ -11,10 +11,12 @@ use crate::{
         errors::{DecisionStoreError, DecisionStoreErrorKind},
         DecisionStore, MessagePublisher,
     },
+    services::decision_outbox_service::CertifierProcessingTimelineMetrics,
     SystemMessage,
 };
 use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
+use opentelemetry::global;
 use tokio::{
     sync::{broadcast, mpsc},
     time::{sleep_until, Instant},
@@ -369,7 +371,11 @@ async fn test_capture_publish_error() {
         metrics: TxProcessingTimeline::default(),
     };
 
-    if let Err(publish_error) = DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message, HashMap::new()).await {
+    let metrics = CertifierProcessingTimelineMetrics::new(global::meter("random-noop-meter"));
+
+    if let Err(publish_error) =
+        DecisionOutboxService::publish_decision(&Arc::new(Box::new(mock_decision_publisher)), &decision_message, HashMap::new(), &metrics).await
+    {
         assert!(publish_error.kind == SystemServiceErrorKind::MessagePublishError);
     }
 }
