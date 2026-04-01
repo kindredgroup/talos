@@ -66,11 +66,6 @@ pub enum CandidateDecisionOutcome {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
-pub struct StatemapItemWithEventTimings {
-    pub statemap: StatemapItem,
-    pub event_timings: EventTimingsMap,
-}
-#[derive(Debug, Clone, Eq, PartialEq, Deserialize, Serialize)]
 pub struct StatemapItem {
     pub action: String,
     pub version: u64,

@@ -183,7 +183,7 @@ impl DecisionStore for Pg {
             } else if let Some(client_err) = client_result.err() {
                 warn!(
                     "Error getting connection from pool prior to inserting decision to XDB with reason {}",
-                    client_err.to_string()
+                    client_err
                 );
                 result_f = Err(client_err);
             }

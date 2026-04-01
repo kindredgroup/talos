@@ -301,8 +301,8 @@ impl NewRequestProvider {
             Ok(promise) => promise
                 .await
                 .map(|js_data: JsCertificationCandidateCallbackResponse| {
-                    if js_data.cancellation_reason.is_some() {
-                        CertificationCandidateCallbackResponse::Cancelled(js_data.cancellation_reason.unwrap())
+                    if let Some(cancellation_reason) = js_data.cancellation_reason {
+                        CertificationCandidateCallbackResponse::Cancelled(cancellation_reason)
                     } else {
                         CertificationCandidateCallbackResponse::Proceed(
                             js_data

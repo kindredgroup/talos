@@ -49,7 +49,6 @@ pub fn init_log_and_otel_tracing_layers(
  * This module is intentional duplicate with packages/cohort_sdk/otel.
  * We will externalise them into re-usable commons when we apply OTEL to full Talos ecosystem.
  */
-
 pub fn init_otel_logs_tracing(name: String, enable_tracing: bool, grpc_endpoint: Option<String>, default_level: &'static str) -> Result<(), OtelInitError> {
     if let Ok(tracing_layers) = init_log_and_otel_tracing_layers(name, enable_tracing, grpc_endpoint, default_level) {
         if let Err(error) = tracing_subscriber::registry().with(tracing_layers).try_init() {

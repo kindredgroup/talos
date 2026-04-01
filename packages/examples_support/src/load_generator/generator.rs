@@ -27,12 +27,12 @@ impl ControlledRateLoadGenerator {
         let mut last_progress_print = started_at;
         loop {
             // rate controller
-            if generated_count % check_every == 0 {
+            if generated_count.is_multiple_of(check_every) {
                 let progress = Progress::get(started_at, target_rate, generated_count);
 
                 if progress.delta < 0.0 {
                     // too fast, need to slow down
-                    let delay_sec = progress.delta / target_rate * -1_f32;
+                    let delay_sec = -(progress.delta / target_rate);
                     tokio::time::sleep(tokio::time::Duration::from_secs_f32(delay_sec)).await;
                 }
             }

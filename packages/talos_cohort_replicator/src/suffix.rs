@@ -24,6 +24,7 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     fn set_decision_outcome(&mut self, version: u64, decision_outcome: Option<CandidateDecisionOutcome>);
     fn set_safepoint(&mut self, version: u64, safepoint: Option<u64>);
     fn set_item_installed(&mut self, version: u64);
+    #[allow(dead_code)]
     fn get_last_installed(&self, to_version: Option<u64>) -> Option<&SuffixItem<T>>;
     fn update_suffix_item_decision(&mut self, version: u64, decision_ver: u64) -> SuffixResult<()>;
     /// Updates the prune index.
@@ -33,8 +34,10 @@ pub trait ReplicatorSuffixTrait<T: ReplicatorSuffixItemTrait>: SuffixTrait<T> {
     /// Returns the items from suffix
     fn get_suffix_meta(&self) -> &SuffixMeta;
     fn get_message_batch_from_version(&self, from: u64, count: Option<u64>) -> Vec<&SuffixItem<T>>;
+    #[allow(dead_code)]
     fn installed_all_prior_decided_items(&self, version: u64) -> bool;
     fn get_by_index(&self, index: usize) -> Option<&SuffixItem<T>>;
+    #[allow(dead_code)]
     fn get_index_from_head(&self, version: u64) -> Option<usize>;
     fn get_suffix_len(&self) -> usize;
 }

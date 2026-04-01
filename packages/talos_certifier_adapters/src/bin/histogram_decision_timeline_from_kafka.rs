@@ -82,7 +82,7 @@ async fn main() -> Result<(), String> {
             let decision_message = decision.message;
             // log::warn!("Decision {:?}", msg_decision);
             item_number += 1;
-            if item_number % progress_frequency == 0 {
+            if item_number.is_multiple_of(progress_frequency) {
                 log::warn!("Progress: {} of {}", item_number, total_decisions);
             }
             hist_candidate_published.include(&decision_message.metrics, decision_message.metrics.candidate_published);

@@ -30,7 +30,6 @@ use super::api::ReceivedMessage;
 use super::message_parser::MessageListener;
 
 /// The Kafka error into generic custom messaging error type
-
 impl From<KafkaError> for MessagingError {
     fn from(e: KafkaError) -> Self {
         MessagingError {

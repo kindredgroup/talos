@@ -54,6 +54,7 @@ impl From<SendError<CertifyRequestChannelMessage>> for AgentError {
 
 // $coverage:ignore-start
 #[cfg(test)]
+#[allow(clippy::result_large_err)]
 mod tests {
     use super::*;
     use crate::api::{CandidateData, CertificationRequest, CertificationResponse};

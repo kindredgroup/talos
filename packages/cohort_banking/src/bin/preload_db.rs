@@ -85,8 +85,8 @@ async fn prefill_accounts(db: Arc<Database>, accounts: Vec<BankAccount>) -> Resu
                 .await
                 .unwrap();
 
-            if rslt.is_some() {
-                account_from_row(&rslt.unwrap())?
+            if let Some(result) = rslt {
+                account_from_row(&result)?
             } else {
                 // update db with new account data
                 let updated_row = client

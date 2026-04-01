@@ -7,10 +7,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use strum::{Display, EnumString};
 
-///
 /// Data structures and interfaces exposed to agent client
-///
-
 pub type StateMap = Vec<HashMap<String, Value>>;
 
 /// The main candidate payload

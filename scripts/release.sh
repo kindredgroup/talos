@@ -111,22 +111,7 @@ fi
 NEW_VERSION=$ANSWER
 
 echo $line
-echo "Provide the next version number (aka 'dev version' or 'shapshot')"
-echo "Type: 'a' or just press 'enter' for cancel and abort here."
-echo "Otherwise type the next version (without suffix), for example, if you are releasing '2.0.0' then the next dev version will be '2.1.0'. We will add '-dev' suffix automatically"
-unset ANSWER
-read ANSWER
-if [ "${ANSWER}" == "a" ] || [ "${ANSWER}" == "" ];
-then
-  echo "Your answer was '${ANSWER}', aborting"
-  exit 1
-fi
-
-NEXT_VERSION=$(echo $ANSWER | sed 's/-dev//')-dev
-
-echo $line
 echo "The new version for release will be       : $NEW_VERSION"
-echo "The next dev version after release will be: $NEXT_VERSION"
 echo $line
 
 echo "Proceed to bumping the project version? (type 'y' for 'Yes')"
@@ -172,24 +157,6 @@ echo "Tagging repostiory"
 git tag -a -m "Release ${NEW_VERSION}" "v${NEW_VERSION}"
 echo ""
 
-echo $line
-echo "Bumping development versions to $NEXT_VERSION"
-echo ""
-
-currentDir=$(pwd)
-cd cohort_sdk_client
-npm version $NEXT_VERSION
-cd $currentDir
-cd packages/cohort_sdk_js
-npm version $NEXT_VERSION
-cd $currentDir
-git add --all
-git commit -a -m "chore(npm): Release $NEXT_VERSION" --no-verify
-
-# This will update version in Cargo.toml files and in dependencies, then commit
-cargo release --workspace --no-confirm --no-tag --no-publish --no-push -x $NEXT_VERSION
-
-echo ""
 
 git log --oneline -5
 

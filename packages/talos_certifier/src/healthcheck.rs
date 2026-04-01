@@ -43,7 +43,7 @@ impl HealthChecks {
 
     async fn flush(&mut self) -> std::io::Result<()> {
         create_dir_all(&self.out_dir).await?;
-        let mut file = OpenOptions::new().write(true).create(true).open(&self.out_file).await?;
+        let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(&self.out_file).await?;
         let status_byte = if self.status { '1' } else { '0' };
         file.write_all(format!("{}", status_byte).as_bytes()).await?;
         file.sync_all().await?;
