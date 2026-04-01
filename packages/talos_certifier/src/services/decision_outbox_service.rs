@@ -46,11 +46,21 @@ pub struct CertifierProcessingTimelineMetrics {
 impl CertifierProcessingTimelineMetrics {
     pub fn new(meter: Meter) -> Self {
         Self {
-            talos_initiator_to_candidate_received: meter.f64_histogram("talos_initiator_to_certifier_cm_recvd").with_unit("ms").build(),
-            talos_candidate_received_to_decision_created: meter.f64_histogram("talos_certifier_cm_recvd_to_dm_created").with_unit("ms").build(),
-            talos_candidate_received_to_decision_published: meter.f64_histogram("talos_certifier_cm_recvd_to_dm_published").with_unit("ms").build(),
-            talos_initiator_to_decision_created: meter.f64_histogram("talos_initiator_to_certifier_dm_created").with_unit("ms").build(),
-            talos_initiator_to_decision_published: meter.f64_histogram("talos_initiator_to_certifier_dm_published").with_unit("ms").build(),
+            // Cross service metrics
+            // Metric naming convention <Namespace>_<Origin>_<Destination=certifier>_<Destination Stage>_ms
+            talos_initiator_to_candidate_received: meter.f64_histogram("talos_initiator_certifier_candidate_received").with_unit("ms").build(),
+            talos_initiator_to_decision_created: meter.f64_histogram("talos_initiator_certifier_decision_created").with_unit("ms").build(),
+            talos_initiator_to_decision_published: meter.f64_histogram("talos_initiator_certifier_decision_published").with_unit("ms").build(),
+            // Internal metrics
+            // Metric naming convention <Namespace>_certifier_<from stage>_<to Stage>_ms
+            talos_candidate_received_to_decision_created: meter
+                .f64_histogram("talos_certifier_candidate_received_decision_created")
+                .with_unit("ms")
+                .build(),
+            talos_candidate_received_to_decision_published: meter
+                .f64_histogram("talos_certifier_candidate_received_decision_published")
+                .with_unit("ms")
+                .build(),
         }
     }
 
@@ -60,7 +70,7 @@ impl CertifierProcessingTimelineMetrics {
 
     pub fn record_processing_metrics(&self, process_times: &TxProcessingTimeline, publish_end: i128) {
         self.talos_initiator_to_candidate_received.record(
-            Self::convert_ns_to_ms(process_times.candidate_processing_started, process_times.candidate_received),
+            Self::convert_ns_to_ms(process_times.certification_started, process_times.candidate_received),
             &[],
         );
         self.talos_candidate_received_to_decision_created
@@ -68,11 +78,11 @@ impl CertifierProcessingTimelineMetrics {
         self.talos_candidate_received_to_decision_published
             .record(Self::convert_ns_to_ms(process_times.candidate_received, publish_end), &[]);
         self.talos_initiator_to_decision_created.record(
-            Self::convert_ns_to_ms(process_times.candidate_processing_started, process_times.decision_created_at),
+            Self::convert_ns_to_ms(process_times.certification_started, process_times.decision_created_at),
             &[],
         );
         self.talos_initiator_to_decision_published
-            .record(Self::convert_ns_to_ms(process_times.candidate_processing_started, publish_end), &[]);
+            .record(Self::convert_ns_to_ms(process_times.certification_started, publish_end), &[]);
     }
 }
 
