@@ -13,13 +13,20 @@ description = "Metric utilities used in Talos"
 once_cell = { version = "1.18.0" }
 opentelemetry_api = { version = "0.20.0", features = ["metrics"] }
 opentelemetry-stdout = { version = "0.1.0", features = ["metrics"] }
-opentelemetry_sdk = { version = "0.20.0", features = ["metrics", "rt-tokio"] }
-opentelemetry = { version = "0.20.0", features = ["metrics"] }
+opentelemetry_sdk = { version = "0.28.0", features = ["metrics", "rt-tokio"] }
+opentelemetry = { version = "0.28.0", features = ["metrics"] }
+opentelemetry-otlp = { version = "0.28.0", features = ["trace", "grpc-tonic"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 env_logger = { workspace = true }
 log = { workspace = true }
+tracing = { version = "0.1.41", features = ["log"] }
 
 time = { workspace = true }
+
+# Error
+thiserror = "1.0.31"
+#
+strum = { version = "0.24", features = ["derive"] }

@@ -3266,6 +3266,7 @@ dependencies = [
  "serde_json",
  "strum 0.24.1",
  "talos_common_utils",
+ "talos_metrics",
  "talos_suffix",
  "thiserror 1.0.69",
  "time",
@@ -3428,13 +3429,17 @@ dependencies = [
  "env_logger",
  "log",
  "once_cell",
- "opentelemetry 0.20.0",
+ "opentelemetry 0.28.0",
+ "opentelemetry-otlp",
  "opentelemetry-stdout 0.1.0",
  "opentelemetry_api",
- "opentelemetry_sdk 0.20.0",
+ "opentelemetry_sdk 0.28.0",
  "serde",
  "serde_json",
+ "strum 0.24.1",
+ "thiserror 1.0.69",
  "time",
+ "tracing",
 ]
 
 [[package]]
