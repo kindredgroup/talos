@@ -3404,6 +3404,7 @@ dependencies = [
  "futures-util",
  "log",
  "mockall",
+ "opentelemetry 0.28.0",
  "rand 0.8.5",
  "rdkafka 0.34.0",
  "serde",

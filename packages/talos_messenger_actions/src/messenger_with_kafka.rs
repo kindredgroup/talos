@@ -155,7 +155,14 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
         )),
     );
     let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size, config.commit_frequency);
-    let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, inbound_service_config);
+    let inbound_service = MessengerInboundService::new(
+        kafka_consumer,
+        tx_actions_channel,
+        rx_feedback_channel,
+        suffix,
+        inbound_service_config,
+        meter.clone(),
+    );
     // END - Inbound service
 
     // START - Publish service

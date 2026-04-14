@@ -35,6 +35,11 @@ thiserror = { version = "1.0.31" }
 # Kafka
 rdkafka = { version = "0.34.0", features = ["sasl"] }
 
+# Otel packages
+opentelemetry = { version = "0.28.0", default-features = false, features = [
+    "trace",
+] }
+
 # Time
 time = { version = "0.3.30" }
 

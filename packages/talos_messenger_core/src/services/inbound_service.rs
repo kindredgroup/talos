@@ -4,6 +4,7 @@ use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
+use opentelemetry::metrics::{Gauge, Meter};
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -44,6 +45,22 @@ impl MessengerInboundServiceConfig {
     }
 }
 
+pub struct MessengerInboundOtelMetrics {
+    /// Metric on the actions channel capacity
+    otel_actions_channel_capacity_gauge: Gauge<u64>,
+    /// Metric on the feedback channel capacity
+    otel_feedback_channel_capacity_gauge: Gauge<u64>,
+}
+
+impl MessengerInboundOtelMetrics {
+    pub(crate) fn new(meter: &Meter) -> Self {
+        Self {
+            otel_actions_channel_capacity_gauge: meter.u64_gauge("talos_messenger_actions_channel_capacity".to_string()).build(),
+            otel_feedback_channel_capacity_gauge: meter.u64_gauge("talos_messenger_feedback_channel_capacity".to_string()).build(),
+        }
+    }
+}
+
 pub struct MessengerInboundService<M>
 where
     M: MessageReciever<Message = ChannelMessage<MessengerCandidateMessage>> + Send + Sync + 'static,
@@ -59,6 +76,8 @@ where
     last_committed_version: u64,
     /// The next version ready to be send for commit.
     next_version_to_commit: u64,
+    /// Otel metrics
+    otel_metrics: MessengerInboundOtelMetrics,
 }
 
 impl<M> MessengerInboundService<M>
@@ -71,8 +90,10 @@ where
         rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
+        otel_meter: Meter,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms as u64));
+        let otel_metrics = MessengerInboundOtelMetrics::new(&otel_meter);
         Self {
             message_receiver,
             tx_actions_channel,
@@ -82,6 +103,7 @@ where
             commit_interval,
             last_committed_version: 0,
             next_version_to_commit: 0,
+            otel_metrics,
         }
     }
     /// Get next versions with their commit actions to process.
@@ -114,6 +136,10 @@ where
 
             // Mark item as in process
             self.suffix.set_item_state(ver, SuffixItemState::Processing);
+
+            self.otel_metrics
+                .otel_actions_channel_capacity_gauge
+                .record(self.tx_actions_channel.capacity() as u64, &[]);
         }
 
         Ok(())
@@ -224,6 +250,7 @@ where
         tokio::select! {
             // Receive feedback from publisher.
             Some(feedback_result) = self.rx_feedback_channel.recv() => {
+                self.otel_metrics.otel_feedback_channel_capacity_gauge.record(self.rx_feedback_channel.capacity() as u64, &[]);
                 match feedback_result {
                     MessengerChannelFeedback::Error(version, key, message_error) => {
                         error!("Failed to process version={version} with error={message_error:?}");
