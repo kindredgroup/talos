@@ -3,6 +3,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use futures_util::future::join_all;
 use log::{debug, error, info};
+use opentelemetry::{
+    metrics::{Counter, Meter},
+    KeyValue,
+};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::mpsc;
 
@@ -15,11 +19,48 @@ use talos_messenger_core::{
 
 use super::models::KafkaAction;
 
+pub const METRIC_ERROR_TYPES: &str = "error_type";
+
+#[derive(Debug)]
+pub struct KafkaActionServiceOtelMetrics {
+    /// Metric counter on the actions errors
+    otel_actions_error_counters: Counter<u64>,
+}
+
+impl KafkaActionServiceOtelMetrics {
+    pub(crate) fn new(meter: &Meter) -> Self {
+        Self {
+            otel_actions_error_counters: meter.u64_counter("talos_messenger_errors".to_string()).build(),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync + 'static> {
     pub publisher: Arc<M>,
     pub rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
     pub tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
+    pub otel_metrics: KafkaActionServiceOtelMetrics,
+}
+
+impl<M> KafkaActionService<M>
+where
+    M: MessengerPublisher<Payload = KafkaAction, AdditionalData = u32> + Send + Sync,
+{
+    pub fn new(
+        publisher: Arc<M>,
+        rx_actions_channel: mpsc::Receiver<MessengerCommitActions>,
+        tx_feedback_channel: mpsc::Sender<MessengerChannelFeedback>,
+        otel_meter: &Meter,
+    ) -> Self {
+        let otel_metrics = KafkaActionServiceOtelMetrics::new(otel_meter);
+        Self {
+            publisher,
+            rx_actions_channel,
+            tx_feedback_channel,
+            otel_metrics,
+        }
+    }
 }
 
 #[async_trait]
@@ -51,9 +92,11 @@ where
                                 let timestamp = OffsetDateTime::now_utc().format(&Rfc3339).ok().unwrap();
 
                                 headers.insert(MessengerStateTransitionTimestamps::EndOnCommitActions.to_string(), timestamp);
+                                let otel_actions_error_counters = self.otel_metrics.otel_actions_error_counters.clone();
                                 async move {
                                     if let Err(publish_error) = publisher.send(version, action, headers, total_len).await {
-                                        error!("Failed to publish message for version={version} with error {publish_error}")
+                                        error!("Failed to publish message for version={version} with error {publish_error}");
+                                        otel_actions_error_counters.add(1, &[KeyValue::new(METRIC_ERROR_TYPES, "publish_message")]);
                                     }
                                 }
                             });
@@ -66,6 +109,9 @@ where
                                 err.data,
                                 err.reason
                             );
+                            self.otel_metrics
+                                .otel_actions_error_counters
+                                .add(1, &[KeyValue::new(METRIC_ERROR_TYPES, "deserialise_message")]);
                         }
                     }
                 }

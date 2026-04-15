@@ -90,10 +90,10 @@ where
         rx_feedback_channel: mpsc::Receiver<MessengerChannelFeedback>,
         suffix: Suffix<MessengerCandidate>,
         config: MessengerInboundServiceConfig,
-        otel_meter: Meter,
+        otel_meter: &Meter,
     ) -> Self {
         let commit_interval = tokio::time::interval(Duration::from_millis(config.commit_frequency_ms as u64));
-        let otel_metrics = MessengerInboundOtelMetrics::new(&otel_meter);
+        let otel_metrics = MessengerInboundOtelMetrics::new(otel_meter);
         Self {
             message_receiver,
             tx_actions_channel,

@@ -280,7 +280,7 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
             rx_feedback_channel,
             suffix,
             configs.inbound_service_configs,
-            meter,
+            &meter,
         );
 
         // START - Mock Action Service

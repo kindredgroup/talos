@@ -155,14 +155,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
         )),
     );
     let inbound_service_config = MessengerInboundServiceConfig::new(config.allowed_actions, config.commit_size, config.commit_frequency);
-    let inbound_service = MessengerInboundService::new(
-        kafka_consumer,
-        tx_actions_channel,
-        rx_feedback_channel,
-        suffix,
-        inbound_service_config,
-        meter.clone(),
-    );
+    let inbound_service = MessengerInboundService::new(kafka_consumer, tx_actions_channel, rx_feedback_channel, suffix, inbound_service_config, &meter);
     // END - Inbound service
 
     // START - Publish service
@@ -172,11 +165,7 @@ pub async fn messenger_with_kafka(config: Configuration) -> MessengerServiceResu
     let kafka_producer = KafkaProducer::with_context(&config.kafka_config, custom_context);
     let messenger_kafka_publisher = MessengerKafkaPublisher { publisher: kafka_producer };
 
-    let publish_service = KafkaActionService {
-        publisher: messenger_kafka_publisher.into(),
-        rx_actions_channel,
-        tx_feedback_channel,
-    };
+    let publish_service = KafkaActionService::new(messenger_kafka_publisher.into(), rx_actions_channel, tx_feedback_channel, &meter);
 
     // END - Publish service
     let messenger_service = TalosMessengerService {
