@@ -137,7 +137,7 @@ impl From<SuffixItemState> for MessengerStateTransitionTimestamps {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Display)]
 pub enum SuffixItemCompleteStateReason {
     /// When the decision is an abort
     Aborted,

@@ -4,7 +4,10 @@ use ahash::{HashMap, HashMapExt};
 use async_trait::async_trait;
 use log::{debug, error, info, warn};
 
-use opentelemetry::metrics::{Gauge, Meter};
+use opentelemetry::{
+    metrics::{Counter, Gauge, Meter},
+    KeyValue,
+};
 use talos_certifier::{model::DecisionMessageTrait, ports::MessageReciever, ChannelMessage};
 use talos_suffix::{core::SuffixMeta, Suffix, SuffixTrait};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
@@ -22,6 +25,8 @@ use crate::{
     },
     utlis::get_allowed_commit_actions,
 };
+
+pub const METRIC_COMPLETION_REASON: &str = "completion_reason";
 
 #[derive(Debug)]
 pub struct MessengerInboundServiceConfig {
@@ -50,6 +55,8 @@ pub struct MessengerInboundOtelMetrics {
     otel_actions_channel_capacity_gauge: Gauge<u64>,
     /// Metric on the feedback channel capacity
     otel_feedback_channel_capacity_gauge: Gauge<u64>,
+    /// Metric on candidates processed
+    otel_candidates_processed: Counter<u64>,
 }
 
 impl MessengerInboundOtelMetrics {
@@ -57,6 +64,7 @@ impl MessengerInboundOtelMetrics {
         Self {
             otel_actions_channel_capacity_gauge: meter.u64_gauge("talos_messenger_actions_channel_capacity".to_string()).build(),
             otel_feedback_channel_capacity_gauge: meter.u64_gauge("talos_messenger_feedback_channel_capacity".to_string()).build(),
+            otel_candidates_processed: meter.u64_counter("talos_messenger_candidates_processed".to_string()).build(),
         }
     }
 }
@@ -162,6 +170,13 @@ where
         }
     }
 
+    fn mark_suffix_item_complete(&mut self, version: u64, complete_reason: SuffixItemCompleteStateReason) {
+        self.otel_metrics
+            .otel_candidates_processed
+            .add(1, &[KeyValue::new(METRIC_COMPLETION_REASON, complete_reason.to_string())]);
+        self.suffix.set_item_state(version, SuffixItemState::Complete(complete_reason));
+    }
+
     pub(crate) fn suffix_pruning(&mut self) {
         // Check prune eligibility by looking at the prune meta info.
         if let Some(index_to_prune) = self.suffix.get_safe_prune_index() {
@@ -180,9 +195,7 @@ where
     pub(crate) fn check_and_update_all_actions_complete(&mut self, version: u64, reason: SuffixItemCompleteStateReason) {
         match self.suffix.are_all_actions_complete_for_version(version) {
             Ok(is_completed) if is_completed => {
-                self.suffix.set_item_state(version, SuffixItemState::Complete(reason));
-
-                // self.all_completed_versions.push(version);
+                self.mark_suffix_item_complete(version, reason);
 
                 if let Some((_, new_prune_version)) = self.suffix.update_prune_index_from_version(version) {
                     self.update_commit_offset(new_prune_version);
@@ -214,7 +227,6 @@ where
             Some(SuffixItemState::Complete(..)) => {
                 self.suffix
                     .set_item_state(version, SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
-
                 self.suffix.increment_item_action_count(version, action_key);
                 self.check_and_update_all_actions_complete(version, SuffixItemCompleteStateReason::ErrorProcessing);
                 debug!(
@@ -284,14 +296,13 @@ where
                                     let filter_actions = get_allowed_commit_actions(commit_actions, &self.config.allowed_actions);
                                     if filter_actions.is_empty() {
                                         // There are on_commit actions, but not the ones required by messenger
-                                        item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoRelavantCommitActions));
+                                        self.mark_suffix_item_complete(version, SuffixItemCompleteStateReason::NoRelavantCommitActions);
                                     } else {
                                         item_to_update.item.set_commit_action(filter_actions);
                                     }
                                 } else {
                                     //  No on_commit actions
-                                    item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::NoCommitActions));
-
+                                    self.mark_suffix_item_complete(version, SuffixItemCompleteStateReason::NoCommitActions);
                                 }
                             };
 
@@ -309,6 +320,11 @@ where
                         // TODO: GK - no hardcoded filters on headers
                         let headers: HashMap<String, String> = decision.headers.into_iter().filter(|(key, _)| key.as_str() != "messageType").collect();
                         self.suffix.update_item_decision(version, decision.decision_version, &decision.message, headers);
+                        if decision.message.is_abort(){
+                            self.otel_metrics
+                                .otel_candidates_processed
+                                .add(1, &[KeyValue::new(METRIC_COMPLETION_REASON, SuffixItemCompleteStateReason::Aborted.to_string())]);
+                        }
 
                         // Look for any early `Complete(..)` state, and update the `prune_index` and `commit_offset`.
                         if let Ok(Some(suffix_item)) = self.suffix.get(version){
@@ -334,9 +350,7 @@ where
                     Err(error) => {
                         // Catch the error propogated, and if it has a version, mark the item as completed.
                         if let Some(version) = error.version {
-                            if let Some(item_to_update) = self.suffix.get_mut(version){
-                                item_to_update.item.set_state(SuffixItemState::Complete(SuffixItemCompleteStateReason::ErrorProcessing));
-                            }
+                            self.mark_suffix_item_complete(version, SuffixItemCompleteStateReason::ErrorProcessing);
                         }
                         error!("error consuming message....{:?}", error);
                     },
