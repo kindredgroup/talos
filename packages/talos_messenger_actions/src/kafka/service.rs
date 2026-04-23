@@ -18,7 +18,7 @@ use talos_messenger_core::{
     utlis::get_actions_deserialised,
 };
 
-use crate::kafka::utils::{parse_header_timestamps, time_diff_ms};
+use crate::kafka::utils::{parse_header_timestamps, time_diff_micoseconds};
 
 use super::models::KafkaAction;
 
@@ -54,17 +54,17 @@ impl KafkaActionServiceOtelMetrics {
             otel_decision_received_to_publish_action_histogram: meter
                 .f64_histogram("talos_messenger_decision_received_publish_action".to_string())
                 .with_description("Duration in talos messenger from when the decision was received to when the on_commit action was published")
-                .with_unit("ms")
+                .with_unit("us")
                 .build(),
             otel_decision_received_to_pick_action_histogram: meter
                 .f64_histogram("talos_messenger_decision_received_pick_action".to_string())
                 .with_description("Duration in talos messenger from when the decision was received to when the on_commit action was picked")
-                .with_unit("ms")
+                .with_unit("us")
                 .build(),
             otel_action_picked_published_histogram: meter
                 .f64_histogram("talos_messenger_action_picked_published".to_string())
                 .with_description("Duration in talos messenger from action picked to process till published the on_commit action")
-                .with_unit("ms")
+                .with_unit("us")
                 .build(),
             otel_initiator_publish_action_histogram: meter
                 .f64_histogram("talos_initiator_messenger_publish_action".to_string())
@@ -91,27 +91,29 @@ impl KafkaActionServiceOtelMetrics {
         // 1. Candidate received to Messenger on_commit publish
         if let Some(candidate_received_time) = candidate_received_time {
             self.otel_candidate_received_to_publish_action_histogram
-                .record(time_diff_ms(candidate_received_time, end_on_commit_time) as f64, &[]);
+                .record(time_diff_micoseconds(candidate_received_time, end_on_commit_time) as f64 / 1_000_f64, &[]);
         }
         // 2. Decision received to Messenger on_commit publish
         if let Some(decision_received_time) = decision_received_time {
             self.otel_decision_received_to_publish_action_histogram
-                .record(time_diff_ms(decision_received_time, end_on_commit_time) as f64, &[]);
+                .record(time_diff_micoseconds(decision_received_time, end_on_commit_time) as f64, &[]);
         }
         // 3. Decision received to Messenger picked on_commit messages
         if let (Some(decision_received_time), Some(on_commit_actions_picked_time)) = (decision_received_time, start_on_commit_actions_time) {
             self.otel_decision_received_to_pick_action_histogram
-                .record(time_diff_ms(decision_received_time, on_commit_actions_picked_time) as f64, &[]);
+                .record(time_diff_micoseconds(decision_received_time, on_commit_actions_picked_time) as f64, &[]);
         }
         // 4. on_commit message picked to published - (Picked in Inbound Service and passed to Action Service from where it will be published)
         if let Some(start_on_commit_actions_time) = start_on_commit_actions_time {
             self.otel_action_picked_published_histogram
-                .record(time_diff_ms(start_on_commit_actions_time, end_on_commit_time) as f64, &[]);
+                .record(time_diff_micoseconds(start_on_commit_actions_time, end_on_commit_time) as f64, &[]);
         }
         // 5. Initiator to on_commit message published
         if let Some(initiator_candidate_created_time) = initiator_candidate_created_time {
-            self.otel_initiator_publish_action_histogram
-                .record(time_diff_ms(initiator_candidate_created_time, end_on_commit_time) as f64, &[]);
+            self.otel_initiator_publish_action_histogram.record(
+                time_diff_micoseconds(initiator_candidate_created_time, end_on_commit_time) as f64 / 1_000_f64,
+                &[],
+            );
         }
     }
 }

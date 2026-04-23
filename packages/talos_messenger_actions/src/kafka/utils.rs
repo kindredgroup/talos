@@ -1,8 +1,9 @@
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
-pub(crate) fn time_diff_ms(start: OffsetDateTime, end: OffsetDateTime) -> i128 {
+/// Get the time difference in micro-seconds
+pub(crate) fn time_diff_micoseconds(start: OffsetDateTime, end: OffsetDateTime) -> i128 {
     let diff = end - start;
-    diff.whole_microseconds() / 1_000
+    diff.whole_microseconds()
 }
 
 pub(crate) fn parse_header_timestamps(timestamp: &str) -> Option<OffsetDateTime> {
