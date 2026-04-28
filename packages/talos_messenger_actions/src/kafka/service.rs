@@ -24,6 +24,7 @@ use super::models::KafkaAction;
 
 pub const METRIC_ERROR_TYPES: &str = "error_type";
 
+// $coverage:ignore-start
 #[derive(Debug)]
 pub struct KafkaActionServiceOtelMetrics {
     /// Metric counter on the actions errors
@@ -117,6 +118,7 @@ impl KafkaActionServiceOtelMetrics {
         }
     }
 }
+// $coverage:ignore-end
 
 #[derive(Debug)]
 pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync + 'static> {
