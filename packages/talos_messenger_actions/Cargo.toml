@@ -76,3 +76,4 @@ talos_metrics = { path = "../talos_metrics", version = "0.3.17" }
 mockall = { version = "0.11.3" }
 tokio-test = { version = "0.4.2" }
 rand = { version = "0.8.5" }
+opentelemetry_sdk = { version = "0.28.0", features = ["metrics", "rt-tokio"] }

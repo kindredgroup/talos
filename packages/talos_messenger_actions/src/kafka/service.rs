@@ -24,7 +24,6 @@ use super::models::KafkaAction;
 
 pub const METRIC_ERROR_TYPES: &str = "error_type";
 
-// $coverage:ignore-start
 #[derive(Debug)]
 pub struct KafkaActionServiceOtelMetrics {
     /// Metric counter on the actions errors
@@ -118,7 +117,6 @@ impl KafkaActionServiceOtelMetrics {
         }
     }
 }
-// $coverage:ignore-end
 
 #[derive(Debug)]
 pub struct KafkaActionService<M: MessengerPublisher<Payload = KafkaAction> + Send + Sync + 'static> {
@@ -233,5 +231,127 @@ where
 
     async fn stop(&self) -> MessengerServiceResult {
         todo!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ahash::AHashMap;
+    use ahash::HashMap;
+    use async_trait::async_trait;
+    use opentelemetry::metrics::Meter;
+    use opentelemetry::metrics::MeterProvider;
+    use opentelemetry_sdk::error::OTelSdkResult;
+    use opentelemetry_sdk::metrics::data::ResourceMetrics;
+    use opentelemetry_sdk::metrics::exporter::PushMetricExporter;
+    use opentelemetry_sdk::metrics::{SdkMeterProvider, Temporality};
+    use std::sync::{Arc, Mutex};
+    use talos_messenger_core::suffix::MessengerStateTransitionTimestamps;
+
+    use crate::kafka::service::KafkaActionServiceOtelMetrics;
+
+    #[derive(Debug, Clone, Default)]
+    struct TestExporter {
+        metrics: Arc<Mutex<Vec<String>>>, // store metric names
+    }
+
+    #[async_trait]
+    impl PushMetricExporter for TestExporter {
+        async fn export(&self, metrics: &mut ResourceMetrics) -> OTelSdkResult {
+            for scope in &metrics.scope_metrics {
+                for metric in &scope.metrics {
+                    self.metrics.lock().unwrap().push(metric.name.to_string());
+                }
+            }
+            Ok(())
+        }
+
+        async fn force_flush(&self) -> OTelSdkResult {
+            Ok(())
+        }
+
+        fn shutdown(&self) -> OTelSdkResult {
+            Ok(())
+        }
+
+        fn temporality(&self) -> Temporality {
+            Temporality::Cumulative
+        }
+    }
+
+    fn setup_meter() -> (Meter, TestExporter, SdkMeterProvider) {
+        let exporter = TestExporter::default();
+        let provider = SdkMeterProvider::builder().with_periodic_exporter(exporter.clone()).build();
+        let meter = provider.meter("test");
+        (meter, exporter, provider)
+    }
+
+    fn base_headers() -> HashMap<String, String> {
+        HashMap::from_iter([
+            (
+                MessengerStateTransitionTimestamps::CandidateReceived.to_string(),
+                "2026-04-19T20:53:11.000Z".to_string(),
+            ),
+            (
+                MessengerStateTransitionTimestamps::DecisionReceived.to_string(),
+                "2026-04-19T20:53:11.100Z".to_string(),
+            ),
+            (
+                MessengerStateTransitionTimestamps::StartOnCommitActions.to_string(),
+                "2026-04-19T20:53:11.200Z".to_string(),
+            ),
+            ("cohortCandidateCreatedAtTimestamp".to_string(), "2026-04-19T20:53:10.000Z".to_string()),
+        ])
+    }
+
+    #[tokio::test]
+    async fn test_metric_struct_all_headers_present() {
+        let (meter, exporter, provider) = setup_meter();
+        let mut metric = KafkaActionServiceOtelMetrics::new(&meter);
+
+        metric.record_metrics_from_kafka_header(&base_headers());
+
+        // Before flush there are no metrics available
+        let recorded = exporter.metrics.lock().unwrap();
+        assert_eq!(recorded.len(), 0);
+        drop(recorded);
+
+        // Flush the metrics recorded
+        provider.force_flush().unwrap();
+
+        // After flush, all the metrics are available
+        let recorded = exporter.metrics.lock().unwrap();
+        assert_eq!(recorded.len(), 5);
+        assert!(recorded.contains(&"talos_messenger_candidate_received_publish_action".to_string()));
+        assert!(recorded.contains(&"talos_messenger_decision_received_publish_action".to_string()));
+        assert!(recorded.contains(&"talos_messenger_decision_received_pick_action".to_string()));
+        assert!(recorded.contains(&"talos_messenger_action_picked_published".to_string()));
+        assert!(recorded.contains(&"talos_initiator_messenger_publish_action".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_empty_headers_records_nothing() {
+        let (meter, exporter, provider) = setup_meter();
+        let mut metric = KafkaActionServiceOtelMetrics::new(&meter);
+
+        metric.record_metrics_from_kafka_header(&AHashMap::new());
+        provider.force_flush().unwrap();
+
+        let finished = exporter.metrics.lock().unwrap();
+        assert!(finished.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_missing_candidate_received_skips_histogram_1() {
+        let (meter, exporter, provider) = setup_meter();
+        let mut metric = KafkaActionServiceOtelMetrics::new(&meter);
+        let mut headers = base_headers();
+        headers.remove(&MessengerStateTransitionTimestamps::CandidateReceived.to_string());
+
+        metric.record_metrics_from_kafka_header(&headers);
+        provider.force_flush().unwrap();
+
+        let recorded = exporter.metrics.lock().unwrap();
+        assert!(!recorded.contains(&"talos_messenger_candidate_received_publish_action".to_string()));
     }
 }
