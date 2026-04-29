@@ -5,7 +5,6 @@ use crate::{self as Adapters, KafkaConsumer};
 use std::sync::{atomic::AtomicI64, Arc};
 use talos_certifier::core::SystemService;
 use talos_certifier::model::{CandidateMessage, DecisionMessage};
-use talos_certifier::otel::init_otel_metrics;
 use talos_certifier::ports::DecisionStore;
 
 use talos_certifier::services::{CertifierServiceConfig, MessageReceiverServiceConfig};
@@ -16,6 +15,7 @@ use talos_certifier::{
     services::{CertifierService, DecisionOutboxService, MessageReceiverService},
     talos_certifier_service::{TalosCertifierService, TalosCertifierServiceBuilder},
 };
+use talos_metrics::otel::init_otel_metrics;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use talos_suffix::core::SuffixConfig;
 use tokio::sync::{broadcast, mpsc};

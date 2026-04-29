@@ -56,15 +56,24 @@ toml_parser = { workspace = true }
 toml_writer = { workspace = true }
 # *** End - Adding to fix napi build error on GH actions.
 
+
+# Otel packages
+opentelemetry = { version = "0.28.0", default-features = false, features = [
+    "trace",
+] }
+
+# Talos packages
 talos_certifier = { path = "../talos_certifier", version = "0.3.17" }
 talos_suffix = { path = "../talos_suffix", version = "0.3.17" }
 talos_certifier_adapters = { path = "../talos_certifier_adapters", version = "0.3.17" }
 talos_common_utils = { path = "../talos_common_utils", version = "0.3.17" }
 talos_rdkafka_utils = { path = "../talos_rdkafka_utils", version = "0.3.17" }
 talos_messenger_core = { path = "../talos_messenger_core", version = "0.3.17" }
+talos_metrics = { path = "../talos_metrics", version = "0.3.17" }
 
 
 [dev-dependencies]
 mockall = { version = "0.11.3" }
 tokio-test = { version = "0.4.2" }
 rand = { version = "0.8.5" }
+opentelemetry_sdk = { version = "0.28.0", features = ["metrics", "rt-tokio"] }

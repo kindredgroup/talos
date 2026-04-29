@@ -10,16 +10,9 @@ use examples_support::load_generator::models::Generator;
 use examples_support::load_generator::{generator::ControlledRateLoadGenerator, models::StopType};
 
 use opentelemetry_api::global;
-use opentelemetry_api::metrics::MetricsError;
-use opentelemetry_sdk::metrics::reader::DefaultTemporalitySelector;
-use opentelemetry_sdk::metrics::{MeterProvider, PeriodicReader};
-use opentelemetry_sdk::runtime;
-use opentelemetry_stdout::MetricsExporterBuilder;
 use rand::Rng;
 use rust_decimal::prelude::FromPrimitive;
-use talos_metrics::opentel::aggregation_selector::CustomHistogramSelector;
-use talos_metrics::opentel::printer::MetricsToStringPrinter;
-use talos_metrics::opentel::scaling::ScalingConfig;
+use talos_metrics::otel::init_otel_metrics;
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
 use tokio::{signal, task::JoinHandle, try_join};
 
@@ -31,8 +24,6 @@ struct LaunchParams {
     target_rate: f32,
     threads: u64,
     accounts: u64,
-    scaling_config: HashMap<String, f32>,
-    metric_print_raw: bool,
 }
 
 /// Connects to database, to kafka certification topic as talos agent and as cohort replicator.
@@ -118,23 +109,7 @@ async fn main() -> Result<(), String> {
 
     let db_config = DatabaseConfig::from_env(Some("COHORT"))?;
 
-    let printer = MetricsToStringPrinter::new(params.threads, params.metric_print_raw, ScalingConfig { ratios: params.scaling_config });
-    let (tx_metrics, rx_metrics) = tokio::sync::watch::channel("".to_string());
-    let exporter = MetricsExporterBuilder::default()
-        .with_aggregation_selector(CustomHistogramSelector::new_with_4k_buckets()?)
-        .with_temporality_selector(DefaultTemporalitySelector::new())
-        .with_encoder(move |_writer, data| {
-            let report = printer.print(&data).map_err(MetricsError::Other)?;
-            tx_metrics.send(report).map_err(|e| MetricsError::Other(e.to_string()))?;
-            Ok(())
-        })
-        .build();
-
-    let reader = PeriodicReader::builder(exporter, runtime::Tokio).build();
-
-    let meter_provider = MeterProvider::builder().with_reader(reader).build();
-    let meter_provider_copy = meter_provider.clone();
-    global::set_meter_provider(meter_provider);
+    let _ = init_otel_metrics(sdk_config.otel_telemetry.grpc_endpoint.clone());
 
     let meter = global::meter("banking_cohort");
     let meter = Arc::new(meter);
@@ -178,9 +153,6 @@ async fn main() -> Result<(), String> {
     }
 
     shutdown_tracer_provider();
-    let _ = meter_provider_copy.shutdown();
-    let report = rx_metrics.borrow();
-    log::warn!("{}", *report);
     Ok(())
 }
 
@@ -200,8 +172,6 @@ async fn get_params() -> Result<LaunchParams, String> {
     let mut accounts: Option<u64> = None;
     let mut target_rate: Option<f32> = None;
     let mut stop_type: Option<StopType> = None;
-    let mut scaling_config: Option<HashMap<String, f32>> = None;
-    let mut metric_print_raw = None;
 
     if args.len() >= 3 {
         let mut i = 1;
@@ -228,34 +198,6 @@ async fn get_params() -> Result<LaunchParams, String> {
                     let count: u64 = param_value.parse().unwrap();
                     stop_type = Some(StopType::LimitGeneratedTransactions { count })
                 }
-            } else if param_name.eq("--metric_print_raw") {
-                metric_print_raw = Some(true);
-            } else if param_name.eq("--metric_scaling") {
-                let param_value = &args[i + 1];
-                let mut cfg: HashMap<String, f32> = HashMap::new();
-                for spec in param_value.replace(' ', "").split(',') {
-                    if let Some(i) = spec.find('=') {
-                        let metric: String = spec[..i].into();
-                        let scale_factor_raw: String = spec[i + 1..].into();
-                        let scale_factor = match scale_factor_raw.parse::<f32>() {
-                            Err(e) => {
-                                log::error!(
-                                    "Unable to parse scaling factor for metric '{}'. No scaling will be applied. Pasing: '{}'. Error: {}.",
-                                    metric,
-                                    scale_factor_raw,
-                                    e
-                                );
-                                1_f32
-                            }
-                            Ok(scale_factor) => scale_factor,
-                        };
-                        cfg.insert(metric, scale_factor);
-                    }
-                }
-
-                if !cfg.is_empty() {
-                    scaling_config = Some(cfg);
-                }
             }
 
             i += 2;
@@ -271,8 +213,6 @@ async fn get_params() -> Result<LaunchParams, String> {
         stop_type,
         threads: threads.unwrap(),
         accounts,
-        scaling_config: scaling_config.unwrap_or_default(),
-        metric_print_raw: metric_print_raw.is_some(),
     })
 }
 

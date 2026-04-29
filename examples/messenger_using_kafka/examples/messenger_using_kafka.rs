@@ -1,4 +1,4 @@
-use talos_common_utils::env_var;
+use talos_common_utils::{env_var, env_var_with_defaults};
 use talos_messenger_actions::messenger_with_kafka::{messenger_with_kafka, Configuration};
 use talos_messenger_core::utlis::{create_whitelist_actions_from_str, ActionsParserConfig};
 use talos_rdkafka_utils::kafka_config::KafkaConfig;
@@ -31,6 +31,7 @@ async fn main() {
     };
 
     let actions_from_env = env_var!("TALOS_MESSENGER_ACTIONS_WHITELIST");
+    let otel_grpc_endpoint = env_var_with_defaults!("OTEL_EXPORTER_OTLP_ENDPOINT", Option::<String>);
     let allowed_actions = create_whitelist_actions_from_str(&actions_from_env, &ActionsParserConfig::default());
 
     let config = Configuration {
@@ -40,6 +41,7 @@ async fn main() {
         channel_buffers: None,
         commit_size: Some(2_000),
         commit_frequency: None,
+        otel_grpc_endpoint,
     };
 
     messenger_with_kafka(config).await.unwrap();

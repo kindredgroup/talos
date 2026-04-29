@@ -1,6 +1,7 @@
 use ahash::HashMap;
 use async_trait::async_trait;
 use log::{debug, error};
+use opentelemetry::global;
 use strum::{Display, EnumString};
 use talos_certifier::{
     errors::SystemServiceError,
@@ -271,12 +272,15 @@ impl MessengerServiceTester<MockActionService, MockReciever, ChannelMessage<Mess
         // allowed_actions.insert("publish".to_owned(), vec!["kafka".to_owned()]);
 
         // let config = MessengerInboundServiceConfig::new(allowed_actions.into(), Some(10), Some(60 * 60 * 1_000));
+        //
+        let meter = global::meter("talos_messenger");
         let messenger_service = MessengerInboundService::new(
             message_receiver,
             tx_actions_channel.clone(),
             rx_feedback_channel,
             suffix,
             configs.inbound_service_configs,
+            &meter,
         );
 
         // START - Mock Action Service
